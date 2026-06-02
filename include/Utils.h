@@ -702,12 +702,12 @@ public:
 	* 参数1 84坐标系坐标
 	* 参数2 经纬高坐标系坐标（度/度/米）
 	*/
-	int xyz2ell(Mat xyz, Mat& llh);
+	int xyz2ell(const Mat& xyz, Mat& llh);
 	/*经纬高坐标系转84坐标系
 	* 参数1 经纬高坐标系坐标（纬度/经度/高度）
 	* 参数2 84坐标系坐标
 	*/
-	int ell2xyz(Mat llh, Mat& xyz);
+	int ell2xyz(const Mat& llh, Mat& xyz);
 	/*@brief 经/纬/高 ---> x/y/z
 	* @param lon                 经度
 	* @param lat                 纬度
@@ -750,13 +750,13 @@ public:
 	* 参数2 颜色映射（jet/hsv/cool/parula等）
 	* 参数3 待保存相位
 	*/
-	int savephase(const char* filename, const char* colormap, Mat phase);
+	int savephase(const char* filename, const char* colormap, const Mat& phase);
 	/*保存干涉相位图
 	* 参数1 目标文件名
 	* 参数2 颜色映射（jet/hsv/cool/parula等）
 	* 参数3 待保存相位
 	*/
-	int save_coherence(const char* filename, const char* colormap, Mat coherence);
+	int save_coherence(const char* filename, const char* colormap, const Mat& coherence);
 	/*@brief 保存干涉相位图（掩膜区域为黑色）
 	* @param filename                            目标文件名
 	* @param colormap                            颜色映射（jet/hsv/cool/parula等）
