@@ -3001,7 +3001,7 @@ int Utils::phase2cos(const Mat& phase, Mat& cos, Mat& sin)
 	return 0;
 }
 
-int Utils::xyz2ell(Mat xyz, Mat& llh)
+int Utils::xyz2ell(const Mat& xyz, Mat& llh)
 {
 	if (xyz.rows != 1 ||
 		xyz.cols != 3 ||
@@ -3056,7 +3056,7 @@ int Utils::xyz2ell(Mat xyz, Mat& llh)
 	return 0;
 }
 
-int Utils::ell2xyz(Mat llh, Mat& xyz)
+int Utils::ell2xyz(const Mat& llh, Mat& xyz)
 {
 	if (llh.cols != 3 ||
 		llh.rows != 1 ||
@@ -3358,7 +3358,7 @@ int Utils::saveAmplitude(const char* filename, Mat& amplitude)
 	return 0;
 }
 
-int Utils::savephase(const char* filename, const char* colormap, Mat phase)
+int Utils::savephase(const char* filename, const char* colormap, const Mat& phase)
 {
 	if (filename == NULL ||
 		colormap == NULL ||
@@ -3406,7 +3406,7 @@ int Utils::savephase(const char* filename, const char* colormap, Mat phase)
 	return 0;
 }
 
-int Utils::save_coherence(const char* filename, const char* colormap, Mat coherence)
+int Utils::save_coherence(const char* filename, const char* colormap, const Mat& coherence)
 {
 	if (filename == NULL ||
 		colormap == NULL ||
