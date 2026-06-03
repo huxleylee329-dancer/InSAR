@@ -104,12 +104,12 @@ int SLC_simulator::reflectivity(Mat& incidenceAngle, Mat& sigma)
 			for (int j = 0; j < cols; j++)
 			{
 				double temp = incidenceAngle.at<float>(i, j);
-				if (temp <= 17.0) sigma.at<float>(i, j) = 2 - 0.7058823529412 * temp;
-				else if (temp > 17.0 && temp <= 30.0) sigma.at<float>(i, j) = -10 - 0.3846153846154 * (temp - 17.0);
-				else if (temp > 30.0 && temp <= 80.0) sigma.at<float>(i, j) = -15 - 0.2 * (temp - 30);
-				else if (temp > 80.0 && temp <= 90.0) sigma.at<float>(i, j) = -25 - 7.5 * (temp - 80);
-				else sigma.at<float>(i, j) = -200.0;
-				sigma.at<float>(i, j) = pow(10.0, sigma.at<float>(i, j) / 10.0);
+				if (temp <= 17.0) sigma.at<float>(i, j) = static_cast<float>(2 - 0.7058823529412 * temp);
+				else if (temp > 17.0 && temp <= 30.0) sigma.at<float>(i, j) = static_cast<float>(-10 - 0.3846153846154 * (temp - 17.0));
+				else if (temp > 30.0 && temp <= 80.0) sigma.at<float>(i, j) = static_cast<float>(-15 - 0.2 * (temp - 30));
+				else if (temp > 80.0 && temp <= 90.0) sigma.at<float>(i, j) = static_cast<float>(-25 - 7.5 * (temp - 80));
+				else sigma.at<float>(i, j) = -200.0f;
+				sigma.at<float>(i, j) = static_cast<float>(pow(10.0, sigma.at<float>(i, j) / 10.0));
 			}
 		}
 	}
@@ -199,13 +199,13 @@ int SLC_simulator::computeIncidenceAngle(
 				double x2 = DEM_x.at<float>(i - 1, j - 1);
 				double y2 = DEM_y.at<float>(i - 1, j - 1);
 				double z2 = DEM_z.at<float>(i - 1, j - 1);
-				vec1.at<float>(i * cols + j, 0) = x0 - x1;
-				vec1.at<float>(i * cols + j, 1) = y0 - y1;
-				vec1.at<float>(i * cols + j, 2) = z0 - z1;
+				vec1.at<float>(i * cols + j, 0) = static_cast<float>(x0 - x1);
+				vec1.at<float>(i * cols + j, 1) = static_cast<float>(y0 - y1);
+				vec1.at<float>(i * cols + j, 2) = static_cast<float>(z0 - z1);
 
-				vec2.at<float>(i * cols + j, 0) = x0 - x2;
-				vec2.at<float>(i * cols + j, 1) = y0 - y2;
-				vec2.at<float>(i * cols + j, 2) = z0 - z2;
+				vec2.at<float>(i * cols + j, 0) = static_cast<float>(x0 - x2);
+				vec2.at<float>(i * cols + j, 1) = static_cast<float>(y0 - y2);
+				vec2.at<float>(i * cols + j, 2) = static_cast<float>(z0 - z2);
 			}
 		}
 	}
@@ -255,7 +255,7 @@ int SLC_simulator::computeIncidenceAngle(
 				xx = xx / sqrt(xx * xx);
 				double v = sqrt(v1 * v1 + v2 * v2 + v3 * v3);
 				double a = xx * (r1 * v1 + r2 * v2 + r3 * v3) / (r * v);
-				angle.at<float>(i - 1, j - 1) = acos(a) / PI * 180.0;
+				angle.at<float>(i - 1, j - 1) = static_cast<float>(acos(a) / PI * 180.0);
 			}
 		}
 	}
@@ -313,16 +313,17 @@ int SLC_simulator::generateSLC(
 	slc.re = 0.0; slc.im = 0.0;
 	//分块计算，确定DEM划分大小与方式
 
-	int interp_times_row = 30.0 / azimuthSpacing;
-	int interp_times_col = 30.0 / rangeSpacing;
+	int interp_times_row = static_cast<int>(30.0 / azimuthSpacing);
+	int interp_times_col = static_cast<int>(30.0 / rangeSpacing);
 	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
 	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
 	int interp_cell = 1;
 	double lon_spacing_old = lon_space / (double)interp_times_col;
 	double lat_spacing_old = lat_space / (double)interp_times_row;
-	//考虑DEM像素中心与边缘差值
-	lat_upperleft = lat_upperleft + lat_space / 2.0 - lat_space / (double)interp_times_row * 0.5;
-	lon_upperleft = lon_upperleft - lon_space / 2.0 + lon_space / (double)interp_times_col * 0.5;
+	//考虑DEM像素中心与边缘差异
+	lat_upperleft = lat_upperleft + lat_space / 2.0 - lat_space / (double)interp_times_row * 0.5;                                                         
+	lon_upperleft = lon_upperleft - lon_space / 2.0 + lon_space / (double)interp_times_col * 0.5;     
+
 	double lon_spacing = lon_spacing_old / (double)interp_cell;
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
@@ -343,7 +344,7 @@ int SLC_simulator::generateSLC(
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (no H5 I/O in this function)
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
@@ -505,8 +506,8 @@ int SLC_simulator::generateSLC(
 				double gcp_sigma = 1000.0;
 				double zeroDopplerTime = imaging_time.at<double>(gcp_row, gcp_col);
 				double distance = slant_range.at<double>(gcp_row, gcp_col);
-				int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-				int rangeIndex = floor((distance - nearRange) / rangeSpacing);
+				int azimuthIndex = static_cast<int>(floor((zeroDopplerTime - acquisitionStartTime) / time_interval));
+				int rangeIndex = static_cast<int>(floor((distance - nearRange) / rangeSpacing));
 				if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
 				{
 
@@ -521,8 +522,8 @@ int SLC_simulator::generateSLC(
 						{
 							zeroDopplerTime = imaging_time.at<double>(ii, jj);
 							distance = slant_range.at<double>(ii, jj);
-							azimuthIndex_tmp = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-							rangeIndex_tmp = floor((distance - nearRange) / rangeSpacing);
+							azimuthIndex_tmp = static_cast<int>(floor((zeroDopplerTime - acquisitionStartTime) / time_interval));
+							rangeIndex_tmp = static_cast<int>(floor((distance - nearRange) / rangeSpacing));
 
 							if (azimuthIndex_tmp == azimuthIndex && rangeIndex_tmp == (rangeIndex - 50))
 							{
@@ -560,7 +561,7 @@ int SLC_simulator::generateSLC(
 		}
 	}
 
-	int total_rows = GCPs.size() / 7;
+	int total_rows = static_cast<int>(GCPs.size() / 7);
 	if (total_rows > 0)
 	{
 		GCP.create(total_rows, 7, CV_64F);
@@ -1403,10 +1404,11 @@ int SLC_simulator::generateSLC(
 	slc2.re = 0.0; slc2.im = 0.0;
 	//分块计算，确定DEM划分大小与方式
 
-	int interp_times_row = 90.0 / azimuthSpacing;
-	int interp_times_col = 90.0 / rangeSpacing;
+	int interp_times_row = static_cast<int>(90.0 / azimuthSpacing);
+	int interp_times_col = static_cast<int>(90.0 / rangeSpacing);
 	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
 	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
+
 	int interp_cell = 4;
 	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
 	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
@@ -1437,7 +1439,7 @@ int SLC_simulator::generateSLC(
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
-	int ret;
+	// removed unused: ret (no H5 I/O in this function)
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
@@ -1668,8 +1670,8 @@ int SLC_simulator::generateSLC(
 						double real, imaginary, theta;
 						double zeroDopplerTime1 = imaging_time1.at<double>(ii, jj);
 						double distance1 = slant_range1.at<double>(ii, jj);
-						int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-						int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+						int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+						int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 						if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1)
 						{
 
@@ -1679,14 +1681,14 @@ int SLC_simulator::generateSLC(
 							theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(ii, jj);
 							real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
 							imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
-							slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-							slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+							slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+							slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 						}
 
 						double zeroDopplerTime2 = imaging_time2.at<double>(ii, jj);
 						double distance2 = slant_range2.at<double>(ii, jj);
-						int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-						int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+						int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+						int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 						if (azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
 						{
 
@@ -1696,8 +1698,8 @@ int SLC_simulator::generateSLC(
 							theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(ii, jj);
 							real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real2.at<float>(ii, jj));
 							imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary2.at<float>(ii, jj));
-							slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-							slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+							slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+							slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 						}
 					}
 				}
@@ -1709,13 +1711,13 @@ int SLC_simulator::generateSLC(
 					double gcp_sigma = 1000.0;
 					double zeroDopplerTime1 = imaging_time1.at<double>(gcp_row, gcp_col);
 					double distance1 = slant_range1.at<double>(gcp_row, gcp_col);
-					int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-					int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+					int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+					int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 
 					double zeroDopplerTime2 = imaging_time2.at<double>(gcp_row, gcp_col);
 					double distance2 = slant_range2.at<double>(gcp_row, gcp_col);
-					int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-					int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
 					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
 						azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
@@ -1739,14 +1741,14 @@ int SLC_simulator::generateSLC(
 						double theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 						double real = gcp_sigma * (cos(theta) + noise_real.at<float>(gcp_row, gcp_col));
 						double imaginary = gcp_sigma * (sin(theta) + noise_imaginary.at<float>(gcp_row, gcp_col));
-						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 
 						theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 						real = gcp_sigma * (cos(theta) + noise_real2.at<float>(gcp_row, gcp_col));
 						imaginary = gcp_sigma * (sin(theta) + noise_imaginary2.at<float>(gcp_row, gcp_col));
-						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 					}
 				}
 			}
@@ -1760,8 +1762,8 @@ int SLC_simulator::generateSLC(
 						double real, imaginary, theta;
 						double zeroDopplerTime1 = imaging_time1.at<double>(ii, jj);
 						double distance1 = slant_range1.at<double>(ii, jj);
-						int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-						int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+						int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+						int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 						if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1)
 						{
 
@@ -1771,14 +1773,14 @@ int SLC_simulator::generateSLC(
 							theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(ii, jj);
 							real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
 							imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
-							slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-							slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+							slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+							slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 						}
 
 						double zeroDopplerTime2 = imaging_time2.at<double>(ii, jj);
 						double distance2 = slant_range2.at<double>(ii, jj);
-						int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-						int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+						int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+						int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 						if (azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
 						{
 
@@ -1788,8 +1790,8 @@ int SLC_simulator::generateSLC(
 							theta = -4.0 * PI * distance2 / wavelength + randomAngle.at<float>(ii, jj);
 							real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real2.at<float>(ii, jj));
 							imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary2.at<float>(ii, jj));
-							slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-							slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+							slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+							slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 						}
 					}
 				}
@@ -1801,13 +1803,13 @@ int SLC_simulator::generateSLC(
 					double gcp_sigma = 1000.0;
 					double zeroDopplerTime1 = imaging_time1.at<double>(gcp_row, gcp_col);
 					double distance1 = slant_range1.at<double>(gcp_row, gcp_col);
-					int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-					int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+					int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+					int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 
 					double zeroDopplerTime2 = imaging_time2.at<double>(gcp_row, gcp_col);
 					double distance2 = slant_range2.at<double>(gcp_row, gcp_col);
-					int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-					int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
 					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
 						azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
@@ -1831,20 +1833,20 @@ int SLC_simulator::generateSLC(
 						double theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 						double real = gcp_sigma * (cos(theta) + noise_real.at<float>(gcp_row, gcp_col));
 						double imaginary = gcp_sigma * (sin(theta) + noise_imaginary.at<float>(gcp_row, gcp_col));
-						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 
 						theta = -4.0 * PI * distance2 / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 						real = gcp_sigma * (cos(theta) + noise_real2.at<float>(gcp_row, gcp_col));
 						imaginary = gcp_sigma * (sin(theta) + noise_imaginary2.at<float>(gcp_row, gcp_col));
-						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 					}
 				}
 			}
-			
 
-			fprintf(stdout, "process %lf: %d / %d\n", (double)seed / (double)(num_block_row * num_block_col) * 100.0, seed,
+
+			fprintf(stdout, "process %lf: %llu / %d\n", (double)seed / (double)(num_block_row * num_block_col) * 100.0, seed,
 				num_block_row * num_block_col);
 		}
 	}
@@ -1876,7 +1878,7 @@ int SLC_simulator::generateSLC(
 			{
 				aa = sin(PI * x / res_azimuth) / (PI * x / res_azimuth);
 			}
-			sinc.at<float>(i + wright, j + wright) = aa * bb;
+			sinc.at<float>(i + wright, j + wright) = static_cast<float>(aa * bb);
 		}
 	}
 
@@ -1890,7 +1892,7 @@ int SLC_simulator::generateSLC(
 	x = conv2(slc2.im, sinc, CONVOLUTION_SAME);
 	x.copyTo(slc2.im);
 
-	int total_rows = GCPs.size() / 7;
+	int total_rows = static_cast<int>(GCPs.size() / 7);
 	if (total_rows > 0)
 	{
 		GCP.create(total_rows, 7, CV_64F);
@@ -1984,11 +1986,11 @@ int SLC_simulator::generateSLC(
 	slc4.re = 0.0; slc4.im = 0.0;
 
 	//分块计算，确定DEM划分大小与方式
-
-	int interp_times_row = 90.0 / azimuthSpacing;
-	int interp_times_col = 90.0 / rangeSpacing;
+	int interp_times_row = static_cast<int>(90.0 / azimuthSpacing);
+	int interp_times_col = static_cast<int>(90.0 / rangeSpacing);
 	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
 	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
+
 	int interp_cell = 4;
 	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
 	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
@@ -2019,11 +2021,11 @@ int SLC_simulator::generateSLC(
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
-	int ret;
+	// removed unused: ret (no H5 I/O in this function)
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
-	char process[512];
+	// removed unused: process
 	for (int i = 0; i < num_block_row; i++)
 	{
 		for (int j = 0; j < num_block_col; j++)
@@ -2266,13 +2268,13 @@ int SLC_simulator::generateSLC(
 					double real, imaginary, theta;
 					double zeroDopplerTime1 = imaging_time1.at<double>(ii, jj);
 					double distance1 = slant_range1.at<double>(ii, jj);
-					int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-					int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+					int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+					int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 
 					double zeroDopplerTime2 = imaging_time2.at<double>(ii, jj);
 					double distance2 = slant_range2.at<double>(ii, jj);
-					int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-					int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
 					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1)
 					{
@@ -2283,18 +2285,18 @@ int SLC_simulator::generateSLC(
 						theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
 						imaginary = 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
-						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+						slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+						slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 
 
 						theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real4.at<float>(ii, jj));
 						imaginary = 1.0 * (sin(theta) + noise_imaginary4.at<float>(ii, jj));
-						slc4.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-						slc4.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+						slc4.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+						slc4.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 					}
 
-					
+
 					if (azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
 					{
 
@@ -2304,17 +2306,17 @@ int SLC_simulator::generateSLC(
 						theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real2.at<float>(ii, jj));
 						imaginary = 1.0 * (sin(theta) + noise_imaginary2.at<float>(ii, jj));
-						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+						slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+						slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 
 
 						theta = -4.0 * PI * distance2 / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real3.at<float>(ii, jj));
 						imaginary = 1.0 * (sin(theta) + noise_imaginary3.at<float>(ii, jj));
-						slc3.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-						slc3.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+						slc3.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+						slc3.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 
-						
+
 					}
 
 				}
@@ -2327,13 +2329,13 @@ int SLC_simulator::generateSLC(
 				double gcp_sigma = 1000.0;
 				double zeroDopplerTime1 = imaging_time1.at<double>(gcp_row, gcp_col);
 				double distance1 = slant_range1.at<double>(gcp_row, gcp_col);
-				int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-				int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+				int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+				int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 
 				double zeroDopplerTime2 = imaging_time2.at<double>(gcp_row, gcp_col);
 				double distance2 = slant_range2.at<double>(gcp_row, gcp_col);
-				int azimuthIndex2 = floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval);
-				int rangeIndex2 = floor((distance2 - nearRange2) / rangeSpacing);
+				int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
+				int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
 				if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
 					azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
@@ -2366,29 +2368,29 @@ int SLC_simulator::generateSLC(
 					double theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 					double real = gcp_sigma * (cos(theta) + noise_real.at<float>(gcp_row, gcp_col));
 					double imaginary = gcp_sigma * (sin(theta) + noise_imaginary.at<float>(gcp_row, gcp_col));
-					slc1.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-					slc1.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+					slc1.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+					slc1.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 
 					theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 					real = gcp_sigma * (cos(theta) + noise_real2.at<float>(gcp_row, gcp_col));
 					imaginary = gcp_sigma * (sin(theta) + noise_imaginary2.at<float>(gcp_row, gcp_col));
-					slc2.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-					slc2.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+					slc2.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+					slc2.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 
 					theta = -4.0 * PI * distance2 / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 					real = gcp_sigma * (cos(theta) + noise_real3.at<float>(gcp_row, gcp_col));
 					imaginary = gcp_sigma * (sin(theta) + noise_imaginary3.at<float>(gcp_row, gcp_col));
-					slc3.re.at<float>(azimuthIndex2, rangeIndex2) += real;
-					slc3.im.at<float>(azimuthIndex2, rangeIndex2) += imaginary;
+					slc3.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
+					slc3.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
 
 					theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(gcp_row, gcp_col);
 					real = gcp_sigma * (cos(theta) + noise_real4.at<float>(gcp_row, gcp_col));
 					imaginary = gcp_sigma * (sin(theta) + noise_imaginary4.at<float>(gcp_row, gcp_col));
-					slc4.re.at<float>(azimuthIndex1, rangeIndex1) += real;
-					slc4.im.at<float>(azimuthIndex1, rangeIndex1) += imaginary;
+					slc4.re.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(real);
+					slc4.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 				}
 			}
-			printf("\rprocess %lf: %d / %d", (double)seed / (double)(num_block_row * num_block_col) * 100.0, seed,
+			printf("\rprocess %lf: %llu / %d", (double)seed / (double)(num_block_row * num_block_col) * 100.0, seed,
 				num_block_row* num_block_col);
 			fflush(stdout);
 		}
@@ -2421,7 +2423,7 @@ int SLC_simulator::generateSLC(
 			{
 				aa = sin(PI * x / res_azimuth) / (PI * x / res_azimuth);
 			}
-			sinc.at<float>(i + wright, j + wright) = aa * bb;
+			sinc.at<float>(i + wright, j + wright) = static_cast<float>(aa * bb);
 		}
 	}
 
@@ -2445,7 +2447,7 @@ int SLC_simulator::generateSLC(
 	x = conv2(slc4.im, sinc, CONVOLUTION_SAME);
 	x.copyTo(slc4.im);
 
-	int total_rows = GCPs.size() / 7;
+	int total_rows = static_cast<int>(GCPs.size() / 7);
 	if (total_rows > 0)
 	{
 		GCP1.create(total_rows, 7, CV_64F);
@@ -2462,7 +2464,7 @@ int SLC_simulator::generateSLC(
 		}
 	}
 
-	total_rows = GCPs2.size() / 7;
+	total_rows = static_cast<int>(GCPs2.size() / 7);
 	if (total_rows > 0)
 	{
 		GCP2.create(total_rows, 7, CV_64F);
@@ -2534,8 +2536,8 @@ int SLC_simulator::generateSlantrange(
 	Mat pixel_count = Mat::zeros(sceneHeight1, sceneWidth1, CV_8U); pixel_count = 0;
 	//分块计算，确定DEM划分大小与方式
 
-	int interp_times_row = 90.0 / azimuthSpacing;
-	int interp_times_col = 90.0 / rangeSpacing;
+	int interp_times_row = static_cast<int>(90.0 / azimuthSpacing);
+	int interp_times_col = static_cast<int>(90.0 / rangeSpacing);
 	int interp_cell = 4;
 	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
 	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
@@ -2561,11 +2563,11 @@ int SLC_simulator::generateSlantrange(
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
-	int ret;
+	// removed unused: ret (no H5 I/O in this function)
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
-	char process[512];
+	// removed unused: process
 	for (int i = 0; i < num_block_row; i++)
 	{
 		for (int j = 0; j < num_block_col; j++)
@@ -2771,11 +2773,11 @@ int SLC_simulator::generateSlantrange(
 			{
 				for (int jj = 0; jj < DEM_cols; jj++)
 				{
-					double real, imaginary, theta;
+					// removed unused: real, imaginary, theta (computeSlantRange only computes distances)
 					double zeroDopplerTime1 = imaging_time1.at<double>(ii, jj);
 					double distance1 = slant_range1.at<double>(ii, jj);
-					int azimuthIndex1 = floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval);
-					int rangeIndex1 = floor((distance1 - nearRange1) / rangeSpacing);
+					int azimuthIndex1 = static_cast<int>(floor((zeroDopplerTime1 - acquisitionStartTime1) / time_interval));
+					int rangeIndex1 = static_cast<int>(floor((distance1 - nearRange1) / rangeSpacing));
 
 					double distance2 = slant_range2.at<double>(ii, jj);
 
@@ -2791,7 +2793,7 @@ int SLC_simulator::generateSlantrange(
 					}
 				}
 			}
-			printf("\rprocess: %d / %d", seed, num_block_row * num_block_col);
+			printf("\rprocess: %llu / %d", seed, num_block_row * num_block_col);
 			fflush(stdout);
 		}
 	}
@@ -2843,8 +2845,8 @@ int SLC_simulator::SLC_deramp(
 	FormatConversion conversion; Deflat flat; Utils util;
 	ComplexMat slc;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, prf, start, end, start2, end2;
+	// removed unused: lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing, nearRangeTime
+	double wavelength, prf, start, end, start2, end2;
 	int sceneHeight, sceneWidth, sceneHeight2, sceneWidth2, offset_row = 0, offset_col = 0;
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, end_time;
@@ -3084,8 +3086,8 @@ int SLC_simulator::SLC_deramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File1_out);
@@ -3123,8 +3125,8 @@ int SLC_simulator::SLC_deramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File2_out);
@@ -3160,8 +3162,8 @@ int SLC_simulator::SLC_deramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File3_out);
@@ -3199,8 +3201,8 @@ int SLC_simulator::SLC_deramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File4_out);
@@ -3246,8 +3248,8 @@ int SLC_simulator::SLC_deramp_14(
 	FormatConversion conversion; Deflat flat; Utils util;
 	ComplexMat slc, slc2;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, wavelength2, prf, start, end, start2, end2;
+	// removed unused: lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing, nearRangeTime
+	double wavelength, wavelength2, prf, start, end, start2, end2;
 	int sceneHeight, sceneWidth, sceneHeight2, sceneWidth2, offset_row = 0, offset_col = 0;
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, end_time;
@@ -3518,8 +3520,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
@@ -3560,8 +3562,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
@@ -3604,8 +3606,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
@@ -3648,8 +3650,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
@@ -3692,8 +3694,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
@@ -3737,8 +3739,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
@@ -3778,8 +3780,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
@@ -3821,8 +3823,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
@@ -3869,16 +3871,16 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 
 				r = -R.at<double>(i, j) / wavelength2 * 4 * PI;
 				real = cos(r);
 				imagine = sin(r);
 				real2 = slc2.re.at<float>(i, j);
 				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc2.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
@@ -3939,16 +3941,16 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 
 				r = -R.at<double>(i, j) / wavelength2 * 2.0 * PI;
 				real = cos(r);
 				imagine = sin(r);
 				real2 = slc2.re.at<float>(i, j);
 				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc2.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
@@ -4006,8 +4008,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 
 
 				r = -R.at<double>(i, j) / wavelength2 * 4 * PI;
@@ -4015,8 +4017,8 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc2.re.at<float>(i, j);
 				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc2.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
@@ -4076,16 +4078,16 @@ int SLC_simulator::SLC_deramp_14(
 				imagine = sin(r);
 				real2 = slc.re.at<float>(i, j);
 				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 
 				r = -R.at<double>(i, j) / wavelength2 * 2.0 * PI;
 				real = cos(r);
 				imagine = sin(r);
 				real2 = slc2.re.at<float>(i, j);
 				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-				slc2.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
 		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
@@ -4154,8 +4156,8 @@ int SLC_simulator::SLC_reramp(
 	FormatConversion conversion; Deflat flat; Utils util;
 	ComplexMat slc;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, prf, start, end, start2, end2;
+	// removed unused: lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing, nearRangeTime
+	double wavelength, prf, start, end, start2, end2;
 	int sceneHeight, sceneWidth, sceneHeight2, sceneWidth2, offset_row = 0, offset_col = 0;
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, end_time;
@@ -4395,8 +4397,8 @@ int SLC_simulator::SLC_reramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File1_out);
@@ -4434,8 +4436,8 @@ int SLC_simulator::SLC_reramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File2_out);
@@ -4471,8 +4473,8 @@ int SLC_simulator::SLC_reramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File3_out);
@@ -4510,8 +4512,8 @@ int SLC_simulator::SLC_reramp(
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	ret = conversion.creat_new_h5(slcH5File4_out);
@@ -4629,7 +4631,7 @@ int SLC_simulator::MB_phase_estimation(
 			{
 				ComplexMat coherence_matrix, eigenvector; Mat eigenvalue; int ret1;
 				Mat real1, imag1, real2, imag2, real, imag;
-				double value1, value2;
+				// removed unused: value1, value2 (commented-out H5 reads)
 				for (int jj = (left - left_pad); jj < (right - left_pad); jj++)
 				{
 					ret1 = util.coherence_matrix_estimation(slc_series, coherence_matrix, estimation_wndsize, estimation_wndsize, ii, jj, false, true);
@@ -4693,7 +4695,7 @@ int SLC_simulator::MB_phase_estimation(
 			}
 			slc_series.clear();
 			slc_series_filter.clear();
-			printf("\r估计进度：%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
+			printf("\r估计进度：%.2f %%", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -4919,7 +4921,7 @@ int SLC_simulator::MB_phase_estimation(
 			}*/
 			slc_series.clear();
 			//slc_series_filter.clear();
-			printf("\r估计进度：%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
+			printf("\r估计进度：%.2f %%", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
 		}
 	}

@@ -893,7 +893,8 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 				parallel_flag = false;
 				continue;
 			}
-			double offset_row_sub, offset_col_sub, mean_coh;
+			// removed unused: mean_coh (commented-out coherence code below)
+			double offset_row_sub, offset_col_sub;
 			//ret = util.real_coherence(temp_out_master, temp_out_slave, coherence);
 			//if (ret < 0)
 			//{
@@ -1137,7 +1138,8 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	
 	////剔除outliers
 	Mat sentinel = Mat::zeros(m, n, CV_64F);
-	int ix, iy, count = 0, c = 0; double delta, thresh = 2.0;
+	// removed unused: ix, iy, delta, thresh (commented-out outlier removal below)
+	int count = 0, c = 0;
 	//for (int i = 0; i < m; i++)
 	//{
 	//	for (int j = 0; j < n; j++)
@@ -1277,8 +1279,8 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	tt.at<double>(0, 0) = 1.0;
 	tt.at<double>(0, 1) = (0.0 - offset_x) / scale_x;
 	tt.at<double>(0, 2) = (0.0 - offset_y) / scale_y;
-	if (offset_row) *offset_row = sum(tt * coef_r)[0];
-	if (offset_col) *offset_col = sum(tt * coef_c)[0];
+	if (offset_row) *offset_row = static_cast<int>(sum(tt * coef_r)[0]);
+	if (offset_col) *offset_col = static_cast<int>(sum(tt * coef_c)[0]);
 
 
 	int rows = master.GetRows(); int cols = master.GetCols();
@@ -1325,8 +1327,8 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 				}
 				else
 				{
-					slave_tmp.re.at<short>(i, j) = 0.0;
-					slave_tmp.im.at<short>(i, j) = 0.0;
+					slave_tmp.re.at<short>(i, j) = 0;
+					slave_tmp.im.at<short>(i, j) = 0;
 				}
 			}
 			else
@@ -1350,22 +1352,22 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 					//实部插值
 					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.re.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slave_tmp.re.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
 					//虚部插值
 					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.im.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slave_tmp.im.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
 				}
 				else
 				{
 					//实部插值
 					upper = (double)slave.re.at<short>(mm, nn) + double(slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = (double)slave.re.at<short>(mm1, nn) + double(slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.re.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slave_tmp.re.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
 					//虚部插值
 					upper = (double)slave.im.at<short>(mm, nn) + double(slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = (double)slave.im.at<short>(mm1, nn) + double(slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.im.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slave_tmp.im.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
 				}
 			}
 
@@ -2017,7 +2019,7 @@ int Registration::getDEMRgAzPos(
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (no fallible call in this function)
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -2110,8 +2112,8 @@ int Registration::getDEMRgAzPos(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = (zeroDopplerTime - acquisitionStartTime) / time_interval;
-			int rangeIndex = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing;
+			int azimuthIndex = static_cast<int>((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = static_cast<int>((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -2292,15 +2294,16 @@ int Registration::performBilinearResampling(
 		tt.at<double>(0, 1) = 0.0;
 		tt.at<double>(0, 2) = 0.0;
 
-		*offset_row = sum(tt * coef_r)[0];
-		*offset_col = sum(tt * coef_c)[0];
+		*offset_row = static_cast<int>(sum(tt * coef_r)[0]);
+		*offset_col = static_cast<int>(sum(tt * coef_c)[0]);
 	}
 	int rows = dstHeight; int cols = dstWidth;
 	int cols_slave = slave.GetCols(); int rows_slave = slave.GetRows();
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
-		double x, y, ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
+		// removed unused: x, y
+		double ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
 		int mm, nn, mm1, nn1;
 		double offset_rows, offset_cols, upper, lower;
 		for (int j = 0; j < cols; j++)
@@ -2349,22 +2352,22 @@ int Registration::performBilinearResampling(
 					//实部插值
 					upper = slave.re.at<short>(mm, nn) + (slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<short>(mm1, nn) + (slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.re.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slcResampled.re.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
 					//虚部插值
 					upper = slave.im.at<short>(mm, nn) + (slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<short>(mm1, nn) + (slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.im.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slcResampled.im.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
 				}
 				else if (type == CV_32F)
 				{
 					//实部插值
 					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.re.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slcResampled.re.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
 					//虚部插值
 					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.im.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
+					slcResampled.im.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
 				}
 				else
 				{

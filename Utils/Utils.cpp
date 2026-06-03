@@ -275,9 +275,10 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 		return -1;
 	}
 	
-	int ret, num_nodes;
+	// removed unused: ret (DIMACS write path never uses return value)
+	int num_nodes;
 
-	num_nodes = nodes.size();
+	num_nodes = static_cast<int>(nodes.size());
 	long num_arcs = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -290,7 +291,8 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	}
 
 	//统计正负残差点并写入节点信息
-	int positive, negative, total;
+	int positive, negative;
+	// removed unused: total (counted but never read)
 	positive = 0;
 	negative = 0;
 	double thresh = 0.7;
@@ -343,7 +345,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	positive = 0;
 	negative = 0;
 	int count = 0;
-	bool b_positive, b_negative, is_residue;
+	// removed unused: b_positive, b_negative, is_residue (replaced by residue sign check below)
 	double sum = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -454,9 +456,10 @@ int Utils::write_DIMACS(
 		return -1;
 	}
 
-	int ret, num_nodes;
-	int num_triangle = triangle.size();
-	num_nodes = nodes.size();
+	// removed unused: ret (DIMACS write path never uses return value)
+	int num_nodes;
+	int num_triangle = static_cast<int>(triangle.size());
+	num_nodes = static_cast<int>(nodes.size());
 	long num_arcs = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -466,7 +469,8 @@ int Utils::write_DIMACS(
 	}
 
 	//统计正负残差点并写入节点信息
-	int positive, negative, total;
+	int positive, negative;
+	// removed unused: total (counted but never read)
 	positive = 0;
 	negative = 0;
 	double thresh = 0.7;
@@ -516,7 +520,7 @@ int Utils::write_DIMACS(
 	positive = 0;
 	negative = 0;
 	int count = 0;
-	bool b_positive, b_negative, is_residue;
+	// removed unused: b_positive, b_negative, is_residue (replaced by residue sign check below)
 	double sum = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -800,7 +804,8 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	long node_index = 1;
 	double sum = 0.0;
 	//统计正负残差点数
-	long positive, negative, total, Arcs_num, Nodes_num;
+	long positive, negative, Arcs_num, Nodes_num;
+	// removed unused: total (counted but never read)
 	positive = 0;
 	negative = 0;
 	for (i = 0; i < nr; i++)
@@ -998,7 +1003,8 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	}
 	long nr = residue.rows;
 	long nc = residue.cols;
-	long positive, negative, total, Arcs_num = 0, Nodes_num, feasible_node_num;
+	long positive, negative, Arcs_num = 0, Nodes_num;
+	// removed unused: total, feasible_node_num (counted but never read)
 	Mat new_mask; mask.copyTo(new_mask);
 	new_mask = 1 - new_mask;
 	Mat residue_mask = Mat::zeros(nr, nc, CV_32S);
@@ -1534,10 +1540,11 @@ int Utils::residue(triangle* tri, int num_triangle, vector<tri_node>& nodes, tri
 		return -1;
 	}
 	double thresh = 50.0;
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int end1, end2, end3, tmp;
-	double x1, y1, x2, y2, x3, y3, direction, delta12, delta23, delta31, residue, phi1, phi2, phi3, distance1,
+	double x1, y1, x2, y2, direction, delta12, delta23, delta31, phi1, phi2, phi3, distance1,
 		distance2, distance3;
+	// removed unused: x3, y3, residue (triangle residue computed inline, x3/y3 not needed)
 	int row1, col1, row2, col2, row3, col3;
 	bool b_res = false;
 	for (int i = 0; i < num_triangle; i++)
@@ -1612,13 +1619,14 @@ int Utils::residue(vector<triangle>& triangle, vector<tri_node>& nodes, vector<t
 		fprintf(stderr, "residue(): input check failed!\n\n");
 		return -1;
 	}
-	int num_triangle = triangle.size();
+	int num_triangle = static_cast<int>(triangle.size());
 	double thresh;
 	thresh = distance_thresh < 2.0 ? 2.0 : distance_thresh;
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int end1, end2, end3, tmp;
-	double x1, y1, x2, y2, x3, y3, direction, delta12, delta23, delta31, residue, phi1, phi2, phi3, distance1,
+	double x1, y1, x2, y2, direction, delta12, delta23, delta31, phi1, phi2, phi3, distance1,
 		distance2, distance3;
+	// removed unused: x3, y3, residue (triangle residue computed inline, x3/y3 not needed)
 	int row1, col1, row2, col2, row3, col3;
 	bool b_res = false;
 	for (int i = 0; i < num_triangle; i++)
@@ -2033,7 +2041,7 @@ int Utils::complex_coherence(
 				sum1 = sum(planes_master[0].mul(planes_master[0]))[0];
 				sum2 = sum(planes_slave[0].mul(planes_slave[0]))[0];
 				down = sqrt(sum1 * sum2);
-				Coherence.at<float>(i - 1 - win_a, j - 1 - win_r) = up / (down + 0.0000001);
+				Coherence.at<float>(i - 1 - win_a, j - 1 - win_r) = static_cast<float>(up / (down + 0.0000001));
 			}
 		}
 		copyMakeBorder(Coherence, Coherence, win_a, win_a, win_r, win_r, BORDER_REFLECT);
@@ -2213,7 +2221,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 	int y[3];
 	long* ptr_neigh = NULL;
 	int num_neigh, target_edges;
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	/////////////////////读取注释///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
@@ -2411,8 +2419,8 @@ int Utils::read_DIMACS(
 	int y[3];
 	long* ptr_neigh = NULL;
 	int num_neigh, target_edges;
-	int num_nodes = nodes.size();
-	int num_triangle = triangle.size(); int num_edges = edges.size();
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_triangle = static_cast<int>(triangle.size()); int num_edges = static_cast<int>(edges.size());
 	/////////////////////读取注释///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
@@ -2950,7 +2958,7 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 			{
 				left = j * multilook_rg; left = left < 0 ? 0 : left;
 				right = left + multilook_rg; right = right > nc ? nc : right;
-				tmp.at<float>(i, j) = cv::mean(amplitude(Range(top, bottom), Range(left, right)))[0];
+				tmp.at<float>(i, j) = static_cast<float>(cv::mean(amplitude(Range(top, bottom), Range(left, right)))[0]);
 			}
 		}
 	}
@@ -3189,8 +3197,8 @@ int Utils::saveSLC(const char* filename, double db, ComplexMat& SLC)
 		{
 			for (int j = 0; j < nc; j++)
 			{
-				if ((mod.at<float>(i, j) - mean) >= 3.0 * std) mod.at<float>(i, j) = mean + 3.0 * std;
-				if ((mod.at<float>(i, j) - mean) < -3.0 * std) mod.at<float>(i, j) = mean - 3.0 * std;
+				if ((mod.at<float>(i, j) - mean) >= 3.0 * std) mod.at<float>(i, j) = static_cast<float>(mean + 3.0 * std);                                                   
+				if ((mod.at<float>(i, j) - mean) < -3.0 * std) mod.at<float>(i, j) = static_cast<float>(mean - 3.0 * std);          
 			}
 		}
 	}
@@ -3272,7 +3280,7 @@ int Utils::SAR_image_quantify(const char* filename, double db, ComplexMat& SLC)
 		{
 			for (int j = 0; j < nc; j++)
 			{
-				mod.at<float>(i, j) = 20 * log10(mod.at<float>(i, j) + 0.000001);
+				mod.at<float>(i, j) = static_cast<float>(20 * log10(mod.at<float>(i, j) + 0.000001));
 			}
 		}
 
@@ -3289,7 +3297,7 @@ int Utils::SAR_image_quantify(const char* filename, double db, ComplexMat& SLC)
 		{
 			for (int j = 0; j < nc; j++)
 			{
-				if (mod.at<float>(i, j) >= max) mod.at<float>(i, j) = max;
+				if (mod.at<float>(i, j) >= max) mod.at<float>(i, j) = static_cast<float>(max);
 			}
 		}
 	}
@@ -3337,8 +3345,8 @@ int Utils::saveAmplitude(const char* filename, Mat& amplitude)
 		{
 			for (int j = 0; j < nc; j++)
 			{
-				if ((amplitude.at<float>(i, j) - mean) >= 3.0 * std) amplitude.at<float>(i, j) = mean + 3.0 * std;
-				if ((amplitude.at<float>(i, j) - mean) <= -3.0 * std) amplitude.at<float>(i, j) = mean - 3.0 * std;
+				if ((amplitude.at<float>(i, j) - mean) >= 3.0 * std) amplitude.at<float>(i, j) = static_cast<float>(mean + 3.0 * std);
+				if ((amplitude.at<float>(i, j) - mean) <= -3.0 * std) amplitude.at<float>(i, j) = static_cast<float>(mean - 3.0 * std);
 			}
 		}
 	}
@@ -4557,7 +4565,7 @@ int Utils::PS_amp_dispersion(const vector<Mat>& amplitude, double thresh, Mat& m
 	}
 	int nr = amplitude[0].rows;
 	int nc = amplitude[0].cols;
-	int num_images = amplitude.size();
+	int num_images = static_cast<int>(amplitude.size());
 	Mat tmp1 = Mat::zeros(nr, nc, CV_64F);
 	tmp1.copyTo(mask);
 #pragma omp parallel for schedule(guided)
@@ -5674,7 +5682,7 @@ int Utils::hist(Mat& input, double lowerbound, double upperbound, double interva
 		fprintf(stderr, "hist(): input check failed!\n");
 		return -1;
 	}
-	int num_bins = (upperbound - lowerbound) / interval + 1;
+	int num_bins = static_cast<int>((upperbound - lowerbound) / interval + 1);
 	double cmp = lowerbound + interval;
 	out_x.create(1, num_bins, CV_64F);
 	out_y.create(1, num_bins, CV_64F);
@@ -6786,7 +6794,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 		fprintf(stderr, "homogeneous_selection_and_phase_linking(): input check failed!\n");
 		return -1;
 	}
-	int n_images = slc_stack.size();
+	int n_images = static_cast<int>(slc_stack.size());
 	//检查各图像数据尺寸是否一致
 	int nr = slc_stack[0].GetRows();
 	int nc = slc_stack[0].GetCols();
@@ -7238,7 +7246,7 @@ int Utils::SKP_decomposition(
 	Eigen::MatrixXcd U = svd.matrixU();
 	Eigen::MatrixXcd V = svd.matrixV();
 	Eigen::VectorXd singular_value = svd.singularValues();
-	int M = singular_value.size();
+	int M = static_cast<int>(singular_value.size());
 	
 	for (int i = 0; i < M; i++)
 	{
@@ -7449,7 +7457,7 @@ int Utils::homogeneous_test(
 	}
 	int nr = slc_series[0].GetRows();
 	int nc = slc_series[0].GetCols();
-	int n_images = slc_series.size();
+	int n_images = static_cast<int>(slc_series.size());
 	int type = slc_series[0].type();
 	for (int i = 0; i < n_images; i++)
 	{
@@ -7708,7 +7716,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 		fprintf(stderr, "coherence_estimation(): input check failed!\n");
 		return -1;
 	}
-	int n_images = slc_series.size(), ret;
+	int n_images = static_cast<int>(slc_series.size()), ret;
 	int rows = slc_series[0].GetRows(); int cols = slc_series[0].GetCols();
 	int radius_width = (est_window_width - 1) / 2;
 	int radius_height = (est_window_height - 1) / 2;
@@ -8146,7 +8154,7 @@ int Utils::spatialTemporalBaselineEstimation(
 		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
 	Mat lon_coef, lat_coef, statevec1, statevec2;
 	string start;
-	num_images = SLCH5Files.size();
+	num_images = static_cast<int>(SLCH5Files.size());
 	temporal.create(1, num_images, CV_64F); spatial.create(1, num_images, CV_64F);
 	temporal.at<double>(0, reference - 1) = 0; spatial.at<double>(0, reference - 1) = 0;
 	ret = conversion.read_array_from_h5(SLCH5Files[reference - 1].c_str(), "lon_coefficient", lon_coef);
@@ -8495,8 +8503,8 @@ int Utils::getSRTMDEM(
 	int ret = getSRTMFileName(lonMin, lonMax, latMin, latMax, srtmFileName);
 	if (ret < 0)//不在SRTM数据范围内（-60°,60°）,则以0填充
 	{
-		int rows = (latMax - latMin) / latSpacing;
-		int cols = (lonMax - lonMin) / lonSpacing;
+		int rows = static_cast<int>((latMax - latMin) / latSpacing);
+		int cols = static_cast<int>((lonMax - lonMin) / lonSpacing);
 		Mat temp = Mat::zeros(rows, cols, CV_16S);
 		temp.copyTo(DEM_out);
 		*lonUL = lonMin;
@@ -8520,8 +8528,8 @@ int Utils::getSRTMDEM(
 			ret = downloadSRTM(srtmFileName[i].c_str(), DEMPath.c_str());
 			if (ret < 0)//未下载到DEM数据,则以0填充
 			{
-				int rows = (latMax - latMin) / latSpacing;
-				int cols = (lonMax - lonMin) / lonSpacing;
+				int rows = static_cast<int>((latMax - latMin) / latSpacing);
+				int cols = static_cast<int>((lonMax - lonMin) / lonSpacing);
 				Mat temp = Mat::zeros(rows, cols, CV_16S);
 				temp.copyTo(DEM_out);
 				*lonUL = lonMin;
@@ -8561,16 +8569,16 @@ int Utils::getSRTMDEM(
 		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 		lonLowerRight = lonUpperLeft + 5.0;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = (lonMin - lonUpperLeft) / lonSpacing;
+		startCol = static_cast<int>((lonMin - lonUpperLeft) / lonSpacing);
 		startCol = startCol < 1 ? 1 : startCol;
 		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = (lonMax - lonUpperLeft) / lonSpacing;
+		endCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -8601,16 +8609,16 @@ int Utils::getSRTMDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = (latUpperLeft - latMax) / latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -8675,16 +8683,16 @@ int Utils::getSRTMDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = (latUpperLeft - latMax) / latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMax - lonUpperLeft) / lonSpacing;
+				startCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMin - lonUpperLeft + 360.0) / lonSpacing;
+				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -8744,16 +8752,16 @@ int Utils::getSRTMDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = (latUpperLeft - latMax) / latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMin - lonUpperLeft) / lonSpacing;
+				startCol = static_cast<int>((lonMin - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMax - lonUpperLeft) / lonSpacing;
+				endCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -8819,7 +8827,8 @@ int Utils::getSRTMDEM(
 	//DEM在4个方格内
 	else if (srtmFileName.size() == 4)
 	{
-		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
+		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4;
+		// removed unused: temp (declared but never assigned or read)
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
@@ -8904,16 +8913,16 @@ int Utils::getSRTMDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = (latUpperLeft - latMax) / latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin - lonUpperLeft + 360.0) / lonSpacing;
+			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -8998,16 +9007,16 @@ int Utils::getSRTMDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = (latUpperLeft - latMax) / latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11077,7 +11086,7 @@ int Utils::downloadSRTM(const char* name, const char* DEMpath)
 		fprintf(stderr, "downloadSRTM(): network is not connected!\n");
 		return -1;
 	}
-	int ret;
+	// removed unused: ret (URLDownloadToFileA returns HRESULT, not int)
 	string url = string(SRTMURL) + name;
 	string savefile = DEMpath + string("\\") + name;
 	std::replace(savefile.begin(), savefile.end(), '/', '\\');
@@ -11463,13 +11472,13 @@ int Utils::S1_subswath_merge(
 
 	//IW1和IW2拼接
 
-	int x = (double(cols1 * mul_rg) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0;
-	int tmp = x + (int)round((first_pixel2 - first_pixel1) / range_spacing);
+	int x = static_cast<int>((double(cols1 * mul_rg) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0);
+	int tmp = x + static_cast<int>(round((first_pixel2 - first_pixel1) / range_spacing));
 	int col_end_last = tmp / mul_rg;
-	int col_start_next = (col_end_last * mul_rg - round((first_pixel2 - first_pixel1) / range_spacing)) / mul_rg;
+	int col_start_next = static_cast<int>((col_end_last * mul_rg - round((first_pixel2 - first_pixel1) / range_spacing)) / mul_rg);
 	int total_cols = col_end_last + (cols2 - col_start_next);
-	int row_offset = (start1 - start2) * prf / (double)mul_az;
-	int total_rows = (((end1 > end2 ? end1 : end2) - (start1 < start2 ? start1 : start2))*prf + 1) / (double)mul_az + 1;
+	int row_offset = static_cast<int>((start1 - start2) * prf / (double)mul_az);
+	int total_rows = static_cast<int>((((end1 > end2 ? end1 : end2) - (start1 < start2 ? start1 : start2))*prf + 1) / (double)mul_az + 1);
 	Mat phase_tmp(total_rows, total_cols, CV_64F); phase_tmp = 0.0;
 	Mat lon_tmp(total_rows, total_cols, CV_32F); lon_tmp = 360.0;
 	Mat lat_tmp(total_rows, total_cols, CV_32F); lat_tmp = 360.0;
@@ -11522,15 +11531,15 @@ int Utils::S1_subswath_merge(
 
 	//拼接IW3
 
-	x = (double(total_cols * mul_rg) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0;
-	tmp = x + (int)round((first_pixel3 - first_pixel1) / range_spacing);
+	x = static_cast<int>((double(total_cols * mul_rg) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0);
+	tmp = x + static_cast<int>(round((first_pixel3 - first_pixel1) / range_spacing));
 	col_end_last = tmp / mul_rg;
-	col_start_next = (col_end_last * mul_rg - round((first_pixel3 - first_pixel1) / range_spacing)) / mul_rg;
+	col_start_next = static_cast<int>((col_end_last * mul_rg - round((first_pixel3 - first_pixel1) / range_spacing)) / mul_rg);
 	total_cols = col_end_last + (cols3 - col_start_next);
 	start1 = start1 < start2 ? start1 : start2;
 	end1 = end1 > end2 ? end1 : end2;
-	row_offset = (start1 - start3) * prf / (double)mul_az;
-	total_rows = (((end1 > end3 ? end1 : end3) - (start1 < start3 ? start1 : start3)) * prf + 1) / (double)mul_az + 1;
+	row_offset = static_cast<int>((start1 - start3) * prf / (double)mul_az);
+	total_rows = static_cast<int>((((end1 > end3 ? end1 : end3) - (start1 < start3 ? start1 : start3)) * prf + 1) / (double)mul_az + 1);
 
 	phase1.create(total_rows, total_cols, CV_64F); phase1 = 0.0;
 	mapped_lat2.create(total_rows, total_cols, CV_32F); mapped_lat2 = 360.0;
@@ -11621,7 +11630,8 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	}
 	double start1, start2, start3, end1, end2, end3, first_pixel1, first_pixel2, first_pixel3,
 		range_spacing, prf;
-	int mul_az, mul_rg, mul_az1, mul_rg1, rows1, rows2, rows3, cols1, cols2, cols3;
+	int rows1, rows2, rows3, cols1, cols2, cols3;
+	// removed unused: mul_az, mul_rg, mul_az1, mul_rg1 (read from H5 but SLC merge uses raw coordinates)
 	string sensor1, sensor2, sensor3;
 	FormatConversion conversion;
 	string start_time, end_time;
@@ -11695,12 +11705,12 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 
 	//IW1和IW2拼接
 
-	int x = (double(cols1) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0;
-	int col_end_last = x + (int)round((first_pixel2 - first_pixel1) / range_spacing);
+	int x = static_cast<int>((double(cols1) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0);
+	int col_end_last = x + static_cast<int>(round((first_pixel2 - first_pixel1) / range_spacing));
 	int col_start_next = x;
 	int total_cols = col_end_last + (cols2 - col_start_next);
-	int row_offset = (start1 - start2) * prf;
-	int total_rows = (((end1 > end2 ? end1 : end2) - (start1 < start2 ? start1 : start2)) * prf + 1) + 1;
+	int row_offset = static_cast<int>((start1 - start2) * prf);
+	int total_rows = static_cast<int>((((end1 > end2 ? end1 : end2) - (start1 < start2 ? start1 : start2)) * prf + 1) + 1);
 	ComplexMat slc1, slc2, slc3, slc_tmp, slc_tmp2;
 	ret = conversion.read_slc_from_h5(IW1_h5file, slc1);
 	ret = conversion.read_slc_from_h5(IW2_h5file, slc2);
@@ -11738,14 +11748,14 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 
 	//拼接IW3
 
-	x = (double(total_cols) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0;
-	col_end_last = x + (int)round((first_pixel3 - first_pixel1) / range_spacing);
+	x = static_cast<int>((double(total_cols) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0);
+	col_end_last = x + static_cast<int>(round((first_pixel3 - first_pixel1) / range_spacing));
 	col_start_next = x;
 	total_cols = col_end_last + (cols3 - col_start_next);
 	double start11 = start1 < start2 ? start1 : start2;
 	double end11 = end1 > end2 ? end1 : end2;
-	row_offset = (start11 - start3) * prf;
-	total_rows = (((end11 > end3 ? end11 : end3) - (start11 < start3 ? start11 : start3)) * prf + 1) + 1;
+	row_offset = static_cast<int>((start11 - start3) * prf);
+	total_rows = static_cast<int>((((end11 > end3 ? end11 : end3) - (start11 < start3 ? start11 : start3)) * prf + 1) + 1);
 	slc_tmp2.re.create(total_rows, total_cols, slc1.type()); slc_tmp2.im.create(total_rows, total_cols, slc1.type());
 	slc_tmp2.re = 0; slc_tmp2.im = 0;
 	ret = conversion.read_slc_from_h5(IW3_h5file, slc2);
@@ -11894,7 +11904,7 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 		return -1;
 	}
 	Mat phase;
-	int num_files = h5files.size();
+	int num_files = static_cast<int>(h5files.size());
 	//根据每个拍摄frame的拍摄起始时间对文件排序（从小到大）
 	int ret; string start_time; double start;
 	Mat stime(1, num_files, CV_64F), order;
@@ -11910,8 +11920,9 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 	cv::sortIdx(stime, order, cv::SORT_EVERY_ROW + cv::SORT_ASCENDING);
 
 	//检查多视倍数和最近斜距是否相同
-	double start1, start2, start3, end1, end2, end3, first_pixel1, first_pixel2, first_pixel3,
+	double start2, end1, first_pixel1, first_pixel2,
 		range_spacing, prf;
+	// removed unused: start1, start3, end2, end3, first_pixel3 (frame merge only uses start/end1 for overlap calc)
 	int mul_az, mul_rg, mul_az1, mul_rg1;
 	ret = conversion.read_int_from_h5(h5files[0].c_str(), "multilook_az", &mul_az);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
@@ -11978,10 +11989,10 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 			fprintf(stderr, "S1_frame_merge(): no overlap area between frames!\n");
 			return -1;
 		}
-		int last_upper_count = ((start2 - start) * prf + 1 + ((end1 - start2) * prf + 1) / 2.0) / (double)mul_az;
-		int tmp = last_upper_count * mul_az - ((start2 - start) * prf + 1);
-		tmp = (end1 - start2) * prf + 1 - tmp;
-		int next_lower_start = round((double)tmp / (double)mul_az);
+		int last_upper_count = static_cast<int>((((start2 - start) * prf + 1 + ((end1 - start2) * prf + 1) / 2.0) / (double)mul_az));
+		int tmp = static_cast<int>(last_upper_count * mul_az - ((start2 - start) * prf + 1));
+		tmp = static_cast<int>((end1 - start2) * prf + 1 - tmp);
+		int next_lower_start = static_cast<int>(round((double)tmp / (double)mul_az));
 
 		phase(cv::Range(0, last_upper_count), cv::Range(0, phase.cols)).copyTo(phase);
 		phase1(cv::Range(next_lower_start, phase1.rows), cv::Range(0, phase1.cols)).copyTo(phase1);
@@ -12377,7 +12388,8 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	conversion.write_double_to_h5(outframe_h5, "range_spacing", range_spacing);
 	//burstCount, carrier_frequency, heading, incidence_center, linesPerBurst, prf, samplesPerBurst, 
 	double carrier_frequency, heading, incidence_center, slant_range_first_pixel;
-	int burstCount1, burstCount2, linesPerBurst, samplesPerBurst;
+	int burstCount1, burstCount2, linesPerBurst;
+	// removed unused: samplesPerBurst (H5 read commented out)
 	conversion.read_double_from_h5(frame1_h5, "carrier_frequency", &carrier_frequency);
 	conversion.read_double_from_h5(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel);
 	conversion.read_double_from_h5(frame1_h5, "incidence_center", &incidence_center);
@@ -13004,7 +13016,7 @@ int Utils::SAR2UTM(
 	
 
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = (max_lat - min_lat) / lat_interval;
+	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
@@ -13012,7 +13024,7 @@ int Utils::SAR2UTM(
 	if (lat_south) *lat_south = south;
 	double max_lon_temp = max_lon - min_lon;
 	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = max_lon_temp / lon_interval;
+	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
 	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
@@ -13073,8 +13085,8 @@ int Utils::SAR2UTM(
 			for (int j = 0; j < UTM_cols; j++)
 			{
 				if (b_filled.at<uchar>(i, j) != 0) continue;
-				int up, down, left, right, up_count, down_count, left_count, right_count;
-				double value1, value2, ratio1, ratio2;
+				int up, down, left, right;
+				// removed unused: up_count, down_count, left_count, right_count, value1, value2, ratio1, ratio2 (nearest-neighbor method)
 				//寻找上面有值的点
 				up = i;
 				while (true)
@@ -13180,7 +13192,8 @@ int Utils::SAR2UTM(
 			for (int j = 0; j < UTM_cols; j++)
 			{
 				if (b_filled.at<uchar>(i, j) != 0) continue;
-				int up, down, left, right, up_count, down_count, left_count, right_count;
+				int up, down, left, right;
+				// removed unused: up_count, down_count, left_count, right_count (bilinear uses value/ratio, not counts)
 				double value1, value2, ratio1, ratio2;
 				//寻找上面有值的点
 				up = i;
@@ -13317,7 +13330,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 
 
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = (max_lat - min_lat) / lat_interval;
+	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
@@ -13325,7 +13338,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 	if (lat_south) *lat_south = south;
 	double max_lon_temp = max_lon - min_lon;
 	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = max_lon_temp / lon_interval;
+	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
 	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
@@ -13385,8 +13398,8 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 			for (int j = 0; j < UTM_cols; j++)
 			{
 				if (b_filled.at<uchar>(i, j) != 0) continue;
-				int up, down, left, right, up_count, down_count, left_count, right_count;
-				double value1, value2, ratio1, ratio2;
+				int up, down, left, right;
+				// removed unused: up_count, down_count, left_count, right_count, value1, value2, ratio1, ratio2 (nearest-neighbor method)
 				//寻找上面有值的点
 				up = i;
 				while (true)
@@ -13492,7 +13505,8 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 			for (int j = 0; j < UTM_cols; j++)
 			{
 				if (b_filled.at<uchar>(i, j) != 0) continue;
-				int up, down, left, right, up_count, down_count, left_count, right_count;
+				int up, down, left, right;
+				// removed unused: up_count, down_count, left_count, right_count (bilinear uses value/ratio, not counts)
 				double value1, value2, ratio1, ratio2;
 				//寻找上面有值的点
 				up = i;
@@ -13643,7 +13657,7 @@ int Utils::SAR2UTM(
 	
 	
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = (max_lat - min_lat) / lat_interval;
+	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
@@ -13651,7 +13665,7 @@ int Utils::SAR2UTM(
 	if (lat_south) *lat_south = south;
 	double max_lon_temp = max_lon - min_lon;
 	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = max_lon_temp / lon_interval;
+	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
 	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
@@ -13713,8 +13727,8 @@ int Utils::SAR2UTM(
 				for (int j = 0; j < UTM_cols; j++)
 				{
 					if (b_filled.at<uchar>(i, j) != 0) continue;
-					int up, down, left, right, up_count, down_count, left_count, right_count;
-					double value1, value2, ratio1, ratio2;
+					int up, down, left, right;
+					// removed unused: up_count, down_count, left_count, right_count, value1, value2, ratio1, ratio2 (nearest-neighbor method)
 					//寻找上面有值的点
 					up = i;
 					while (true)
@@ -13822,8 +13836,9 @@ int Utils::SAR2UTM(
 				for (int j = 0; j < UTM_cols; j++)
 				{
 					if (b_filled.at<uchar>(i, j) != 0) continue;
-					int up, down, left, right, up_count, down_count, left_count, right_count;
-					double value1, value2, ratio1, ratio2;
+					int up, down, left, right;
+					// removed unused: up_count, down_count, left_count, right_count (bilinear uses value/ratio, not counts)
+					// removed unused: double value1, value2, ratio1, ratio2;
 					//寻找上面有值的点
 					up = i;
 					while (true)
@@ -13935,7 +13950,8 @@ int Utils::SAR2UTM(
 				for (int j = 0; j < UTM_cols; j++)
 				{
 					if (b_filled.at<uchar>(i, j) != 0) continue;
-					int up, down, left, right, up_count, down_count, left_count, right_count;
+					int up, down, left, right;
+					// removed unused: up_count, down_count, left_count, right_count (bilinear uses value/ratio, not counts)
 					double value1, value2, ratio1, ratio2;
 					//寻找上面有值的点
 					up = i;
@@ -13980,13 +13996,13 @@ int Utils::SAR2UTM(
 						ratio2 = double(i - up) / double(down - up);
 						value2 = double(mapped_slc.re.at<short>(up, j)) +
 							double(mapped_slc.re.at<short>(down, j) - mapped_slc.re.at<short>(up, j)) * ratio2;
-						mapped_slc.re.at<short>(i, j) = (value1 + value2) / 2.0;
+						mapped_slc.re.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
 
 						value1 = double(mapped_slc.im.at<short>(i, left)) +
 							double(mapped_slc.im.at<short>(i, right) - mapped_slc.im.at<short>(i, right)) * ratio1;
 						value2 = double(mapped_slc.im.at<short>(up, j)) +
 							double(mapped_slc.im.at<short>(down, j) - mapped_slc.im.at<short>(up, j)) * ratio2;
-						mapped_slc.im.at<short>(i, j) = (value1 + value2) / 2.0;
+						mapped_slc.im.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
 						continue;
 					}
 					//上下有值
@@ -13995,11 +14011,11 @@ int Utils::SAR2UTM(
 						ratio2 = double(i - up) / double(down - up);
 						value2 = double(mapped_slc.re.at<short>(up, j)) +
 							double(mapped_slc.re.at<short>(down, j) - mapped_slc.re.at<short>(up, j)) * ratio2;
-						mapped_slc.re.at<short>(i, j) = value2;
+						mapped_slc.re.at<short>(i, j) = static_cast<short>(value2);
 
 						value2 = double(mapped_slc.im.at<short>(up, j)) +
 							double(mapped_slc.im.at<short>(down, j) - mapped_slc.im.at<short>(up, j)) * ratio2;
-						mapped_slc.im.at<short>(i, j) = value2;
+						mapped_slc.im.at<short>(i, j) = static_cast<short>(value2);
 						continue;
 					}
 					//左右有值
@@ -14008,11 +14024,11 @@ int Utils::SAR2UTM(
 						ratio1 = double(j - left) / double(right - left);
 						value1 = double(mapped_slc.re.at<short>(i, left)) +
 							double(mapped_slc.re.at<short>(i, right) - mapped_slc.re.at<short>(i, right)) * ratio1;
-						mapped_slc.re.at<short>(i, j) = value1;
+						mapped_slc.re.at<short>(i, j) = static_cast<short>(value1);
 
 						value1 = double(mapped_slc.im.at<short>(i, left)) +
 							double(mapped_slc.im.at<short>(i, right) - mapped_slc.im.at<short>(i, right)) * ratio1;
-						mapped_slc.im.at<short>(i, j) = value1;
+						mapped_slc.im.at<short>(i, j) = static_cast<short>(value1);
 						continue;
 					}
 				}
@@ -14025,7 +14041,8 @@ int Utils::SAR2UTM(
 				for (int j = 0; j < UTM_cols; j++)
 				{
 					if (b_filled.at<uchar>(i, j) != 0) continue;
-					int up, down, left, right, up_count, down_count, left_count, right_count;
+					int up, down, left, right;
+					// removed unused: up_count, down_count, left_count, right_count (bilinear uses value/ratio, not counts)
 					double value1, value2, ratio1, ratio2;
 					//寻找上面有值的点
 					up = i;
@@ -14070,13 +14087,13 @@ int Utils::SAR2UTM(
 						ratio2 = double(i - up) / double(down - up);
 						value2 = double(mapped_slc.re.at<float>(up, j)) +
 							double(mapped_slc.re.at<float>(down, j) - mapped_slc.re.at<float>(up, j)) * ratio2;
-						mapped_slc.re.at<float>(i, j) = (value1 + value2) / 2.0;
+						mapped_slc.re.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
 
 						value1 = double(mapped_slc.im.at<float>(i, left)) +
 							double(mapped_slc.im.at<float>(i, right) - mapped_slc.im.at<float>(i, right)) * ratio1;
 						value2 = double(mapped_slc.im.at<float>(up, j)) +
 							double(mapped_slc.im.at<float>(down, j) - mapped_slc.im.at<float>(up, j)) * ratio2;
-						mapped_slc.im.at<float>(i, j) = (value1 + value2) / 2.0;
+						mapped_slc.im.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
 						continue;
 					}
 					//上下有值
@@ -14085,11 +14102,11 @@ int Utils::SAR2UTM(
 						ratio2 = double(i - up) / double(down - up);
 						value2 = double(mapped_slc.re.at<float>(up, j)) +
 							double(mapped_slc.re.at<float>(down, j) - mapped_slc.re.at<float>(up, j)) * ratio2;
-						mapped_slc.re.at<float>(i, j) = value2;
+						mapped_slc.re.at<float>(i, j) = static_cast<float>(value2);
 
 						value2 = double(mapped_slc.im.at<float>(up, j)) +
 							double(mapped_slc.im.at<float>(down, j) - mapped_slc.im.at<float>(up, j)) * ratio2;
-						mapped_slc.im.at<float>(i, j) = value2;
+						mapped_slc.im.at<float>(i, j) = static_cast<float>(value2);
 						continue;
 					}
 					//左右有值
@@ -14098,11 +14115,11 @@ int Utils::SAR2UTM(
 						ratio1 = double(j - left) / double(right - left);
 						value1 = double(mapped_slc.re.at<float>(i, left)) +
 							double(mapped_slc.re.at<float>(i, right) - mapped_slc.re.at<float>(i, right)) * ratio1;
-						mapped_slc.re.at<float>(i, j) = value1;
+						mapped_slc.re.at<float>(i, j) = static_cast<float>(value1);
 
 						value1 = double(mapped_slc.im.at<float>(i, left)) +
 							double(mapped_slc.im.at<float>(i, right) - mapped_slc.im.at<float>(i, right)) * ratio1;
-						mapped_slc.im.at<float>(i, j) = value1;
+						mapped_slc.im.at<float>(i, j) = static_cast<float>(value1);
 						continue;
 					}
 				}
@@ -14173,8 +14190,8 @@ int Utils::geocode(
 	double C_long = a * 2 * PI;
 	double lon_per_meter = 360.0 / C_short;//经线上每米多少度
 	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//纬线上每米多少度
-	interp_times_x = lon_spacing / lon_per_meter / mapped_resolution_x;
-	interp_times_y = lat_spacing / lat_per_meter / mapped_resolution_y;
+	interp_times_x = static_cast<int>(lon_spacing / lon_per_meter / mapped_resolution_x);
+	interp_times_y = static_cast<int>(lat_spacing / lat_per_meter / mapped_resolution_y);
 	//84坐标系DEM插值
 	Mat DEM, stateVector_interp;
 	interp_times_x = interp_times_x < 1 ? 1 : interp_times_x;
@@ -14185,7 +14202,7 @@ int Utils::geocode(
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (geocode loop uses inline computation, no H5/return calls)
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -14275,8 +14292,8 @@ int Utils::geocode(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-			int rangeIndex = floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
+			int azimuthIndex = static_cast<int>(floor((zeroDopplerTime - acquisitionStartTime) / time_interval));
+			int rangeIndex = static_cast<int>(floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing));
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 2 || rangeIndex < 0 || rangeIndex > sceneWidth - 2)
@@ -14295,7 +14312,7 @@ int Utils::geocode(
 						- input.at<float>(azimuthIndex, rangeIndex)) * ratio_x;
 					double lower = (double)input.at<float>(azimuthIndex + 1, rangeIndex) + double(input.at<float>(azimuthIndex + 1, rangeIndex + 1)
 						- input.at<float>(azimuthIndex + 1, rangeIndex)) * ratio_x;
-					mapped_result.at<float>(i, j) = upper + (lower - upper) * ratio_y;
+					mapped_result.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * ratio_y);
 
 					/*mapped_result.at<float>(i, j) = input.at<float>(azimuthIndex + 1, rangeIndex + 1) + input.at<float>(azimuthIndex + 1, rangeIndex) +
 						input.at<float>(azimuthIndex, rangeIndex + 1) + input.at<float>(azimuthIndex, rangeIndex);
@@ -14384,11 +14401,13 @@ int Utils::geocode(
 	double C_long = a * 2 * PI;
 	double lon_per_meter = 360.0 / C_short;//经线上每米多少度
 	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//纬线上每米多少度
-	interp_times_x = lon_spacing / lon_per_meter / mapped_resolution_x;
-	interp_times_y = lat_spacing / lat_per_meter / mapped_resolution_y;
-	//考虑DEM像素中心与边缘差值
-	lat_upperleft = lat_upperleft + lat_spacing / 2.0 - lat_spacing / (double)interp_times_y * 0.5;
-	lon_upperleft = lon_upperleft - lon_spacing / 2.0 + lon_spacing / (double)interp_times_x * 0.5;
+
+	interp_times_x = static_cast<int>(lon_spacing / lon_per_meter / mapped_resolution_x); 
+	interp_times_y = static_cast<int>(lat_spacing / lat_per_meter / mapped_resolution_y); 
+	//考虑DEM像素中心与边缘差异
+	lat_upperleft = lat_upperleft + lat_spacing / 2.0 - lat_spacing / (double)interp_times_y * 0.5;                                                           
+	lon_upperleft = lon_upperleft - lon_spacing / 2.0 + lon_spacing / (double)interp_times_x * 0.5;   
+
 	//84坐标系DEM插值
 	Mat DEM, stateVector_interp;
 	interp_times_x = interp_times_x < 1 ? 1 : interp_times_x;
@@ -14399,7 +14418,7 @@ int Utils::geocode(
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (geocode loop uses inline computation, no H5/return calls)
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -14490,8 +14509,8 @@ int Utils::geocode(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-			int rangeIndex = floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
+			int azimuthIndex = static_cast<int>(floor((zeroDopplerTime - acquisitionStartTime) / time_interval));
+			int rangeIndex = static_cast<int>(floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing));
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 2 || rangeIndex < 0 || rangeIndex > sceneWidth - 2)
@@ -14509,13 +14528,13 @@ int Utils::geocode(
 						- slc.re.at<float>(azimuthIndex, rangeIndex)) * ratio_x;
 					double lower = (double)slc.re.at<float>(azimuthIndex + 1, rangeIndex) + double(slc.re.at<float>(azimuthIndex + 1, rangeIndex + 1)
 						- slc.re.at<float>(azimuthIndex + 1, rangeIndex)) * ratio_x;
-					mapped_slc.re.at<float>(i, j) = upper + (lower - upper) * ratio_y;
+					mapped_slc.re.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * ratio_y);
 
 					upper = (double)slc.im.at<float>(azimuthIndex, rangeIndex) + double(slc.im.at<float>(azimuthIndex, rangeIndex + 1)
 						- slc.im.at<float>(azimuthIndex, rangeIndex)) * ratio_x;
 					lower = (double)slc.im.at<float>(azimuthIndex + 1, rangeIndex) + double(slc.im.at<float>(azimuthIndex + 1, rangeIndex + 1)
 						- slc.im.at<float>(azimuthIndex + 1, rangeIndex)) * ratio_x;
-					mapped_slc.im.at<float>(i, j) = upper + (lower - upper) * ratio_y;
+					mapped_slc.im.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * ratio_y);
 
 					/*mapped_slc.im.at<float>(i, j) = slc.im.at<float>(azimuthIndex + 1, rangeIndex + 1) + slc.im.at<float>(azimuthIndex + 1, rangeIndex) +
 						slc.im.at<float>(azimuthIndex, rangeIndex + 1) + slc.im.at<float>(azimuthIndex, rangeIndex);
@@ -14531,13 +14550,13 @@ int Utils::geocode(
 						- slc.re.at<short>(azimuthIndex, rangeIndex)) * ratio_x;
 					double lower = (double)slc.re.at<short>(azimuthIndex + 1, rangeIndex) + double(slc.re.at<short>(azimuthIndex + 1, rangeIndex + 1)
 						- slc.re.at<short>(azimuthIndex + 1, rangeIndex)) * ratio_x;
-					mapped_slc.re.at<short>(i, j) = upper + (lower - upper) * ratio_y;
+					mapped_slc.re.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * ratio_y);
 
 					upper = (double)slc.im.at<short>(azimuthIndex, rangeIndex) + double(slc.im.at<short>(azimuthIndex, rangeIndex + 1)
 						- slc.im.at<short>(azimuthIndex, rangeIndex)) * ratio_x;
 					lower = (double)slc.im.at<short>(azimuthIndex + 1, rangeIndex) + double(slc.im.at<short>(azimuthIndex + 1, rangeIndex + 1)
 						- slc.im.at<short>(azimuthIndex + 1, rangeIndex)) * ratio_x;
-					mapped_slc.im.at<short>(i, j) = upper + (lower - upper) * ratio_y;
+					mapped_slc.im.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * ratio_y);
 
 					/*mapped_slc.im.at<short>(i, j) = slc.im.at<short>(azimuthIndex + 1, rangeIndex + 1) + slc.im.at<short>(azimuthIndex + 1, rangeIndex) +
 						slc.im.at<short>(azimuthIndex, rangeIndex + 1) + slc.im.at<short>(azimuthIndex, rangeIndex);
@@ -14642,7 +14661,8 @@ int Utils::geo_transformation(
 						{
 							//located1 = false; located2 = false;
 							//判断该点是否在四个点中间
-							double Mx, My, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy;
+							double Ax, Ay, Bx, Dy;
+							// removed unused: Mx, My, By, Cx, Cy, Dx (only Ax/Ay/Bx/Dy used for bounding box check)
 							Ax = row_matrix.at<double>(ii, jj); Ay = col_matrix.at<double>(ii, jj);
 							Bx = row_matrix.at<double>(ii + 1, jj); Dy = col_matrix.at<double>(ii, jj + 1);
 
@@ -14721,8 +14741,8 @@ int Utils::geo_transformation(
 									UTM_y_final < (yllcorner + DTM_rows - 1)
 									)
 								{
-									int row = floor((yllcorner + DTM_rows - 1) - UTM_y_final);
-									int col = floor(UTM_x_final - xllcorner);
+									int row = static_cast<int>(floor((yllcorner + DTM_rows - 1) - UTM_y_final));
+									int col = static_cast<int>(floor(UTM_x_final - xllcorner));
 									if (DTM.at<double>(row, col) > -10 &&
 										DTM.at<double>(row + 1, col) > -10 &&
 										DTM.at<double>(row + 1, col + 1) > -10 &&
@@ -15057,6 +15077,7 @@ int Utils::geo_transformation(
 //			fflush(stdout);
 //		}
 //	}
+
 	return 0;
 }
 
@@ -15083,7 +15104,7 @@ int Utils::read_grille(
 	}
 	char* data = (char*)malloc(1024);
 	char* ptr;
-	double val;
+	// removed unused: val (grille parsing uses strtol directly)
 	fgets(data, 1024, fp);
 	fgets(data, 1024, fp);
 	fgets(data, 1024, fp);
@@ -15187,7 +15208,7 @@ int Utils::read_LVIS(
 		fprintf(stderr, "read_LVIS(): input check failed!\n");
 		return -1;
 	}
-	int n_files = LVIS2_filelist.size();
+	int n_files = static_cast<int>(LVIS2_filelist.size());
 	int LVIS_cols = 42;
 	vector<double> dtm, dsm, rh100, rh95, lo, la;
 	FILE* fp = NULL;
@@ -15228,7 +15249,7 @@ int Utils::read_LVIS(
 		fclose(fp);
 		fp = NULL;
 	}
-	DTM.create(dtm.size(), 1, CV_64F);
+	DTM.create(static_cast<int>(dtm.size()), 1, CV_64F);
 	DTM = 0;
 	DTM.copyTo(DSM);
 	DTM.copyTo(lon);
@@ -15297,6 +15318,7 @@ int Utils::geo2sar_DLR(
 	//int reprojected = coordTrans->Transform(1, &x, &y);
 	//lon.at<double>(0, 0) = y; lat.at<double>(0, 0) = x;
 
+
 	//x = east_min; y = north_max;
 	//reprojected = coordTrans->Transform(1, &x, &y);
 	//lon.at<double>(1, 0) = y; lat.at<double>(1, 0) = x;
@@ -15358,6 +15380,7 @@ int Utils::geo2sar_DLR(
 	//		int row, col;
 	//		easting = (utm_x - east_min) / pixel_spacing;
 	//		northing = (utm_y - north_min) / pixel_spacing;
+
 
 	//		row = sr2geo_h_ref.rows - 1 - int(floor(northing));
 	//		col = int(floor(easting));
