@@ -1283,7 +1283,7 @@ int Unwrap::MCF(
 		return -1;
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -1449,7 +1449,7 @@ int Unwrap::MCF(
 	{
 		wrapped_phase.copyTo(unwrapped_phase);
 	}
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -1459,7 +1459,7 @@ int Unwrap::MCF(
 	{
 		tt = 100000.0;
 	}
-	int num_edges = edges.size();
+	int num_edges = static_cast<int>(edges.size());
 	long* ptr_neigh = NULL;
 	queue<int> que;
 	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
@@ -1513,7 +1513,7 @@ int Unwrap::MCF(
 		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 		for (int i = 0; i < num_neigh; i++)
 		{
-			int end1_row, end2_row, end1_col, end2_col;
+			// removed unused: end1_row, end2_row, end1_col, end2_col (planned edge endpoint coords, never implemented)
 			if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
 			{
 				fprintf(stderr, "MCF(): edge index exceed legal range!\n");
@@ -1592,8 +1592,9 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 		fprintf(stderr, "MCF_second(): input check failed!\n\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_neigh, number, ret, end2, row_start, col_start;
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_neigh, number, ret, end2;
+	// removed unused: row_start, col_start (planned start position tracking, never implemented)
 	double distance, grad, phi1, phi2, gain, tt;
 	if (pass) tt = 100000.0;
 	else
@@ -1830,7 +1831,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		return -1;
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -2004,9 +2005,10 @@ int Unwrap::_QualityGuided_MCF_1(
 	}
 
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2, start;
-	double distance, grad, phi1, phi2, gain, tt, min, max;
+	// removed unused: tt (threshold logic removed from quality-guided MCF)
+	double distance, grad, phi1, phi2, gain, min, max;
 	min = 1000000000.0;
 	max = -1000000000.0;
 	long* ptr_neigh = NULL;
@@ -2107,7 +2109,7 @@ int Unwrap::_QualityGuided_MCF_1(
 	
 	int nr = unwrapped_phase.rows;
 	int nc = unwrapped_phase.cols;
-	double phi;
+	// removed unused: phi (copy-paste remnant, phi3 used in parallel loop below)
 	Mat _mask = Mat::zeros(nr, nc, CV_32S);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < num_nodes; i++)
@@ -2155,9 +2157,11 @@ int Unwrap::_QualityGuided_MCF_2(
 		fprintf(stderr, "_QualityGuided_MCF_2(): input check failed!\n\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_neigh, number, ret, end2, row_start, col_start;
-	double distance, grad, phi1, phi2, gain, tt;
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_neigh, number, ret, end2;
+	// removed unused: row_start, col_start (planned start position tracking, never implemented)
+	// removed unused: tt (threshold logic not used in this quality-guided variant)
+	double distance, grad, phi1, phi2, gain;
 	long* ptr_neigh = NULL;
 	queue<int> que;
 	//queue<int> start_que;
@@ -2356,7 +2360,8 @@ int Unwrap::QualityGuided_MCF(
 	ret = util.init_tri_node(nodes, unwrapped_phase, mask_2, edges, node_neighbour, num_nodes);
 	if (return_check(ret, "init_tri_node()", error_head)) return -1;
 
-	int start, end1, end2, ambig, i;
+	// removed unused: end1 (struct member .end1 accessed directly, local var never needed)
+	int start, end2, ambig, i;
 	long* ptr_neigh = NULL; int num_neigh, row, col, num_triangle, positive, negative;
 	double distance, phi, cluster_distance_thresh = 1.2;//低质量聚类距离阈值
 	Mat zeros = Mat::zeros(nr, nc, CV_32S);
@@ -2408,7 +2413,7 @@ int Unwrap::QualityGuided_MCF(
 		//util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\out_mask.bin", new_mask);
 		//new_mask.convertTo(new_mask, CV_32S);
 
-		ambiguity = Mat::zeros(1, unwrapped_neighbour_que.size(), CV_32S);
+		ambiguity = Mat::zeros(1, static_cast<int>(unwrapped_neighbour_que.size()), CV_32S);
 		num_nodes = cv::countNonZero(new_mask);
 		ret = util.write_node_file(node_file.c_str(), new_mask);
 		ret = util.gen_delaunay(node_file.c_str(), EXE_path);
@@ -2420,7 +2425,7 @@ int Unwrap::QualityGuided_MCF(
 		/*
 		* 检查残差点数，若无残差点则不使用mcf.exe求解
 		*/
-		num_triangle = tri_sub.size(); positive = 0; negative = 0;
+		num_triangle = static_cast<int>(tri_sub.size()); positive = 0; negative = 0;
 		for (int ii = 0; ii < num_triangle; ii++)
 		{
 			if (tri_sub[ii].residue > 0.7)

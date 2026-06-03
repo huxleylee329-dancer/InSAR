@@ -49,7 +49,8 @@ int UTC2GPS(const char* utc_time, double* gps_time)
 		fprintf(stderr, "UTC2GPS(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second, s;
+	int ret, year, month, day, hour, minute, second;
+	// removed unused: s (copy-paste remnant, not parsed from UTC format)
 	double sec;
 	ret = sscanf(utc_time, "%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
 	if (ret != 6)
@@ -91,7 +92,8 @@ int FormatConversion::utc2gps(const char* utc_time, double* gps_time)
 		fprintf(stderr, "utc2gps(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second, s;
+	int ret, year, month, day, hour, minute, second;
+	// removed unused: s (copy-paste remnant, not parsed from UTC format)
 	double sec;
 	ret = sscanf(utc_time, "%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
 	if (ret != 6)
@@ -372,22 +374,22 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	herr_t status = -1;
 	if (H5Tequal(type, H5T_NATIVE_INT16) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_16S);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_16S);
 		status = H5Dread(dataset_id, H5T_NATIVE_INT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
 	else if(H5Tequal(type, H5T_NATIVE_DOUBLE) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_64F);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_64F);
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
 	else if (H5Tequal(type, H5T_NATIVE_FLOAT) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_32F);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F);
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
 	else if (H5Tequal(type, H5T_NATIVE_INT) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_32S);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32S);
 		status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
 	if (status < 0)
@@ -720,7 +722,7 @@ int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_
 	hid_t file_id, dataset_id, space_id, filetype, memtype;
 	herr_t status;
 	hsize_t dims[1] = { 1 };
-	size_t sdim;
+	// removed unused: sdim (planned string dimension read, never implemented)
 	string s("/");
 	string str(Str);
 	s.append(dataset_name);
@@ -1489,11 +1491,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = write_str_to_h5(dst_h5_filename, "comment", "import from TerraSAR-X Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	double orbit_altitude, carrier_frequency, incidence_center,slant_range_first_pixel,
-		slant_range_last_pixel, heading, prf, scene_center_lon, scene_center_lat, scene_topleft_lon,
-		scene_topleft_lat, scene_bottomleft_lon, scene_bottomleft_lat, scene_topright_lon, scene_topright_lat,
-		scene_bottomright_lon, scene_bottomright_lat, azimuth_resolution,
+	double carrier_frequency, incidence_center, slant_range_first_pixel,
+		slant_range_last_pixel, heading, prf, azimuth_resolution,
 		range_resolution, azimuth_spacing, range_spacing;
+	// removed unused: orbit_altitude, scene_center_lon, scene_center_lat, scene_topleft_lon,
+	//   scene_topleft_lat, scene_bottomleft_lon, scene_bottomleft_lat, scene_topright_lon,
+	//   scene_topright_lat, scene_bottomright_lon, scene_bottomright_lat
+	//   (scene coordinates not provided by TSX metadata, orbit_altitude hardcoded to -1)
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 	//轨道高度,TerraSAR没提供，设置为-1
 	tmp.at<double>(0, 0) = -1;
@@ -1937,7 +1941,7 @@ int FormatConversion::read_slc_from_Sentinel(
 		fprintf(stderr, "read_slc_from_Sentinel(): node 'burst' not found!\n");
 		return -1;
 	}
-	int64 bytesoffset;
+	// removed unused: bytesoffset (burst offset handled inside get_a_burst)
 	FILE* fp = NULL;
 	fopen_s(&fp, filename, "rb");
 	if (!fp)
@@ -2672,11 +2676,14 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_str_to_h5(dst_h5_filename, "comment", "import from sentinel1 Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	double orbit_altitude, carrier_frequency, incidence_center, slant_range_first_pixel,
-		slant_range_last_pixel, heading, prf, scene_center_lon, scene_center_lat, scene_topleft_lon,
-		scene_topleft_lat, scene_bottomleft_lon, scene_bottomleft_lat, scene_topright_lon, scene_topright_lat,
-		scene_bottomright_lon, scene_bottomright_lat, azimuth_resolution,
-		range_resolution, azimuth_spacing, range_spacing;
+	double carrier_frequency, incidence_center, slant_range_first_pixel,
+		heading, prf, azimuth_spacing, range_spacing;
+	// removed unused: orbit_altitude (hardcoded to -1), slant_range_last_pixel (hardcoded to -1),
+	//   azimuth_resolution (hardcoded to 20), range_resolution (hardcoded to 5),
+	//   scene_center_lon, scene_center_lat, scene_topleft_lon, scene_topleft_lat,
+	//   scene_bottomleft_lon, scene_bottomleft_lat, scene_topright_lon, scene_topright_lat,
+	//   scene_bottomright_lon, scene_bottomright_lat
+	//   (scene coordinates not provided by sentinel1 metadata)
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 
 	//轨道高度,sentinel没提供，设置为-1
@@ -2739,7 +2746,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 
-	int azimuth_len, range_len;
+	// removed unused: azimuth_len, range_len (rows/cols written directly to h5)
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
 	//方位向像素点数
 	tmp_int.at<int>(0, 0) = rows;
@@ -2906,7 +2913,7 @@ int FormatConversion::get_a_burst(
 		}
 		return -1;
 	}
-	fseek(fp, bytesoffset, SEEK_SET);
+	fseek(fp, static_cast<long>(bytesoffset), SEEK_SET);
 	fread(buf, sizeof(INT16), linesPerBurst * samplesPerBurst * 2, fp);
 	size_t offset = 0;
 	burst.re.create(linesPerBurst, samplesPerBurst, CV_16S);
@@ -3099,7 +3106,7 @@ int FormatConversion::get_burst_sentinel(
 		}
 		return -1;
 	}
-	fseek(fp, bytesoffset, SEEK_SET);
+	fseek(fp, static_cast<long>(bytesoffset), SEEK_SET);
 	fread(buf, sizeof(short), linesPerBurst * samplesPerBurst * 2, fp);
 	if (fp)
 	{
@@ -3189,7 +3196,7 @@ int FormatConversion::get_burst_sentinel(
 			fprintf(stderr, "get_burst_sentinel(): unknown data format!\n");
 			return -1;
 		}
-		int temp = std::round((azimuthAnxTime2 - azimuthAnxTime) / azimuthTimeInterval);
+		int temp = static_cast<int>(std::round((azimuthAnxTime2 - azimuthAnxTime) / azimuthTimeInterval));
 		*overlapSize = linesPerBurst - invalideLines - temp;
 	}
 	return 0;
@@ -3501,7 +3508,8 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 	}
 	//检查文件
 
-	int ret, record_len, data_set_summary_len, platform_pos_len,
+	// removed unused: ret (no return-value checks in this function)
+	int record_len, data_set_summary_len, platform_pos_len,
 		attitue_data_len, radiometric_data_len, facility_related_record_len, offset;
 	Mat tmp = Mat::zeros(1, 32, CV_64F);
 	tmp.copyTo(lon_coefficient);
@@ -3731,7 +3739,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	write_str_to_h5(dst_h5, "sensor", sensor.c_str());
 	//拍摄起始时间
 	string year, month, day, hour, minute, second, temp_string;
-	int h, m; double s;
+	// removed unused: h, m, s (date components parsed as strings, not integers)
 	fseek(fp, record_len + 69 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 32, fp);
@@ -3795,7 +3803,8 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		write_str_to_h5(dst_h5, "acquisition_stop_time", end_time.c_str());
 
 		//左上角经纬度（第一个像素）
-		int lon_topleft, lat_topleft, lon_bottomright, lat_bottomright, center_lat, center_lon, slant_range_first_pixel;
+		int lon_topleft, lat_topleft, lon_bottomright, lat_bottomright, slant_range_first_pixel;
+		// removed unused: center_lat, center_lon (center coordinates computed from topleft/bottomright)
 		Mat temp = Mat::zeros(1, 1, CV_64F);
 		fseek(fp1, 720 + 193 - 1, SEEK_SET);
 		fread(&lat_topleft, 4, 1, fp1);
@@ -6751,7 +6760,7 @@ int XMLFile::XMLFile_remove_node(const char* datanode_name, const char* node_nam
 	TiXmlElement* DataNode = NULL;
 	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
-	char rank[256];
+	// removed unused: rank (planned rank attribute read, never implemented)
 	if (DataNode)
 	{
 		tmp = DataNode->Attribute("data_count");
@@ -7613,7 +7622,8 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 
 int XMLFile::get_dopplerCentroid_from_sentinel(Mat& doppler)
 {
-	TiXmlElement* pnode, * pchild1, * pchild2;
+	TiXmlElement* pnode, * pchild1;
+	// removed unused: pchild2 (copy-paste remnant from similar XML parsing)
 	int ret, numOfDcEstimates, polynomialDegree;
 	ret = find_node("dopplerCentroid", pnode);
 	if (return_check(ret, "find_node", error_head)) return -1;
@@ -8010,7 +8020,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		hid_t type = H5Dget_type(dataset_id);
 		herr_t status;
-		rh100_tmp.create(dims[0], 1, CV_16S); rh100_tmp = 0;
+		rh100_tmp.create(static_cast<int>(dims[0]), 1, CV_16S); rh100_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)rh100_tmp.data);
 		if (status < 0)
 		{
@@ -8042,7 +8052,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		zg_tmp.create(dims[0], 1, CV_32F); zg_tmp = 0.0;
+		zg_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zg_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zg_tmp.data);
 		if (status < 0)
 		{
@@ -8074,7 +8084,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		zt_tmp.create(dims[0], 1, CV_32F); zt_tmp = 0.0;
+		zt_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zt_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zt_tmp.data);
 		if (status < 0)
 		{
@@ -8106,7 +8116,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lat_tmp.create(dims[0], 1, CV_64F); lat_tmp = 0.0;
+		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
 		{
@@ -8138,7 +8148,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lon_tmp.create(dims[0], 1, CV_64F); lon_tmp = 0.0;
+		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
 		{
@@ -8170,7 +8180,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		dem_tmp.create(dims[0], 1, CV_32F); dem_tmp = 0.0;
+		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
 		{
@@ -8202,7 +8212,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		quality_index_tmp.create(dims[0], 1, CV_8U); quality_index_tmp = 0;
+		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
 		{
@@ -8550,7 +8560,8 @@ int Sentinel1Reader::getDcEstimateList()
 		fprintf(stderr, "Sentinel1Reader::getDcEstimateList(): input check failed!\n");
 		return -1;
 	}
-	TiXmlElement* pnode, * pchild1, * pchild2;
+	TiXmlElement* pnode, * pchild1;
+	// removed unused: pchild2 (copy-paste remnant from similar XML parsing)
 	int ret, numOfDcEstimates, polynomialDegree;
 	ret = xmldoc.find_node("dopplerCentroid", pnode);
 	if (return_check(ret, "find_node", error_head)) return -1;
@@ -8594,7 +8605,8 @@ int Sentinel1Reader::getAzimuthFmRateList()
 		fprintf(stderr, "Sentinel1Reader::getAzimuthFmRateList(): input check failed!\n");
 		return -1;
 	}
-	TiXmlElement* pnode, * pchild1, * pchild2;
+	TiXmlElement* pnode, * pchild1;
+	// removed unused: pchild2 (copy-paste remnant from similar XML parsing)
 	int ret, numOfFmEstimates, polynomialDegree;
 	ret = xmldoc.find_node("azimuthFmRateList", pnode);
 	if (return_check(ret, "find_node", error_head)) return -1;
@@ -8638,7 +8650,8 @@ int Sentinel1Reader::getAntennaPattern()
 		fprintf(stderr, "Sentinel1Reader::getAntennaPattern(): input check failed!\n");
 		return -1;
 	}
-	TiXmlElement* pnode, * pchild1, * pchild2;
+	TiXmlElement* pnode, * pchild1;
+	// removed unused: pchild2 (copy-paste remnant from similar XML parsing)
 	int ret = xmldoc.find_node("antennaPatternList", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	int count = -1;
@@ -9828,7 +9841,7 @@ int Sentinel1Utils::computeRangeDependDopplerRate()
 		fprintf(stderr, "Sentinel1Utils::computeRangeDependDopplerRate(): input check failed!\n");
 		return -1;
 	}
-	int ret;
+	// removed unused: ret (direct computation, no API calls needing error checks)
 	rangeDependDopplerRate.create(burstCount, samplesPerBurst, CV_64F);
 	for (int i = 0; i < burstCount; i++)
 	{
@@ -9878,7 +9891,7 @@ int Sentinel1Utils::computeDopplerCentroid()
 		fprintf(stderr, "Sentinel1Utils::computeDopplerCentroid(): input check failed!\n");
 		return -1;
 	}
-	int ret;
+	// removed unused: ret (direct computation, no API calls needing error checks)
 	dopplerCentroid.create(burstCount, samplesPerBurst, CV_64F);
 	for (int i = 0; i < burstCount; i++)
 	{
@@ -10048,7 +10061,7 @@ int Sentinel1Utils::getDopplerFrequency(
 
 int Sentinel1Utils::getZeroDopplerTime(Position groundPosition, double* zeroDopplerTime, double dopplerFrequency)
 {
-	int ret;
+	// removed unused: ret (direct computation, no API calls needing error checks)
 	if (!bInitialized || !zeroDopplerTime)
 	{
 		fprintf(stderr, "getZeroDopplerTime(): input check failed!");
@@ -10147,7 +10160,7 @@ int Sentinel1Utils::getRgAzPosition(
 	*rangeIndex = (slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
 
 	if (*azimuthIndex < 0.0 || *rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst || *azimuthIndex >= linesPerBurst) return -1;
-	int x = *rangeIndex - 1; x = x < 0 ? 0 : x;
+	int x = static_cast<int>(*rangeIndex - 1); x = x < 0 ? 0 : x;
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, dopplerCentroid.at<double>(burstIndex - 1, (int)x));
 	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
@@ -10161,7 +10174,7 @@ int Sentinel1Utils::getRgAzPosition(
 
 int Sentinel1Utils::getSlantRange(double azimuthTime, Position groundPosition, double* slantRange)
 {
-	int ret;
+	// removed unused: ret (direct computation, no API calls needing error checks)
 	if (!bInitialized || !slantRange)
 	{
 		fprintf(stderr, "getSlantRange(): input check failed!");
@@ -10300,7 +10313,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 		firstValidTime = this->burstAzimuthTime.at<double>(i, 0) + (this->firstValidLine.at<int>(i, 0) - 1) *
 			this->azimuthTimeInterval;
 
-		overlap = round((lastValidTime - firstValidTime) / this->azimuthTimeInterval + 1);
+		overlap = static_cast<int>(round((lastValidTime - firstValidTime) / this->azimuthTimeInterval + 1));
 
 		end.at<int>(i - 1, 0) = end.at<int>(i - 1, 0) - int(overlap / 2);
 
@@ -10582,7 +10595,7 @@ int DigitalElevationModel::getSRTMFileName(
 
 int DigitalElevationModel::downloadSRTM(const char* name)
 {
-	int ret;
+	// removed unused: ret (HRESULT used for error check instead)
 	string url = this->SRTMURL + name;
 	string savefile = this->DEMPath + string("\\") + name;
 	std::replace(savefile.begin(), savefile.end(), '/', '\\');
@@ -10629,8 +10642,8 @@ int DigitalElevationModel::getRawDEM(
 			ret = downloadSRTM(srtmFileName[i].c_str());
 			if (ret < 0)//未下载到DEM数据,则以0填充
 			{
-				int rows = (latMax - latMin) / latSpacing;
-				int cols = (lonMax - lonMin) / lonSpacing;
+				int rows = static_cast<int>((latMax - latMin) / latSpacing);
+				int cols = static_cast<int>((lonMax - lonMin) / lonSpacing);
 				Mat temp = Mat::zeros(rows, cols, CV_16S);
 				temp.copyTo(this->rawDEM);
 				this->lonUpperLeft = lonMin;
@@ -10670,16 +10683,16 @@ int DigitalElevationModel::getRawDEM(
 		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 		lonLowerRight = lonUpperLeft + 5.0;
 
-		startRow = (latUpperLeft - latMax) / this->latSpacing;
+		startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / this->latSpacing;
+		endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+		startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 		startCol = startCol < 1 ? 1 : startCol;
 		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+		endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10710,16 +10723,16 @@ int DigitalElevationModel::getRawDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10784,16 +10797,16 @@ int DigitalElevationModel::getRawDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = (latUpperLeft - latMax) / this->latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / this->latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+				startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMin - lonUpperLeft + 360.0) / this->lonSpacing;
+				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10853,16 +10866,16 @@ int DigitalElevationModel::getRawDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = (latUpperLeft - latMax) / this->latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / this->latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+				startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+				endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10928,7 +10941,8 @@ int DigitalElevationModel::getRawDEM(
 	//DEM在4个方格内
 	else if (srtmFileName.size() == 4)
 	{
-		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
+		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4;
+		// removed unused: temp (copy-paste remnant)
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
@@ -11013,16 +11027,16 @@ int DigitalElevationModel::getRawDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin - lonUpperLeft + 360.0) / this->lonSpacing;
+			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11107,16 +11121,16 @@ int DigitalElevationModel::getRawDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11136,10 +11150,11 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 {
 	if (!elevation) return -1;
 	int row, col;
-	row = (this->latUpperLeft - lat) / this->latSpacing;
-	col = (lon - this->lonUpperLeft) / this->lonSpacing;
+	row = static_cast<int>((this->latUpperLeft - lat) / this->latSpacing);
+	col = static_cast<int>((lon - this->lonUpperLeft) / this->lonSpacing);
 	if (row < 0 || col < 0 || row >= this->rows || col >= this->cols) return -1;
-	double elevationUL, elevationUR, elevationLL, elevationLR, upper, lower;
+	double elevationUL, elevationUR, elevationLL, elevationLR;
+	// removed unused: upper, lower (bilinear interpolation remnant, using simple average instead)
 	int r, c, r1, c1;
 	r = row; c = col; r1 = r + 1; c1 = c + 1;
 	r1 = r1 > this->rows - 1 ? this->rows - 1 : r1;
@@ -11189,7 +11204,7 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 			return -1;
 		}
 		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		int i, j;
+		// removed unused: i, j (memcpy used instead of pixel-by-pixel copy)
 		outDEM.create(ysize, xsize, CV_16S);
 		memcpy(outDEM.data, pbuf, sizeof(short) * xsize * ysize);
 		if (pbuf)
@@ -11373,7 +11388,7 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 		return -1;
 	}
 	int ret;
-	this->numOfImages = h5Files.size();
+	this->numOfImages = static_cast<int>(h5Files.size());
 	//清空已有数据
 	for (int i = 0; i < su.size(); i++)
 	{
@@ -11573,8 +11588,8 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	if (sBurstIndex < 1 || sBurstIndex > su[slaveImagesIndex - 1]->burstCount) {
 		return -1;
 	}
-	int ret;
-	double lonMin, lonMax, latMin, latMax;
+	// removed unused: ret (no API calls needing error checks in this function)
+	// removed unused: lonMin, lonMax, latMin, latMax (DEM bounds used via dem-> members)
 	FormatConversion conversion;
 	if (!isMasterRgAzComputed)
 	{
@@ -11752,7 +11767,8 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
-		double x, y, ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
+		double ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
+		// removed unused: x, y (pixel coordinates computed as ii, jj instead)
 		int mm, nn, mm1, nn1;
 		double offset_rows, offset_cols, upper, lower;
 		for (int j = 0; j < cols; j++)
@@ -11867,7 +11883,7 @@ int Sentinel1BackGeocoding::deBurstConfig()
 		firstValidTime = su[masterIndex - 1]->burstAzimuthTime.at<double>(i, 0) + (su[masterIndex - 1]->firstValidLine.at<int>(i, 0) - 1) *
 			su[masterIndex - 1]->azimuthTimeInterval;
 
-		overlap = round((lastValidTime - firstValidTime) / su[masterIndex - 1]->azimuthTimeInterval + 1);
+		overlap = static_cast<int>(round((lastValidTime - firstValidTime) / su[masterIndex - 1]->azimuthTimeInterval + 1));
 
 		end.at<int>(i - 1, 0) = end.at<int>(i - 1, 0) - int(overlap / 2);
 
@@ -12271,8 +12287,8 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 	int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 	hid_t type = H5Dget_type(dataset_id);
 	herr_t status;
-	slc.re.create(dims[0], dims[1], CV_32F); slc.re = 0.0;
-	slc.im.create(dims[0], dims[1], CV_32F); slc.im = 0.0;
+	slc.re.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); slc.re = 0.0;
+	slc.im.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); slc.im = 0.0;
 	float* data = (float*)malloc(sizeof(float) * 2 * dims[0] * dims[1]);
 	
 	if (!data)
@@ -12704,22 +12720,22 @@ int CSK_reader::get_array_attribute(hid_t object_id, const char* attribute_name,
 
 	if (H5Tequal(filetype, H5T_NATIVE_INT16) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_16S);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_16S);
 		status = H5Aread(attr, H5T_NATIVE_INT16, (void*)out_array.data);
 	}
 	else if (H5Tequal(filetype, H5T_NATIVE_DOUBLE) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_64F);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_64F);
 		status = H5Aread(attr, H5T_NATIVE_DOUBLE, (void*)out_array.data);
 	}
 	else if (H5Tequal(filetype, H5T_NATIVE_FLOAT) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_32F);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F);
 		status = H5Aread(attr, H5T_NATIVE_FLOAT, (void*)out_array.data);
 	}
 	else if (H5Tequal(filetype, H5T_NATIVE_INT) > 0)
 	{
-		out_array.create(dims[0], dims[1], CV_32S);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32S);
 		status = H5Aread(attr, H5T_NATIVE_INT, (void*)out_array.data);
 	}
 	else
@@ -12874,7 +12890,8 @@ int HTHT_reader::read_data(const char* xml_file, const char* data_file)
 	}
 
 	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
+	TiXmlElement* pnode, * pchild;
+	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
 	int numOfstateVec;
 	ret = xmldoc.find_node("orbitList", pnode);
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &numOfstateVec);
@@ -13146,7 +13163,8 @@ int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
 	}
 
 	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
+	TiXmlElement* pnode, * pchild;
+	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
 	int numOfstateVec;
 	ret = xmldoc.get_int_para("numStateVectors", &numOfstateVec);
 
@@ -13580,7 +13598,7 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &num_geolocation_points);
 	ret = xmldoc.find_node("geolocationGridPoint", pnode);
 	int line, pixel;
-	double latitude, longitude;
+	// removed unused: latitude, longitude (geolocation grid parsing not completed)
 	for (int i = 0; i < num_geolocation_points; i++)
 	{
 		if (!pnode) break;
@@ -13646,7 +13664,8 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 	}
 
 	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
+	TiXmlElement* pnode, * pchild;
+	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
 	int numOfstateVec = 6;
 	pnode = NULL;
 	double time, x, y, z, vx, vy, vz;
@@ -13658,7 +13677,7 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 		//GPS时间
 		ret = xmldoc._find_node(pnode, "TimeStamp", pchild);
 		string tmp = pchild->GetText();
-		int rpos = tmp.rfind("-");
+		int rpos = static_cast<int>(tmp.rfind("-"));
 		string tmp2 = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
 		ret = UTC2GPS(tmp2.c_str(), &time);
 		//位置x
@@ -13695,12 +13714,12 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 	//拍摄起始时间
 	ret = xmldoc.get_str_para("imagingTimestart", this->acquisition_start_time);
 	string tmp = this->acquisition_start_time;
-	int rpos = tmp.rfind("-");
+	int rpos = static_cast<int>(tmp.rfind("-"));
 	this->acquisition_start_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
 	//拍摄结束时间
 	ret = xmldoc.get_str_para("imagingTimeend", this->acquisition_stop_time);
 	tmp = this->acquisition_stop_time;
-	rpos = tmp.rfind("-");
+	rpos = static_cast<int>(tmp.rfind("-"));
 	this->acquisition_stop_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
 	//卫星名称
 	this->sensor = "fucheng-1";

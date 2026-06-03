@@ -424,7 +424,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			phase_filtered.at<double>(i, j) = atan2(phase_0.at<Vec2d>(0, 0)[1], phase_0.at<Vec2d>(0, 0)[0]);
 		}
 
-		fprintf(stdout, "process: %lf %\n", double(i - Radius) / double(nr_new - 2 * Radius + 1) * 100);
+		fprintf(stdout, "process: %lf %%\n", double(i - Radius) / double(nr_new - 2 * Radius + 1) * 100);
 	}
 	//if (parallel_check(parallel_flag, "slope_adaptive_filter()", parallel_error_head)) return -1;
 	phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)).copyTo(phase_filter);
@@ -572,10 +572,10 @@ int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_
 	//ph.SetRe(cos);
 
 	ComplexMat ph_out(n_i, n_j);
-	int n_inc = floor(n_win / 4);
-	int n_win_i = ceil(n_i / n_inc) - 1;
-	int n_win_j = ceil(n_j / n_inc) - 1;
-	int x = floor(n_win / 2 - 1);
+	int n_inc = static_cast<int>(floor(n_win / 4));
+	int n_win_i = static_cast<int>(ceil(n_i / n_inc)) - 1;
+	int n_win_j = static_cast<int>(ceil(n_j / n_inc)) - 1;
+	int x = static_cast<int>(floor(n_win / 2 - 1));
 	Mat qua_wnd = Mat::zeros(x + 1, x + 1, CV_64F);
 	for (int i = 0; i <= x; i++)
 	{
@@ -707,10 +707,10 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 	util.phase2cos(phase, ph.re, ph.im);
 
 	ComplexMat ph_out(n_i, n_j);
-	int n_inc = floor(n_win / 4);
-	int n_win_i = ceil(n_i / n_inc) - 1;
-	int n_win_j = ceil(n_j / n_inc) - 1;
-	int x = floor(n_win / 2 - 1);
+	int n_inc = static_cast<int>(floor(n_win / 4));
+	int n_win_i = static_cast<int>(ceil(n_i / n_inc)) - 1;
+	int n_win_j = static_cast<int>(ceil(n_j / n_inc)) - 1;
+	int x = static_cast<int>(floor(n_win / 2 - 1));
 	Mat qua_wnd = Mat::zeros(x + 1, x + 1, CV_64F);
 	for (int i = 0; i <= x; i++)
 	{

@@ -138,6 +138,7 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\HDF5\lib;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;zlib-static.lib;shlwapi.lib;libszaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -162,6 +163,7 @@
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>D:\softwarepackages\opencv\build\x64\vc15\lib;D:\working_dir\projects\software\InSAR\lib;D:\softwarepackages\HDF5-1.8.22\lib;D:\softwarepackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
       <AdditionalDependencies>libsz.lib;libzlib.lib;libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

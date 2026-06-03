@@ -214,8 +214,8 @@ int Dem::phase2dem_newton_iter(
 	doppler_frequency = doppler_frequency(Range(0, 1), Range(cols_start_m, cols_end_m));
 	unwrapped_phase = unwrapped_phase + flat_phase;
 	
-	int row = gcps.at<double>(2, 0);
-	int col = gcps.at<double>(2, 1);
+	int row = static_cast<int>(gcps.at<double>(2, 0));
+	int col = static_cast<int>(gcps.at<double>(2, 1));
 	if (row < 1 ||
 		row > S_position_m.rows ||
 		row < 1 ||
@@ -1493,14 +1493,14 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	}
 	//if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
 	//dem = dem + llh.at<double>(0, 2) - dem.at<double>(row - 1, col - 1);
-	Mat error(valid_row.size(), 3, CV_64F);
+	Mat error(static_cast<int>(valid_row.size()), 3, CV_64F);
 
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		//Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		/*error.at<double>(i, 0) = P1.at<double>(r - 1, c - 1) - pos.x;
 		error.at<double>(i, 1) = P2.at<double>(r - 1, c - 1) - pos.y;
 		error.at<double>(i, 2) = P3.at<double>(r - 1, c - 1) - pos.z;*/
@@ -1775,7 +1775,7 @@ int Dem::dem_newton_iter_14(
 	//控制点绝对相位计算
 	double lambda = wavelength;
 	double K = 0.0;
-	Mat KK = Mat::zeros(1, valid_row.size(), CV_64F);
+	Mat KK = Mat::zeros(1, static_cast<int>(valid_row.size()), CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int rrr = (int)gcps.at<double>(valid_row[i], 0) - offset_row;
@@ -2067,14 +2067,14 @@ int Dem::dem_newton_iter_14(
 			lon.at<double>(i, j) = llh.at<double>(0, 1);
 		}
 	}
-	error_llh.create(valid_row.size(), 3, CV_64F);
-	error_xyz.create(valid_row.size(), 3, CV_64F);
+	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
+	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		error_xyz.at<double>(i, 0) = dem_x.at<double>(r - 1, c - 1) - pos.x;
 		error_xyz.at<double>(i, 1) = dem_y.at<double>(r - 1, c - 1) - pos.y;
 		error_xyz.at<double>(i, 2) = dem_z.at<double>(r - 1, c - 1) - pos.z;
@@ -2616,14 +2616,14 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 			lon.at<double>(i, j) = llh.at<double>(0, 1);
 		}
 	}
-	error_llh.create(valid_row.size(), 3, CV_64F);
-	error_xyz.create(valid_row.size(), 3, CV_64F);
+	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
+	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		error_xyz.at<double>(i, 0) = dem_x.at<double>(r - 1, c - 1) - pos.x;
 		error_xyz.at<double>(i, 1) = dem_y.at<double>(r - 1, c - 1) - pos.y;
 		error_xyz.at<double>(i, 2) = dem_z.at<double>(r - 1, c - 1) - pos.z;

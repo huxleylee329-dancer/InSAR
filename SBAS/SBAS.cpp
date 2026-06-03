@@ -226,7 +226,7 @@ int SBAS::set_spatialTemporalBaseline(
 	Mat& B_effect
 )
 {
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	if (num_nodes != B_effect.cols ||
 		B_temporal.rows != 1 ||
 		B_temporal.cols < 2 ||
@@ -349,8 +349,8 @@ int SBAS::init_SBAS_node(
 		fprintf(stderr, "init_SBAS_node(): input check failed!\n");
 		return -1;
 	}
-	int num_nodes = node_neighbours.size();
-	int num_edges = edges.size();
+	int num_nodes = static_cast<int>(node_neighbours.size());
+	int num_edges = static_cast<int>(edges.size());
 	node_array.clear();
 	//node_array.resize(num_nodes);
 	
@@ -361,7 +361,7 @@ int SBAS::init_SBAS_node(
 	}
 
 	int* neighbour_ptr = NULL;
-	int dummy, ret;
+	// removed unused: dummy, ret (planned flow control, never implemented)
 	SBAS_edge tmp;
 	for (int i = 0; i < num_edges; i++)
 	{
@@ -538,10 +538,12 @@ int SBAS::compute_spatialTemporal_residue(
 		fprintf(stderr, "compute_spatialTemporal_residue(): input check failed!\n");
 		return -1;
 	}
-	int num_triangle = triangles.size();
-	int num_nodes = nodes.size();
-	int end1, end2, end3, tmp;
-	double x21, y21, x32, y32, direction, delta, residue,x1, x2, x3, y1, y2, y3;
+	int num_triangle = static_cast<int>(triangles.size());
+	int num_nodes = static_cast<int>(nodes.size());
+	// removed unused: tmp (copy-paste remnant from readDIMACS)
+	int end1, end2, end3;
+	// removed unused: residue (replaced by res below)
+	double x21, y21, x32, y32, direction, delta, x1, x2, x3, y1, y2, y3;
 	delta = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -793,9 +795,10 @@ int SBAS::writeDIMACS_temporal(
 		return -1;
 	}
 
-	int ret, num_nodes;
-	int num_triangle = triangle.size();
-	num_nodes = nodes.size();
+	// removed unused: ret (planned error handling, never used in this function)
+	int num_nodes;
+	int num_triangle = static_cast<int>(triangle.size());
+	num_nodes = static_cast<int>(nodes.size());
 	int num_arcs = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -805,7 +808,8 @@ int SBAS::writeDIMACS_temporal(
 	}
 
 	//统计正负残差点并写入节点信息
-	int positive, negative, total;
+	// removed unused: total (planned statistic, never used)
+	int positive, negative;
 	positive = 0;
 	negative = 0;
 	double thresh = 0.7;
@@ -855,7 +859,7 @@ int SBAS::writeDIMACS_temporal(
 	positive = 0;
 	negative = 0;
 	int count = 0;
-	bool b_positive, b_negative, is_residue;
+	// removed unused: b_positive, b_negative, is_residue (planned residue classification, never implemented)
 	double sum = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -878,7 +882,7 @@ int SBAS::writeDIMACS_temporal(
 
 	//写入流费用
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
-	int rows, cols;
+	// removed unused: rows, cols (planned grid indexing, never used in this function)
 	int lower_bound = 0;
 	int upper_bound = 5;
 	double cost_mean = 1.0;
@@ -1024,9 +1028,10 @@ int SBAS::writeDIMACS_spatial(
 		return -1;
 	}
 
-	int ret, num_nodes;
-	int num_triangle = triangle.size();
-	num_nodes = nodes.size();
+	// removed unused: ret (planned error handling, never used in this function)
+	int num_nodes;
+	int num_triangle = static_cast<int>(triangle.size());
+	num_nodes = static_cast<int>(nodes.size());
 	int num_arcs = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -1036,7 +1041,8 @@ int SBAS::writeDIMACS_spatial(
 	}
 
 	//统计正负残差点并写入节点信息
-	int positive, negative, total;
+	// removed unused: total (planned statistic, never used)
+	int positive, negative;
 	positive = 0;
 	negative = 0;
 	double thresh = 0.7;
@@ -1086,7 +1092,7 @@ int SBAS::writeDIMACS_spatial(
 	positive = 0;
 	negative = 0;
 	int count = 0;
-	bool b_positive, b_negative, is_residue;
+	// removed unused: b_positive, b_negative, is_residue (planned residue classification, never implemented)
 	double sum = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -1109,7 +1115,7 @@ int SBAS::writeDIMACS_spatial(
 
 	//写入流费用
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
-	int rows, cols;
+	// removed unused: rows, cols (planned grid indexing, never used in this function)
 	int lower_bound = 0;
 	int upper_bound = 5;
 	double cost_mean = 1.0;
@@ -1232,9 +1238,9 @@ int SBAS::saveGradientStack(
 		fprintf(stderr, "saveGradientStack(): input check failed!\n");
 		return -1;
 	}
-	int num_ifgs = phaseFiles.size();
-	int num_nodes = nodes.size();
-	int num_edges = edges.size();
+	int num_ifgs = static_cast<int>(phaseFiles.size());
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_edges = static_cast<int>(edges.size());
 	FormatConversion conversion;
 	int ret;
 	char str[1024];
@@ -1290,18 +1296,19 @@ int SBAS::readDIMACS(
 	double flow_sum = 0.0;
 	char instring[256];
 	char ch;
-	int i, tmp, end1, end2, end3, row1, col1, row2, col2, row3, col3;
-	int end[3];
-	double x1, y1, x2, y2, x3, y3, direction, x21, x32, y21, y32;
+	// removed unused: tmp, row1, col1, row2, col2, row3, col3 (copy-paste remnant from grid-based readDIMACS)
+	int i, end1, end2, end3;
+	// removed unused: end[3] (planned endpoint array, never used)
+	// removed unused: x1, y1, x2, y2, x3, y3 (coordinates computed inline via node array access)
+	double direction, x21, x32, y21, y32;
 	long from, to;
 	double flow = 0;
-	bool flag;
-	int x[3];
-	int y[3];
+	// removed unused: flag, x[3], y[3] (planned neighbor iteration, never implemented)
 	long* ptr_neigh = NULL;
-	int num_neigh, target_edges;
-	int num_nodes = nodes.size();
-	int num_triangle = triangle.size(); int num_edges = edges.size();
+	// removed unused: num_neigh (planned neighbor lookup, never used)
+	int target_edges;
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_triangle = static_cast<int>(triangle.size()); int num_edges = static_cast<int>(edges.size());
 	/////////////////////读取注释///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
@@ -1561,7 +1568,7 @@ int SBAS::generate_high_coherence_mask(
 	coherence_thresh = coherence_thresh > 0.95 ? 0.95 : coherence_thresh;
 	count_thresh = count_thresh < 0.3 ? 0.3 : count_thresh;
 	count_thresh = count_thresh > 1.0 ? 1.0 : count_thresh;
-	int num_images = phaseFiles.size();
+	int num_images = static_cast<int>(phaseFiles.size());
 	for (int i = 0; i < num_images; i++)
 	{
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "phase", phase);
@@ -1591,7 +1598,7 @@ int SBAS::generate_high_coherence_mask(
 		}
 	}
 	int rows = mask.rows; int cols = mask.cols;
-	int count = num_images * count_thresh;
+	int count = static_cast<int>(num_images * count_thresh);
 #pragma omp parallel for schedule(guided)
 	for (int j = 0; j < rows; j++)
 	{
@@ -1614,8 +1621,8 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 		fprintf(stderr, "floodFillUnwrap(): input check failed!\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_edges = edges.size();
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_edges = static_cast<int>(edges.size());
 	int node_ix, neighbouring_edges_num, end1, end2;
 	double grad;
 	int* neigh_edges = NULL;
@@ -1680,8 +1687,8 @@ int SBAS::set_weight_by_coherence(Mat& coherence, vector<SBAS_node>& nodes, vect
 		fprintf(stderr, "set_weight_by_coherence(): input check failed!\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_edges = edges.size();
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_edges = static_cast<int>(edges.size());
 	int rows = coherence.rows;
 	int cols = coherence.cols;
 #pragma omp parallel for schedule(guided)
@@ -1691,12 +1698,12 @@ int SBAS::set_weight_by_coherence(Mat& coherence, vector<SBAS_node>& nodes, vect
 		double weight;
 
 		weight = 0.0;
-		row = rows - round(nodes[edges[i].end1 - 1].y);
-		col = round(nodes[edges[i].end1 - 1].x) - 1;
+		row = rows - static_cast<int>(round(nodes[edges[i].end1 - 1].y));
+		col = static_cast<int>(round(nodes[edges[i].end1 - 1].x)) - 1;
 		weight += coherence.at<double>(row, col);
 
-		row = rows - round(nodes[edges[i].end2 - 1].y);
-		col = round(nodes[edges[i].end2 - 1].x) - 1;
+		row = rows - static_cast<int>(round(nodes[edges[i].end2 - 1].y));
+		col = static_cast<int>(round(nodes[edges[i].end2 - 1].x)) - 1;
 		weight += coherence.at<double>(row, col);
 
 		weight = weight / 2.0;
@@ -1715,8 +1722,8 @@ int SBAS::retrieve_unwrapped_phase(vector<SBAS_node>& nodes, Mat& phase)
 		fprintf(stderr, "retrieve_unwrapped_phase(): input check failed!\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	
+	int num_nodes = static_cast<int>(nodes.size());
+
 	int rows = phase.rows;
 	int cols = phase.cols;
 #pragma omp parallel for schedule(guided)
@@ -1725,8 +1732,8 @@ int SBAS::retrieve_unwrapped_phase(vector<SBAS_node>& nodes, Mat& phase)
 		int row, col;
 		if (nodes[i].b_unwrapped)
 		{
-			row = rows - round(nodes[i].y);
-			col = round(nodes[i].x) - 1;
+			row = rows - static_cast<int>(round(nodes[i].y));
+			col = static_cast<int>(round(nodes[i].x)) - 1;
 			phase.at<double>(row, col) = nodes[i].phase;
 		}
 	}
@@ -1746,9 +1753,10 @@ int SBAS::compute_high_coherence_residue(
 		fprintf(stderr, "compute_high_coherence_residue(): input check failed!\n");
 		return -1;
 	}
-	int num_triangle = triangles.size();
-	int num_nodes = nodes.size();
-	int end1, end2, end3, tmp;
+	int num_triangle = static_cast<int>(triangles.size());
+	int num_nodes = static_cast<int>(nodes.size());
+	// removed unused: tmp (copy-paste remnant from readDIMACS)
+	int end1, end2, end3;
 	double x21, y21, x32, y32, direction, delta, residue, x1, x2, x3, y1, y2, y3;
 	delta = residue = 0.0;
 	for (int i = 0; i < num_triangle; i++)
@@ -1798,9 +1806,10 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 		fprintf(stderr, "compute_high_coherence_residue_by_gradient(): input check failed!\n");
 		return -1;
 	}
-	int num_triangle = triangles.size();
-	int num_nodes = nodes.size();
-	int end1, end2, end3, tmp;
+	int num_triangle = static_cast<int>(triangles.size());
+	int num_nodes = static_cast<int>(nodes.size());
+	// removed unused: tmp (copy-paste remnant from readDIMACS)
+	int end1, end2, end3;
 	double x21, y21, x32, y32, direction, delta, residue, x1, x2, x3, y1, y2, y3;
 	delta = residue = 0.0;
 	for (int i = 0; i < num_triangle; i++)
@@ -2613,7 +2622,7 @@ int SBAS::set_high_coherence_node_coordinate(
 {
 	if (mask.empty() ||
 		mask.type() != CV_32S ||
-		nodes.size() < 3
+		static_cast<int>(nodes.size()) < 3
 		)
 	{
 		fprintf(stderr, "set_high_coherence_node_coordinate(): input check failed!\n");
@@ -2622,7 +2631,7 @@ int SBAS::set_high_coherence_node_coordinate(
 	int rows = mask.rows;
 	int cols = mask.cols;
 	int nonzero = cv::countNonZero(mask);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	if (num_nodes != nonzero)
 	{
 		fprintf(stderr, "set_high_coherence_node_coordinate(): nodes and mask mismatch!\n");
@@ -2666,8 +2675,8 @@ int SBAS::set_high_coherence_node_phase(
 	int rows = mask.rows;
 	int cols = mask.cols;
 	int nonzero = cv::countNonZero(mask);
-	int num_nodes = nodes.size();
-	int num_edges = edges.size();
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_edges = static_cast<int>(edges.size());
 	if (num_nodes != nonzero)
 	{
 		fprintf(stderr, "set_high_coherence_node_phase(): nodes and mask mismatch!\n");

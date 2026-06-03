@@ -4,6 +4,9 @@
 #include"..\include\Package.h"
 #include<complex.h>
 
+#pragma warning(push)
+#pragma warning(disable: 4251)
+
 using cv::Mat;
 using namespace std;
 class InSAR_API ComplexMat
@@ -72,5 +75,6 @@ private:
 };
 
 
+#pragma warning(pop)
 #endif // !__COMPLEXMAT__H__
 

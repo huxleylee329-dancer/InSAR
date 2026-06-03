@@ -85,7 +85,8 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	if (return_check(ret, "read_Gcps_from_h5()", error_head)) return -1;
 	int Gcps_number = GCPS.rows;
 	bool RealPhaseIsExisted = false;
-	double lonMax, lonMin, latMax, latMin, wavelength, wavelength2, prf, prf2, start, start2, end, end2;
+	// removed unused: lonMax, lonMin, latMax, latMin (commented-out H5 reads)
+	double wavelength, wavelength2, prf, prf2, start, start2, end, end2;
 	int sceneHeight = rows, sceneWidth = cols;
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, start_time2, end_time, end_time2;
@@ -135,8 +136,8 @@ int Evaluation::PhasePreserve(const char* master_h5,
 		ComplexMat master_win;
 		ComplexMat slave_win;
 		ComplexMat master_interp, slave_interp;
-		int row = GCPS.at<double>(i, 0);
-		int col = GCPS.at<double>(i, 1);
+		int row = static_cast<int>(GCPS.at<double>(i, 0));
+		int col = static_cast<int>(GCPS.at<double>(i, 1));
 		if (row >= win_size && row < rows - win_size && col >= win_size && col < cols - win_size)
 		{
 			master_win = master(Range(row - win_size, row + win_size), Range(col - win_size, col + win_size));
@@ -375,6 +376,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	relevant_error = sqrt(relevant_error / count2);
 	util.cvmat2bin("D:\\Test\\Error.bin", Error);
 	*Output = sqrt(PhaseError / count);
+	return 0;
 }
 
 int Evaluation::Regis(const char* master_h5,  const char* slave_regis_h5, Mat& coherence, Mat& regis_error)
@@ -422,8 +424,8 @@ int Evaluation::Regis(const char* master_h5,  const char* slave_regis_h5, Mat& c
 			slave_interp(interp_size, interp_size),
 			master_interp_fft(interp_size, interp_size),
 			slave_interp_fft(interp_size, interp_size);
-		int row = GCPS.at<double>(i, 0);
-		int col = GCPS.at<double>(i, 1);
+		int row = static_cast<int>(GCPS.at<double>(i, 0));
+		int col = static_cast<int>(GCPS.at<double>(i, 1));
 		if ((row - offset_row) >= win_size / 2 && (row - offset_row) < rows - win_size / 2 
 			&& (col - offset_col) >= win_size / 2 && (col - offset_col) < cols - win_size / 2)
 		{
@@ -494,7 +496,8 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	int Gcps_number = GCPS.rows;
 	Mat GCPS_New = Mat::zeros(Size(6, Gcps_number), CV_64FC1);
 	bool RealPhaseIsExisted = false;
-	double lonMax, lonMin, latMax, latMin, wavelength, wavelength2, prf, prf2, start, start2, end, end2;
+	// removed unused: lonMax, lonMin, latMax, latMin (commented-out H5 reads)
+	double wavelength, wavelength2, prf, prf2, start, start2, end, end2;
 	int sceneHeight = rows, sceneWidth = cols;
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, start_time2, end_time, end_time2;
@@ -535,8 +538,8 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	for (int i = 0; i < Gcps_number; i++)
 	{
 		/*解缠相位*/
-		int row = GCPS.at<double>(i, 0);
-		int col = GCPS.at<double>(i, 1);
+		int row = static_cast<int>(GCPS.at<double>(i, 0));
+		int col = static_cast<int>(GCPS.at<double>(i, 1));
 		Mat phase_unwrapped;
 		ret = conversion.read_subarray_from_h5(phase_unwrapped_h5, "phase", row - 1, col - 1, 1, 1, phase_unwrapped);
 		double Inphase_unwrapped = phase_unwrapped.at<double>(0, 0);
@@ -750,7 +753,8 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 int Evaluation::FFT2(ComplexMat src, ComplexMat& dst, int win_size, int interp_times)
 {
 	Point master_max, slave_max;
-	double max1 = 0, max2;
+	// removed unused: max2 (never read after assignment)
+	double max1 = 0;
 	Utils util;
 	int interp_size = win_size * interp_times;
 	ComplexMat tmp, tmp_fft, tmp_fft_half;
@@ -1208,8 +1212,8 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	double height_offset = 0;
 	for (int i = 0; i < GCP_count; i++)
 	{
-		int row1 = GCPs.at<double>(i, 0);
-		int col1 = GCPs.at<double>(i, 1);
+		int row1 = static_cast<int>(GCPs.at<double>(i, 0));
+		int col1 = static_cast<int>(GCPs.at<double>(i, 1));
 		if (row1 >= offset_row && row1 < offset_row + nr && col1 >= offset_col && col1 < offset_col + nc)
 		{
 			Mat xyz, llh, llh2;
@@ -1226,8 +1230,8 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 			count++;
 			for (int j = i; j < GCP_count; j++)
 			{
-				int row2 = GCPs.at<double>(j, 0);
-				int col2 = GCPs.at<double>(j, 1);
+				int row2 = static_cast<int>(GCPs.at<double>(j, 0));
+				int col2 = static_cast<int>(GCPs.at<double>(j, 1));
 				if (row2 >= offset_row && row2 < offset_row + nr && col2 >= offset_col && col2 < offset_col + nc)
 				{
 					xyz.at<double>(0, 0) = P1.at<double>(row2 - offset_row, col2 - offset_col);

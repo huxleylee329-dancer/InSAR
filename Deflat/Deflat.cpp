@@ -778,7 +778,8 @@ int Deflat::topo_removal(
 	for (int i = 0; i < rows; i++)
 	{
 		Mat tmp(1, 3, CV_64F); Mat r, xyz; 
-		double r1, r2, latitude, longtitude, inc, jj, delta_x, delta_y, upper, lower, dem_interp;
+		// removed unused: r2 (copy-paste remnant from deflat overload)
+		double r1, latitude, longtitude, inc, jj, delta_x, delta_y, upper, lower, dem_interp;
 		int m, n, m_p1, n_p1;
 		for (int j = 0; j < cols; j++)
 		{
@@ -941,7 +942,7 @@ int Deflat::demMapping(
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (never assigned, return values not checked)
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -1030,8 +1031,8 @@ int Deflat::demMapping(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = (zeroDopplerTime - acquisitionStartTime) / time_interval;
-			int rangeIndex = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing;
+			int azimuthIndex = static_cast<int>((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = static_cast<int>((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -1051,7 +1052,8 @@ int Deflat::demMapping(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			if (DEM_out.at<short>(i, j) != invalid) continue;
-			int up, down, left, right, up_count, down_count, left_count, right_count;
+			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
+			int up, down, left, right;
 			double value1, value2, ratio1, ratio2;
 			//寻找上面有值的点
 			up = i;
@@ -1095,7 +1097,7 @@ int Deflat::demMapping(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<short>(up, j)) +
 					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = (value1 + value2) / 2.0;
+				DEM_out.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
 				continue;
 			}
 			//上下有值
@@ -1104,7 +1106,7 @@ int Deflat::demMapping(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<short>(up, j)) +
 					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = value2;
+				DEM_out.at<short>(i, j) = static_cast<short>(value2);
 				continue;
 			}
 			//左右有值
@@ -1113,7 +1115,7 @@ int Deflat::demMapping(
 				ratio1 = double(j - left) / double(right - left);
 				value1 = double(DEM_out.at<short>(i, left)) +
 					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				DEM_out.at<short>(i, j) = value1;
+				DEM_out.at<short>(i, j) = static_cast<short>(value1);
 				continue;
 			}
 			//上边有值
@@ -1213,7 +1215,7 @@ int Deflat::demMapping(
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
-	int ret;
+	// removed unused: ret (never assigned, return values not checked)
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -1302,8 +1304,8 @@ int Deflat::demMapping(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = (zeroDopplerTime - acquisitionStartTime) / time_interval;
-			int rangeIndex = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing;
+			int azimuthIndex = static_cast<int>((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = static_cast<int>((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -1324,7 +1326,8 @@ int Deflat::demMapping(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			if (DEM_out.at<short>(i, j) != invalid) continue;
-			int up, down, left, right, up_count, down_count, left_count, right_count;
+			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
+			int up, down, left, right;
 			double value1, value2, ratio1, ratio2;
 			//寻找上面有值的点
 			up = i;
@@ -1368,7 +1371,7 @@ int Deflat::demMapping(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<short>(up, j)) +
 					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = (value1 + value2) / 2.0;
+				DEM_out.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
 				continue;
 			}
 			//上下有值
@@ -1377,7 +1380,7 @@ int Deflat::demMapping(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<short>(up, j)) +
 					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = value2;
+				DEM_out.at<short>(i, j) = static_cast<short>(value2);
 				continue;
 			}
 			//左右有值
@@ -1386,7 +1389,7 @@ int Deflat::demMapping(
 				ratio1 = double(j - left) / double(right - left);
 				value1 = double(DEM_out.at<short>(i, left)) +
 					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				DEM_out.at<short>(i, j) = value1;
+				DEM_out.at<short>(i, j) = static_cast<short>(value1);
 				continue;
 			}
 			//上边有值
@@ -1425,7 +1428,8 @@ int Deflat::demMapping(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			if (mappedLon.at<double>(i, j) > -998.0) continue;
-			int up, down, left, right, up_count, down_count, left_count, right_count;
+			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
+			int up, down, left, right;
 			double value1, value2, ratio1, ratio2;
 			//寻找上面有值的点
 			up = i;
@@ -1574,9 +1578,10 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, prf, start, end;
-	int sceneHeight, sceneWidth, offset_row, offset_col;
+	// removed unused: lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing, nearRangeTime (commented-out H5 reads)
+	double wavelength, prf, start, end;
+	// removed unused: offset_row, offset_col (commented-out H5 reads)
+	int sceneHeight, sceneWidth;
 	Mat lon_coef, lat_coef, statevec;
 	string start_time, end_time;
 	ret = conversion.read_int_from_h5(slcH5File, "range_len", &sceneWidth);
@@ -1712,7 +1717,7 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 	{
 		for (int j = 0; j < sceneWidth; j++)
 		{
-			double r, real, imagine, real2, imagine2;
+			double r, real, imagine, real2, imagine2; // used for complex phase deramping
 			Mat XYZ, LLH(1, 3, CV_64F), tt;
 			LLH.at<double>(0, 0) = mappedLat.at<double>(i, j);
 			LLH.at<double>(0, 1) = mappedLon.at<double>(i, j);
@@ -1725,8 +1730,8 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 			imagine = sin(r);
 			real2 = slc.re.at<float>(i, j);
 			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = real * real2 + imagine * imagine2;
-			slc.im.at<float>(i, j) = real * imagine2 - real2 * imagine;
+			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
+			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
 	}
 	return 0;
@@ -1751,9 +1756,10 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, prf, start, end;
-	int sceneHeight, sceneWidth, offset_row, offset_col;
+	// removed unused: lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing, nearRangeTime (commented-out H5 reads)
+	double wavelength, prf, start, end;
+	// removed unused: offset_row, offset_col (commented-out H5 reads)
+	int sceneHeight, sceneWidth;
 	Mat lon_coef, lat_coef, statevec;
 	string start_time, end_time;
 	ret = conversion.read_int_from_h5(slcH5File, "range_len", &sceneWidth);
@@ -1878,7 +1884,8 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 	{
 		for (int j = 0; j < sceneWidth; j++)
 		{
-			double r, real, imagine, real2, imagine2;
+			// removed unused: real, imagine, real2, imagine2 (copy-paste from SLC_deramp, no complex math here)
+			double r;
 			Mat XYZ, LLH(1, 3, CV_64F), tt;
 			LLH.at<double>(0, 0) = mappedLat.at<double>(i, j);
 			LLH.at<double>(0, 1) = mappedLon.at<double>(i, j);
@@ -1913,7 +1920,7 @@ int Deflat::SLCs_deramp(
 	*/
 	int ret;
 	FormatConversion conversion;
-	int images_num = outSLCH5Files.size();
+	int images_num = static_cast<int>(outSLCH5Files.size());
 	for (int i = 0; i < images_num; i++)
 	{
 		ret = conversion.creat_new_h5(outSLCH5Files[i].c_str());
@@ -2333,7 +2340,7 @@ int Deflat::downloadSRTM(const char* name)
 		fprintf(stderr, "downloadSRTM(): network is not connected!\n");
 		return -1;
 	}
-	int ret;
+	// removed unused: ret (replaced by HRESULT Result below)
 	string url = this->SRTMURL + name;
 	string savefile = this->DEMPath + string("\\") + name;
 	std::replace(savefile.begin(), savefile.end(), '/', '\\');
@@ -2415,16 +2422,16 @@ int Deflat::getSRTMDEM(
 		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 		lonLowerRight = lonUpperLeft + 5.0;
 
-		startRow = (latUpperLeft - latMax) / this->latSpacing;
+		startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / this->latSpacing;
+		endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+		startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 		startCol = startCol < 1 ? 1 : startCol;
 		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+		endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -2455,16 +2462,16 @@ int Deflat::getSRTMDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -2529,16 +2536,16 @@ int Deflat::getSRTMDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = (latUpperLeft - latMax) / this->latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / this->latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+				startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMin - lonUpperLeft + 360.0) / this->lonSpacing;
+				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -2598,16 +2605,16 @@ int Deflat::getSRTMDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = (latUpperLeft - latMax) / this->latSpacing;
+				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = (latUpperLeft - latMin) / this->latSpacing;
+				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+				startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+				endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -2673,7 +2680,8 @@ int Deflat::getSRTMDEM(
 	//DEM在4个方格内
 	else if (srtmFileName.size() == 4)
 	{
-		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
+		// removed unused: temp
+		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4;
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
@@ -2758,16 +2766,16 @@ int Deflat::getSRTMDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin - lonUpperLeft + 360.0) / this->lonSpacing;
+			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -2852,16 +2860,16 @@ int Deflat::getSRTMDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = (latUpperLeft - latMax) / this->latSpacing;
+			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / this->latSpacing;
+			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = (lonMin - lonUpperLeft) / this->lonSpacing;
+			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / this->lonSpacing;
+			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
