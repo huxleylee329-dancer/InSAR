@@ -309,7 +309,7 @@ int SLC_simulator::generateSLC(
 	slc.re.create(sceneHeight, sceneWidth, CV_32F);
 	slc.im.create(sceneHeight, sceneWidth, CV_32F);
 	slc.re = 0.0; slc.im = 0.0;
-	//·Ö¿é¼ÆËã£¬È·¶¨DEM»®·Ö´óĞ¡Óë·½Ê½
+	//åˆ†å—è®¡ç®—ï¼Œç¡®å®šDEMåˆ’åˆ†å¤§å°ä¸æ–¹å¼
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
@@ -320,7 +320,7 @@ int SLC_simulator::generateSLC(
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
 	int cols = dem.cols * interp_times_col;
-	int block_rows = 1000;//·Ö¿é´óĞ¡
+	int block_rows = 1000;//åˆ†å—å¤§å°
 	int block_cols = 1000;
 	Mat dem_interp, dem_temp;
 	dem.convertTo(dem_interp, CV_32F);
@@ -332,8 +332,8 @@ int SLC_simulator::generateSLC(
 	Utils util;
 	num_block_row = num_block_row;
 	num_block_col = num_block_col;
-	vector<double> GCPs;//¿ØÖÆµãĞÅÏ¢
-	//³õÊ¼»¯¹ìµÀÀà
+	vector<double> GCPs;//æ§åˆ¶ç‚¹ä¿¡æ¯
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
 	int ret;
@@ -364,12 +364,12 @@ int SLC_simulator::generateSLC(
 			upper_left_lon = upper_left_lon > 180.0 ? upper_left_lon - 360.0 : upper_left_lon;
 			double upper_left_lat = lat_upperleft - row_start * lat_spacing_old;
 
-			//Éú³ÉËæ»úÏàÎ»
+			//ç”Ÿæˆéšæœºç›¸ä½
 			Mat randomAngle(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			cv::RNG rng(seed);
 			rng.fill(randomAngle, cv::RNG::UNIFORM, 0.0, 2.0 * PI);
 
-			//¼ÓÈëÈÈÔëÉùÏî
+			//åŠ å…¥çƒ­å™ªå£°é¡¹
 			Mat noise_real(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			double noise_sigma = sqrt(pow(10.0, -SNR / 10.0) / 2.0);
 			cv::RNG rng2(seed + 10000);
@@ -377,7 +377,7 @@ int SLC_simulator::generateSLC(
 			cv::RNG rng3(seed + 10001);
 			rng3.fill(noise_imaginary, cv::RNG::NORMAL, 0, noise_sigma);
 
-			//¼ÆËãDEMµãµÄ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„æˆåƒå«æ˜Ÿä½ç½®
 			Mat imaging_time(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			int DEM_rows = dem_temp2.rows;
 			int DEM_cols = dem_temp2.cols;
@@ -466,7 +466,7 @@ int SLC_simulator::generateSLC(
 					slant_range.at<double>(ii, jj) = distance;
 				}
 			}
-			//¿ØÖÆµãĞÅÏ¢
+			//æ§åˆ¶ç‚¹ä¿¡æ¯
 			if ((i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0)
 			{
 				int gcp_row = DEM_rows / 2;
@@ -612,7 +612,7 @@ int SLC_simulator::generateSLC(
 	slc2.re.create(sceneHeight2, sceneWidth2, CV_32F);
 	slc2.im.create(sceneHeight2, sceneWidth2, CV_32F);
 	slc2.re = 0.0; slc2.im = 0.0;
-	//·Ö¿é¼ÆËã£¬È·¶¨DEM»®·Ö´óĞ¡Óë·½Ê½
+	//åˆ†å—è®¡ç®—ï¼Œç¡®å®šDEMåˆ’åˆ†å¤§å°ä¸æ–¹å¼
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
@@ -623,9 +623,9 @@ int SLC_simulator::generateSLC(
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
 	int cols = dem.cols * interp_times_col;
-	//int block_rows = 1000;//·Ö¿é´óĞ¡
+	//int block_rows = 1000;//åˆ†å—å¤§å°
 	//int block_cols = 1000;
-	int block_rows = 500;//·Ö¿é´óĞ¡
+	int block_rows = 500;//åˆ†å—å¤§å°
 	int block_cols = 500;
 	Mat dem_interp, dem_temp;
 	dem.convertTo(dem_interp, CV_32F);
@@ -637,8 +637,8 @@ int SLC_simulator::generateSLC(
 	Utils util;
 	num_block_row = num_block_row;
 	num_block_col = num_block_col;
-	vector<double> GCPs, GCPs2;//¿ØÖÆµãĞÅÏ¢
-	//³õÊ¼»¯¹ìµÀÀà
+	vector<double> GCPs, GCPs2;//æ§åˆ¶ç‚¹ä¿¡æ¯
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
@@ -668,12 +668,12 @@ int SLC_simulator::generateSLC(
 			upper_left_lon = upper_left_lon > 180.0 ? upper_left_lon - 360.0 : upper_left_lon;
 			double upper_left_lat = lat_upperleft - row_start * lat_spacing_old;
 
-			//Éú³ÉËæ»úÏàÎ»
+			//ç”Ÿæˆéšæœºç›¸ä½
 			Mat randomAngle(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			cv::RNG rng(seed);
 			rng.fill(randomAngle, cv::RNG::UNIFORM, 0.0, 2.0 * PI);
 
-			//¼ÓÈëÈÈÔëÉùÏî
+			//åŠ å…¥çƒ­å™ªå£°é¡¹
 			Mat noise_real(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			Mat noise_real2(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary2(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			double noise_sigma = sqrt(pow(10.0, -SNR / 10.0) / 2.0);
@@ -686,7 +686,7 @@ int SLC_simulator::generateSLC(
 			cv::RNG rng5(seed + num_block_row * num_block_col + 4);
 			rng5.fill(noise_imaginary2, cv::RNG::NORMAL, 0, noise_sigma);
 
-			//¼ÆËãDEMµãµÄÖ÷Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„ä¸»å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 			Mat imaging_time1(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range1(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			Mat imaging_time2(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range2(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			int DEM_rows = dem_temp2.rows;
@@ -777,7 +777,7 @@ int SLC_simulator::generateSLC(
 				}
 			}
 
-			//¼ÆËãDEMµãµÄ¸¨Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„è¾…å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 #pragma omp parallel for schedule(guided)
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
@@ -864,8 +864,8 @@ int SLC_simulator::generateSLC(
 				}
 			}
 
-			//Öğµã¼ÆËãDEMÏñËØµãµÄÊµ²¿Ğé²¿
-			if (mode == 2)//µ¥·¢Ë«ÊÕ
+			//é€ç‚¹è®¡ç®—DEMåƒç´ ç‚¹çš„å®éƒ¨è™šéƒ¨
+			if (mode == 2)//å•å‘åŒæ”¶
 			{
 				for (int ii = 0; ii < DEM_rows; ii++)
 				{
@@ -907,7 +907,7 @@ int SLC_simulator::generateSLC(
 						}
 					}
 				}
-				//¿ØÖÆµãĞÅÏ¢
+				//æ§åˆ¶ç‚¹ä¿¡æ¯
 				if ((i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0)
 				{
 					int gcp_row = DEM_rows / 2;
@@ -957,7 +957,7 @@ int SLC_simulator::generateSLC(
 				}
 			}
 
-			else//µ¥·¢µ¥ÊÕ
+			else//å•å‘å•æ”¶
 			{
 				for (int ii = 0; ii < DEM_rows; ii++)
 				{
@@ -999,7 +999,7 @@ int SLC_simulator::generateSLC(
 						}
 					}
 				}
-				//¿ØÖÆµãĞÅÏ¢
+				//æ§åˆ¶ç‚¹ä¿¡æ¯
 				if ((i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0)
 				{
 					int gcp_row = DEM_rows / 2;
@@ -1055,7 +1055,7 @@ int SLC_simulator::generateSLC(
 		}
 	}
 
-	////¶şÎ¬¸´Êı¾í»ı
+	////äºŒç»´å¤æ•°å·ç§¯
 	int wright = 16;
 	double Drange = rangeSpacing;
 	double Dazimuth = azimuthSpacing;
@@ -1189,7 +1189,7 @@ int SLC_simulator::generateSLC(
 	slc4.im.create(sceneHeight2, sceneWidth2, CV_32F);
 	slc4.re = 0.0; slc4.im = 0.0;
 
-	//·Ö¿é¼ÆËã£¬È·¶¨DEM»®·Ö´óĞ¡Óë·½Ê½
+	//åˆ†å—è®¡ç®—ï¼Œç¡®å®šDEMåˆ’åˆ†å¤§å°ä¸æ–¹å¼
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
@@ -1200,9 +1200,9 @@ int SLC_simulator::generateSLC(
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
 	int cols = dem.cols * interp_times_col;
-	//int block_rows = 1000;//·Ö¿é´óĞ¡
+	//int block_rows = 1000;//åˆ†å—å¤§å°
 	//int block_cols = 1000;
-	int block_rows = 500;//·Ö¿é´óĞ¡
+	int block_rows = 500;//åˆ†å—å¤§å°
 	int block_cols = 500;
 	Mat dem_interp, dem_temp;
 	dem.convertTo(dem_interp, CV_32F);
@@ -1214,8 +1214,8 @@ int SLC_simulator::generateSLC(
 	Utils util;
 	num_block_row = num_block_row;
 	num_block_col = num_block_col;
-	vector<double> GCPs, GCPs2;//¿ØÖÆµãĞÅÏ¢
-	//³õÊ¼»¯¹ìµÀÀà
+	vector<double> GCPs, GCPs2;//æ§åˆ¶ç‚¹ä¿¡æ¯
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
@@ -1246,12 +1246,12 @@ int SLC_simulator::generateSLC(
 			upper_left_lon = upper_left_lon > 180.0 ? upper_left_lon - 360.0 : upper_left_lon;
 			double upper_left_lat = lat_upperleft - row_start * lat_spacing_old;
 
-			//Éú³ÉËæ»úÏàÎ»
+			//ç”Ÿæˆéšæœºç›¸ä½
 			Mat randomAngle(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			cv::RNG rng(seed);
 			rng.fill(randomAngle, cv::RNG::UNIFORM, 0.0, 2.0 * PI);
 
-			//¼ÓÈëÈÈÔëÉùÏî
+			//åŠ å…¥çƒ­å™ªå£°é¡¹
 			Mat noise_real(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			Mat noise_real2(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary2(dem_temp2.rows, dem_temp2.cols, CV_32F);
 			Mat noise_real3(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary3(dem_temp2.rows, dem_temp2.cols, CV_32F);
@@ -1281,7 +1281,7 @@ int SLC_simulator::generateSLC(
 			//noise_real3 = 0.0;
 			//noise_real2 = 0.0;
 			//noise_real = 0.0;
-			//¼ÆËãDEMµãµÄÖ÷Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„ä¸»å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 			Mat imaging_time1(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range1(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			Mat imaging_time2(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range2(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			int DEM_rows = dem_temp2.rows;
@@ -1372,7 +1372,7 @@ int SLC_simulator::generateSLC(
 				}
 			}
 
-			//¼ÆËãDEMµãµÄ¸¨Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„è¾…å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 #pragma omp parallel for schedule(guided)
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
@@ -1459,7 +1459,7 @@ int SLC_simulator::generateSLC(
 				}
 			}
 
-			//Öğµã¼ÆËãDEMÏñËØµãµÄÊµ²¿Ğé²¿
+			//é€ç‚¹è®¡ç®—DEMåƒç´ ç‚¹çš„å®éƒ¨è™šéƒ¨
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
 				for (int jj = 0; jj < DEM_cols; jj++)
@@ -1520,7 +1520,7 @@ int SLC_simulator::generateSLC(
 
 				}
 			}
-			//¿ØÖÆµãĞÅÏ¢
+			//æ§åˆ¶ç‚¹ä¿¡æ¯
 			if ((i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0)
 			{
 				int gcp_row = DEM_rows / 2;
@@ -1595,7 +1595,7 @@ int SLC_simulator::generateSLC(
 		}
 	}
 
-	////¶şÎ¬¸´Êı¾í»ı
+	////äºŒç»´å¤æ•°å·ç§¯
 	int wright = 16;
 	double Drange = rangeSpacing;
 	double Dazimuth = azimuthSpacing;
@@ -1733,7 +1733,7 @@ int SLC_simulator::generateSlantrange(
 	R1.create(sceneHeight1, sceneWidth1, CV_64F); R1 = 0.0;
 	R2.create(sceneHeight1, sceneWidth1, CV_64F); R2 = 0.0;
 	Mat pixel_count = Mat::zeros(sceneHeight1, sceneWidth1, CV_8U); pixel_count = 0;
-	//·Ö¿é¼ÆËã£¬È·¶¨DEM»®·Ö´óĞ¡Óë·½Ê½
+	//åˆ†å—è®¡ç®—ï¼Œç¡®å®šDEMåˆ’åˆ†å¤§å°ä¸æ–¹å¼
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
@@ -1744,7 +1744,7 @@ int SLC_simulator::generateSlantrange(
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
 	int cols = dem.cols * interp_times_col;
-	int block_rows = 1000;//·Ö¿é´óĞ¡
+	int block_rows = 1000;//åˆ†å—å¤§å°
 	int block_cols = 1000;
 	Mat dem_interp, dem_temp;
 	dem.convertTo(dem_interp, CV_32F);
@@ -1756,8 +1756,8 @@ int SLC_simulator::generateSlantrange(
 	Utils util;
 	num_block_row = num_block_row;
 	num_block_col = num_block_col;
-	vector<double> GCPs;//¿ØÖÆµãĞÅÏ¢
-	//³õÊ¼»¯¹ìµÀÀà
+	vector<double> GCPs;//æ§åˆ¶ç‚¹ä¿¡æ¯
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
@@ -1789,7 +1789,7 @@ int SLC_simulator::generateSlantrange(
 			double upper_left_lat = lat_upperleft - row_start * lat_spacing_old;
 
 
-			//¼ÆËãDEMµãµÄÖ÷Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„ä¸»å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 			Mat imaging_time1(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range1(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			Mat imaging_time2(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range2(dem_temp2.rows, dem_temp2.cols, CV_64F);
 			int DEM_rows = dem_temp2.rows;
@@ -1880,7 +1880,7 @@ int SLC_simulator::generateSlantrange(
 				}
 			}
 
-			//¼ÆËãDEMµãµÄ¸¨Í¼Ïñ³ÉÏñÎÀĞÇÎ»ÖÃ
+			//è®¡ç®—DEMç‚¹çš„è¾…å›¾åƒæˆåƒå«æ˜Ÿä½ç½®
 #pragma omp parallel for schedule(guided)
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
@@ -1967,7 +1967,7 @@ int SLC_simulator::generateSlantrange(
 				}
 			}
 
-			//Öğµã¼ÆËãDEMÏñËØµãµÄÊµ²¿Ğé²¿
+			//é€ç‚¹è®¡ç®—DEMåƒç´ ç‚¹çš„å®éƒ¨è™šéƒ¨
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
 				for (int jj = 0; jj < DEM_cols; jj++)
@@ -2094,7 +2094,7 @@ int SLC_simulator::SLC_deramp(
 	orbitStateVectors stateVectors2(statevec2, start2, end2);
 	stateVectors2.applyOrbit();
 
-	//¼ÆËãÖ÷ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—ä¸»æ˜Ÿæˆåƒä½ç½®
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
@@ -2183,7 +2183,7 @@ int SLC_simulator::SLC_deramp(
 		sate1.at<double>(i, 2) = pos.z;
 	}
 
-	//¼ÆËã¸¨ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—è¾…æ˜Ÿæˆåƒä½ç½®
 	numOrbitVec = stateVectors2.newStateVectors.rows;
 	firstVecTime = 0.0;
 	secondVecTime = 0.0;
@@ -2263,7 +2263,7 @@ int SLC_simulator::SLC_deramp(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	//Ö÷ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+	//ä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2300,7 +2300,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.write_int_to_h5(slcH5File1_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "azimuth_len", sceneHeight);
-	//¸¨ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+	//è¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2339,7 +2339,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.write_int_to_h5(slcH5File2_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "azimuth_len", sceneHeight);
-	//¸¨ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+	//è¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2376,7 +2376,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.write_int_to_h5(slcH5File3_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "azimuth_len", sceneHeight);
-	//Ö÷ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+	//ä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2453,18 +2453,18 @@ int SLC_simulator::SLC_deramp_14(
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, end_time;
 	const char* slcH5File1 = NULL, *slcH5File3 = NULL;
-	//µ¥·¢µ¥ÊÕ/µ¥·¢Ë«ÊÕÄ£Ê½
+	//å•å‘å•æ”¶/å•å‘åŒæ”¶æ¨¡å¼
 	if (mode == 1 || mode == 2)
 	{
 		slcH5File1 = slcH5FilesList[0].c_str();
 		slcH5File3 = slcH5FilesList[1].c_str();
 	}
-	else if (mode == 3)//Æ¹ÅÒÄ£Ê½
+	else if (mode == 3)//ä¹’ä¹“æ¨¡å¼
 	{
 		slcH5File1 = slcH5FilesList[0].c_str();
 		slcH5File3 = slcH5FilesList[3].c_str();
 	}
-	else//Ë«ÆµÆ¹ÅÒÄ£Ê½
+	else//åŒé¢‘ä¹’ä¹“æ¨¡å¼
 	{
 		slcH5File1 = slcH5FilesList[0].c_str();
 		slcH5File3 = slcH5FilesList[7].c_str();
@@ -2523,7 +2523,7 @@ int SLC_simulator::SLC_deramp_14(
 	orbitStateVectors stateVectors2(statevec2, start2, end2);
 	stateVectors2.applyOrbit();
 
-	//¼ÆËãÖ÷ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—ä¸»æ˜Ÿæˆåƒä½ç½®
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
@@ -2612,7 +2612,7 @@ int SLC_simulator::SLC_deramp_14(
 		sate1.at<double>(i, 2) = pos.z;
 	}
 
-	//¼ÆËã¸¨ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—è¾…æ˜Ÿæˆåƒä½ç½®
 	numOrbitVec = stateVectors2.newStateVectors.rows;
 	firstVecTime = 0.0;
 	secondVecTime = 0.0;
@@ -2692,9 +2692,9 @@ int SLC_simulator::SLC_deramp_14(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	if (mode == 1)//µ¥·¢µ¥ÊÕÄ£Ê½
+	if (mode == 1)//å•å‘å•æ”¶æ¨¡å¼
 	{
-		//Ö÷ĞÇÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå›¾åƒå»å‚è€ƒ
 		ret = conversion.read_slc_from_h5(slcH5File1, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2737,7 +2737,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "azimuth_len", sceneHeight);
 
-		//¸¨ĞÇÈ¥²Î¿¼
+		//è¾…æ˜Ÿå»å‚è€ƒ
 		R = 0.00;
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -2778,9 +2778,9 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "azimuth_len", sceneHeight);
 	}
-	else if (mode == 2)//µ¥·¢Ë«ÊÕÄ£Ê½
+	else if (mode == 2)//å•å‘åŒæ”¶æ¨¡å¼
 	{
-		//Ö÷ĞÇÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå›¾åƒå»å‚è€ƒ
 		ret = conversion.read_slc_from_h5(slcH5File1, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2823,7 +2823,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "azimuth_len", sceneHeight);
 
-		//¸¨ĞÇÈ¥²Î¿¼
+		//è¾…æ˜Ÿå»å‚è€ƒ
 		R = 0.00;
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -2866,9 +2866,9 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "azimuth_len", sceneHeight);
 	}
-	else if (mode == 3)//Æ¹ÅÒÄ£Ê½
+	else if (mode == 3)//ä¹’ä¹“æ¨¡å¼
 	{
-		//Ö÷ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		ret = conversion.read_slc_from_h5(slcH5File1, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -2912,7 +2912,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "azimuth_len", sceneHeight);
 
 
-		//¸¨ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//è¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[1].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -2955,7 +2955,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "offset_col", offset_col);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "azimuth_len", sceneHeight);
-		//¸¨ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//è¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -2996,7 +2996,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "offset_col", offset_col);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "azimuth_len", sceneHeight);
-		//Ö÷ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[2].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -3040,9 +3040,9 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[2].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[2].c_str(), "azimuth_len", sceneHeight);
 	}
-	else //Ë«ÆµÆ¹ÅÒÄ£Ê½
+	else //åŒé¢‘ä¹’ä¹“æ¨¡å¼
 	{
-		//Ö÷ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		ret = conversion.read_slc_from_h5(slcH5FilesList[0].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[4].c_str(), slc2);
@@ -3111,7 +3111,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[4].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[4].c_str(), "azimuth_len", sceneHeight);
 
-		//¸¨ĞÇ·¢Ö÷ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//è¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[1].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -3180,7 +3180,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[5].c_str(), "offset_col", offset_col);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[5].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[5].c_str(), "azimuth_len", sceneHeight);
-		//¸¨ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//è¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[3].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -3248,7 +3248,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[7].c_str(), "offset_col", offset_col);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[7].c_str(), "range_len", sceneWidth);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[7].c_str(), "azimuth_len", sceneHeight);
-		//Ö÷ĞÇ·¢¸¨ĞÇÊÕÍ¼ÏñÈ¥²Î¿¼
+		//ä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒå»å‚è€ƒ
 		R = 0.0;
 		ret = conversion.read_slc_from_h5(slcH5FilesList[2].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -3405,7 +3405,7 @@ int SLC_simulator::SLC_reramp(
 	orbitStateVectors stateVectors2(statevec2, start2, end2);
 	stateVectors2.applyOrbit();
 
-	//¼ÆËãÖ÷ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—ä¸»æ˜Ÿæˆåƒä½ç½®
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
@@ -3494,7 +3494,7 @@ int SLC_simulator::SLC_reramp(
 		sate1.at<double>(i, 2) = pos.z;
 	}
 
-	//¼ÆËã¸¨ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—è¾…æ˜Ÿæˆåƒä½ç½®
 	numOrbitVec = stateVectors2.newStateVectors.rows;
 	firstVecTime = 0.0;
 	secondVecTime = 0.0;
@@ -3574,7 +3574,7 @@ int SLC_simulator::SLC_reramp(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	//Ö÷ĞÇ·¢Ö÷ĞÇÊÕÍ¼Ïñ¼Ó²Î¿¼
+	//ä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒåŠ å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -3611,7 +3611,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.write_int_to_h5(slcH5File1_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "azimuth_len", sceneHeight);
-	//¸¨ĞÇ·¢Ö÷ĞÇÊÕÍ¼Ïñ¼Ó²Î¿¼
+	//è¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶å›¾åƒåŠ å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -3650,7 +3650,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.write_int_to_h5(slcH5File2_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "azimuth_len", sceneHeight);
-	//¸¨ĞÇ·¢¸¨ĞÇÊÕÍ¼Ïñ¼Ó²Î¿¼
+	//è¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒåŠ å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -3687,7 +3687,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.write_int_to_h5(slcH5File3_out, "offset_col", offset_col);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "range_len", sceneWidth);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "azimuth_len", sceneHeight);
-	//Ö÷ĞÇ·¢¸¨ĞÇÊÕÍ¼Ïñ¼Ó²Î¿¼
+	//ä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶å›¾åƒåŠ å‚è€ƒ
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
@@ -3770,7 +3770,7 @@ int SLC_simulator::MB_phase_estimation(
 	ComplexMat slc;
 	Mat ph, phase;
 
-	//Ô¤ÏÈÌî³ä
+	//é¢„å…ˆå¡«å……
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	nr = slc.GetRows(); nc = slc.GetCols();
@@ -3810,7 +3810,7 @@ int SLC_simulator::MB_phase_estimation(
 			right = left + blocksize_col; right = right > nc ? nc : right;
 			right_pad = right + homotest_radius; right_pad = right_pad > nc ? nc : right_pad;
 
-			//¶ÁÈ¡Êı¾İ
+			//è¯»å–æ•°æ®
 			for (int k = 0; k < n_images; k++)
 			{
 				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_re",
@@ -3824,7 +3824,7 @@ int SLC_simulator::MB_phase_estimation(
 				slc_series_filter.push_back(slc);
 			}
 			//phase.create(slc.GetRows(), slc.GetCols(), CV_64F); phase = 0.0;
-			//¼ÆËã
+			//è®¡ç®—
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
@@ -3878,7 +3878,7 @@ int SLC_simulator::MB_phase_estimation(
 				}
 			}
 			//util.savephase("G:\\tmp\\phase_test2.jpg", "jet", phase); return 0;
-			//´¢´æ
+			//å‚¨å­˜
 			for (int kk = 0; kk < n_images; kk++)
 			{
 				slc_series_filter[kk].re(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
@@ -3894,7 +3894,7 @@ int SLC_simulator::MB_phase_estimation(
 			}
 			slc_series.clear();
 			slc_series_filter.clear();
-			printf("\r¹À¼Æ½ø¶È£º%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦ï¼š%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -3961,7 +3961,7 @@ int SLC_simulator::MB_phase_estimation(
 	ComplexMat slc;
 	Mat ph, phase;
 
-	////Ô¤ÏÈÌî³ä
+	////é¢„å…ˆå¡«å……
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	nr = slc.GetRows(); nc = slc.GetCols();
@@ -4023,7 +4023,7 @@ int SLC_simulator::MB_phase_estimation(
 			right = left + blocksize_col; right = right > nc ? nc : right;
 			right_pad = right + homotest_radius; right_pad = right_pad > nc ? nc : right_pad;
 
-			//¶ÁÈ¡Êı¾İ
+			//è¯»å–æ•°æ®
 			for (int k = 0; k < n_images; k++)
 			{
 				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_re",
@@ -4037,7 +4037,7 @@ int SLC_simulator::MB_phase_estimation(
 				//slc_series_filter.push_back(slc);
 			}
 			phase.create(slc.GetRows(), slc.GetCols(), CV_64F); phase = 0.0;
-			//¼ÆËã
+			//è®¡ç®—
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
@@ -4101,7 +4101,7 @@ int SLC_simulator::MB_phase_estimation(
 				}
 			}
 			//util.cvmat2bin("G:\\tmp\\phase_test.bin", phase); return 0;
-			////´¢´æ
+			////å‚¨å­˜
 			phase(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
 			ret = conversion.write_subarray_to_h5("G:\\tmp\\dual_phase.h5", "phase", ph, top, left, bottom - top, right - left);
 			if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
@@ -4120,7 +4120,7 @@ int SLC_simulator::MB_phase_estimation(
 			}*/
 			slc_series.clear();
 			//slc_series_filter.clear();
-			printf("\r¹À¼Æ½ø¶È£º%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦ï¼š%lf %", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -4176,7 +4176,7 @@ int SLC_simulator::pingpong_MLE(
 		return -1;
 	}
 	Deflat flat; Utils util;
-	//È¥²Î¿¼Æ½Ãæ
+	//å»å‚è€ƒå¹³é¢
 	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft;
 	Mat dem, mappedDEM, mappedLat, mappedLon;
 	int ret;
@@ -4188,7 +4188,7 @@ int SLC_simulator::pingpong_MLE(
 	ret = flat.demMapping(dem, mappedDEM, mappedLat, mappedLon, lon_upperleft, lat_upperleft, offset_row, offset_col, sceneHeight, sceneWidth,
 		prf, rangeSpacing, wavelength_high, nearRangeTime, start1, end1, statevec1, 20);
 	mappedDEM = 0;
-	//¼ÆËãÎÀĞÇÎ»ÖÃ
+	//è®¡ç®—å«æ˜Ÿä½ç½®
 	Mat sate1 = Mat::zeros(sceneHeight, 3, CV_64F);
 
 	Mat sate2 = Mat::zeros(sceneHeight, 3, CV_64F);
@@ -4199,7 +4199,7 @@ int SLC_simulator::pingpong_MLE(
 	orbitStateVectors stateVectors2(statevec2, start2, end2);
 	stateVectors2.applyOrbit();
 
-	//¼ÆËãÖ÷ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—ä¸»æ˜Ÿæˆåƒä½ç½®
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
@@ -4288,7 +4288,7 @@ int SLC_simulator::pingpong_MLE(
 		sate1.at<double>(i, 2) = pos.z;
 	}
 
-	//¼ÆËã¸¨ĞÇ³ÉÏñÎ»ÖÃ
+	//è®¡ç®—è¾…æ˜Ÿæˆåƒä½ç½®
 	numOrbitVec = stateVectors2.newStateVectors.rows;
 	firstVecTime = 0.0;
 	secondVecTime = 0.0;

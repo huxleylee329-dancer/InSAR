@@ -130,6 +130,7 @@
       <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;D:\SRC\HDF5\include;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -151,6 +152,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>D:\softwarepackages\opencv\build\include;D:\working_dir\projects\software\InSAR\include;D:\softwarepackages\HDF5-1.8.22\include;D:\softwarepackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>

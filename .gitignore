@@ -228,7 +228,7 @@ lib/
 #*.filters
 *.docx
 #*.sln
-dllmain.cpp
+#dllmain.cpp
 ReadMe.txt
 
 

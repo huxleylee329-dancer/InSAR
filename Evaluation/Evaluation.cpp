@@ -70,7 +70,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	int ret = 0;
 	double PhaseError = 0;
 	ComplexMat master, slave;
-	//¶ÁÈ¡SLCÊı¾İ
+	//è¯»å–SLCæ•°æ®
 	ret = conversion.read_slc_from_h5(master_h5, master);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (master.type() != CV_64F) master.convertTo(master, CV_64F);
@@ -80,7 +80,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	int rows = master.GetRows();
 	int cols = master.GetCols();
 	Mat GCPS, slave_Gcps;
-	//¶ÁÈ¡±êÖ¾µãÊı¾İ
+	//è¯»å–æ ‡å¿—ç‚¹æ•°æ®
 	ret = conversion.read_array_from_h5(master_h5, "GCP", GCPS);
 	if (return_check(ret, "read_Gcps_from_h5()", error_head)) return -1;
 	int Gcps_number = GCPS.rows;
@@ -90,7 +90,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	Mat lon_coef, lat_coef, statevec, statevec2;
 	string start_time, start_time2, end_time, end_time2;
 	//if (GCPS.cols == 6) RealPhaseIsExisted = true;
-		//Ö÷ĞÇ²ÎÊı
+		//ä¸»æ˜Ÿå‚æ•°
 		ret = conversion.read_double_from_h5(master_h5, "prf", &prf);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		ret = conversion.read_double_from_h5(master_h5, "carrier_frequency", &wavelength);
@@ -104,7 +104,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 		conversion.utc2gps(end_time.c_str(), &end);
 		ret = conversion.read_array_from_h5(master_h5, "state_vec", statevec);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-		//¸¨ĞÇ²ÎÊı
+		//è¾…æ˜Ÿå‚æ•°
 		ret = conversion.read_double_from_h5(slave_h5, "prf", &prf2);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		ret = conversion.read_double_from_h5(slave_h5, "carrier_frequency", &wavelength2);
@@ -121,7 +121,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 		
 	int interp_times = 32;
 	int win_size = 16;
-	int count = 0; //·ûºÏÒªÇóµÄ±êÖ¾µã¸öÊı
+	int count = 0; //ç¬¦åˆè¦æ±‚çš„æ ‡å¿—ç‚¹ä¸ªæ•°
 
 	Mat Inphase_pre = Mat::zeros(Size(Gcps_number, 1), CV_64FC1);
 	Mat Inphase_pro = Mat::zeros(Size(Gcps_number, 1), CV_64FC1);
@@ -131,7 +131,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 
 	for (int i = 0; i < Gcps_number; i++)
 	{
-		/*ºóÑéÏàÎ»-²åÖµ*/
+		/*åéªŒç›¸ä½-æ’å€¼*/
 		ComplexMat master_win;
 		ComplexMat slave_win;
 		ComplexMat master_interp, slave_interp;
@@ -159,9 +159,9 @@ int Evaluation::PhasePreserve(const char* master_h5,
 			slave_interp.re.at<double>(slave_max.y, slave_max.x));
 		double Inphase_post = atan2(sin(master_phase - slave_phase), cos(master_phase - slave_phase));
 		Inphase_pre.at<double>(i) = Inphase_post;
-		/*ÏÈÑéÏàÎ»-Ğ±¾à²î*/
+		/*å…ˆéªŒç›¸ä½-æ–œè·å·®*/
 		double Inphase_prior = 0;
-			////Ö÷ÎÀĞÇĞ±¾à
+			////ä¸»å«æ˜Ÿæ–œè·
 			//Mat sate1 = Mat::zeros(1, 3, CV_64F);
 			//orbitStateVectors stateVectors(statevec, start, end);
 			//stateVectors.applyOrbit();
@@ -181,7 +181,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 			//double firstVecFreq = 0.0;
 			//double secondVecFreq = 0.0;
 			//double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			////¼ì²â±êÖ¾µãÎ»ÓÚÄÄÁ½¸ö¹ìµÀµãÖ®¼ä
+			////æ£€æµ‹æ ‡å¿—ç‚¹ä½äºå“ªä¸¤ä¸ªè½¨é“ç‚¹ä¹‹é—´
 			//for (int ii = 0; ii < numOrbitVec; ii++) {
 			//	Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
 			//		stateVectors.newStateVectors.at<double>(ii, 3));
@@ -219,7 +219,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 
 			//int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
 			//int numIterations = 0; Position pos; Velocity vel;
-			////¶ÔÁ½¸öµãÖ®¼ä£¨Ïà²î10s£©½øĞĞ½øÒ»²½²åÖµ¼ì²âÕÒµ½±êÖ¾µã¶ÔÓ¦µÄ¾ßÌåÎÀĞÇÎ»ÖÃ
+			////å¯¹ä¸¤ä¸ªç‚¹ä¹‹é—´ï¼ˆç›¸å·®10sï¼‰è¿›è¡Œè¿›ä¸€æ­¥æ’å€¼æ£€æµ‹æ‰¾åˆ°æ ‡å¿—ç‚¹å¯¹åº”çš„å…·ä½“å«æ˜Ÿä½ç½®
 			//while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
 
 			//	midTime = (upperBoundTime + lowerBoundTime) / 2.0;
@@ -261,7 +261,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 			//r = cv::norm(tt, cv::NORM_L2);
 			//master_phase = -r / wavelength * 4 * PI;
 
-			////¸¨ÎÀĞÇĞ±¾à
+			////è¾…å«æ˜Ÿæ–œè·
 			//Mat sate2 = Mat::zeros(1, 3, CV_64F);
 			//orbitStateVectors stateVectors2(statevec2, start2, end2);
 			//stateVectors2.applyOrbit();
@@ -352,7 +352,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 			//r2 = cv::norm(tt, cv::NORM_L2);
 			//slave_phase = -r2 / wavelength2 * 4 * PI;
 
-			//ÏÈÑéÏàÎ»
+			//å…ˆéªŒç›¸ä½
 		double r = GCPS.at<double>(i, 5);
 		double r2 = GCPS.at<double>(i, 6);
 		master_phase = -r * 4 * PI / wavelength;
@@ -390,7 +390,7 @@ int Evaluation::Regis(const char* master_h5,  const char* slave_regis_h5, Mat& c
 	int ret = 0;
 	double PhaseError = 0;
 	ComplexMat master, slave;
-	//¶ÁÈ¡SLCÊı¾İ
+	//è¯»å–SLCæ•°æ®
 	ret = conversion.read_slc_from_h5(master_h5, master);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (master.type() != CV_64F) master.convertTo(master, CV_64F);
@@ -400,7 +400,7 @@ int Evaluation::Regis(const char* master_h5,  const char* slave_regis_h5, Mat& c
 	int rows = master.GetRows();
 	int cols = master.GetCols();
 	Mat GCPS, slave_Gcps;
-	//¶ÁÈ¡±êÖ¾µãÊı¾İ
+	//è¯»å–æ ‡å¿—ç‚¹æ•°æ®
 	ret = conversion.read_array_from_h5(master_h5, "gcps", GCPS);
 	if (return_check(ret, "read_Gcps_from_h5()", error_head)) return -1;
 	int offset_row, offset_col;
@@ -413,7 +413,7 @@ int Evaluation::Regis(const char* master_h5,  const char* slave_regis_h5, Mat& c
 	int interp_times = 32;
 	int win_size = 32;
 	int interp_size = interp_times * win_size;
-	int count = 0; //·ûºÏÒªÇóµÄ±êÖ¾µã¸öÊı
+	int count = 0; //ç¬¦åˆè¦æ±‚çš„æ ‡å¿—ç‚¹ä¸ªæ•°
 	for (int i = 0; i < Gcps_number; i++)
 	{
 		ComplexMat master_win, master_fft;
@@ -478,7 +478,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	int ret = 0;
 	double PhaseError = 0;
 	ComplexMat master, slave;
-	//¶ÁÈ¡SLCÊı¾İ
+	//è¯»å–SLCæ•°æ®
 	ret = conversion.read_slc_from_h5(master_h5, master);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (master.type() != CV_64F) master.convertTo(master, CV_64F);
@@ -488,7 +488,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	int rows = master.GetRows();
 	int cols = master.GetCols();
 	Mat GCPS, slave_Gcps;
-	//¶ÁÈ¡±êÖ¾µãÊı¾İ
+	//è¯»å–æ ‡å¿—ç‚¹æ•°æ®
 	ret = conversion.read_array_from_h5(master_h5, "GCP", GCPS);
 	if (return_check(ret, "read_Gcps_from_h5()", error_head)) return -1;
 	int Gcps_number = GCPS.rows;
@@ -502,7 +502,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	else
 	{
 		GCPS.copyTo(GCPS_New(Range(0, Gcps_number), Range(0, 5)));
-		//Ö÷ĞÇ²ÎÊı
+		//ä¸»æ˜Ÿå‚æ•°
 		ret = conversion.read_double_from_h5(master_h5, "prf", &prf);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		ret = conversion.read_double_from_h5(master_h5, "carrier_frequency", &wavelength);
@@ -516,7 +516,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 		conversion.utc2gps(end_time.c_str(), &end);
 		ret = conversion.read_array_from_h5(master_h5, "state_vec", statevec);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-		//¸¨ĞÇ²ÎÊı
+		//è¾…æ˜Ÿå‚æ•°
 		ret = conversion.read_double_from_h5(slave_regis_h5, "prf", &prf2);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		ret = conversion.read_double_from_h5(slave_regis_h5, "carrier_frequency", &wavelength2);
@@ -534,19 +534,19 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 
 	for (int i = 0; i < Gcps_number; i++)
 	{
-		/*½â²øÏàÎ»*/
+		/*è§£ç¼ ç›¸ä½*/
 		int row = GCPS.at<double>(i, 0);
 		int col = GCPS.at<double>(i, 1);
 		Mat phase_unwrapped;
 		ret = conversion.read_subarray_from_h5(phase_unwrapped_h5, "phase", row - 1, col - 1, 1, 1, phase_unwrapped);
 		double Inphase_unwrapped = phase_unwrapped.at<double>(0, 0);
-		/*ÕæÊµÏàÎ»*/
+		/*çœŸå®ç›¸ä½*/
 		double Inphase_prior = 0;
 		if (RealPhaseIsExisted)
 			Inphase_prior = GCPS.at<double>(i, 5);
 		else
 		{
-			//Ö÷ÎÀĞÇĞ±¾à
+			//ä¸»å«æ˜Ÿæ–œè·
 			Mat sate1 = Mat::zeros(1, 3, CV_64F);
 			orbitStateVectors stateVectors(statevec, start, end);
 			stateVectors.applyOrbit();
@@ -566,7 +566,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 			double firstVecFreq = 0.0;
 			double secondVecFreq = 0.0;
 			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			//¼ì²â±êÖ¾µãÎ»ÓÚÄÄÁ½¸ö¹ìµÀµãÖ®¼ä
+			//æ£€æµ‹æ ‡å¿—ç‚¹ä½äºå“ªä¸¤ä¸ªè½¨é“ç‚¹ä¹‹é—´
 			for (int ii = 0; ii < numOrbitVec; ii++) {
 				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
 					stateVectors.newStateVectors.at<double>(ii, 3));
@@ -604,7 +604,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 
 			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
 			int numIterations = 0; Position pos; Velocity vel;
-			//¶ÔÁ½¸öµãÖ®¼ä£¨Ïà²î10s£©½øĞĞ½øÒ»²½²åÖµ¼ì²âÕÒµ½±êÖ¾µã¶ÔÓ¦µÄ¾ßÌåÎÀĞÇÎ»ÖÃ
+			//å¯¹ä¸¤ä¸ªç‚¹ä¹‹é—´ï¼ˆç›¸å·®10sï¼‰è¿›è¡Œè¿›ä¸€æ­¥æ’å€¼æ£€æµ‹æ‰¾åˆ°æ ‡å¿—ç‚¹å¯¹åº”çš„å…·ä½“å«æ˜Ÿä½ç½®
 			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
 
 				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
@@ -646,7 +646,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 			r = cv::norm(tt, cv::NORM_L2);
 			double master_phase = -r / wavelength * 4 * PI;
 
-			//¸¨ÎÀĞÇĞ±¾à
+			//è¾…å«æ˜Ÿæ–œè·
 			Mat sate2 = Mat::zeros(1, 3, CV_64F);
 			orbitStateVectors stateVectors2(statevec2, start2, end2);
 			stateVectors2.applyOrbit();
@@ -737,7 +737,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 			r2 = cv::norm(tt, cv::NORM_L2);
 			double slave_phase = -r2 / wavelength2 * 4 * PI;
 
-			//ÏÈÑéÏàÎ»
+			//å…ˆéªŒç›¸ä½
 			Inphase_prior = atan2(sin(master_phase - slave_phase), cos(master_phase - slave_phase));
 			GCPS_New.at<double>(i, 5) = Inphase_prior;
 		}
@@ -846,7 +846,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	ret = conversion.read_array_from_h5(source_1.c_str(), "carrier_frequency", carrier_frequency);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 
-	//Ñ°ÕÒÍ¼Ïñ·¶Î§ÄÚµÄ¿ØÖÆµãĞÅÏ¢
+	//å¯»æ‰¾å›¾åƒèŒƒå›´å†…çš„æ§åˆ¶ç‚¹ä¿¡æ¯
 
 	int num_gcps = gcps.rows;
 	int row, col, i = 0;
@@ -889,24 +889,24 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	ret = util.stateVec_interp(stateVec1, time_interval1, stateVec1);
 	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
 	ret = util.stateVec_interp(stateVec2, time_interval2, stateVec2);
 	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
 	/*
-	* Ñ°ÕÒÍ¼Ïñ×óÉÏ½Ç³ÉÏñÎÀĞÇÎ»ÖÃ
+	* å¯»æ‰¾å›¾åƒå·¦ä¸Šè§’æˆåƒå«æ˜Ÿä½ç½®
 	*/
 	Mat sate1_xyz, sate2_xyz, sate1_v, sate2_v;
-	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//¸¨ĞÇÎ»ÖÃ
+	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//è¾…æ˜Ÿä½ç½®
 	stateVec1(cv::Range(0, stateVec1.rows), cv::Range(1, 4)).copyTo(sate1_xyz);
 	stateVec1(cv::Range(0, stateVec1.rows), cv::Range(4, 7)).copyTo(sate1_v);
 	stateVec2(cv::Range(0, stateVec2.rows), cv::Range(1, 4)).copyTo(sate2_xyz);
 	stateVec2(cv::Range(0, stateVec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
-	//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+	//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 	Mat xyz, llh_upperleft(1, 3, CV_64F);
 	row_coord.at<double>(0, 0) = offset_row;
 	col_coord.at<double>(0, 0) = offset_col + double(nc) / 2.0;
@@ -935,7 +935,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		sate1_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
 		sate1_v(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
 	}
-	//ÎÀĞÇ2
+	//å«æ˜Ÿ2
 	dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 	for (int j = 0; j < sate2_xyz.rows; j++)
 	{
@@ -948,7 +948,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		xxxx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
 		sate2_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 	}
-	//¼Ó»ØÆ½µØÏàÎ»
+	//åŠ å›å¹³åœ°ç›¸ä½
 	//Mat coef;
 	//cv::transpose(flat_phase_coefficient, coef);
 #pragma omp parallel for schedule(guided)
@@ -966,20 +966,20 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + sum(temp.mul(flat_phase_coefficient))[0];
 		}
 	}
-	//¿ØÖÆµã¾ø¶ÔÏàÎ»¼ÆËã
+	//æ§åˆ¶ç‚¹ç»å¯¹ç›¸ä½è®¡ç®—
 	double r_main = sqrt(sum((sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
 	double r_slave = sqrt(sum((sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
 	int mode = 1;
-	double C = 4*PI; //×Ô·¢×ÔÊÕ
+	double C = 4*PI; //è‡ªå‘è‡ªæ”¶
 	double lambda = 3e8 / (carrier_frequency.at<double>(0, 0) + 1e-10);
 	double phase_real = (r_slave - r_main) / lambda * C;
 	double K = round((phase_real - unwrapped_phase.at<double>(row, col)) / (2 * PI));
-	unwrapped_phase = unwrapped_phase + K * 2 * PI;//ÏàÎ»Ğ£Õı
+	unwrapped_phase = unwrapped_phase + K * 2 * PI;//ç›¸ä½æ ¡æ­£
 
 	//util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\unwrapped_phase_abs.bin", unwrapped_phase);
 
 	/*
-	* ·´Ñİ¸ß³Ì
+	* åæ¼”é«˜ç¨‹
 	*/
 
 	Mat R_M(1, nc, CV_64F);
@@ -990,18 +990,18 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	Mat ones = Mat::ones(nr, 1, CV_64F);
 	R_M = ones * R_M;
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
-	Mat Satellite_M_T_Position = sate1;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = sate1;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = sate2;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate2;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = sate1;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate1;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = sate1;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = sate2;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = sate1;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = sate2;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = satev1;
 	ones = Mat::ones(nr, nc, CV_64F);
@@ -1070,7 +1070,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-		//µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -1109,7 +1109,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -1148,7 +1148,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;

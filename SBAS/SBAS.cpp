@@ -103,7 +103,7 @@ SBAS_node::SBAS_node(int num_neigh_edge)
 	{
 		for (int i = 0; i < num_neigh_edge; i++)
 		{
-			*(this->neigh_edges + i) = -1;//³õÊ¼»¯ÁÚ½Ó±ßĞòºÅ¶¼Îª-1
+			*(this->neigh_edges + i) = -1;//åˆå§‹åŒ–é‚»æ¥è¾¹åºå·éƒ½ä¸º-1
 		}
 	}
 
@@ -119,7 +119,7 @@ SBAS_node::~SBAS_node()
 }
 SBAS_node SBAS_node::operator=(const SBAS_node& src)
 {
-	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//Á½ÕßÏàµÈ
+	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//ä¸¤è€…ç›¸ç­‰
 	{
 		return *this;
 	}
@@ -326,8 +326,8 @@ int SBAS::read_edges(
 			}
 			return -1;
 		}
-		node_neighbours[end1 - 1] += 1;//Í³¼ÆÃ¿¸ö½ÚµãÓĞ¶àÉÙÁÚ½Ó±ß
-		node_neighbours[end2 - 1] += 1;//Í³¼ÆÃ¿¸ö½ÚµãÓĞ¶àÉÙÁÚ½Ó±ß
+		node_neighbours[end1 - 1] += 1;//ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹æœ‰å¤šå°‘é‚»æ¥è¾¹
+		node_neighbours[end2 - 1] += 1;//ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹æœ‰å¤šå°‘é‚»æ¥è¾¹
 	}
 	if (fp)
 	{
@@ -483,7 +483,7 @@ int SBAS::init_SBAS_triangle(
 		fclose(fp_neigh);
 		fp_neigh = NULL;
 	}
-	//»ñÈ¡Èı½ÇĞÎµÄ±ßĞòºÅ
+	//è·å–ä¸‰è§’å½¢çš„è¾¹åºå·
 	int* ptr_neigh = NULL;
 	int num_neigh, count;
 	int edge[3];
@@ -499,12 +499,12 @@ int SBAS::init_SBAS_triangle(
 				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p2)
 				)
 			{
-				edge[0] = *(ptr_neigh + i);//È·±£edges1ÔÚp1ºÍp2Ö®¼ä
+				edge[0] = *(ptr_neigh + i);//ç¡®ä¿edges1åœ¨p1å’Œp2ä¹‹é—´
 			}
 			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
 				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3))
 			{
-				edge[2] = *(ptr_neigh + i);//È·±£edges3ÔÚp1ºÍp3Ö®¼ä
+				edge[2] = *(ptr_neigh + i);//ç¡®ä¿edges3åœ¨p1å’Œp3ä¹‹é—´
 			}
 		}
 		ptr_neigh = nodes[triangle[j].p2 - 1].neigh_edges;
@@ -514,7 +514,7 @@ int SBAS::init_SBAS_triangle(
 			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
 				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3))
 			{
-				edge[1] = *(ptr_neigh + i);//È·±£edges2ÔÚp2ºÍp3Ö®¼ä
+				edge[1] = *(ptr_neigh + i);//ç¡®ä¿edges2åœ¨p2å’Œp3ä¹‹é—´
 			}
 		}
 		triangle[j].edge1 = edge[0];
@@ -562,7 +562,7 @@ int SBAS::compute_spatialTemporal_residue(
 
 		direction = x21 * y32 - x32 * y21;
 
-		//ÓÉÓÚedge1´¦ÓÚend1ºÍend2Ö®¼ä
+		//ç”±äºedge1å¤„äºend1å’Œend2ä¹‹é—´
 		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
 		{
 			delta += edges[triangles[i].edge1 - 1].phase_gradient;
@@ -571,7 +571,7 @@ int SBAS::compute_spatialTemporal_residue(
 		{
 			delta -= edges[triangles[i].edge1 - 1].phase_gradient;
 		}
-		//ÓÉÓÚedge1´¦ÓÚend2ºÍend2Ö®¼ä
+		//ç”±äºedge1å¤„äºend2å’Œend2ä¹‹é—´
 		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
 		{
 			delta += edges[triangles[i].edge2 - 1].phase_gradient;
@@ -580,7 +580,7 @@ int SBAS::compute_spatialTemporal_residue(
 		{
 			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		}
-		//edge3´¦ÓÚend1ºÍend3Ö®¼ä
+		//edge3å¤„äºend1å’Œend3ä¹‹é—´
 		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
 		{
 			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -602,7 +602,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//	{
 		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
 		//	}
-		//    //edge2´¦ÓÚend1ºÍend3Ö®¼ä
+		//    //edge2å¤„äºend1å’Œend3ä¹‹é—´
 		//	if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
 		//	{
 		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
@@ -613,7 +613,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend2ºÍend3Ö®¼ä
+		//		//edge3å¤„äºend2å’Œend3ä¹‹é—´
 		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -623,7 +623,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
 		//		}
 		//	}
-		//	else//edge2´¦ÓÚend2ºÍend3Ö®¼ä
+		//	else//edge2å¤„äºend2å’Œend3ä¹‹é—´
 		//	{
 		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
 		//		{
@@ -633,7 +633,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend1ºÍend3Ö®¼ä
+		//		//edge3å¤„äºend1å’Œend3ä¹‹é—´
 		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -644,7 +644,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		}
 		//	}
 		//}
-		////edge1´¦ÓÚend1ºÍend3Ö®¼ä
+		////edge1å¤„äºend1å’Œend3ä¹‹é—´
 		//else if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end3) ||
 		//	(edges[triangles[i].edge1 - 1].end1 == end3 && edges[triangles[i].edge1 - 1].end2 == end1)
 		//	)
@@ -657,7 +657,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//	{
 		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
 		//	}
-		//	//edge2´¦ÓÚend1ºÍend2Ö®¼ä
+		//	//edge2å¤„äºend1å’Œend2ä¹‹é—´
 		//	if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
 		//	{
 		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
@@ -668,7 +668,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend2ºÍend3Ö®¼ä
+		//		//edge3å¤„äºend2å’Œend3ä¹‹é—´
 		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -678,7 +678,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
 		//		}
 		//	}
-		//	//edge2´¦ÓÚend2ºÍend3Ö®¼ä
+		//	//edge2å¤„äºend2å’Œend3ä¹‹é—´
 		//	else
 		//	{
 		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
@@ -689,7 +689,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend1ºÍend2Ö®¼ä
+		//		//edge3å¤„äºend1å’Œend2ä¹‹é—´
 		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -700,7 +700,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		}
 		//	}
 		//}
-		////edge1´¦ÓÚend2ºÍend3Ö®¼ä
+		////edge1å¤„äºend2å’Œend3ä¹‹é—´
 		//else
 		//{
 		//	if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
@@ -711,7 +711,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//	{
 		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
 		//	}
-		//	//edge2´¦ÓÚend1ºÍend3Ö®¼ä
+		//	//edge2å¤„äºend1å’Œend3ä¹‹é—´
 		//	if (edges[triangles[i].edge2 - 1].end1 == end3 || edges[triangles[i].edge2 - 1].end2 == end3)
 		//	{
 		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
@@ -722,7 +722,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend1ºÍend2Ö®¼ä
+		//		//edge3å¤„äºend1å’Œend2ä¹‹é—´
 		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -732,7 +732,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
 		//		}
 		//	}
-		//	//edge2´¦ÓÚend1ºÍend2Ö®¼ä
+		//	//edge2å¤„äºend1å’Œend2ä¹‹é—´
 		//	else
 		//	{
 		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
@@ -743,7 +743,7 @@ int SBAS::compute_spatialTemporal_residue(
 		//		{
 		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
 		//		}
-		//		//edge3´¦ÓÚend1ºÍend3Ö®¼ä
+		//		//edge3å¤„äºend1å’Œend3ä¹‹é—´
 		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
 		//		{
 		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -757,7 +757,7 @@ int SBAS::compute_spatialTemporal_residue(
 		
 
 		double res = round(delta / 2.0 / PI);
-		if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞÄæ²Ğ²î·½Ïò(²Ğ²î»ı·Ö·½Ïò¶¨ÒåÎªÄæÊ±Õë·½Ïò)
+		if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é€†æ®‹å·®æ–¹å‘(æ®‹å·®ç§¯åˆ†æ–¹å‘å®šä¹‰ä¸ºé€†æ—¶é’ˆæ–¹å‘)
 		{
 			triangles[i].residue = -res;
 		}
@@ -804,7 +804,7 @@ int SBAS::writeDIMACS_temporal(
 		if (triangle[i].neigh3 > 0) num_arcs++;
 	}
 
-	//Í³¼ÆÕı¸º²Ğ²îµã²¢Ğ´Èë½ÚµãĞÅÏ¢
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹å¹¶å†™å…¥èŠ‚ç‚¹ä¿¡æ¯
 	int positive, negative, total;
 	positive = 0;
 	negative = 0;
@@ -829,7 +829,7 @@ int SBAS::writeDIMACS_temporal(
 	}
 	fprintf(fp, "c This is MCF problem file.\n");
 	fprintf(fp, "c Problem line(nodes, links)\n");
-	//Í³¼Æ±ßÔµÈı½ÇĞÎ¸öÊı
+	//ç»Ÿè®¡è¾¹ç¼˜ä¸‰è§’å½¢ä¸ªæ•°
 	int boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -870,13 +870,13 @@ int SBAS::writeDIMACS_temporal(
 			sum += triangle[i].residue;
 		}
 	}
-	//Ğ´Èë´óµØ½Úµã
+	//å†™å…¥å¤§åœ°èŠ‚ç‚¹
 	if (!b_balanced)
 	{
 		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
 	}
 
-	//Ğ´ÈëÁ÷·ÑÓÃ
+	//å†™å…¥æµè´¹ç”¨
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
 	int rows, cols;
 	int lower_bound = 0;
@@ -890,7 +890,7 @@ int SBAS::writeDIMACS_temporal(
 	}
 	if (!b_balanced)
 	{
-		//Ğ´Èë±ß½çÁ÷·ÑÓÃ
+		//å†™å…¥è¾¹ç•Œæµè´¹ç”¨
 		for (int i = 0; i < num_triangle; i++)
 		{
 			if (edges[triangle[i].edge1 - 1].isBoundry ||
@@ -987,7 +987,7 @@ int SBAS::generate_interferograms(
 		ret = conversion.Copy_para_from_h5_2_h5(SLCH5Files[master_ix - 1].c_str(), h5file.c_str());
 		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		
-		//ÊÇ·ñ±£´æÎªÍ¼Æ¬
+		//æ˜¯å¦ä¿å­˜ä¸ºå›¾ç‰‡
 		if (b_save_images)
 		{
 			sprintf(str, "\\%d.jpg", i + 1);
@@ -1035,7 +1035,7 @@ int SBAS::writeDIMACS_spatial(
 		if (triangle[i].neigh3 > 0) num_arcs++;
 	}
 
-	//Í³¼ÆÕı¸º²Ğ²îµã²¢Ğ´Èë½ÚµãĞÅÏ¢
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹å¹¶å†™å…¥èŠ‚ç‚¹ä¿¡æ¯
 	int positive, negative, total;
 	positive = 0;
 	negative = 0;
@@ -1060,7 +1060,7 @@ int SBAS::writeDIMACS_spatial(
 	}
 	fprintf(fp, "c This is MCF problem file.\n");
 	fprintf(fp, "c Problem line(nodes, links)\n");
-	//Í³¼Æ±ßÔµÈı½ÇĞÎ¸öÊı
+	//ç»Ÿè®¡è¾¹ç¼˜ä¸‰è§’å½¢ä¸ªæ•°
 	int boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -1101,13 +1101,13 @@ int SBAS::writeDIMACS_spatial(
 			sum += triangle[i].residue;
 		}
 	}
-	//Ğ´Èë´óµØ½Úµã
+	//å†™å…¥å¤§åœ°èŠ‚ç‚¹
 	if (/*!b_balanced*/true)
 	{
 		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
 	}
 
-	//Ğ´ÈëÁ÷·ÑÓÃ
+	//å†™å…¥æµè´¹ç”¨
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
 	int rows, cols;
 	int lower_bound = 0;
@@ -1185,7 +1185,7 @@ int SBAS::writeDIMACS_spatial(
 	}
 	if (/*!b_balanced*/true)
 	{
-		//Ğ´Èë±ß½çÁ÷·ÑÓÃ
+		//å†™å…¥è¾¹ç•Œæµè´¹ç”¨
 		for (int i = 0; i < num_triangle; i++)
 		{
 			if (edges[triangle[i].edge1 - 1].isBoundry ||
@@ -1302,7 +1302,7 @@ int SBAS::readDIMACS(
 	int num_neigh, target_edges;
 	int num_nodes = nodes.size();
 	int num_triangle = triangle.size(); int num_edges = edges.size();
-	/////////////////////¶ÁÈ¡×¢ÊÍ///////////////////////////
+	/////////////////////è¯»å–æ³¨é‡Š///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
 	{
@@ -1314,7 +1314,7 @@ int SBAS::readDIMACS(
 		}
 		GET_NEXT_LINE;
 	}
-	/////////////////////¶ÁÈ¡ÓÅ»¯Ä¿±êÖµ/////////////////////
+	/////////////////////è¯»å–ä¼˜åŒ–ç›®æ ‡å€¼/////////////////////
 	for (i = 1; i < 81; i++)
 	{
 		if (isspace((int)instring[i]) > 0)
@@ -1335,7 +1335,7 @@ int SBAS::readDIMACS(
 		fprintf(stderr, "readDIMACS(): this problem can't be solved(unbounded or infeasible)!\n\n");
 		return -1;
 	}
-	////////////////////////¶ÁÈ¡MCF½á¹û////////////////////////
+	////////////////////////è¯»å–MCFç»“æœ////////////////////////
 	GET_NEXT_LINE;
 	while (ch && ch == 'f')
 	{
@@ -1348,7 +1348,7 @@ int SBAS::readDIMACS(
 		}
 		flow_sum += fabs(flow);
 		/*
-		* ·Ç½ÓµØ±ß
+		* éæ¥åœ°è¾¹
 		*/
 		if (from > 0 &&
 			from <= num_triangle &&
@@ -1356,7 +1356,7 @@ int SBAS::readDIMACS(
 			to <= num_triangle)
 		{
 			/*
-			* Ñ°ÕÒfrom/toÁ½¸öÈı½ÇĞÎµÄ¹«¹²±ß
+			* å¯»æ‰¾from/toä¸¤ä¸ªä¸‰è§’å½¢çš„å…¬å…±è¾¹
 			*/
 			if (triangle[to - 1].edge1 == triangle[from - 1].edge1 ||
 				triangle[to - 1].edge1 == triangle[from - 1].edge2 ||
@@ -1400,10 +1400,10 @@ int SBAS::readDIMACS(
 
 			direction = x21 * y32 - x32 * y21;
 
-			//Ë³²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼õÈ¥flowÖµ)
+			//é¡ºæ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦å‡å»flowå€¼)
 			if (direction > 0)
 			{
-				//Èç¹ûend1 > end2
+				//å¦‚æœend1 > end2
 				if (end1 > end2)
 				{
 					edges[target_edges - 1].phase_gradient += flow * PI * 2.0;
@@ -1413,10 +1413,10 @@ int SBAS::readDIMACS(
 					edges[target_edges - 1].phase_gradient -= flow * PI * 2.0;
 				}
 			}
-			//Äæ²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼ÓÉÏflowÖµ)
+			//é€†æ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦åŠ ä¸Šflowå€¼)
 			else
 			{
-				//Èç¹ûend1 > end2
+				//å¦‚æœend1 > end2
 				if (end1 > end2)
 				{
 					edges[target_edges - 1].phase_gradient -= flow * PI * 2.0;
@@ -1429,7 +1429,7 @@ int SBAS::readDIMACS(
 		}
 
 		/*
-		* ½ÓµØ±ß
+		* æ¥åœ°è¾¹
 		*/
 		else
 		{
@@ -1451,10 +1451,10 @@ int SBAS::readDIMACS(
 
 				direction = x21 * y32 - x32 * y21;
 
-				//Ë³²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼ÓÉÏflowÖµ)
+				//é¡ºæ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦åŠ ä¸Šflowå€¼)
 				if (direction > 0)
 				{
-					//Èç¹ûend1 > end2
+					//å¦‚æœend1 > end2
 					if (end1 > end2)
 					{
 						edges[target_edges - 1].phase_gradient -= flow * PI * 2.0;
@@ -1464,10 +1464,10 @@ int SBAS::readDIMACS(
 						edges[target_edges - 1].phase_gradient += flow * PI * 2.0;
 					}
 				}
-				//Äæ²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼õÈ¥flowÖµ)
+				//é€†æ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦å‡å»flowå€¼)
 				else
 				{
-					//Èç¹ûend1 > end2
+					//å¦‚æœend1 > end2
 					if (end1 > end2)
 					{
 						edges[target_edges - 1].phase_gradient += flow * PI * 2.0;
@@ -1497,10 +1497,10 @@ int SBAS::readDIMACS(
 
 				direction = x21 * y32 - x32 * y21;
 
-				//Ë³²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼õÈ¥flowÖµ)
+				//é¡ºæ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦å‡å»flowå€¼)
 				if (direction > 0)
 				{
-					//Èç¹ûend1 > end2
+					//å¦‚æœend1 > end2
 					if (end1 > end2)
 					{
 						edges[target_edges - 1].phase_gradient += flow * PI * 2.0;
@@ -1510,10 +1510,10 @@ int SBAS::readDIMACS(
 						edges[target_edges - 1].phase_gradient -= flow * PI * 2.0;
 					}
 				}
-				//Äæ²Ğ²î·½Ïò(end1--->end2Ìİ¶È»ı·ÖĞèÒª¼ÓÉÏflowÖµ)
+				//é€†æ®‹å·®æ–¹å‘(end1--->end2æ¢¯åº¦ç§¯åˆ†éœ€è¦åŠ ä¸Šflowå€¼)
 				else
 				{
-					//Èç¹ûend1 > end2
+					//å¦‚æœend1 > end2
 					if (end1 > end2)
 					{
 						edges[target_edges - 1].phase_gradient -= flow * PI * 2.0;
@@ -1773,7 +1773,7 @@ int SBAS::compute_high_coherence_residue(
 		residue += atan2(sin(nodes[end1 - 1].phase - nodes[end3 - 1].phase), cos(nodes[end1 - 1].phase - nodes[end3 - 1].phase));
 		residue = residue / 2.0 / PI;
 
-		if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞÄæ²Ğ²î·½Ïò(²Ğ²î·½Ïò¶¨ÒåÎªÄæÊ±Õë·½Ïò)
+		if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é€†æ®‹å·®æ–¹å‘(æ®‹å·®æ–¹å‘å®šä¹‰ä¸ºé€†æ—¶é’ˆæ–¹å‘)
 		{
 			triangles[i].residue = -residue;
 		}
@@ -1820,7 +1820,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 		y32 = y3 - y2;
 		direction = x21 * y32 - x32 * y21;
 		residue = 0.0;
-		//edge1´¦ÓÚend1ºÍend2Ö®¼ä
+		//edge1å¤„äºend1å’Œend2ä¹‹é—´
 		if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end2) ||
 			(edges[triangles[i].edge1 - 1].end1 == end2 && edges[triangles[i].edge1 - 1].end2 == end1)
 			)
@@ -1834,7 +1834,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				residue += edges[triangles[i].edge1 - 1].phase_gradient;
 			}
 
-			//edge2´¦ÓÚend1ºÍend3Ö®¼ä
+			//edge2å¤„äºend1å’Œend3ä¹‹é—´
 			if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
 			{
 				if (end1 > end3)
@@ -1847,7 +1847,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				}
 
 
-				//edge3´¦ÓÚend2ºÍend3Ö®¼ä
+				//edge3å¤„äºend2å’Œend3ä¹‹é—´
 				if (end2 > end3)
 				{
 					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1857,7 +1857,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 					residue += edges[triangles[i].edge3 - 1].phase_gradient;
 				}
 			}
-			else//edge2´¦ÓÚend2ºÍend3Ö®¼ä
+			else//edge2å¤„äºend2å’Œend3ä¹‹é—´
 			{
 				if (end2 > end3)
 				{
@@ -1867,7 +1867,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				{
 					residue += edges[triangles[i].edge2 - 1].phase_gradient;
 				}
-				//edge3´¦ÓÚend1ºÍend3Ö®¼ä
+				//edge3å¤„äºend1å’Œend3ä¹‹é—´
 				if (end1 > end3)
 				{
 					residue += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1878,7 +1878,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				}
 			}
 		}
-		//edge1´¦ÓÚend1ºÍend3Ö®¼ä
+		//edge1å¤„äºend1å’Œend3ä¹‹é—´
 		else if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end3) ||
 			(edges[triangles[i].edge1 - 1].end1 == end3 && edges[triangles[i].edge1 - 1].end2 == end1)
 			)
@@ -1891,7 +1891,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 			{
 				residue -= edges[triangles[i].edge1 - 1].phase_gradient;
 			}
-			//edge2´¦ÓÚend1ºÍend2Ö®¼ä
+			//edge2å¤„äºend1å’Œend2ä¹‹é—´
 			if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
 			{
 				if (end1 > end2)
@@ -1902,7 +1902,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				{
 					residue += edges[triangles[i].edge2 - 1].phase_gradient;
 				}
-				//edge3´¦ÓÚend2ºÍend3Ö®¼ä
+				//edge3å¤„äºend2å’Œend3ä¹‹é—´
 				if (end2 > end3)
 				{
 					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1913,7 +1913,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				}
 			}
 
-			//edge2´¦ÓÚend2ºÍend3Ö®¼ä
+			//edge2å¤„äºend2å’Œend3ä¹‹é—´
 			else
 			{
 				if (end2 > end3)
@@ -1925,7 +1925,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 					residue += edges[triangles[i].edge2 - 1].phase_gradient;
 				}
 
-				//edge3´¦ÓÚend1ºÍend2Ö®¼ä
+				//edge3å¤„äºend1å’Œend2ä¹‹é—´
 				if (end1 > end3)
 				{
 					residue += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1936,7 +1936,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 				}
 			}
 		}
-		//edge1´¦ÓÚend2ºÍend3Ö®¼ä
+		//edge1å¤„äºend2å’Œend3ä¹‹é—´
 		else
 		{
 			if (end2 > end3)
@@ -1947,7 +1947,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 			{
 				residue += edges[triangles[i].edge1 - 1].phase_gradient;
 			}
-			//edge2´¦ÓÚend1ºÍend3Ö®¼ä
+			//edge2å¤„äºend1å’Œend3ä¹‹é—´
 			if (edges[triangles[i].edge2 - 1].end1 == end3 || edges[triangles[i].edge2 - 1].end2 == end3)
 			{
 				if (end1 > end3)
@@ -1959,7 +1959,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
 				}
 
-				//edge3´¦ÓÚend1ºÍend2Ö®¼ä
+				//edge3å¤„äºend1å’Œend2ä¹‹é—´
 				if (end1 > end2)
 				{
 					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1969,7 +1969,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 					residue += edges[triangles[i].edge3 - 1].phase_gradient;
 				}
 			}
-			//edge2´¦ÓÚend1ºÍend2Ö®¼ä
+			//edge2å¤„äºend1å’Œend2ä¹‹é—´
 			else
 			{
 				if (end1 > end2)
@@ -1981,7 +1981,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 					residue += edges[triangles[i].edge2 - 1].phase_gradient;
 				}
 
-				//edge3´¦ÓÚend1ºÍend3Ö®¼ä
+				//edge3å¤„äºend1å’Œend3ä¹‹é—´
 				if (end1 > end3)
 				{
 					residue += edges[triangles[i].edge3 - 1].phase_gradient;
@@ -1994,7 +1994,7 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 		}
 		residue = round(residue / 2.0 / PI);
 
-		if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞÄæ²Ğ²î·½Ïò(²Ğ²î·½Ïò¶¨ÒåÎªÄæÊ±Õë·½Ïò)
+		if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é€†æ®‹å·®æ–¹å‘(æ®‹å·®æ–¹å‘å®šä¹‰ä¸ºé€†æ—¶é’ˆæ–¹å‘)
 		{
 			triangles[i].residue = -residue;
 		}
@@ -2127,10 +2127,10 @@ int SBAS::generate_interferograms(
 				if (slave.type() != CV_32F) slave.convertTo(slave, CV_32F);
 				ret = util.Multilook(master, slave, multilook_rg, multilook_az, phase);
 				if (return_check(ret, "Multilook()", error_head)) return -1;
-				//ÂË²¨
+				//æ»¤æ³¢
 				ret = filter.Goldstein_filter(phase, phase, alpha, 64, 8);
 				if (return_check(ret, "Goldstein_filter()", error_head)) return -1;
-				//¼ÆËãÏà¹ØÏµÊı
+				//è®¡ç®—ç›¸å…³ç³»æ•°
 				ret = util.phase_coherence(phase, coherence);
 				if (return_check(ret, "phase_coherence()", error_head)) return -1;
 				sprintf(str, "\\%d_%d.h5", i + 1, j + 1);
@@ -2165,7 +2165,7 @@ int SBAS::generate_interferograms(
 					conversion.write_array_to_h5(h5file.c_str(), "mapped_lon", mapped_lon);
 					b_mappedLatLon_written = true;
 				}
-				//ÊÇ·ñ±£´æÎªÍ¼Æ¬
+				//æ˜¯å¦ä¿å­˜ä¸ºå›¾ç‰‡
 				if (b_save_images)
 				{
 					sprintf(str, "\\%d_%d.jpg", i + 1, j + 1);
@@ -2247,7 +2247,7 @@ int SBAS::adaptive_multilooking(
 	vector<string> h5file_list;
 	char str[256];
 	int master_ix, slave_ix, offset_row, offset_col, nr, nc, range_len, azimuth_len;
-	int count = 0;//¸ÉÉæÍ¼·ùÊı
+	int count = 0;//å¹²æ¶‰å›¾å¹…æ•°
 	double B_temporal, B_spatial;
 
 	ret = conversion.read_int_from_h5(coregis_slc_files[0].c_str(), "range_len", &range_len);
@@ -2278,7 +2278,7 @@ int SBAS::adaptive_multilooking(
 				h5file = path + str;
 				ret = conversion.creat_new_h5(h5file.c_str());
 				h5file_list.push_back(h5file);
-				//Ô¤ÏÈÌî³äÏàÎ»ºÍÏà¹ØÏµÊı
+				//é¢„å…ˆå¡«å……ç›¸ä½å’Œç›¸å…³ç³»æ•°
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
 				if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", phase);
@@ -2311,7 +2311,7 @@ int SBAS::adaptive_multilooking(
 
 	int homotest_radius = (homogeneous_test_wnd - 1) / 2;
 
-	//·Ö¿é¶ÁÈ¡¡¢¼ÆËãºÍ´¢´æ
+	//åˆ†å—è¯»å–ã€è®¡ç®—å’Œå‚¨å­˜
 
 	int left, right, top, bottom, block_num_row, block_num_col, left_pad, right_pad, top_pad, bottom_pad;
 	vector<ComplexMat> slc_series, slc_series_filter;
@@ -2335,7 +2335,7 @@ int SBAS::adaptive_multilooking(
 			right = left + blocksize_col; right = right > nc ? nc : right;
 			right_pad = right + homotest_radius; right_pad = right_pad > nc ? nc : right_pad;
 
-			//¶ÁÈ¡Êı¾İ
+			//è¯»å–æ•°æ®
 			for (int k = 0; k < n_images; k++)
 			{
 				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_re",
@@ -2349,7 +2349,7 @@ int SBAS::adaptive_multilooking(
 				slc_series_filter.push_back(slc);
 			}
 
-			//Ìî³äÏà¹ØÏµÊı
+			//å¡«å……ç›¸å…³ç³»æ•°
 			if (b_coh_est)
 			{
 				zeromat = Mat::zeros(slc.GetRows(), slc.GetCols(), CV_64F);
@@ -2358,7 +2358,7 @@ int SBAS::adaptive_multilooking(
 					zeromat.copyTo(coherence_series[mm]);
 				}
 			}
-			//¼ÆËã
+			//è®¡ç®—
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
@@ -2404,7 +2404,7 @@ int SBAS::adaptive_multilooking(
 				}
 			}
 
-			//´¢´æ
+			//å‚¨å­˜
 			int kk = 0;
 			for (int iii = 0; iii < n_images; iii++)
 			{
@@ -2426,12 +2426,12 @@ int SBAS::adaptive_multilooking(
 			}
 			slc_series.clear();
 			slc_series_filter.clear();
-			fprintf(stdout, "¹À¼ÆÏàÎ»½ø¶È£º%.1lf\n", double((i + 1) * block_num_col + j + 1) / double((block_num_col) * (block_num_row)));
+			fprintf(stdout, "ä¼°è®¡ç›¸ä½è¿›åº¦ï¼š%.1lf\n", double((i + 1) * block_num_col + j + 1) / double((block_num_col) * (block_num_row)));
 		}
 	}
 
 
-	//ÊÇ·ñ±£´æÎªÍ¼Æ¬
+	//æ˜¯å¦ä¿å­˜ä¸ºå›¾ç‰‡
 	if (b_save_images)
 	{
 		for (int iii = 0; iii < n_images; iii++)
@@ -2440,7 +2440,7 @@ int SBAS::adaptive_multilooking(
 			{
 				if (formation_matrix.at<int>(iii, jjj) == 1)
 				{
-					//ÏàÎ»
+					//ç›¸ä½
 					sprintf(str, "\\%d_%d.h5", iii + 1, jjj + 1);
 					h5file = path + str;
 					ret = conversion.read_array_from_h5(h5file.c_str(), "phase", phase);
@@ -2449,7 +2449,7 @@ int SBAS::adaptive_multilooking(
 					h5file = path + str;
 					ret = util.savephase(h5file.c_str(), "jet", phase);
 					if (return_check(ret, "savephase()", error_head)) return -1;
-					//Ïà¹ØÏµÊı
+					//ç›¸å…³ç³»æ•°
 					sprintf(str, "\\%d_%d.h5", iii + 1, jjj + 1);
 					h5file = path + str;
 					ret = conversion.read_array_from_h5(h5file.c_str(), "coherence", phase);
@@ -2514,7 +2514,7 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, Mat& mask, Mat& cohe
 		return 0;
 	}
 
-	//ÕÒµ½²Î¿¼µã×ø±ê
+	//æ‰¾åˆ°å‚è€ƒç‚¹åæ ‡
 	//int ref_i, ref_j;
 	//count = 0;
 	//for (int i = 0; i < rows; i++)

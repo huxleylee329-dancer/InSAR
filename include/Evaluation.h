@@ -8,31 +8,31 @@ class InSAR_API Evaluation
 public:
 	Evaluation();
 	~Evaluation();
-	/*@brief ¸ÉÉæÏàÎ»±£ÏàĞÔ
-	* @param master_h5				   Ö÷Í¼Ïñh5ÎÄ¼ş
-	* @param slave_h5				   ¸¨Í¼Ïñh5ÎÄ¼ş
-	* @param Output                    Êä³ö½á¹û£¨rad£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å¹²æ¶‰ç›¸ä½ä¿ç›¸æ€§
+	* @param master_h5				   ä¸»å›¾åƒh5æ–‡ä»¶
+	* @param slave_h5				   è¾…å›¾åƒh5æ–‡ä»¶
+	* @param Output                    è¾“å‡ºç»“æœï¼ˆradï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int PhasePreserve(const char* master_h5,
 		const char* slave_h5,
 		double* Output);
-	/*@brief Åä×¼ÆÀ¹À
-	* @param master_h5				   Ö÷Í¼Ïñh5ÎÄ¼ş
-	* @param slave_regis_h5			   Åä×¼ºó¸¨Í¼Ïñh5ÎÄ¼ş
-	* @param coherence				   Ïà¹ØÏµÊı¾ØÕó
-	* @param regis_error               Åä×¼Îó²î¾ØÕó£¨×ó·½Î»ÏòÓÒ¾àÀëÏò£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief é…å‡†è¯„ä¼°
+	* @param master_h5				   ä¸»å›¾åƒh5æ–‡ä»¶
+	* @param slave_regis_h5			   é…å‡†åè¾…å›¾åƒh5æ–‡ä»¶
+	* @param coherence				   ç›¸å…³ç³»æ•°çŸ©é˜µ
+	* @param regis_error               é…å‡†è¯¯å·®çŸ©é˜µï¼ˆå·¦æ–¹ä½å‘å³è·ç¦»å‘ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int Regis(const char* master_h5,
 		const char* slave_regis_h5,
 		Mat& coherence,
 		Mat& regis_error);
-	/*@brief ¸ÉÉæÏàÎ»±£ÏàĞÔ
-	* @param master_h5				   ½â²øºóÏàÎ»h5ÎÄ¼ş
-	* @param slave_h5				   ½â²øÇ°ÏàÎ»h5ÎÄ¼ş
-	* @param Output                    Êä³ö½á¹û£¨rad£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å¹²æ¶‰ç›¸ä½ä¿ç›¸æ€§
+	* @param master_h5				   è§£ç¼ åç›¸ä½h5æ–‡ä»¶
+	* @param slave_h5				   è§£ç¼ å‰ç›¸ä½h5æ–‡ä»¶
+	* @param Output                    è¾“å‡ºç»“æœï¼ˆradï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int Unwrap(const char* master_h5, 
 		const char* slave_regis_h5, 

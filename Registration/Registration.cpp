@@ -1,4 +1,4 @@
-// Registration.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
+// Registration.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
 //
 
 #include<string.h>
@@ -136,7 +136,7 @@ int Registration::real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offs
 	mulSpectrums(im1fft, im2fft, spectrum, 0, true);
 
 	Mat result;
-	idft(spectrum, result, DFT_REAL_OUTPUT);//ĞèÒªÏÔÊ¾Í¼ÏñÊ±¿ÉÒÔÓÃDFT_SCALE
+	idft(spectrum, result, DFT_REAL_OUTPUT);//éœ€è¦æ˜¾ç¤ºå›¾åƒæ—¶å¯ä»¥ç”¨DFT_SCALE
 
 	ret = fftshift2(result);
 	if (return_check(ret, "fftshift2(*)", error_head)) return -1;
@@ -165,18 +165,18 @@ int Registration::registration_pixel(ComplexMat& Master, ComplexMat& Slave, int*
 	int offset_rows, offset_cols, ret;
 	offset_cols = 0;
 	offset_rows = 0;
-	ret = real_coherent(Master, Slave, &offset_rows, &offset_cols);//Ïà¹Øº¯ÊıÇóÈ¡Æ«ÒÆÁ¿
+	ret = real_coherent(Master, Slave, &offset_rows, &offset_cols);//ç›¸å…³å‡½æ•°æ±‚å–åç§»é‡
 	if (move_r)*move_r = offset_rows;
 	if (move_c)*move_c = offset_cols;
 	if (return_check(ret, "real_coherent(*, *, *, *)", error_head)) return -1;
-	////°áÒÆÓë²Ã¼ô
+	////æ¬ç§»ä¸è£å‰ª
 
-	//ĞĞÆ«ÒÆ£¨ÊúÖ±ÒÆ¶¯£©
+	//è¡Œåç§»ï¼ˆç«–ç›´ç§»åŠ¨ï¼‰
 	ComplexMat image_master_mid;
 	ComplexMat image_slave_mid;
 	int nr = Slave.GetRows();
 	int nc = Slave.GetCols();
-	//////////////////////////////¼ì²é´ÖÅä×¼Æ«ÒÆÁ¿ÊÇ·ñ³¬¹ıÍ¼Ïñ´óĞ¡////////////////////////////////////
+	//////////////////////////////æ£€æŸ¥ç²—é…å‡†åç§»é‡æ˜¯å¦è¶…è¿‡å›¾åƒå¤§å°////////////////////////////////////
 	if ((offset_rows > 0 ? offset_rows : -offset_rows) >= nr ||
 		(offset_cols > 0 ? offset_cols : -offset_cols) >= nc)
 	{
@@ -185,31 +185,31 @@ int Registration::registration_pixel(ComplexMat& Master, ComplexMat& Slave, int*
 	}
 	if (offset_rows >= 0)
 	{
-		//Êµ²¿
-		Slave.re(Range(offset_rows, nr), Range(0, nc)).copyTo(image_slave_mid.re);//¸¨Í¼ÏñÏòÉÏ°áÒÆ
+		//å®éƒ¨
+		Slave.re(Range(offset_rows, nr), Range(0, nc)).copyTo(image_slave_mid.re);//è¾…å›¾åƒå‘ä¸Šæ¬ç§»
 
-		Master.re(Range(0, nr - offset_rows), Range(0, nc)).copyTo(image_master_mid.re);//²Ã¼ôÖ÷Í¼Ïñ
+		Master.re(Range(0, nr - offset_rows), Range(0, nc)).copyTo(image_master_mid.re);//è£å‰ªä¸»å›¾åƒ
 
 
-		//Ğé²¿
-		Slave.im(Range(offset_rows, nr), Range(0, nc)).copyTo(image_slave_mid.im);//¸¨Í¼ÏñÏòÉÏ°áÒÆ
+		//è™šéƒ¨
+		Slave.im(Range(offset_rows, nr), Range(0, nc)).copyTo(image_slave_mid.im);//è¾…å›¾åƒå‘ä¸Šæ¬ç§»
 
-		Master.im(Range(0, nr - offset_rows), Range(0, nc)).copyTo(image_master_mid.im);//²Ã¼ô
+		Master.im(Range(0, nr - offset_rows), Range(0, nc)).copyTo(image_master_mid.im);//è£å‰ª
 
 	}
 
 	else
 	{
-		//Êµ²¿
-		Slave.re(Range(0, nr + offset_rows), Range(0, nc)).copyTo(image_slave_mid.re);//¸¨Í¼ÏñÏòÏÂ°áÒÆ
+		//å®éƒ¨
+		Slave.re(Range(0, nr + offset_rows), Range(0, nc)).copyTo(image_slave_mid.re);//è¾…å›¾åƒå‘ä¸‹æ¬ç§»
 
-		Master.re(Range(-offset_rows, nr), Range(0, nc)).copyTo(image_master_mid.re);//²Ã¼ô
+		Master.re(Range(-offset_rows, nr), Range(0, nc)).copyTo(image_master_mid.re);//è£å‰ª
 
 
-		//Ğé²¿
-		Slave.im(Range(0, nr + offset_rows), Range(0, nc)).copyTo(image_slave_mid.im);//¸¨Í¼ÏñÏòÏÂ°áÒÆ
+		//è™šéƒ¨
+		Slave.im(Range(0, nr + offset_rows), Range(0, nc)).copyTo(image_slave_mid.im);//è¾…å›¾åƒå‘ä¸‹æ¬ç§»
 
-		Master.im(Range(-offset_rows, nr), Range(0, nc)).copyTo(image_master_mid.im);//²Ã¼ô
+		Master.im(Range(-offset_rows, nr), Range(0, nc)).copyTo(image_master_mid.im);//è£å‰ª
 
 	}
 
@@ -217,29 +217,29 @@ int Registration::registration_pixel(ComplexMat& Master, ComplexMat& Slave, int*
 	ComplexMat image_slave_regis;
 	int nr1 = image_master_mid.re.rows;
 	int nc1 = image_master_mid.re.cols;
-	//ÁĞÆ«ÒÆ£¨Ë®Æ½ÒÆ¶¯£©
-	if (offset_cols >= 0)//¸¨Í¼ÏñÏò×ó°áÒÆ
+	//åˆ—åç§»ï¼ˆæ°´å¹³ç§»åŠ¨ï¼‰
+	if (offset_cols >= 0)//è¾…å›¾åƒå‘å·¦æ¬ç§»
 	{
-		//Êµ²¿
+		//å®éƒ¨
 		image_slave_mid.re(Range(0, nr1), Range(offset_cols, nc1)).copyTo(image_slave_regis.re);
 
 		image_master_mid.re(Range(0, nr1), Range(0, nc1 - offset_cols)).copyTo(image_master_regis.re);
 
-		//Ğé²¿
+		//è™šéƒ¨
 		image_slave_mid.im(Range(0, nr1), Range(offset_cols, nc1)).copyTo(image_slave_regis.im);
 
 		image_master_mid.im(Range(0, nr1), Range(0, nc1 - offset_cols)).copyTo(image_master_regis.im);
 
 	}
 
-	else//¸¨Í¼ÏñÏòÓÒ°áÒÆ
+	else//è¾…å›¾åƒå‘å³æ¬ç§»
 	{
-		//Êµ²¿
+		//å®éƒ¨
 		image_slave_mid.re(Range(0, nr1), Range(0, nc1 + offset_cols)).copyTo(image_slave_regis.re);
 
 		image_master_mid.re(Range(0, nr1), Range(-offset_cols, nc1)).copyTo(image_master_regis.re);
 
-		//Ğé²¿
+		//è™šéƒ¨
 		image_slave_mid.im(Range(0, nr1), Range(0, nc1 + offset_cols)).copyTo(image_slave_regis.im);
 
 		image_master_mid.im(Range(0, nr1), Range(-offset_cols, nc1)).copyTo(image_master_regis.im);
@@ -312,7 +312,7 @@ int Registration::interp_paddingzero(ComplexMat& InputMatrix, ComplexMat& Output
 int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix, double offset_row, double offset_col)
 {
 	int nr = InputMatrix.GetRows();
-	int nc = InputMatrix.GetCols();//ÊäÈë¾ØÕó³ß´ç
+	int nc = InputMatrix.GetCols();//è¾“å…¥çŸ©é˜µå°ºå¯¸
 	if (nr < 2 || nc < 2 || InputMatrix.re.type() != CV_64F)
 	{
 		fprintf(stderr, "interp_cubic(): input check failed!\n\n");
@@ -322,9 +322,9 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	new_image_slave.re = Mat::zeros(nr + 3, nc + 3, CV_64F);
 	new_image_slave.im = Mat::zeros(nr + 3, nc + 3, CV_64F);
 
-	//À©³ä¾ØÕó(À©Õ¹ÈıĞĞÈıÁĞ)
+	//æ‰©å……çŸ©é˜µ(æ‰©å±•ä¸‰è¡Œä¸‰åˆ—)
 
-	//Êµ²¿
+	//å®éƒ¨
 
 	InputMatrix.re(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.re(Range(0, 1), Range(0, 1)));
 
@@ -359,7 +359,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	InputMatrix.re(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(1, nc + 1)));
 
 
-	//Ğé²¿
+	//è™šéƒ¨
 
 	InputMatrix.im(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.im(Range(0, 1), Range(0, 1)));
 
@@ -389,11 +389,11 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 	new_image_slave.im(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.im(Range(0, nr + 3), Range(nc + 2, nc + 3)));
 
-	//ÄÚµã
+	//å†…ç‚¹
 	InputMatrix.im(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(1, nc + 1)));
 
 
-	//ĞĞÈ¨
+	//è¡Œæƒ
 	double row_weight[4];
 	row_weight[0] = WeightCalculation(1.0 + offset_row);
 	row_weight[1] = WeightCalculation(offset_row);
@@ -402,7 +402,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 	Mat Row_weight(4, 1, CV_64F, row_weight);
 
-	//ÁĞÈ¨
+	//åˆ—æƒ
 	double col_weight[4];
 	col_weight[0] = WeightCalculation(1.0 + offset_col);
 	col_weight[1] = WeightCalculation(offset_col);
@@ -412,10 +412,10 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	Mat Col_weight(1, 4, CV_64F, col_weight);
 
 	
-	//È¨¾ØÕó
+	//æƒçŸ©é˜µ
 	Mat Weight = Row_weight * Col_weight;
 
-	//Êµ²¿Ğé²¿·Ö±ğ²åÖµ
+	//å®éƒ¨è™šéƒ¨åˆ†åˆ«æ’å€¼
 	Mat image_slave_regis_re = Mat::zeros(nr, nc, CV_64F);
 	Mat image_slave_regis_im = Mat::zeros(nr, nc, CV_64F);
 
@@ -445,7 +445,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix, Mat& Coefficient)
 {
 	int nr = InputMatrix.GetRows();
-	int nc = InputMatrix.GetCols();//ÊäÈë¾ØÕó³ß´ç
+	int nc = InputMatrix.GetCols();//è¾“å…¥çŸ©é˜µå°ºå¯¸
 	if (nr < 2 || nc < 2 || InputMatrix.re.type() != CV_64F)
 	{
 		fprintf(stderr, "interp_cubic(): input check failed!\n\n");
@@ -456,9 +456,9 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	new_image_slave.re = Mat::zeros(nr + 3, nc + 3, CV_64F);
 	new_image_slave.im = Mat::zeros(nr + 3, nc + 3, CV_64F);
 
-	//À©³ä¾ØÕó(À©Õ¹ÈıĞĞÈıÁĞ)
+	//æ‰©å……çŸ©é˜µ(æ‰©å±•ä¸‰è¡Œä¸‰åˆ—)
 
-	//Êµ²¿
+	//å®éƒ¨
 
 	InputMatrix.re(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.re(Range(0, 1), Range(0, 1)));
 
@@ -493,7 +493,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	InputMatrix.re(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(1, nc + 1)));
 
 
-	//Ğé²¿
+	//è™šéƒ¨
 
 	InputMatrix.im(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.im(Range(0, 1), Range(0, 1)));
 
@@ -523,7 +523,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 	new_image_slave.im(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.im(Range(0, nr + 3), Range(nc + 2, nc + 3)));
 
-	//ÄÚµã
+	//å†…ç‚¹
 	InputMatrix.im(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(1, nc + 1)));
 
 
@@ -623,20 +623,20 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 		return -1;
 	}
 
-	int nsubr = Master.GetRows() / blocksize; //×Ó¿éĞĞÊı
-	int nsubc = Master.GetCols() / blocksize; //×Ó¿éÁĞÊı
-	int nsub = nsubr * nsubc;  //×Ó¿é×ÜÊı
+	int nsubr = Master.GetRows() / blocksize; //å­å—è¡Œæ•°
+	int nsubc = Master.GetCols() / blocksize; //å­å—åˆ—æ•°
+	int nsub = nsubr * nsubc;  //å­å—æ€»æ•°
 	if (nsubc < 1 || nsubr < 1)
 	{
 		fprintf(stderr, "%s\n\n", "registration_subpixel: subblockszie, nsubc < 1 || nsubr < 1");
 		return -1;
 	}
-	Mat sub_r_offset = Mat::zeros(nsub, 1, CV_64F); //ĞĞÑÇÏñËØÆ«ÒÆÁ¿
-	Mat sub_c_offset = Mat::zeros(nsub, 1, CV_64F); //ÁĞÑÇÏñËØÆ«ÒÆÁ¿
+	Mat sub_r_offset = Mat::zeros(nsub, 1, CV_64F); //è¡Œäºšåƒç´ åç§»é‡
+	Mat sub_c_offset = Mat::zeros(nsub, 1, CV_64F); //åˆ—äºšåƒç´ åç§»é‡
 
-	Mat m = Mat::zeros(nsub, 1, CV_32S); //×Ó¿éÖĞĞÄĞĞ×ø±ê
-	Mat n = Mat::zeros(nsub, 1, CV_32S); //×Ó¿éÖĞĞÄÁĞ×ø±ê
-	Mat indx = Mat::zeros(nsub, 1, CV_32S); //Ë÷Òı
+	Mat m = Mat::zeros(nsub, 1, CV_32S); //å­å—ä¸­å¿ƒè¡Œåæ ‡
+	Mat n = Mat::zeros(nsub, 1, CV_32S); //å­å—ä¸­å¿ƒåˆ—åæ ‡
+	Mat indx = Mat::zeros(nsub, 1, CV_32S); //ç´¢å¼•
 
 
 	int count = 0;
@@ -655,7 +655,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 			if (!parallel_flag) continue;
 			ComplexMat temp_in_slave, temp_out_slave, temp_in_master, temp_out_master;
 			int offset_row, offset_col;
-			//¸¨Í¼Ïñ×Ó¿é²åÖµ
+			//è¾…å›¾åƒå­å—æ’å€¼
 			Slave.re(Range(j * blocksize, (j + 1) * blocksize), Range(i * blocksize, (i + 1) * blocksize)).copyTo(temp_in_slave.re);
 			Slave.im(Range(j * blocksize, (j + 1) * blocksize), Range(i * blocksize, (i + 1) * blocksize)).copyTo(temp_in_slave.im);
 			//util.cvmat2bin("E:\\zgb1\\InSAR\\InSAR\\bin\\re.bin", temp_in_slave.re);
@@ -666,7 +666,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 				continue;
 			}
 
-			//Ö÷Í¼Ïñ×Ó¿é²åÖµ
+			//ä¸»å›¾åƒå­å—æ’å€¼
 			Master.re(Range(j * blocksize, (j + 1) * blocksize), Range(i * blocksize, (i + 1) * blocksize)).copyTo(temp_in_master.re);
 			Master.im(Range(j * blocksize, (j + 1) * blocksize), Range(i * blocksize, (i + 1) * blocksize)).copyTo(temp_in_master.im);
 			ret = interp_paddingzero(temp_in_master, temp_out_master, interp_times);
@@ -676,7 +676,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 				continue;
 			}
 
-			//ÊµÏà¹Øº¯ÊıÇóÈ¡ÑÇÏñËØÆ«ÒÆÁ¿
+			//å®ç›¸å…³å‡½æ•°æ±‚å–äºšåƒç´ åç§»é‡
 			ret = real_coherent(temp_out_master, temp_out_slave, &offset_row, &offset_col);
 			if (ret < 0)
 			{
@@ -696,11 +696,11 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 			sub_r_offset.at<double>(i * nsubr + j, 0) = offset_row_sub;
 			sub_c_offset.at<double>(i * nsubr + j, 0) = offset_col_sub;
 
-			//×Ó¿éÖĞĞÄ×ø±ê
+			//å­å—ä¸­å¿ƒåæ ‡
 			n.at<int>(i * nsubr + j, 0) = blocksize / 2 + i * blocksize;
 			m.at<int>(i * nsubr + j, 0) = blocksize / 2 + j * blocksize;
 
-			ret = interp_cubic(temp_in_slave, temp_in_slave, sub_r_offset.at<double>(i * nsubr + j, 0), sub_c_offset.at<double>(i * nsubr + j, 0));//×Ó¸¨Í¼Ïñ²åÖµ
+			ret = interp_cubic(temp_in_slave, temp_in_slave, sub_r_offset.at<double>(i * nsubr + j, 0), sub_c_offset.at<double>(i * nsubr + j, 0));//å­è¾…å›¾åƒæ’å€¼
 			if (ret < 0)
 			{
 				parallel_flag = false;
@@ -720,18 +720,18 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 		}
 	}
 	if (parallel_check(parallel_flag, "registration_subpixel()", parallel_error_head)) return -1;
-	int NoneZero = countNonZero(indx);//·ÇÁãÔªËØ¸öÊı
+	int NoneZero = countNonZero(indx);//éé›¶å…ƒç´ ä¸ªæ•°
 	count = 0;
 	if (NoneZero == 0)
 	{
 		fprintf(stderr, "registration_subpixel(): NoneZero == 0\n\n");
 		return -1;
 	}
-	Mat sub_r_offset_sifted = Mat::zeros(NoneZero, 1, CV_64F); //É¸Ñ¡ºóĞĞÑÇÏñËØÆ«ÒÆÁ¿
-	Mat sub_c_offset_sifted = Mat::zeros(NoneZero, 1, CV_64F); //É¸Ñ¡ºóÁĞÑÇÏñËØÆ«ÒÆÁ¿
+	Mat sub_r_offset_sifted = Mat::zeros(NoneZero, 1, CV_64F); //ç­›é€‰åè¡Œäºšåƒç´ åç§»é‡
+	Mat sub_c_offset_sifted = Mat::zeros(NoneZero, 1, CV_64F); //ç­›é€‰ååˆ—äºšåƒç´ åç§»é‡
 
-	Mat m_sifted = Mat::zeros(NoneZero, 1, CV_32S); //É¸Ñ¡ºó×Ó¿éÖĞĞÄĞĞ×ø±ê
-	Mat n_sifted = Mat::zeros(NoneZero, 1, CV_32S); //É¸Ñ¡ºó×Ó¿éÖĞĞÄÁĞ×ø±ê
+	Mat m_sifted = Mat::zeros(NoneZero, 1, CV_32S); //ç­›é€‰åå­å—ä¸­å¿ƒè¡Œåæ ‡
+	Mat n_sifted = Mat::zeros(NoneZero, 1, CV_32S); //ç­›é€‰åå­å—ä¸­å¿ƒåˆ—åæ ‡
 
 
 	for (int k = 0; k < nsub; k++)
@@ -750,8 +750,8 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 
 
 	Mat para;
-	ret = all_subpixel_move(m_sifted, n_sifted, sub_r_offset_sifted, sub_c_offset_sifted, para);//ÄâºÏ¸¨Í¼ÏñÆ«ÒÆÁ¿
-	//²âÊÔ
+	ret = all_subpixel_move(m_sifted, n_sifted, sub_r_offset_sifted, sub_c_offset_sifted, para);//æ‹Ÿåˆè¾…å›¾åƒåç§»é‡
+	//æµ‹è¯•
 	//cout << para << "\n";
 	//
 	if (return_check(ret, "all_subpixel_move(*, *, *, *)", error_head)) return -1;
@@ -775,7 +775,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		return -1;
 	}
 
-	//´ÖÅä×¼
+	//ç²—é…å‡†
 	ComplexMat slave_r, master_small, slave_small;
 	slave_r = master;
 	slave_r.re = 0.0; slave_r.im = 0.0;
@@ -825,9 +825,9 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	slave = slave_r;
 
 	/*---------------------------------------*/
-	/*              ÇóÈ¡Æ«ÒÆÁ¿¾ØÕó           */
+	/*              æ±‚å–åç§»é‡çŸ©é˜µ           */
 	/*---------------------------------------*/
-	interp_times = interp_times > 32 ? 32 : interp_times;//ÏŞ¶¨×î¶à32±¶²åÖµ
+	interp_times = interp_times > 32 ? 32 : interp_times;//é™å®šæœ€å¤š32å€æ’å€¼
 	Utils util;
 	int m = (master.GetRows()) / blocksize;
 	int n = (master.GetCols()) / blocksize;
@@ -840,7 +840,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	Mat offset_coord_row = Mat::zeros(m, n, CV_64F); 
 	Mat offset_coord_col = Mat::zeros(m, n, CV_64F);
 	Mat sentinel0 = Mat::zeros(m, n, CV_64F);
-	//×Ó¿éÖĞĞÄ×ø±ê
+	//å­å—ä¸­å¿ƒåæ ‡
 	for (int i = 0; i < m; i++)
 	{
 		for (int j = 0; j < n; j++)
@@ -858,7 +858,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		double mean_coh, coh_thresh = 0.65;
 		for (int j = 0; j < n; j++)
 		{
-			//¼ÆËãÏà¹ØÏµÊıÅĞ¶ÏÊÇ·ñÊÇÓĞĞ§Êı¾İ
+			//è®¡ç®—ç›¸å…³ç³»æ•°åˆ¤æ–­æ˜¯å¦æ˜¯æœ‰æ•ˆæ•°æ®
 			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.re);
 			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.im);
 			if (master1.type() != CV_64F) master1.convertTo(master1, CV_64F);
@@ -873,12 +873,12 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 				sentinel0.at<double>(i, j) = 1.0;
 				continue;
 			}
-			//Ö÷Í¼Ïñ×Ó¿é²åÖµ
+			//ä¸»å›¾åƒå­å—æ’å€¼
 			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master_sub.re);
 			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master_sub.im);
 			if (master_sub.type() != CV_64F) master_sub.convertTo(master_sub, CV_64F);
 			interp_paddingzero(master_sub, master_sub_interp, interp_times);
-			//¸¨Í¼Ïñ×Ó¿é²åÖµ
+			//è¾…å›¾åƒå­å—æ’å€¼
 			slave.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave_sub.re);
 			slave.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave_sub.im);
 			if (slave_sub.type() != CV_64F) slave_sub.convertTo(slave_sub, CV_64F);
@@ -898,7 +898,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 				sentinel0.at<double>(i, j) = 1.0;
 			}*/
 			interp_paddingzero(slave_sub, slave_sub_interp, interp_times);
-			//ÇóÈ¡Æ«ÒÆÁ¿
+			//æ±‚å–åç§»é‡
 			real_coherent(master_sub_interp, slave_sub_interp, &offset_row, &offset_col);
 			offset_r.at<double>(i, j) = (double)offset_row / (double)interp_times;
 			offset_c.at<double>(i, j) = (double)offset_col / (double)interp_times;
@@ -907,14 +907,14 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	}
 
 	/*---------------------------------------*/
-	/*    ÄâºÏÆ«ÒÆÁ¿£¨½«×ø±ê×ö¹éÒ»»¯´¦Àí£©   */
+	/*    æ‹Ÿåˆåç§»é‡ï¼ˆå°†åæ ‡åšå½’ä¸€åŒ–å¤„ç†ï¼‰   */
 	/*---------------------------------------*/
 
 	/*
-	* ÄâºÏ¹«Ê½Îª offser_row/offser_col = a0 + a1*x + a2*y
+	* æ‹Ÿåˆå…¬å¼ä¸º offser_row/offser_col = a0 + a1*x + a2*y
 	*/
 	
-	////ÌŞ³ıoutliers
+	////å‰”é™¤outliers
 	Mat sentinel = Mat::zeros(m, n, CV_64F);
 	int ix, iy, count = 0, c = 0; double delta, thresh = 2.0;
 	//for (int i = 0; i < m; i++)
@@ -922,25 +922,25 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	//	for (int j = 0; j < n; j++)
 	//	{
 	//		count = 0;
-	//		//ÉÏ
+	//		//ä¸Š
 	//		ix = j; 
 	//		iy = i - 1; iy = iy < 0 ? 0 : iy;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 	//		if (fabs(delta) >= thresh) count++;
-	//		//ÏÂ
+	//		//ä¸‹
 	//		ix = j;
 	//		iy = i + 1; iy = iy > m - 1 ? m - 1 : iy;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 	//		if (fabs(delta) >= thresh) count++;
-	//		//×ó
+	//		//å·¦
 	//		ix = j - 1; ix = ix < 0 ? 0 : ix;
 	//		iy = i; 
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 	//		if (fabs(delta) >= thresh) count++;
-	//		//ÓÒ
+	//		//å³
 	//		ix = j + 1; ix = ix > n - 1 ? n - 1 : ix;
 	//		iy = i;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
@@ -1049,7 +1049,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	}
 
 	/*---------------------------------------*/
-	/*    Ë«ÏßĞÔ²åÖµ»ñÈ¡ÖØ²ÉÑùºóµÄ¸¨Í¼Ïñ     */
+	/*    åŒçº¿æ€§æ’å€¼è·å–é‡é‡‡æ ·åçš„è¾…å›¾åƒ     */
 	/*---------------------------------------*/
 
 	Mat tt(1, 3, CV_64F);
@@ -1115,33 +1115,33 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
 				if (master_type == CV_64F)
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
 				}
 				else if (master_type == CV_32F)
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.re.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.im.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
 				}
 				else
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = (double)slave.re.at<short>(mm, nn) + double(slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = (double)slave.re.at<short>(mm1, nn) + double(slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.re.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = (double)slave.im.at<short>(mm, nn) + double(slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = (double)slave.im.at<short>(mm1, nn) + double(slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
 					slave_tmp.im.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
@@ -1425,7 +1425,7 @@ int Registration::getDEMRgAzPos(
 		fprintf(stderr, "getDEMRgAzPos(): input check failed!\n");
 		return -1;
 	}
-	//³õÊ¼»¯¹ìµÀÀà
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
 	int ret;
@@ -1435,7 +1435,7 @@ int Registration::getDEMRgAzPos(
 	rangePos.create(DEM_rows, DEM_cols, CV_64F);
 	azimuthPos.create(DEM_rows, DEM_cols, CV_64F);
 	double dopplerFrequency = 0.0;
-	//²ÉÓÃµü´ú¼ÆËãÃ¿¸öDEMµãÔÚSARÍ¼ÏñÖĞµÄ×ø±ê£¬ÒÔ¼õĞ¡¼ÆËãÁ¿
+	//é‡‡ç”¨è¿­ä»£è®¡ç®—æ¯ä¸ªDEMç‚¹åœ¨SARå›¾åƒä¸­çš„åæ ‡ï¼Œä»¥å‡å°è®¡ç®—é‡
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
@@ -1632,7 +1632,7 @@ int Registration::computeSlaveOffset(
 	{
 		for (int j = 0; j < slaveAzimuthOffset.cols; j++)
 		{
-			//·½Î»ÏòÆ«ÒÆÁ¿¼ÆËã
+			//æ–¹ä½å‘åç§»é‡è®¡ç®—
 			if (masterAzimuth.at<double>(i, j) < -0.5 || slaveAzimuth.at<double>(i, j) < -0.5)
 			{
 				slaveAzimuthOffset.at<double>(i, j) = invalidOffset;
@@ -1641,7 +1641,7 @@ int Registration::computeSlaveOffset(
 			{
 				slaveAzimuthOffset.at<double>(i, j) = slaveAzimuth.at<double>(i, j) - masterAzimuth.at<double>(i, j);
 			}
-			//¾àÀëÏòÆ«ÒÆÁ¿¼ÆËã
+			//è·ç¦»å‘åç§»é‡è®¡ç®—
 			if (masterRange.at<double>(i, j) < -0.5 || slaveRange.at<double>(i, j) < -0.5)
 			{
 				slaveRangeOffset.at<double>(i, j) = invalidOffset;
@@ -1757,33 +1757,33 @@ int Registration::performBilinearResampling(
 				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
 				if (type == CV_16S)
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = slave.re.at<short>(mm, nn) + (slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<short>(mm1, nn) + (slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.re.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = slave.im.at<short>(mm, nn) + (slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<short>(mm1, nn) + (slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.im.at<short>(i, j) = upper + (lower - upper) * (ii - (double)mm);
 				}
 				else if (type == CV_32F)
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.re.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.im.at<float>(i, j) = upper + (lower - upper) * (ii - (double)mm);
 				}
 				else
 				{
-					//Êµ²¿²åÖµ
+					//å®éƒ¨æ’å€¼
 					upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
 					lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//Ğé²¿²åÖµ
+					//è™šéƒ¨æ’å€¼
 					upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
 					lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
 					slcResampled.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);

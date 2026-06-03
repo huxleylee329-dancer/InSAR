@@ -6,28 +6,28 @@
 
 
 /*----------------------------------------*/
-/*          µ¥ÊÓ¸´Í¼Ïñ·ÂÕæÀà              */
+/*          å•è§†å¤å›¾åƒä»¿çœŸç±»              */
 /*----------------------------------------*/
 class InSAR_API SLC_simulator
 {
 public:
 	SLC_simulator();
 	~SLC_simulator();
-	/*@brief ¸ù¾İÈëÉä½Ç¼ÆËãºóÏòÉ¢ÉäÏµÊı
-	* @param incidenceAngle                             ÈëÉä½Ç
-	* @param sigma                                      ºóÏòÉ¢ÉäÏµÊı(·µ»ØÖµ)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å…¥å°„è§’è®¡ç®—åå‘æ•£å°„ç³»æ•°
+	* @param incidenceAngle                             å…¥å°„è§’
+	* @param sigma                                      åå‘æ•£å°„ç³»æ•°(è¿”å›å€¼)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int reflectivity(Mat& incidenceAngle, Mat& sigma);
-	/*@brief ¼ÆËãºóÏòÉ¢ÉäÏµÊı
-	* @param DEM_x                                      DEM×ª»»×ø±ê£¨X£©
-	* @param DEM_y                                      DEM×ª»»×ø±ê£¨Y£©
-	* @param DEM_z                                      DEM×ª»»×ø±ê£¨Z£©
-	* @param satellitePos_x                             DEM¶ÔÓ¦µÄÎÀĞÇ³ÉÏñµã×ø±ê£¨X£©
-	* @param satellitePos_y                             DEM¶ÔÓ¦µÄÎÀĞÇ³ÉÏñµã×ø±ê£¨Y£©
-	* @param satellitePos_z                             DEM¶ÔÓ¦µÄÎÀĞÇ³ÉÏñµã×ø±ê£¨Z£©
-	* @param sigma                                      ºóÏòÉ¢ÉäÏµÊı£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è®¡ç®—åå‘æ•£å°„ç³»æ•°
+	* @param DEM_x                                      DEMè½¬æ¢åæ ‡ï¼ˆXï¼‰
+	* @param DEM_y                                      DEMè½¬æ¢åæ ‡ï¼ˆYï¼‰
+	* @param DEM_z                                      DEMè½¬æ¢åæ ‡ï¼ˆZï¼‰
+	* @param satellitePos_x                             DEMå¯¹åº”çš„å«æ˜Ÿæˆåƒç‚¹åæ ‡ï¼ˆXï¼‰
+	* @param satellitePos_y                             DEMå¯¹åº”çš„å«æ˜Ÿæˆåƒç‚¹åæ ‡ï¼ˆYï¼‰
+	* @param satellitePos_z                             DEMå¯¹åº”çš„å«æ˜Ÿæˆåƒç‚¹åæ ‡ï¼ˆZï¼‰
+	* @param sigma                                      åå‘æ•£å°„ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int computeIncidenceAngle(
 		Mat& DEM_x,
@@ -38,24 +38,24 @@ public:
 		Mat& satellitePos_z,
 		Mat& sigma
 	);
-	/*@brief ¸ù¾İ¹ìµÀºÍ³¡¾°DEMÒÔ¼°³ÉÏñ²ÎÊıÉú³Éµ¥ÊÓ¸´Í¼Ïñ£¨µ¥·¢µ¥ÊÕ£©
-	* @param stateVec                                  ¹ìµÀÊı¾İ
-	* @param dem                                       ³¡¾°DEM£¨À´×ÔSRTM£©
-	* @param lon_upperleft                             DEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                             DEM×óÉÏ½ÇÎ¬¶È
-	* @param sceneHeight                               ·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth                                ·ÂÕæSLC³¡¾°¿í¶È
-	* @param nearRange                                 ×î½üĞ±¾à
-	* @param prf                                       Âö³åÖØ¸´ÆµÂÊ
-	* @param wavelength                                ²¨³¤
-	* @param rangeSpacing                              ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param azimuthSpacing                            ·½Î»Ïò²ÉÑù¼ä¸ô£¨m£©
-	* @param acquisitionStartTime                      ·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime                       ·½Î»Ïò½áÊøÊ±¼ä
-	* @param SNR                                       ÈÈÔëÉùĞÅÔë±È£¨dB£©
-	* @param slc                                       ·ÂÕæSLCÍ¼Ïñ£¨·µ»ØÖµ£©
-	* @param GCP                                       ¿ØÖÆµãĞÅÏ¢£¨·µ»ØÖµ£¬n¡Á5£¬ĞĞ/ÁĞ/¾­/Î³/¸ß£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®è½¨é“å’Œåœºæ™¯DEMä»¥åŠæˆåƒå‚æ•°ç”Ÿæˆå•è§†å¤å›¾åƒï¼ˆå•å‘å•æ”¶ï¼‰
+	* @param stateVec                                  è½¨é“æ•°æ®
+	* @param dem                                       åœºæ™¯DEMï¼ˆæ¥è‡ªSRTMï¼‰
+	* @param lon_upperleft                             DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                             DEMå·¦ä¸Šè§’ç»´åº¦
+	* @param sceneHeight                               ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth                                ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param nearRange                                 æœ€è¿‘æ–œè·
+	* @param prf                                       è„‰å†²é‡å¤é¢‘ç‡
+	* @param wavelength                                æ³¢é•¿
+	* @param rangeSpacing                              è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param azimuthSpacing                            æ–¹ä½å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param acquisitionStartTime                      æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime                       æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param SNR                                       çƒ­å™ªå£°ä¿¡å™ªæ¯”ï¼ˆdBï¼‰
+	* @param slc                                       ä»¿çœŸSLCå›¾åƒï¼ˆè¿”å›å€¼ï¼‰
+	* @param GCP                                       æ§åˆ¶ç‚¹ä¿¡æ¯ï¼ˆè¿”å›å€¼ï¼ŒnÃ—5ï¼Œè¡Œ/åˆ—/ç»/çº¬/é«˜ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generateSLC(
 		Mat& stateVec,
@@ -75,32 +75,32 @@ public:
 		ComplexMat& slc,
 		Mat& GCP
 	);
-	/*@brief ¸ù¾İ¹ìµÀºÍ³¡¾°DEMÒÔ¼°³ÉÏñ²ÎÊıÉú³Éµ¥ÊÓ¸´Í¼Ïñ£¨µ¥·¢Ë«ÊÕ»òÕßµ¥·¢µ¥ÊÕ£¬Éú³É2·ùÍ¼£©
-	* @param stateVec1                                 ¹ìµÀÊı¾İ1£¨Ö÷ĞÇ£¬ĞÅºÅ·¢Éä¹ìµÀ+ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param stateVec2                                 ¹ìµÀÊı¾İ2£¨¸¨ĞÇ£¬ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param dem                                       ³¡¾°DEM£¨À´×ÔSRTM£©
-	* @param lon_upperleft                             DEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                             DEM×óÉÏ½ÇÎ¬¶È
-	* @param sceneHeight1                              Ö÷Í¼·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth1                               Ö÷Í¼·ÂÕæSLC³¡¾°¿í¶È
-	* @param sceneHeight2                              ¸¨Í¼·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth2                               ¸¨Í¼·ÂÕæSLC³¡¾°¿í¶È
-	* @param nearRange1                                Ö÷Í¼×î½üĞ±¾à
-	* @param nearRange2                                ¸¨Í¼×î½üĞ±¾à
-	* @param prf                                       Âö³åÖØ¸´ÆµÂÊ
-	* @param wavelength                                ²¨³¤
-	* @param rangeSpacing                              ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param azimuthSpacing                            ·½Î»Ïò²ÉÑù¼ä¸ô£¨m£©
-	* @param acquisitionStartTime1                     Ö÷Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime1                      Ö÷Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param acquisitionStartTime2                     ¸¨Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime2                      ¸¨Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param SNR                                       ÈÈÔëÉùĞÅÔë±È£¨dB£©
-	* @param slc1                                      Ö÷ĞÇ·ÂÕæSARÍ¼Ïñ£¨·µ»ØÖµ£©
-	* @param slc2                                      ¸¨ĞÇ·ÂÕæSARÍ¼Ïñ£¨·µ»ØÖµ£©
-	* @param GCP                                       ¿ØÖÆµãĞÅÏ¢£¨·µ»ØÖµ£¬n¡Á5£¬ĞĞ/ÁĞ/¾­/Î³/¸ß£©
-	* @param mode                                      ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬Ä¬ÈÏÎªµ¥·¢µ¥ÊÕ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®è½¨é“å’Œåœºæ™¯DEMä»¥åŠæˆåƒå‚æ•°ç”Ÿæˆå•è§†å¤å›¾åƒï¼ˆå•å‘åŒæ”¶æˆ–è€…å•å‘å•æ”¶ï¼Œç”Ÿæˆ2å¹…å›¾ï¼‰
+	* @param stateVec1                                 è½¨é“æ•°æ®1ï¼ˆä¸»æ˜Ÿï¼Œä¿¡å·å‘å°„è½¨é“+ä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param stateVec2                                 è½¨é“æ•°æ®2ï¼ˆè¾…æ˜Ÿï¼Œä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param dem                                       åœºæ™¯DEMï¼ˆæ¥è‡ªSRTMï¼‰
+	* @param lon_upperleft                             DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                             DEMå·¦ä¸Šè§’ç»´åº¦
+	* @param sceneHeight1                              ä¸»å›¾ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth1                               ä¸»å›¾ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param sceneHeight2                              è¾…å›¾ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth2                               è¾…å›¾ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param nearRange1                                ä¸»å›¾æœ€è¿‘æ–œè·
+	* @param nearRange2                                è¾…å›¾æœ€è¿‘æ–œè·
+	* @param prf                                       è„‰å†²é‡å¤é¢‘ç‡
+	* @param wavelength                                æ³¢é•¿
+	* @param rangeSpacing                              è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param azimuthSpacing                            æ–¹ä½å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param acquisitionStartTime1                     ä¸»å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime1                      ä¸»å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param acquisitionStartTime2                     è¾…å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime2                      è¾…å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param SNR                                       çƒ­å™ªå£°ä¿¡å™ªæ¯”ï¼ˆdBï¼‰
+	* @param slc1                                      ä¸»æ˜Ÿä»¿çœŸSARå›¾åƒï¼ˆè¿”å›å€¼ï¼‰
+	* @param slc2                                      è¾…æ˜Ÿä»¿çœŸSARå›¾åƒï¼ˆè¿”å›å€¼ï¼‰
+	* @param GCP                                       æ§åˆ¶ç‚¹ä¿¡æ¯ï¼ˆè¿”å›å€¼ï¼ŒnÃ—5ï¼Œè¡Œ/åˆ—/ç»/çº¬/é«˜ï¼‰
+	* @param mode                                      æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œé»˜è®¤ä¸ºå•å‘å•æ”¶ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generateSLC(
 		Mat& stateVec1,
@@ -128,34 +128,34 @@ public:
 		Mat& GCP,
 		int mode = 1
 	);
-	/*@brief ¸ù¾İ¹ìµÀºÍ³¡¾°DEMÒÔ¼°³ÉÏñ²ÎÊıÉú³Éµ¥ÊÓ¸´Í¼Ïñ£¨µ¥·¢Ë«ÊÕ£¬Æ¹ÅÒÄ£Ê½£¬Éú³É4·ùÍ¼£©
-	* @param stateVec1                                 ¹ìµÀÊı¾İ1£¨Ö÷ĞÇ£¬ĞÅºÅ·¢Éä¹ìµÀ+ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param stateVec2                                 ¹ìµÀÊı¾İ2£¨¸¨ĞÇ£¬ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param dem                                       ³¡¾°DEM£¨À´×ÔSRTM£©
-	* @param lon_upperleft                             DEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                             DEM×óÉÏ½ÇÎ¬¶È
-	* @param sceneHeight1                              Ö÷Í¼·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth1                               Ö÷Í¼·ÂÕæSLC³¡¾°¿í¶È
-	* @param sceneHeight2                              ¸¨Í¼·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth2                               ¸¨Í¼·ÂÕæSLC³¡¾°¿í¶È
-	* @param nearRange1                                Ö÷Í¼×î½üĞ±¾à
-	* @param nearRange2                                ¸¨Í¼×î½üĞ±¾à
-	* @param prf                                       Âö³åÖØ¸´ÆµÂÊ
-	* @param wavelength                                ²¨³¤
-	* @param rangeSpacing                              ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param azimuthSpacing                            ·½Î»Ïò²ÉÑù¼ä¸ô£¨m£©
-	* @param acquisitionStartTime1                     Ö÷Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime1                      Ö÷Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param acquisitionStartTime2                     ¸¨Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime2                      ¸¨Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param SNR                                       ÈÈÔëÉùĞÅÔë±È£¨dB£©
-	* @param slc1                                      Ö÷ĞÇ×Ô·¢×ÔÊÕ£¨·µ»ØÖµ£©
-	* @param slc2                                      Ö÷ĞÇÊÕ¸¨ĞÇ£¨·µ»ØÖµ£©
-	* @param slc3                                      ¸¨ĞÇ×Ô·¢×ÔÊÕ£¨·µ»ØÖµ£©
-	* @param slc4                                      ¸¨ĞÇÊÕÖ÷ĞÇ£¨·µ»ØÖµ£©
-	* @param GCP1                                      Ö÷Í¼¿ØÖÆµãĞÅÏ¢£¨·µ»ØÖµ£¬n¡Á5£¬ĞĞ/ÁĞ/¾­/Î³/¸ß£©
-	* @param GCP2                                      ¸¨Í¼¿ØÖÆµãĞÅÏ¢£¨·µ»ØÖµ£¬n¡Á5£¬ĞĞ/ÁĞ/¾­/Î³/¸ß£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®è½¨é“å’Œåœºæ™¯DEMä»¥åŠæˆåƒå‚æ•°ç”Ÿæˆå•è§†å¤å›¾åƒï¼ˆå•å‘åŒæ”¶ï¼Œä¹’ä¹“æ¨¡å¼ï¼Œç”Ÿæˆ4å¹…å›¾ï¼‰
+	* @param stateVec1                                 è½¨é“æ•°æ®1ï¼ˆä¸»æ˜Ÿï¼Œä¿¡å·å‘å°„è½¨é“+ä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param stateVec2                                 è½¨é“æ•°æ®2ï¼ˆè¾…æ˜Ÿï¼Œä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param dem                                       åœºæ™¯DEMï¼ˆæ¥è‡ªSRTMï¼‰
+	* @param lon_upperleft                             DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                             DEMå·¦ä¸Šè§’ç»´åº¦
+	* @param sceneHeight1                              ä¸»å›¾ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth1                               ä¸»å›¾ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param sceneHeight2                              è¾…å›¾ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth2                               è¾…å›¾ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param nearRange1                                ä¸»å›¾æœ€è¿‘æ–œè·
+	* @param nearRange2                                è¾…å›¾æœ€è¿‘æ–œè·
+	* @param prf                                       è„‰å†²é‡å¤é¢‘ç‡
+	* @param wavelength                                æ³¢é•¿
+	* @param rangeSpacing                              è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param azimuthSpacing                            æ–¹ä½å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param acquisitionStartTime1                     ä¸»å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime1                      ä¸»å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param acquisitionStartTime2                     è¾…å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime2                      è¾…å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param SNR                                       çƒ­å™ªå£°ä¿¡å™ªæ¯”ï¼ˆdBï¼‰
+	* @param slc1                                      ä¸»æ˜Ÿè‡ªå‘è‡ªæ”¶ï¼ˆè¿”å›å€¼ï¼‰
+	* @param slc2                                      ä¸»æ˜Ÿæ”¶è¾…æ˜Ÿï¼ˆè¿”å›å€¼ï¼‰
+	* @param slc3                                      è¾…æ˜Ÿè‡ªå‘è‡ªæ”¶ï¼ˆè¿”å›å€¼ï¼‰
+	* @param slc4                                      è¾…æ˜Ÿæ”¶ä¸»æ˜Ÿï¼ˆè¿”å›å€¼ï¼‰
+	* @param GCP1                                      ä¸»å›¾æ§åˆ¶ç‚¹ä¿¡æ¯ï¼ˆè¿”å›å€¼ï¼ŒnÃ—5ï¼Œè¡Œ/åˆ—/ç»/çº¬/é«˜ï¼‰
+	* @param GCP2                                      è¾…å›¾æ§åˆ¶ç‚¹ä¿¡æ¯ï¼ˆè¿”å›å€¼ï¼ŒnÃ—5ï¼Œè¡Œ/åˆ—/ç»/çº¬/é«˜ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generateSLC(
 		Mat& stateVec1,
@@ -185,26 +185,26 @@ public:
 		Mat& GCP1, 
 		Mat& GCP2
 	);
-	/*@brief ¸ù¾İ¹ìµÀºÍ³¡¾°DEMÒÔ¼°³ÉÏñ²ÎÊı²Î¿¼Ğ±¾à£¨µ¥·¢Ë«ÊÕ£¬Æ¹ÅÒÄ£Ê½£©
-	* @param stateVec1                                 ¹ìµÀÊı¾İ1£¨Ö÷ĞÇ£¬ĞÅºÅ·¢Éä¹ìµÀ+ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param stateVec2                                 ¹ìµÀÊı¾İ2£¨¸¨ĞÇ£¬ĞÅºÅ½ÓÊÕ¹ìµÀ£©
-	* @param dem                                       ³¡¾°DEM£¨À´×ÔSRTM£©
-	* @param lon_upperleft                             DEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                             DEM×óÉÏ½ÇÎ¬¶È
-	* @param sceneHeight1                              Ö÷Í¼·ÂÕæSLC³¡¾°¸ß¶È
-	* @param sceneWidth1                               Ö÷Í¼·ÂÕæSLC³¡¾°¿í¶È
-	* @param nearRange1                                Ö÷Í¼×î½üĞ±¾à
-	* @param prf                                       Âö³åÖØ¸´ÆµÂÊ
-	* @param wavelength                                ²¨³¤
-	* @param rangeSpacing                              ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param azimuthSpacing                            ·½Î»Ïò²ÉÑù¼ä¸ô£¨m£©
-	* @param acquisitionStartTime1                     Ö÷Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime1                      Ö÷Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param acquisitionStartTime2                     ¸¨Í¼·½Î»ÏòÆğÊ¼Ê±¼ä
-	* @param acquisitionStopTime2                      ¸¨Í¼·½Î»Ïò½áÊøÊ±¼ä
-	* @param R1                                        Ö÷ĞÇĞ±¾à
-	* @param R2                                        ¸¨ĞÇĞ±¾à
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®è½¨é“å’Œåœºæ™¯DEMä»¥åŠæˆåƒå‚æ•°å‚è€ƒæ–œè·ï¼ˆå•å‘åŒæ”¶ï¼Œä¹’ä¹“æ¨¡å¼ï¼‰
+	* @param stateVec1                                 è½¨é“æ•°æ®1ï¼ˆä¸»æ˜Ÿï¼Œä¿¡å·å‘å°„è½¨é“+ä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param stateVec2                                 è½¨é“æ•°æ®2ï¼ˆè¾…æ˜Ÿï¼Œä¿¡å·æ¥æ”¶è½¨é“ï¼‰
+	* @param dem                                       åœºæ™¯DEMï¼ˆæ¥è‡ªSRTMï¼‰
+	* @param lon_upperleft                             DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                             DEMå·¦ä¸Šè§’ç»´åº¦
+	* @param sceneHeight1                              ä¸»å›¾ä»¿çœŸSLCåœºæ™¯é«˜åº¦
+	* @param sceneWidth1                               ä¸»å›¾ä»¿çœŸSLCåœºæ™¯å®½åº¦
+	* @param nearRange1                                ä¸»å›¾æœ€è¿‘æ–œè·
+	* @param prf                                       è„‰å†²é‡å¤é¢‘ç‡
+	* @param wavelength                                æ³¢é•¿
+	* @param rangeSpacing                              è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param azimuthSpacing                            æ–¹ä½å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param acquisitionStartTime1                     ä¸»å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime1                      ä¸»å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param acquisitionStartTime2                     è¾…å›¾æ–¹ä½å‘èµ·å§‹æ—¶é—´
+	* @param acquisitionStopTime2                      è¾…å›¾æ–¹ä½å‘ç»“æŸæ—¶é—´
+	* @param R1                                        ä¸»æ˜Ÿæ–œè·
+	* @param R2                                        è¾…æ˜Ÿæ–œè·
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generateSlantrange(
 		Mat& stateVec1,
@@ -226,19 +226,19 @@ public:
 		Mat& R1,
 		Mat& R2
 	);
-	/*@brief Æ¹ÅÒÄ£Ê½È¥²Î¿¼ÏàÎ»
-	* @param mappedDEM                              Åä×¼Ö÷Í¼Ïñ×ø±êÏµDEM
-	* @param mappedLat                              DEMÎ³¶È×ø±ê
-	* @param mappedLon                              DEM¾­¶È×ø±ê
-	* @param slcH5File1                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file2                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file3                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5file4                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5File1_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£¬È¥²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file2_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£¬È¥²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file3_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£¬È¥²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file4_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£¬È¥²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¹’ä¹“æ¨¡å¼å»å‚è€ƒç›¸ä½
+	* @param mappedDEM                              é…å‡†ä¸»å›¾åƒåæ ‡ç³»DEM
+	* @param mappedLat                              DEMçº¬åº¦åæ ‡
+	* @param mappedLon                              DEMç»åº¦åæ ‡
+	* @param slcH5File1                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file2                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file3                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file4                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5File1_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œå»å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file2_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œå»å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file3_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œå»å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file4_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œå»å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SLC_deramp(
 		Mat& mappedDEM,
@@ -253,15 +253,15 @@ public:
 		const char* slcH5File3_out,
 		const char* slcH5File4_out
 	);
-	/*@brief È¥²Î¿¼ÏàÎ»
-	* @param master_index                           Ö÷Í¼ĞòÁĞºÅ£¨1-based£©
-	* @param mappedDEM                              Åä×¼Ö÷Í¼Ïñ×ø±êÏµDEM
-	* @param mappedLat                              DEMÎ³¶È×ø±ê
-	* @param mappedLon                              DEM¾­¶È×ø±ê
-	* @param mode                                   ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒÄ£Ê½£¬4£ºË«ÆµÆ¹ÅÒÄ£Ê½£©
-	* @param slcH5FilesList                         Åä×¼h5ÎÄ¼şÊı×é
-	* @param slcH5FileListOut                       È¥²Î¿¼ºóh5ÎÄ¼şÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å»å‚è€ƒç›¸ä½
+	* @param master_index                           ä¸»å›¾åºåˆ—å·ï¼ˆ1-basedï¼‰
+	* @param mappedDEM                              é…å‡†ä¸»å›¾åƒåæ ‡ç³»DEM
+	* @param mappedLat                              DEMçº¬åº¦åæ ‡
+	* @param mappedLon                              DEMç»åº¦åæ ‡
+	* @param mode                                   æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“æ¨¡å¼ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“æ¨¡å¼ï¼‰
+	* @param slcH5FilesList                         é…å‡†h5æ–‡ä»¶æ•°ç»„
+	* @param slcH5FileListOut                       å»å‚è€ƒåh5æ–‡ä»¶æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SLC_deramp_14(
 		vector<string>& slcH5FilesList,
@@ -272,19 +272,19 @@ public:
 		Mat& mappedLon,
 		int mode
 	);
-	/*@brief Æ¹ÅÒÄ£Ê½ÖØĞÂ¼ÓÈë²Î¿¼ÏàÎ»
-	* @param mappedDEM                              Åä×¼Ö÷Í¼Ïñ×ø±êÏµDEM
-	* @param mappedLat                              DEMÎ³¶È×ø±ê
-	* @param mappedLon                              DEM¾­¶È×ø±ê
-	* @param slcH5File1                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file2                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file3                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5file4                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5File1_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£¬¼Ó²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file2_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£¬¼Ó²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file3_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£¬¼Ó²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @param slcH5file4_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£¬¼Ó²Î¿¼ÏàÎ»·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¹’ä¹“æ¨¡å¼é‡æ–°åŠ å…¥å‚è€ƒç›¸ä½
+	* @param mappedDEM                              é…å‡†ä¸»å›¾åƒåæ ‡ç³»DEM
+	* @param mappedLat                              DEMçº¬åº¦åæ ‡
+	* @param mappedLon                              DEMç»åº¦åæ ‡
+	* @param slcH5File1                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file2                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file3                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file4                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5File1_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼ŒåŠ å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file2_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼ŒåŠ å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file3_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼ŒåŠ å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @param slcH5file4_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼ŒåŠ å‚è€ƒç›¸ä½è¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SLC_reramp(
 		Mat& mappedDEM,
@@ -299,17 +299,17 @@ public:
 		const char* slcH5File3_out,
 		const char* slcH5File4_out
 	);
-	/*@brief Æ¹ÅÒÄ£Ê½¸ÉÉæÏàÎ»¹À¼Æ
-	* @param estimation_wndsize                     ¹À¼Æ´°¿Ú´óĞ¡
-	* @param slcH5File1                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file2                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file3                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5file4                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5File1_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file2_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file3_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨¸¨ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file4_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨Ö÷ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¹’ä¹“æ¨¡å¼å¹²æ¶‰ç›¸ä½ä¼°è®¡
+	* @param estimation_wndsize                     ä¼°è®¡çª—å£å¤§å°
+	* @param slcH5File1                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file2                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file3                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file4                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5File1_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file2_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file3_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file4_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int MB_phase_estimation(
 		int estimation_wndsize,
@@ -322,25 +322,25 @@ public:
 		const char* slcH5File3_out,
 		const char* slcH5File4_out
 	);
-	/*@brief Ë«ÆµÆ¹ÅÒÄ£Ê½¸ÉÉæÏàÎ»¹À¼Æ
-	* @param estimation_wndsize                     ¹À¼Æ´°¿Ú´óĞ¡
-	* @param slcH5File1                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file2                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬¸¨ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file3                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬¸¨ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5file4                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬Ö÷ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5File5                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file6                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬¸¨ĞÇ·¢Ö÷ĞÇÊÕ£©
-	* @param slcH5file7                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬¸¨ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5file8                             Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬Ö÷ĞÇ·¢¸¨ĞÇÊÕ£©
-	* @param slcH5File1_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file2_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬¸¨ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file3_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬¸¨ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file4_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ1£¬Ö÷ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5File5_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬Ö÷ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file6_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬¸¨ĞÇ·¢Ö÷ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file7_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬¸¨ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @param slcH5file8_out                         Åä×¼SLCÍ¼Ïñh5ÎÄ¼ş£¨ÆµÂÊ2£¬Ö÷ĞÇ·¢¸¨ĞÇÊÕ£¬·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief åŒé¢‘ä¹’ä¹“æ¨¡å¼å¹²æ¶‰ç›¸ä½ä¼°è®¡
+	* @param estimation_wndsize                     ä¼°è®¡çª—å£å¤§å°
+	* @param slcH5File1                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file2                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file3                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file4                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5File5                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file6                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file7                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5file8                             é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼‰
+	* @param slcH5File1_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file2_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file3_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file4_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡1ï¼Œä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5File5_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œä¸»æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file6_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œè¾…æ˜Ÿå‘ä¸»æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file7_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œè¾…æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @param slcH5file8_out                         é…å‡†SLCå›¾åƒh5æ–‡ä»¶ï¼ˆé¢‘ç‡2ï¼Œä¸»æ˜Ÿå‘è¾…æ˜Ÿæ”¶ï¼Œè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int MB_phase_estimation(
 		int estimation_wndsize,
@@ -361,29 +361,29 @@ public:
 		const char* slcH5File7_out,
 		const char* slcH5File8_out
 	);
-	/*@brief Æ¹ÅÒÄ£Ê½Ë«ÆµÎŞÄ£ºı×î´óËÆÈ»ÏàÎ»¹À¼Æ
-	* @param phase_reference                ²Î¿¼ÏàÎ»£¨ÓÃÓÚ×î´óËÆÈ»ËÑË÷µÄÇø¼äÈ·¶¨£©
-	* @param wrapped_phase_low              µÍÆµÏàÎ»
-	* @param wrapped_phase_high             ¸ßÆµÏàÎ»
-	* @param outphase                       ÈÚºÏÏàÎ»
-	* @param lat_coef                       Î³¶È×ª»»ÏµÊı
-	* @param lon_coef                       ¾­¶È×ª»»ÏµÊı
-	* @param wavelength_low                 µÍÆµ²¨³¤
-	* @param wavelength_high                ¸ßÆµ²¨³¤
-	* @param nearRangeTime                  Ö÷Í¼×î½üĞ±¾àÊ±¼ä£¨s£©
-	* @param rangeSpacing                   Ö÷Í¼¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param azimuthSpacing                 Ö÷Í¼·½Î»Ïò²ÉÑù¼ä¸ô£¨m£©
-	* @param offset_row                     Ö÷Í¼ÏñÔÚÔ­Í¼ÖĞµÄĞĞÆ«ÒÆ
-	* @param offset_col                     Ö÷Í¼ÏñÔÚÔ­Í¼ÖĞµÄÁĞÆ«ÒÆ
-	* @param start1                         Ö÷Í¼ÅÄÉãÆğÊ¼Ê±¼ä 
-	* @param end1                           Ö÷Í¼ÅÄÉã½áÊøÊ±¼ä
-	* @param start2                         ¸¨Í¼ÅÄÉãÆğÊ¼Ê±¼ä
-	* @param end2                           ¸¨Í¼ÅÄÉã½áÊøÊ±¼ä
-	* @param statevec1                      Ö÷ĞÇ¹ìµÀ
-	* @param statevec2                      ¸¨ĞÇ¹ìµÀ
-	* @param prf                            Âö³åÖØ¸´ÆµÂÊ
-	* @param demPath                        SRTM DEMÂ·¾¶
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¹’ä¹“æ¨¡å¼åŒé¢‘æ— æ¨¡ç³Šæœ€å¤§ä¼¼ç„¶ç›¸ä½ä¼°è®¡
+	* @param phase_reference                å‚è€ƒç›¸ä½ï¼ˆç”¨äºæœ€å¤§ä¼¼ç„¶æœç´¢çš„åŒºé—´ç¡®å®šï¼‰
+	* @param wrapped_phase_low              ä½é¢‘ç›¸ä½
+	* @param wrapped_phase_high             é«˜é¢‘ç›¸ä½
+	* @param outphase                       èåˆç›¸ä½
+	* @param lat_coef                       çº¬åº¦è½¬æ¢ç³»æ•°
+	* @param lon_coef                       ç»åº¦è½¬æ¢ç³»æ•°
+	* @param wavelength_low                 ä½é¢‘æ³¢é•¿
+	* @param wavelength_high                é«˜é¢‘æ³¢é•¿
+	* @param nearRangeTime                  ä¸»å›¾æœ€è¿‘æ–œè·æ—¶é—´ï¼ˆsï¼‰
+	* @param rangeSpacing                   ä¸»å›¾è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param azimuthSpacing                 ä¸»å›¾æ–¹ä½å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param offset_row                     ä¸»å›¾åƒåœ¨åŸå›¾ä¸­çš„è¡Œåç§»
+	* @param offset_col                     ä¸»å›¾åƒåœ¨åŸå›¾ä¸­çš„åˆ—åç§»
+	* @param start1                         ä¸»å›¾æ‹æ‘„èµ·å§‹æ—¶é—´ 
+	* @param end1                           ä¸»å›¾æ‹æ‘„ç»“æŸæ—¶é—´
+	* @param start2                         è¾…å›¾æ‹æ‘„èµ·å§‹æ—¶é—´
+	* @param end2                           è¾…å›¾æ‹æ‘„ç»“æŸæ—¶é—´
+	* @param statevec1                      ä¸»æ˜Ÿè½¨é“
+	* @param statevec2                      è¾…æ˜Ÿè½¨é“
+	* @param prf                            è„‰å†²é‡å¤é¢‘ç‡
+	* @param demPath                        SRTM DEMè·¯å¾„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int pingpong_MLE(
 		Mat& phase_reference,

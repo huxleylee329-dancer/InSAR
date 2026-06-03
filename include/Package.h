@@ -8,10 +8,10 @@
 #include"opencv2\highgui\highgui.hpp"
 #include"opencv2\imgproc\imgproc.hpp"
 #include"opencv2\opencv.hpp"
-#include <omp.h>  /*∂‡œﬂ≥Ãº∆À„ø‚*/
+#include <omp.h>  /*Â§öÁ∫øÁ®ãËÆ°ÁÆóÂ∫ì*/
 
 /*-------------------------------------------------------*/
-/*                    »˝Œ¨Œª÷√ ∏¡ø                       */
+/*                    ‰∏âÁª¥‰ΩçÁΩÆÁü¢Èáè                       */
 /*-------------------------------------------------------*/
 struct Position
 {
@@ -24,21 +24,21 @@ struct Position
 		this->y = 0.0;
 		this->z = 0.0;
 	}
-	/*¥´÷µππ‘Ï∫Ø ˝*/
+	/*‰º†ÂÄºÊûÑÈÄ†ÂáΩÊï∞*/
 	Position(double x, double y, double z)
 	{
 		this->x = x;
 		this->y = y;
 		this->z = z;
 	}
-	/*øΩ±¥ππ‘Ï∫Ø ˝*/
+	/*Êã∑Ë¥ùÊûÑÈÄ†ÂáΩÊï∞*/
 	Position(const Position& cp)
 	{
 		this->x = cp.x;
 		this->y = cp.y;
 		this->z = cp.z;
 	}
-	/*∏≥÷µ∫Ø ˝(…ÓøΩ±¥)*/
+	/*ËµãÂÄºÂáΩÊï∞(Ê∑±Êã∑Ë¥ù)*/
 	Position operator=(const Position& cp)
 	{
 		this->x = cp.x;
@@ -50,7 +50,7 @@ struct Position
 };
 
 /*-------------------------------------------------------*/
-/*                    »˝Œ¨ÀŸ∂» ∏¡ø                       */
+/*                    ‰∏âÁª¥ÈÄüÂ∫¶Áü¢Èáè                       */
 /*-------------------------------------------------------*/
 struct Velocity
 {
@@ -63,21 +63,21 @@ struct Velocity
 		this->vy = 0.0;
 		this->vz = 0.0;
 	}
-	/*¥´÷µππ‘Ï∫Ø ˝*/
+	/*‰º†ÂÄºÊûÑÈÄ†ÂáΩÊï∞*/
 	Velocity(double vx, double vy, double vz)
 	{
 		this->vx = vx;
 		this->vy = vy;
 		this->vz = vz;
 	}
-	/*øΩ±¥ππ‘Ï∫Ø ˝*/
+	/*Êã∑Ë¥ùÊûÑÈÄ†ÂáΩÊï∞*/
 	Velocity(const Velocity& cp)
 	{
 		this->vx = cp.vx;
 		this->vy = cp.vy;
 		this->vz = cp.vz;
 	}
-	/*∏≥÷µ∫Ø ˝(…ÓøΩ±¥)*/
+	/*ËµãÂÄºÂáΩÊï∞(Ê∑±Êã∑Ë¥ù)*/
 	Velocity operator=(const Velocity& cp)
 	{
 		this->vx = cp.vx;
@@ -89,7 +89,7 @@ struct Velocity
 };
 
 /*-------------------------------------------------------*/
-/*                   Œ¿–«πÏµ¿–≈œ¢                        */
+/*                   Âç´ÊòüËΩ®ÈÅì‰ø°ÊÅØ                        */
 /*-------------------------------------------------------*/
 struct OSV
 {
@@ -114,7 +114,7 @@ struct OSV
 		this->vy = vy;
 		this->vz = vz;
 	}
-	/*øΩ±¥ππ‘Ï∫Ø ˝*/
+	/*Êã∑Ë¥ùÊûÑÈÄ†ÂáΩÊï∞*/
 	OSV(const OSV& osv)
 	{
 		this->time = osv.time;
@@ -125,7 +125,7 @@ struct OSV
 		this->vy = osv.vy;
 		this->vz = osv.vz;
 	}
-	/*∏≥÷µ∫Ø ˝*/
+	/*ËµãÂÄºÂáΩÊï∞*/
 	OSV operator=(const OSV& osv)
 	{
 		this->time = osv.time;

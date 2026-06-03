@@ -465,7 +465,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 		return -1;
 	}
 	hid_t dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
-	// ¶ÁÈ¡ÎÄ¼şÖĞdatasetµÄdataspace¿Õ¼ä
+	// è¯»å–æ–‡ä»¶ä¸­datasetçš„dataspaceç©ºé—´
 	hid_t dataspace_id = H5Dget_space(dataset_id);
 	hsize_t dim[2];
 	int ndims = H5Sget_simple_extent_dims(dataspace_id, dim, NULL);
@@ -502,11 +502,11 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 		H5Tclose(type);
 		return -1;
 	}
-	// ¶¨Òå×Ó¼¯ËÄ´ó¼ş£¬²¹³¥£¬¸öÊı£¬¼ä¸ôºÍ¿é´óĞ¡
-	hsize_t count[2];   // ¿éµÄ´óĞ¡
-	hsize_t offset[2];  // ²¹³¥£¬¼´¿ªÊ¼Î»ÖÃ
-	hsize_t stride[2];  // ¼ä¸ô
-	hsize_t block[2];   // ¿éµÄ¸öÊı
+	// å®šä¹‰å­é›†å››å¤§ä»¶ï¼Œè¡¥å¿ï¼Œä¸ªæ•°ï¼Œé—´éš”å’Œå—å¤§å°
+	hsize_t count[2];   // å—çš„å¤§å°
+	hsize_t offset[2];  // è¡¥å¿ï¼Œå³å¼€å§‹ä½ç½®
+	hsize_t stride[2];  // é—´éš”
+	hsize_t block[2];   // å—çš„ä¸ªæ•°
 
 	offset[0] = offset_row;
 	offset[1] = offset_col;
@@ -520,7 +520,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 	block[0] = 1;
 	block[1] = 1;
 
-	// ´´½¨ÄÚ´æÖĞµÄdataspce¿Õ¼ä
+	// åˆ›å»ºå†…å­˜ä¸­çš„dataspceç©ºé—´
 	hsize_t dimsm[2];
 	dimsm[0] = rows_subarray;
 	dimsm[1] = cols_subarray;
@@ -582,7 +582,7 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		}		
 	}
 	hid_t dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
-	// ¶ÁÈ¡ÎÄ¼şÖĞdatasetµÄdataspace¿Õ¼ä
+	// è¯»å–æ–‡ä»¶ä¸­datasetçš„dataspaceç©ºé—´
 	hid_t dataspace_id = H5Dget_space(dataset_id);
 	hsize_t dim[2];
 	int ndims = H5Sget_simple_extent_dims(dataspace_id, dim, NULL);
@@ -655,11 +655,11 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		H5Tclose(type);
 		return -1;
 	}
-	// ¶¨Òå×Ó¼¯ËÄ´ó¼ş£¬²¹³¥£¬¸öÊı£¬¼ä¸ôºÍ¿é´óĞ¡
-	hsize_t count[2];   // ¿éµÄ´óĞ¡
-	hsize_t offset[2];  // ²¹³¥£¬¼´¿ªÊ¼Î»ÖÃ
-	hsize_t stride[2];  // ¼ä¸ô
-	hsize_t block[2];   // ¿éµÄ¸öÊı
+	// å®šä¹‰å­é›†å››å¤§ä»¶ï¼Œè¡¥å¿ï¼Œä¸ªæ•°ï¼Œé—´éš”å’Œå—å¤§å°
+	hsize_t count[2];   // å—çš„å¤§å°
+	hsize_t offset[2];  // è¡¥å¿ï¼Œå³å¼€å§‹ä½ç½®
+	hsize_t stride[2];  // é—´éš”
+	hsize_t block[2];   // å—çš„ä¸ªæ•°
 
 	offset[0] = offset_row;
 	offset[1] = offset_col;
@@ -673,7 +673,7 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 	block[0] = 1;
 	block[1] = 1;
 
-	// ´´½¨ÄÚ´æÖĞµÄdataspce¿Õ¼ä
+	// åˆ›å»ºå†…å­˜ä¸­çš„dataspceç©ºé—´
 	hsize_t dimsm[2];
 	dimsm[0] = rows_subarray;
 	dimsm[1] = cols_subarray;
@@ -874,20 +874,20 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		fprintf(stderr, "read_slc_from_TSXcos(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//×¢²áÒÑÖªÇı¶¯
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//´ò¿ªcosÎÄ¼ş
+	GDALAllRegister();	//æ³¨å†Œå·²çŸ¥é©±åŠ¨
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//æ‰“å¼€cosæ–‡ä»¶
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): failed to open %s!\n", filename);
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//»ñÈ¡²¨¶ÎÊı£¨cosÓ¦Îª1£©
+	int nBand = poDataset->GetRasterCount();	//è·å–æ³¢æ®µæ•°ï¼ˆcosåº”ä¸º1ï¼‰
 	int xsize = 0;
 	int ysize = 0;
 	if (nBand == 1)
 	{
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
 		if (xsize < 0 || ysize < 0)
@@ -897,9 +897,9 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
+		GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
 		int* pbuf = NULL;
-		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 		if (!pbuf)
 		{
 			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
@@ -907,7 +907,7 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 		int i, j;
 		//ComplexMat CMat;
 		//CMat.re = Mat::zeros(ysize, xsize, CV_64F);
@@ -917,9 +917,9 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		for (i = 0; i < ysize; i++)
 			for (j = 0; j < xsize; j++)
 			{
-				/*½«Êı¾İ°´ÕÕÊµ²¿¡¢Ğé²¿¶ÁÈëMatÖĞ
-				ÓÉÓÚcos°´ÕÕ´ó¶Ë´æ´¢£¬RasterIO»á×Ô¶¯×ª»¯ÎªĞ¡¶Ë£¬µ«»áµ¼ÖÂÊµ²¿Ğé²¿Î»ÖÃµßµ¹
-				Òò´Ë¸ß16Î»ÎªĞé²¿£¬µÍ16Î»ÎªÊµ²¿
+				/*å°†æ•°æ®æŒ‰ç…§å®éƒ¨ã€è™šéƒ¨è¯»å…¥Matä¸­
+				ç”±äºcosæŒ‰ç…§å¤§ç«¯å­˜å‚¨ï¼ŒRasterIOä¼šè‡ªåŠ¨è½¬åŒ–ä¸ºå°ç«¯ï¼Œä½†ä¼šå¯¼è‡´å®éƒ¨è™šéƒ¨ä½ç½®é¢ å€’
+				å› æ­¤é«˜16ä½ä¸ºè™šéƒ¨ï¼Œä½16ä½ä¸ºå®éƒ¨
 				*/
 				slc.re.ptr<short>(i)[j] = (pbuf[j + i * xsize] << 16) >> 16;
 				slc.im.ptr<short>(i)[j] = (pbuf[j + i * xsize] >> 16);
@@ -955,7 +955,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		return -1;
 	}
 	/*
-	* ¼ì²éh5ÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	* æ£€æŸ¥h5æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	*/
 
 	int ret;
@@ -963,7 +963,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
 	/*
-	* Ğ´ÈëslcÊı¾İ
+	* å†™å…¥slcæ•°æ®
 	*/
 
 	ComplexMat slc;
@@ -979,7 +979,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	slc.im.release();
 
 	/*
-	* Ğ´Èë¿ØÖÆµãÊı¾İ
+	* å†™å…¥æ§åˆ¶ç‚¹æ•°æ®
 	*/
 
 	Mat gcps;
@@ -992,7 +992,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5", error_head)) return -1;
 
 	/*
-	* ¸ù¾İ¿ØÖÆµãÊı¾İÄâºÏ¾­Î³¶È¡¢ÏÂÊÓ½ÇÓëÏñËØ×ø±ê£¨ĞĞ¡¢ÁĞ£©Ö®¼äµÄ¶àÏîÊ½¹ØÏµ
+	* æ ¹æ®æ§åˆ¶ç‚¹æ•°æ®æ‹Ÿåˆç»çº¬åº¦ã€ä¸‹è§†è§’ä¸åƒç´ åæ ‡ï¼ˆè¡Œã€åˆ—ï¼‰ä¹‹é—´çš„å¤šé¡¹å¼å…³ç³»
 	*/
 
 	double mean_lon, mean_lat, mean_inc, max_lon, max_lat, max_inc, min_lon, min_lat, min_inc;
@@ -1014,7 +1014,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	row = (row - double(rows) * 0.5) / (double(rows) + 1e-10);
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
-	//ÄâºÏ¾­¶È
+	//æ‹Ÿåˆç»åº¦
 
 	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
 	double rms;
@@ -1112,7 +1112,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÎ³¶È
+	//æ‹Ÿåˆçº¬åº¦
 
 	lat.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -1203,7 +1203,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÏÂÊÓ½Ç
+	//æ‹Ÿåˆä¸‹è§†è§’
 
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -1243,7 +1243,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏĞĞ×ø±ê
+	//æ‹Ÿåˆè¡Œåæ ‡
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -1334,7 +1334,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÁĞ×ø±ê
+	//æ‹Ÿåˆåˆ—åæ ‡
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -1426,7 +1426,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	}
 
 	/*
-	* Ğ´Èë¹ìµÀÊı¾İ
+	* å†™å…¥è½¨é“æ•°æ®
 	*/
 
 	Mat stateVec;
@@ -1438,7 +1438,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
-	* Ğ´Èë¶àÆÕÀÕÖĞĞÄÆµÂÊ²ÎÊı
+	* å†™å…¥å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡å‚æ•°
 	*/
 
 	Mat Dc;
@@ -1448,44 +1448,44 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
-	* Ğ´ÈëÆäËû¸¨Öú²ÎÊı
+	* å†™å…¥å…¶ä»–è¾…åŠ©å‚æ•°
 	*/
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 	
-	//Êı¾İÀàĞÍ
+	//æ•°æ®ç±»å‹
 	ret = write_str_to_h5(dst_h5_filename, "file_type", "SLC");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	ret = xmldoc.get_str_para("mission", sensor);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "sensor", sensor.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¼«»¯
+	//æåŒ–
 	ret = xmldoc.get_str_para("polLayer", polarization);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "polarization", polarization.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¹¤×÷Ä£Ê½
+	//å·¥ä½œæ¨¡å¼
 	ret = xmldoc.get_str_para("imagingMode", imaging_mode);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "imaging_mode", imaging_mode.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÊÓÏò
+	//è§†å‘
 	ret = xmldoc.get_str_para("lookDirection", lookside);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "lookside", lookside.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¹ìµÀ·½Ïò
+	//è½¨é“æ–¹å‘
 	ret = xmldoc.get_str_para("orbitDirection", orbit_dir);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "orbit_dir", orbit_dir.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	//´¦ÀíµÈ¼¶
+	//å¤„ç†ç­‰çº§
 	ret = write_str_to_h5(dst_h5_filename, "process_state", "InSAR_0");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//´¦ÀíÃèÊö
+	//å¤„ç†æè¿°
 	ret = write_str_to_h5(dst_h5_filename, "comment", "import from TerraSAR-X Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
@@ -1495,28 +1495,28 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		scene_bottomright_lon, scene_bottomright_lat, azimuth_resolution,
 		range_resolution, azimuth_spacing, range_spacing;
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
-	//¹ìµÀ¸ß¶È,TerraSARÃ»Ìá¹©£¬ÉèÖÃÎª-1
+	//è½¨é“é«˜åº¦,TerraSARæ²¡æä¾›ï¼Œè®¾ç½®ä¸º-1
 	tmp.at<double>(0, 0) = -1;
 	ret = write_array_to_h5(dst_h5_filename, "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	
 	TiXmlElement* pnode, * pchild;
 
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.find_node("start", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_start_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.find_node("stop", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_stop_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÔØÆµ
+	//è½½é¢‘
 	ret = xmldoc.find_node("instrument", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "centerFrequency", pchild);
@@ -1530,19 +1530,19 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = carrier_frequency;
 	ret = write_array_to_h5(dst_h5_filename, "carrier_frequency", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//ÖĞĞÄÏÂÊÓ½Ç
+	//ä¸­å¿ƒä¸‹è§†è§’
 	ret = xmldoc.get_double_para("incidenceAngle", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
 	ret = write_array_to_h5(dst_h5_filename, "incidence_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("firstPixel", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_first_pixel * 299792458.0 / 2;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//×îÔ¶Ğ±¾à
+	//æœ€è¿œæ–œè·
 	ret = xmldoc.get_double_para("lastPixel", &slant_range_last_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_last_pixel * 299792458.0 / 2;
@@ -1554,25 +1554,25 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = heading;
 	ret = write_array_to_h5(dst_h5_filename, "heading", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("commonPRF", &prf);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = prf;
 	ret = write_array_to_h5(dst_h5_filename, "prf", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//·½Î»Ïò·Ö±æÂÊ
+	//æ–¹ä½å‘åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("azimuthResolution", &azimuth_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = azimuth_resolution;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏò·Ö±æÂÊ
+	//è·ç¦»å‘åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("slantRangeResolution", &range_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = range_resolution;
 	ret = write_array_to_h5(dst_h5_filename, "range_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//·½Î»Ïò²ÉÑù¼ä¸ô
+	//æ–¹ä½å‘é‡‡æ ·é—´éš”
 	ret = xmldoc.find_node("productSpecific", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "projectedSpacingAzimuth", pchild);
@@ -1586,7 +1586,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = azimuth_spacing;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏò²ÉÑù¼ä¸ô
+	//è·ç¦»å‘é‡‡æ ·é—´éš”
 	ret = xmldoc._find_node(pnode, "commonRSF", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = sscanf(pchild->GetText(), "%lf", &range_spacing);
@@ -1603,13 +1603,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	int azimuth_len, range_len;
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
-	//·½Î»ÏòÏñËØµãÊı
+	//æ–¹ä½å‘åƒç´ ç‚¹æ•°
 	ret = xmldoc.get_int_para("numberOfRows", &azimuth_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = azimuth_len;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏòÏñËØµãÊı
+	//è·ç¦»å‘åƒç´ ç‚¹æ•°
 	ret = xmldoc.get_int_para("numberOfColumns", &range_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = range_len;
@@ -1745,7 +1745,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 	}
 
 	/*
-	* ¶ÁÈ¡¾«ÃÜ¹ìµÀÊı¾İ
+	* è¯»å–ç²¾å¯†è½¨é“æ•°æ®
 	*/
 
 	int ret, numOfstateVec;
@@ -1785,7 +1785,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 		if (gps_time <= start_time && fabs(gps_time - start_time) <= 100.0) start = true;
 		if (gps_time >= stop_time && fabs(gps_time - stop_time) >= 100.0) stop = true;
 
-		if (start && !stop)//¿ªÊ¼¼ÇÂ¼
+		if (start && !stop)//å¼€å§‹è®°å½•
 		{
 			ret = xmldoc._find_node(pnode, "X", pchild);
 			if (ret < 0)
@@ -1881,7 +1881,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 	tmp(cv::Range(0, count), cv::Range(0, 7)).copyTo(stateVec);
 
 	/*
-	* Ğ´Èë¾«ÃÜ¹ìµÀÊı¾İ
+	* å†™å…¥ç²¾å¯†è½¨é“æ•°æ®
 	*/
 
 	ret = write_array_to_h5(dst_h5_filename, "fine_state_vec", stateVec);
@@ -1911,7 +1911,7 @@ int FormatConversion::read_slc_from_Sentinel(
 	TiXmlElement* pnode = NULL;
 	int linesPerBurst, samplesPerBurst, burst_count;
 	/*
-	* ¶ÁÈ¡xmlÎÄ¼şÀïµÄburst²ÎÊı
+	* è¯»å–xmlæ–‡ä»¶é‡Œçš„burstå‚æ•°
 	*/
 	ret = xmldoc.get_int_para("linesPerBurst", &linesPerBurst);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
@@ -1929,7 +1929,7 @@ int FormatConversion::read_slc_from_Sentinel(
 
 
 
-	//Öğ¸öburst¶ÁÈ¡ÄÚÈİ
+	//é€ä¸ªburstè¯»å–å†…å®¹
 	TiXmlElement* pchild = NULL;
 	ret = xmldoc._find_node(pnode, "burst", pchild);
 	if (ret < 0)
@@ -2009,7 +2009,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 	}
 
 	/*
-	* ÕÒµ½ËùÓĞÎŞĞ§ĞĞ
+	* æ‰¾åˆ°æ‰€æœ‰æ— æ•ˆè¡Œ
 	*/
 	long firstValidSample;
 	char* ptr;
@@ -2102,7 +2102,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 
 	/*
-	* ¼ì²éh5ÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	* æ£€æŸ¥h5æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	*/
 
 	int ret;
@@ -2110,12 +2110,12 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
 	/*
-	* Ğ´ÈëslcÊı¾İ
+	* å†™å…¥slcæ•°æ®
 	*/
 
 	ComplexMat slc;Mat gcps_line_index;
 	int rows, cols;
-	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index);//ĞèÒªdeburst
+	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index);//éœ€è¦deburst
 	if (return_check(ret, "read_slc_from_Sentinel()", error_head)) return -1;
 	//ret = sentinel_deburst(xml_filename, slc, sentinel);
 	//if (return_check(ret, "sentinel_deburst()", error_head)) return -1;
@@ -2128,7 +2128,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	slc.im.release();
 
 	/*
-	* Ğ´Èë¿ØÖÆµãÊı¾İ
+	* å†™å…¥æ§åˆ¶ç‚¹æ•°æ®
 	*/
 
 	Mat gcps;
@@ -2154,7 +2154,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
-	* ¸ù¾İ¿ØÖÆµãÊı¾İÄâºÏ¾­Î³¶È¡¢ÏÂÊÓ½ÇÓëÏñËØ×ø±ê£¨ĞĞ¡¢ÁĞ£©Ö®¼äµÄ¶àÏîÊ½¹ØÏµ
+	* æ ¹æ®æ§åˆ¶ç‚¹æ•°æ®æ‹Ÿåˆç»çº¬åº¦ã€ä¸‹è§†è§’ä¸åƒç´ åæ ‡ï¼ˆè¡Œã€åˆ—ï¼‰ä¹‹é—´çš„å¤šé¡¹å¼å…³ç³»
 	*/
 
 	double mean_lon, mean_lat, mean_inc, max_lon, max_lat, max_inc, min_lon, min_lat, min_inc;
@@ -2173,10 +2173,10 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 	lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinelĞĞÁĞÆğµãÎª0£¬+1Í³Ò»Îª1.
+	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinelè¡Œåˆ—èµ·ç‚¹ä¸º0ï¼Œ+1ç»Ÿä¸€ä¸º1.
 	col = (col + 1 - double(cols) * 0.5) / (double(cols) + 1e-10);
 	
-	//ÄâºÏ¾­¶È
+	//æ‹Ÿåˆç»åº¦
 
 	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
 	double rms;
@@ -2274,7 +2274,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÎ³¶È
+	//æ‹Ÿåˆçº¬åº¦
 
 	lat.copyTo(b);
 
@@ -2366,7 +2366,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÏÂÊÓ½Ç
+	//æ‹Ÿåˆä¸‹è§†è§’
 
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -2406,7 +2406,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏĞĞ×ø±ê
+	//æ‹Ÿåˆè¡Œåæ ‡
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -2497,7 +2497,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//ÄâºÏÁĞ×ø±ê
+	//æ‹Ÿåˆåˆ—åæ ‡
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -2589,7 +2589,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 
 	/*
-	* Ğ´Èë¹ìµÀÊı¾İ
+	* å†™å…¥è½¨é“æ•°æ®
 	*/
 
 	Mat stateVec;
@@ -2601,7 +2601,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	
 
 	/*
-	* Ğ´Èë¶àÆÕÀÕÖĞĞÄÆµÂÊÊı¾İ
+	* å†™å…¥å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡æ•°æ®
 	*/
 
 	Mat Dc;
@@ -2611,52 +2611,52 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
-	* ÆäËû¸¨ÖúÊı¾İ
+	* å…¶ä»–è¾…åŠ©æ•°æ®
 	*/
 
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 
-	//Êı¾İÀàĞÍ
+	//æ•°æ®ç±»å‹
 	ret = xmldoc.get_str_para("productType", file_type);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "file_type", file_type.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	ret = xmldoc.get_str_para("missionId", sensor);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "sensor", sensor.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¼«»¯
+	//æåŒ–
 	ret = xmldoc.get_str_para("polarisation", polarization);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "polarization", polarization.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¹¤×÷Ä£Ê½
+	//å·¥ä½œæ¨¡å¼
 	ret = xmldoc.get_str_para("mode", imaging_mode);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "imaging_mode", imaging_mode.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÊÓÏò
+	//è§†å‘
 	ret = write_str_to_h5(dst_h5_filename, "lookside", "RIGHT");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//¹ìµÀ·½Ïò
+	//è½¨é“æ–¹å‘
 	ret = xmldoc.get_str_para("pass", orbit_dir);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "orbit_dir", orbit_dir.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.get_str_para("startTime", acquisition_start_time);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_start_time", acquisition_start_time.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.get_str_para("stopTime", acquisition_stop_time);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_stop_time", acquisition_stop_time.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	//¾«ÃÜ¹ìµÀÊı¾İ
+	//ç²¾å¯†è½¨é“æ•°æ®
 	if (POD_file)
 	{
 		double start_t, end_t;
@@ -2665,10 +2665,10 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		read_POD(POD_file, start_t, end_t, dst_h5_filename);
 	}
 
-	//´¦ÀíµÈ¼¶
+	//å¤„ç†ç­‰çº§
 	ret = write_str_to_h5(dst_h5_filename, "process_state", "InSAR_0");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//´¦ÀíÃèÊö
+	//å¤„ç†æè¿°
 	ret = write_str_to_h5(dst_h5_filename, "comment", "import from sentinel1 Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
@@ -2679,29 +2679,29 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		range_resolution, azimuth_spacing, range_spacing;
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 
-	//¹ìµÀ¸ß¶È,sentinelÃ»Ìá¹©£¬ÉèÖÃÎª-1
+	//è½¨é“é«˜åº¦,sentinelæ²¡æä¾›ï¼Œè®¾ç½®ä¸º-1
 	tmp.at<double>(0, 0) = -1;
 	ret = write_array_to_h5(dst_h5_filename, "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//ÔØÆµ
+	//è½½é¢‘
 	ret = xmldoc.get_double_para("radarFrequency", &carrier_frequency);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = carrier_frequency;
 	ret = write_array_to_h5(dst_h5_filename, "carrier_frequency", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//ÖĞĞÄÏÂÊÓ½Ç
+	//ä¸­å¿ƒä¸‹è§†è§’
 	ret = xmldoc.get_double_para("incidenceAngleMidSwath", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
 	ret = write_array_to_h5(dst_h5_filename, "incidence_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("slantRangeTime", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_first_pixel;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//×îÔ¶Ğ±¾à£¬sentinelÎ´Ìá¹©£¬ÉèÖÃÎª-1
+	//æœ€è¿œæ–œè·ï¼Œsentinelæœªæä¾›ï¼Œè®¾ç½®ä¸º-1
 	tmp.at<double>(0, 0) = -1;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_last_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
@@ -2711,27 +2711,27 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	tmp.at<double>(0, 0) = heading;
 	ret = write_array_to_h5(dst_h5_filename, "heading", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("prf", &prf);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = prf;
 	ret = write_array_to_h5(dst_h5_filename, "prf", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//·½Î»Ïò·Ö±æÂÊ
+	//æ–¹ä½å‘åˆ†è¾¨ç‡
 	tmp.at<double>(0, 0) = 20;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏò·Ö±æÂÊ
+	//è·ç¦»å‘åˆ†è¾¨ç‡
 	tmp.at<double>(0, 0) = 5;
 	ret = write_array_to_h5(dst_h5_filename, "range_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//·½Î»Ïò²ÉÑù¼ä¸ô
+	//æ–¹ä½å‘é‡‡æ ·é—´éš”
 	ret = xmldoc.get_double_para("azimuthPixelSpacing", &azimuth_spacing);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = azimuth_spacing;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏò²ÉÑù¼ä¸ô
+	//è·ç¦»å‘é‡‡æ ·é—´éš”
 	ret = xmldoc.get_double_para("rangePixelSpacing", &range_spacing);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = range_spacing;
@@ -2741,11 +2741,11 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 
 	int azimuth_len, range_len;
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
-	//·½Î»ÏòÏñËØµãÊı
+	//æ–¹ä½å‘åƒç´ ç‚¹æ•°
 	tmp_int.at<int>(0, 0) = rows;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//¾àÀëÏòÏñËØµãÊı
+	//è·ç¦»å‘åƒç´ ç‚¹æ•°
 	tmp_int.at<int>(0, 0) = cols;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
@@ -2923,7 +2923,7 @@ int FormatConversion::get_a_burst(
 	}
 	if (buf) free(buf);
 
-	//ÌŞ³ıÎŞĞ§Êı¾İ
+	//å‰”é™¤æ— æ•ˆæ•°æ®
 	ret = xmldoc._find_node(pnode, "firstValidSample", pchild);
 	if (ret < 0)
 	{
@@ -3004,7 +3004,7 @@ int FormatConversion::get_burst_sentinel(
 	int linesPerBurst, samplesPerBurst, burst_count;
 	double azimuthTimeInterval;
 	/*
-	* ¶ÁÈ¡xmlÎÄ¼şÀïµÄburst²ÎÊı
+	* è¯»å–xmlæ–‡ä»¶é‡Œçš„burstå‚æ•°
 	*/
 	ret = xmldoc.get_int_para("linesPerBurst", &linesPerBurst);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
@@ -3028,7 +3028,7 @@ int FormatConversion::get_burst_sentinel(
 	}
 
 
-	//¶ÁÈ¡burstÄÚÈİ
+	//è¯»å–burstå†…å®¹
 	TiXmlElement* pchild = NULL, * pchild2 = NULL;
 	int count = 1;
 	ret = xmldoc._find_node(pnode, "burst", pchild);
@@ -3123,7 +3123,7 @@ int FormatConversion::get_burst_sentinel(
 		free(buf); buf = NULL;
 	}
 
-	//ÌŞ³ıÎŞĞ§Êı¾İ
+	//å‰”é™¤æ— æ•ˆæ•°æ®
 	ret = xmldoc._find_node(pchild, "firstValidSample", pchild2);
 	if (ret < 0)
 	{
@@ -3172,8 +3172,8 @@ int FormatConversion::get_burst_sentinel(
 	end = linesPerBurst - (invalideLines - start);
 	burst = burst(cv::Range(start, end), cv::Range(0, samplesPerBurst));
 
-	//ÇóÈ¡overlapSize
-	if (!pchild->NextSiblingElement()) *overlapSize = -1;//-1±íÊ¾×îºóÒ»¸öburst
+	//æ±‚å–overlapSize
+	if (!pchild->NextSiblingElement()) *overlapSize = -1;//-1è¡¨ç¤ºæœ€åä¸€ä¸ªburst
 	else
 	{
 		pchild = pchild->NextSiblingElement();
@@ -3224,7 +3224,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	match_wnd2.convertTo(match_wnd2, CV_64F);
 	
 
-	//ÇóÈ¡Æ«ÒÆÁ¿
+	//æ±‚å–åç§»é‡
 	//ComplexMat t1, t2;
 	//regis.interp_paddingzero(match_wnd, t1, 8);
 	//regis.interp_paddingzero(match_wnd2, t2, 8);
@@ -3234,7 +3234,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	ret = real_coherent(match_wnd, match_wnd2, &offset_row, &offset_col);
 	if (return_check(ret, "real_coherent()", error_head)) return -1;
 
-	//Ë®Æ½°áÒÆthis_burst
+	//æ°´å¹³æ¬ç§»this_burst
 	
 	//if (offset_col > 0)
 	//{
@@ -3357,7 +3357,7 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 		return -1;
 	}
 	int rows, cols, sarfd_record_length, record_length, sardata_offset;
-	//¼ì²éÊı¾İ¸ñÊ½
+	//æ£€æŸ¥æ•°æ®æ ¼å¼
 	fseek(fp, 9 - 1, SEEK_SET);
 	if (fread(&sarfd_record_length, 4, 1, fp) != 1)
 	{
@@ -3373,7 +3373,7 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 		return -1;
 	}
 	char* ptr = NULL;
-	//È·¶¨slcÊı¾İ³ß´ç
+	//ç¡®å®šslcæ•°æ®å°ºå¯¸
 	fseek(fp, 237 - 1, SEEK_SET);
 	fread(buf, 1, 8, fp);
 	rows = strtol(buf, &ptr, 0);
@@ -3383,12 +3383,12 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 	fseek(fp, sarfd_record_length + 25 - 1, SEEK_SET);
 	fread(&cols, 4, 1, fp);
 	cols = Big2Little32(cols);
-	//¶ÁÈ¡Êı¾İÆ«ÒÆÁ¿
+	//è¯»å–æ•°æ®åç§»é‡
 	memset(buf, 0, 2048);
 	fseek(fp, 277 - 1, SEEK_SET);
 	fread(buf, 1, 4, fp);
 	sardata_offset = strtol(buf, &ptr, 0);
-	//¶ÁÈ¡Êı¾İ
+	//è¯»å–æ•°æ®
 	slc.re.create(rows, cols, CV_32F);
 	slc.im.create(rows, cols, CV_32F);
 	float* p = (float*)malloc(record_length);
@@ -3421,7 +3421,7 @@ int FormatConversion::read_stateVec_from_ALOS(const char* LED_file, Mat& stateVe
 		return -1;
 	}
 
-	//¼ì²éÎÄ¼ş¸ñÊ½
+	//æ£€æŸ¥æ–‡ä»¶æ ¼å¼
 	int File_descriptor_len = 720;
 	int Data_set_summary_len = 4096;
 	int num_stateVec = 28;
@@ -3444,7 +3444,7 @@ int FormatConversion::read_stateVec_from_ALOS(const char* LED_file, Mat& stateVe
 	
 	stateVec.create(num_stateVec, 7, CV_64F);
 
-	//¼ÆËãGPSÊ±¼ä
+	//è®¡ç®—GPSæ—¶é—´
 	
 	char str[10240];
 	memset(str, 0, 10240);
@@ -3499,7 +3499,7 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 		fprintf(stderr, "read_conversion_coefficient_from_ALOS(): input check failed!\n");
 		return -1;
 	}
-	//¼ì²éÎÄ¼ş
+	//æ£€æŸ¥æ–‡ä»¶
 
 	int ret, record_len, data_set_summary_len, platform_pos_len,
 		attitue_data_len, radiometric_data_len, facility_related_record_len, offset;
@@ -3528,7 +3528,7 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 		return -1;
 	}
 
-	//¼ÆËãÆ«ÒÆÁ¿
+	//è®¡ç®—åç§»é‡
 
 	fseek(fp, 187 - 1, SEEK_SET);
 	fread(str, 1, 6, fp);
@@ -3548,9 +3548,9 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 	facility_related_record_len = 0;
 	offset = record_len + data_set_summary_len + platform_pos_len + attitue_data_len + radiometric_data_len;
 
-	//¶ÁÈ¡Êı¾İ
+	//è¯»å–æ•°æ®
 	int count0 = 0;
-	while (facility_related_record_len != 5000/*ALOS2Í£Ö¹Ìõ¼ş*/ && count0 < 11/*ALOS1Í£Ö¹Ìõ¼ş*/)
+	while (facility_related_record_len != 5000/*ALOS2åœæ­¢æ¡ä»¶*/ && count0 < 11/*ALOS1åœæ­¢æ¡ä»¶*/)
 	{
 		offset += facility_related_record_len;
 		fseek(fp, offset + 9 - 1, SEEK_SET);
@@ -3621,12 +3621,12 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
-	///////////////////////´´½¨h5ÎÄ¼ş////////////
+	///////////////////////åˆ›å»ºh5æ–‡ä»¶////////////
 
 	int ret;
 	if (return_check(creat_new_h5(dst_h5), "creat_new_h5()", error_head)) return -1;
 
-	//////////////¶ÁÈ¡slcÊı¾İ²¢Ğ´Èëµ½Ä¿±êÎÄ¼şÖĞ/////////////
+	//////////////è¯»å–slcæ•°æ®å¹¶å†™å…¥åˆ°ç›®æ ‡æ–‡ä»¶ä¸­/////////////
 
 	ComplexMat slc;
 	ret = read_slc_from_ALOS(IMG_file, slc);
@@ -3639,7 +3639,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	slc.re.release();
 	slc.im.release();
 
-	//////////////¶ÁÈ¡²¢Ğ´Èë¹ìµÀÊı¾İ//////////////////////
+	//////////////è¯»å–å¹¶å†™å…¥è½¨é“æ•°æ®//////////////////////
 
 	Mat stateVec;
 	ret = read_stateVec_from_ALOS(LED_file, stateVec);
@@ -3647,7 +3647,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	ret = write_array_to_h5(dst_h5, "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	////////////¶ÁÈ¡²¢Ğ´ÈëÍ¼Ïñ×ø±êÓë¾­Î³×ø±ê×ª»»¹ØÏµ////////////////////
+	////////////è¯»å–å¹¶å†™å…¥å›¾åƒåæ ‡ä¸ç»çº¬åæ ‡è½¬æ¢å…³ç³»////////////////////
 
 	Mat lon_coef, lat_coef, row_coef, col_coef;
 	ret = read_conversion_coefficient_from_ALOS(LED_file, lon_coef, lat_coef, row_coef, col_coef);
@@ -3662,7 +3662,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 
-	//////////´ò¿ªLEDÎÄ¼ş/////////////
+	//////////æ‰“å¼€LEDæ–‡ä»¶/////////////
 
 	FILE* fp = NULL;
 	fopen_s(&fp, LED_file, "rb");
@@ -3672,7 +3672,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
-	///////////¶ÁÈ¡²¢Ğ´Èë¶àÆÕÀÕÖĞĞÄÆµÂÊ£¨ALOSÖ»¸øÁË¶àÆÕÀÕÖĞĞÄÆµÂÊÑØ¾àÀëÏòÄâºÏÏµÊı£©/////////
+	///////////è¯»å–å¹¶å†™å…¥å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ï¼ˆALOSåªç»™äº†å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡æ²¿è·ç¦»å‘æ‹Ÿåˆç³»æ•°ï¼‰/////////
 
 	char* ptr;
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
@@ -3684,7 +3684,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	tmp.at<double>(0, 0) = strtod(ptr, &ptr);
 	write_array_to_h5(dst_h5, "doppler_coefficient_b", tmp);
 
-	///////////ÏÂÊÓ½ÇÄâºÏÏµÊı//////////////
+	///////////ä¸‹è§†è§’æ‹Ÿåˆç³»æ•°//////////////
 
 	Mat inc_coefficient_r = Mat::zeros(1, 11, CV_64F);
 	fseek(fp, 720 + 1887 - 1, SEEK_SET); memset(str, 0, 2048);
@@ -3702,34 +3702,34 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	inc_coefficient_r.at<double>(0, 9) = strtod(ptr, &ptr) * factor;
 	write_array_to_h5(dst_h5, "inc_coefficient_r", inc_coefficient_r);
 
-	//ÖĞĞÄÏÂÊÓ½Ç
+	//ä¸­å¿ƒä¸‹è§†è§’
 	fseek(fp, 720 + 485 - 1, SEEK_SET); memset(str, 0, 2048);
 	fread(str, 1, 8, fp);
 	double inc_center;
 	string temp_str = str;
 	sscanf(temp_str.c_str(), "%lf", &inc_center);
 	write_double_to_h5(dst_h5, "inc_center", inc_center);
-	///////////Ğ´ÈëÆäËû¸¨Öú²ÎÊı//////////////
+	///////////å†™å…¥å…¶ä»–è¾…åŠ©å‚æ•°//////////////
 
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 	int record_len, data_set_summary_len, platform_pos_len,
 		attitue_data_len, radiometric_data_len;
 	record_len = 720; data_set_summary_len = 4096; platform_pos_len = 4680; radiometric_data_len = 9860;
-	//Êı¾İÀàĞÍ
+	//æ•°æ®ç±»å‹
 	ret = write_str_to_h5(dst_h5, "file_type", "SLC");
 	if (return_check(ret, "write_array_to_h5()", error_head))
 	{
 		if (fp) fclose(fp);
 		return -1;
 	}
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	fseek(fp, 49 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 3, fp);
 	sensor = str;
 	write_str_to_h5(dst_h5, "sensor", sensor.c_str());
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	string year, month, day, hour, minute, second, temp_string;
 	int h, m; double s;
 	fseek(fp, record_len + 69 - 1, SEEK_SET);
@@ -3748,7 +3748,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	tmp.at<double>(0, 0) = strtod(str, &ptr) / 1000;
 	write_array_to_h5(dst_h5, "prf", tmp);
 	double prf = tmp.at<double>(0, 0);
-	//¼«»¯·½Ê½
+	//æåŒ–æ–¹å¼
 	FILE* fp1 = NULL;
 	fopen_s(&fp1, IMG_file, "rb");
 	if (fp1)
@@ -3765,7 +3765,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		polarization = r + t;
 		write_str_to_h5(dst_h5, "polarization", polarization.c_str());
 
-		//ÅÄÉãÆğÊ¼Ê±¼ä
+		//æ‹æ‘„èµ·å§‹æ—¶é—´
 		uint64_t micro;
 		fseek(fp1, 720 + 85 - 1, SEEK_SET);
 		fread(&micro, 8, 1, fp1);
@@ -3787,14 +3787,14 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 		secds += (double)(rows - 1) / prf;
 
-		//ÅÄÉã½áÊøÊ±¼ä
+		//æ‹æ‘„ç»“æŸæ—¶é—´
 		memset(str, 0, 2048);
 		sprintf(str, "%lf", secds);
 		second = str;
 		string end_time = year + "-" + month + "-" + day + "T" + hour + ":" + minute + ":" + second;
 		write_str_to_h5(dst_h5, "acquisition_stop_time", end_time.c_str());
 
-		//×óÉÏ½Ç¾­Î³¶È£¨µÚÒ»¸öÏñËØ£©
+		//å·¦ä¸Šè§’ç»çº¬åº¦ï¼ˆç¬¬ä¸€ä¸ªåƒç´ ï¼‰
 		int lon_topleft, lat_topleft, lon_bottomright, lat_bottomright, center_lat, center_lon, slant_range_first_pixel;
 		Mat temp = Mat::zeros(1, 1, CV_64F);
 		fseek(fp1, 720 + 193 - 1, SEEK_SET);
@@ -3809,7 +3809,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		temp.at<double>(0, 0) = (double)lon_topleft / 1e6;
 		write_array_to_h5(dst_h5, "scene_topleft_lon", temp);
 
-		//ÓÒÉÏ½Ç¾­Î³¶È
+		//å³ä¸Šè§’ç»çº¬åº¦
 		fseek(fp1, 720 + 201 - 1, SEEK_SET);
 		fread(&lat_bottomright, 4, 1, fp1);
 		lat_bottomright = Big2Little32(lat_bottomright);
@@ -3822,7 +3822,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		temp.at<double>(0, 0) = (double)lon_bottomright / 1e6;
 		write_array_to_h5(dst_h5, "scene_topright_lon", temp);
 
-		//×î½üĞ±¾à
+		//æœ€è¿‘æ–œè·
 		fseek(fp1, 720 + 117 - 1, SEEK_SET);
 		fread(&slant_range_first_pixel, 4, 1, fp1);
 		slant_range_first_pixel = Big2Little32(slant_range_first_pixel);
@@ -3830,20 +3830,20 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 		if (fp1) fclose(fp1);
 	}
-	//ÅÄÉãÄ£Ê½
+	//æ‹æ‘„æ¨¡å¼
 	fseek(fp, 720 + 413 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 32, fp);
 	if (str[4] == '2')//ALOS2
 	{
 		attitue_data_len = 16384;
-		//ÊÓÏò
+		//è§†å‘
 		string filename = IMG_file;
 		filename = filename.substr(filename.find_last_of('\\') + 1);
-		//ÅÄÉãÄ£Ê½
+		//æ‹æ‘„æ¨¡å¼
 		imaging_mode = filename.substr(29, 3);
 		write_str_to_h5(dst_h5, "imaging_mode", imaging_mode.c_str());
-		if (filename[32] == 'L')//×óÊÓ
+		if (filename[32] == 'L')//å·¦è§†
 		{
 			lookside = "LEFT";
 		}
@@ -3852,7 +3852,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 			lookside = "RIGHT";
 		}
 		
-		//¹ìµÀ·½Ïò
+		//è½¨é“æ–¹å‘
 		if (filename[38] == 'D')
 		{
 			orbit_dir = "Descending";
@@ -3880,13 +3880,13 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	}
 	write_str_to_h5(dst_h5, "lookside", lookside.c_str());
 	write_str_to_h5(dst_h5, "orbit_dir", orbit_dir.c_str());
-	//ÔØÆµ
+	//è½½é¢‘
 	fseek(fp, 720 + 501 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = 3e8 / strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "carrier_frequency", tmp);
-	//ÖĞĞÄÏÂÊÓ½Ç
+	//ä¸­å¿ƒä¸‹è§†è§’
 	fseek(fp, 720 + 485 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 8, fp);
@@ -3898,38 +3898,38 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	//fread(str, 1, 16, fp);
 	//tmp.at<double>(0, 0) = strtod(str, &ptr) / 1000;
 	//write_array_to_h5(dst_h5, "prf", tmp);
-	//·½Î»ÏòÏñËØµãÊı
+	//æ–¹ä½å‘åƒç´ ç‚¹æ•°
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
 	tmp_int.at<int>(0, 0) = rows;
 	write_array_to_h5(dst_h5, "azimuth_len", tmp_int);
-	//¾àÀëÏòÏñËØµãÊı
+	//è·ç¦»å‘åƒç´ ç‚¹æ•°
 	tmp_int.at<int>(0, 0) = cols;
 	write_array_to_h5(dst_h5, "range_len", tmp_int);
-	//¾àÀëÏò·Ö±æÂÊ
+	//è·ç¦»å‘åˆ†è¾¨ç‡
 	int offset = record_len + data_set_summary_len + platform_pos_len + attitue_data_len + radiometric_data_len;
 	fseek(fp, offset + 127 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "range_resolution", tmp);
-	//·½Î»Ïò·Ö±æÂÊ
+	//æ–¹ä½å‘åˆ†è¾¨ç‡
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "azimuth_resolution", tmp);
-	//·½Î»Ïò²ÉÑù¼ä¸ô
+	//æ–¹ä½å‘é‡‡æ ·é—´éš”
 	fseek(fp, 720 + 1687 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 32, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "azimuth_spacing", tmp);
-	//¾àÀëÏò²ÉÑù¼ä¸ô
+	//è·ç¦»å‘é‡‡æ ·é—´éš”
 	tmp.at<double>(0, 0) = strtod(ptr, &ptr);
 	write_array_to_h5(dst_h5, "range_spacing", tmp);
 
-	//´¦ÀíµÈ¼¶
+	//å¤„ç†ç­‰çº§
 	ret = write_str_to_h5(dst_h5, "process_state", "InSAR_0");
-	//´¦ÀíÃèÊö
+	//å¤„ç†æè¿°
 	int t = attitue_data_len > 10000 ? 2 : 1;
 	char strings[1024]; memset(strings, 0, 1024);
 	sprintf(strings, "import from ALOS%d Single Look Complex, unprocessed.", t);
@@ -7111,7 +7111,7 @@ int XMLFile::getIntArray(const char* node_name, Mat& Array, TiXmlElement* rootNo
 int XMLFile::get_gcps_from_TSX(Mat& gcps)
 {
 	/*
-	* ÑéÖ¤¸ù½Úµã
+	* éªŒè¯æ ¹èŠ‚ç‚¹
 	*/
 	TiXmlElement* pRoot = NULL;
 	pRoot = doc.RootElement();
@@ -7129,7 +7129,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 		return -1;
 	}
 	/*
-	* È·¶¨¿ØÖÆµã¸öÊı
+	* ç¡®å®šæ§åˆ¶ç‚¹ä¸ªæ•°
 	*/
 	int n_gcps = 1;
 	TiXmlElement* pnode = NULL;
@@ -7145,7 +7145,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	}
 	Mat x(n_gcps, 6, CV_64F);
 	/*
-	* ¶ÁÈ¡¿ØÖÆµã
+	* è¯»å–æ§åˆ¶ç‚¹
 	*/
 	ret = find_node("gridPoint", pnode);
 	if (return_check(ret, "get_gcps_from_TSX()", error_head)) return -1;
@@ -7154,7 +7154,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	for (int i = 1; i <= n_gcps; i++)
 	{
 		if (!pnode) break;
-		//¶ÁÈ¡¾­¶È
+		//è¯»å–ç»åº¦
 		ret = _find_node(pnode, "lon", pchild);
 		if (ret < 0)
 		{
@@ -7168,7 +7168,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¶ÁÈ¡Î³¶È
+		//è¯»å–çº¬åº¦
 		ret = _find_node(pnode, "lat", pchild);
 		if (ret < 0)
 		{
@@ -7182,7 +7182,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¶ÁÈ¡¸ß¶È
+		//è¯»å–é«˜åº¦
 		ret = _find_node(pnode, "height", pchild);
 		if (ret < 0)
 		{
@@ -7196,7 +7196,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¶ÁÈ¡ĞĞÊı
+		//è¯»å–è¡Œæ•°
 		ret = _find_node(pnode, "row", pchild);
 		if (ret < 0)
 		{
@@ -7210,7 +7210,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¶ÁÈ¡ÁĞÊı
+		//è¯»å–åˆ—æ•°
 		ret = _find_node(pnode, "col", pchild);
 		if (ret < 0)
 		{
@@ -7224,7 +7224,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¶ÁÈ¡ÏÂÊÓ½Ç
+		//è¯»å–ä¸‹è§†è§’
 		ret = _find_node(pnode, "inc", pchild);
 		if (ret < 0)
 		{
@@ -7238,14 +7238,14 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//¸³Öµ
+		//èµ‹å€¼
 		x.at<double>(i - 1, 0) = lon;
 		x.at<double>(i - 1, 1) = lat;
 		x.at<double>(i - 1, 2) = height;
 		x.at<double>(i - 1, 3) = row;
 		x.at<double>(i - 1, 4) = col;
 		x.at<double>(i - 1, 5) = inc;
-		//ÏÂÒ»¸ö½Úµã
+		//ä¸‹ä¸€ä¸ªèŠ‚ç‚¹
 		pnode = pnode->NextSiblingElement();
 	}
 	x.copyTo(gcps);
@@ -7263,7 +7263,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	}
 
 	/*
-	* È·¶¨stateVec¸öÊı
+	* ç¡®å®šstateVecä¸ªæ•°
 	*/
 
 	TiXmlElement* pnode = NULL;
@@ -7283,7 +7283,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	Mat x(numstateVec, 7, CV_64F);
 
 	/*
-	* ÕÒµ½µÚÒ»¸östateVec
+	* æ‰¾åˆ°ç¬¬ä¸€ä¸ªstateVec
 	*/
 	ret = _find_node(pRoot, "stateVec", pnode);
 	if (ret < 0)
@@ -7296,7 +7296,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	for (int i = 0; i < numstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = _find_node(pnode, "timeUTC", pchild);
 		if (ret < 0)
 		{
@@ -7389,7 +7389,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 
-		//¸³Öµ
+		//èµ‹å€¼
 		x.at<double>(i, 0) = GPS_time;
 		x.at<double>(i, 1) = posX;
 		x.at<double>(i, 2) = posY;
@@ -7397,7 +7397,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 		x.at<double>(i, 4) = velX;
 		x.at<double>(i, 5) = velY;
 		x.at<double>(i, 6) = velZ;
-		//ÏÂÒ»¸ö½Úµã
+		//ä¸‹ä¸€ä¸ªèŠ‚ç‚¹
 		pnode = pnode->NextSiblingElement();
 	}
 	x.copyTo(stateVec);
@@ -7486,7 +7486,7 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 {
 	/*
-	* È·¶¨¿ØÖÆµã¸öÊı
+	* ç¡®å®šæ§åˆ¶ç‚¹ä¸ªæ•°
 	*/
 	int n_gcps = 1;
 	TiXmlElement* pRoot = doc.RootElement();
@@ -7695,7 +7695,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = _find_node(pnode, "time", pchild);
 		if (ret < 0)
 		{
@@ -7704,7 +7704,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		}
 		ret = conversion.utc2gps(pchild->GetText(), &time);
 		if (return_check(ret, "utc2gps()", error_head)) return -1;
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = _find_node(pnode, "position", pchild);
 		if (ret < 0)
 		{
@@ -7723,7 +7723,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = _find_node(pchild, "y", pchild1);
 		if (ret < 0)
 		{
@@ -7736,7 +7736,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = _find_node(pchild, "z", pchild1);
 		if (ret < 0)
 		{
@@ -7749,7 +7749,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = _find_node(pnode, "velocity", pchild);
 		if (ret < 0)
 		{
@@ -7768,7 +7768,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = _find_node(pchild, "y", pchild1);
 		if (ret < 0)
 		{
@@ -7781,7 +7781,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
 			return -1;
 		}
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = _find_node(pchild, "z", pchild1);
 		if (ret < 0)
 		{
@@ -7795,7 +7795,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			return -1;
 		}
 
-		//¸³Öµ
+		//èµ‹å€¼
 		stateVec.at<double>(i, 0) = time;
 		stateVec.at<double>(i, 1) = x;
 		stateVec.at<double>(i, 2) = y;
@@ -7819,139 +7819,139 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 
 	string tmp_str;;
 	Mat tmp_mat;
-	/*Í¼ÏñÀàĞÍ*/
+	/*å›¾åƒç±»å‹*/
 	if (!read_str_from_h5(Input_file, "file_type", tmp_str))
 		write_str_to_h5(Output_file, "file_type", tmp_str.c_str());
-	/*ÎÀĞÇÃû³Æ*/
+	/*å«æ˜Ÿåç§°*/
 	if (!read_str_from_h5(Input_file, "sensor", tmp_str))
 		write_str_to_h5(Output_file, "sensor", tmp_str.c_str());
-	/*¼«»¯·½Ê½*/
+	/*æåŒ–æ–¹å¼*/
 	if (!read_str_from_h5(Input_file, "polarization", tmp_str))
 		write_str_to_h5(Output_file, "polarization", tmp_str.c_str());
-	/*ÅÄÉãÄ£Ê½*/
+	/*æ‹æ‘„æ¨¡å¼*/
 	if (!read_str_from_h5(Input_file, "imaging_mode", tmp_str))
 		write_str_to_h5(Output_file, "imaging_mode", tmp_str.c_str());
-	/*×óÓÒÊÓ*/
+	/*å·¦å³è§†*/
 	if (!read_str_from_h5(Input_file, "lookside", tmp_str))
 		write_str_to_h5(Output_file, "lookside", tmp_str.c_str());
-	/*¹ìµÀ·½Ïò*/
+	/*è½¨é“æ–¹å‘*/
 	if (!read_str_from_h5(Input_file, "orbit_dir", tmp_str))
 		write_str_to_h5(Output_file, "orbit_dir", tmp_str.c_str());
-	/*×Ó´øºÅ£¨swath£©*/
+	/*å­å¸¦å·ï¼ˆswathï¼‰*/
 	if (!read_str_from_h5(Input_file, "swath", tmp_str))
 		write_str_to_h5(Output_file, "swath", tmp_str.c_str());
-	/*¹ìµÀ¸ß¶È*/
+	/*è½¨é“é«˜åº¦*/
 	if (!read_array_from_h5(Input_file, "orbit_altitude", tmp_mat))
 		write_array_to_h5(Output_file, "orbit_altitude", tmp_mat);
-	/*ÔØÆµ*/
+	/*è½½é¢‘*/
 	if (!read_array_from_h5(Input_file, "carrier_frequency", tmp_mat))
 		write_array_to_h5(Output_file, "carrier_frequency", tmp_mat);
-	/*º½Æ«½Ç*/
+	/*èˆªåè§’*/
 	if (!read_array_from_h5(Input_file, "heading", tmp_mat))
 		write_array_to_h5(Output_file, "heading", tmp_mat);
-	/*Âö³åÖØ¸´ÆµÂÊ*/
+	/*è„‰å†²é‡å¤é¢‘ç‡*/
 	if (!read_array_from_h5(Input_file, "prf", tmp_mat))
 		write_array_to_h5(Output_file, "prf", tmp_mat);
-	/*ÖĞĞÄÏÂÊÓ½Ç*/
+	/*ä¸­å¿ƒä¸‹è§†è§’*/
 	if (!read_array_from_h5(Input_file, "inc_center", tmp_mat))
 		write_array_to_h5(Output_file, "inc_center", tmp_mat);
-	/*gcpsÊı¾İ*/
+	/*gcpsæ•°æ®*/
 	if (!read_array_from_h5(Input_file, "gcps", tmp_mat))
 		write_array_to_h5(Output_file, "gcps", tmp_mat);
-	/*·½Î»Ïò·Ö±æÂÊ*/
+	/*æ–¹ä½å‘åˆ†è¾¨ç‡*/
 	if (!read_array_from_h5(Input_file, "azimuth_resolution", tmp_mat))
 		write_array_to_h5(Output_file, "azimuth_resolution", tmp_mat);
-	/*¾àÀëÏò·Ö±æÂÊ*/
+	/*è·ç¦»å‘åˆ†è¾¨ç‡*/
 	if (!read_array_from_h5(Input_file, "range_resolution", tmp_mat))
 		write_array_to_h5(Output_file, "range_resolution", tmp_mat);
-	/*·½Î»Ïò²ÉÑù¼ä¸ô*/
+	/*æ–¹ä½å‘é‡‡æ ·é—´éš”*/
 	if (!read_array_from_h5(Input_file, "azimuth_spacing", tmp_mat))
 		write_array_to_h5(Output_file, "azimuth_spacing", tmp_mat);
-	/*¾àÀëÏò²ÉÑù¼ä¸ô*/
+	/*è·ç¦»å‘é‡‡æ ·é—´éš”*/
 	if (!read_array_from_h5(Input_file, "range_spacing", tmp_mat))
 		write_array_to_h5(Output_file, "range_spacing", tmp_mat);
-	/*ÎÀĞÇ¹ìµÀ*/
+	/*å«æ˜Ÿè½¨é“*/
 	if (!read_array_from_h5(Input_file, "state_vec", tmp_mat))
 		write_array_to_h5(Output_file, "state_vec", tmp_mat);
-	/*¾«ÃÜ¹ìµÀÊı¾İ*/
+	/*ç²¾å¯†è½¨é“æ•°æ®*/
 	if (!read_array_from_h5(Input_file, "fine_state_vec", tmp_mat))
 		write_array_to_h5(Output_file, "fine_state_vec", tmp_mat);
-	/*ÅÄÉã¿ªÊ¼Ê±¼ä*/
+	/*æ‹æ‘„å¼€å§‹æ—¶é—´*/
 	if (!read_str_from_h5(Input_file, "acquisition_start_time", tmp_str))
 		write_str_to_h5(Output_file, "acquisition_start_time", tmp_str.c_str());
-	/*ÅÄÉã¿ªÊ¼Ê±¼ä*/
+	/*æ‹æ‘„å¼€å§‹æ—¶é—´*/
 	if (!read_str_from_h5(Input_file, "acquisition_stop_time", tmp_str))
 		write_str_to_h5(Output_file, "acquisition_stop_time", tmp_str.c_str());
-	/*¶àÆÕÀÕÖĞĞÄÆµÂÊ*/
+	/*å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡*/
 	if (!read_array_from_h5(Input_file, "doppler_centroid", tmp_mat))
 		write_array_to_h5(Output_file, "doppler_centroid", tmp_mat);
-	/*¶àÆÕÀÕÖĞĞÄÆµÂÊÏµÊıa*/
+	/*å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ç³»æ•°a*/
 	if (!read_array_from_h5(Input_file, "doppler_coefficient_a", tmp_mat))
 		write_array_to_h5(Output_file, "doppler_coefficient_a", tmp_mat);
-	/*¶àÆÕÀÕÖĞĞÄÆµÂÊÏµÊıb*/
+	/*å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ç³»æ•°b*/
 	if (!read_array_from_h5(Input_file, "doppler_coefficient_b", tmp_mat))
 		write_array_to_h5(Output_file, "doppler_coefficient_b", tmp_mat);
-	/*¾­¶ÈÄâºÏÏµÊı*/
+	/*ç»åº¦æ‹Ÿåˆç³»æ•°*/
 	if (!read_array_from_h5(Input_file, "lon_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "lon_coefficient", tmp_mat);
-	/*Î³¶ÈÄâºÏÏµÊı*/
+	/*çº¬åº¦æ‹Ÿåˆç³»æ•°*/
 	if (!read_array_from_h5(Input_file, "lat_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "lat_coefficient", tmp_mat);
-	/*ĞĞ×ø±êÄâºÏÏµÊı*/
+	/*è¡Œåæ ‡æ‹Ÿåˆç³»æ•°*/
 	if (!read_array_from_h5(Input_file, "row_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "row_coefficient", tmp_mat);
-	/*ÁĞ×ø±êÄâºÏÏµÊıb*/
+	/*åˆ—åæ ‡æ‹Ÿåˆç³»æ•°b*/
 	if (!read_array_from_h5(Input_file, "col_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "col_coefficient", tmp_mat);
-	/*ÏÂÊÓ½ÇÄâºÏÏµÊı*/
+	/*ä¸‹è§†è§’æ‹Ÿåˆç³»æ•°*/
 	if (!read_array_from_h5(Input_file, "inc_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "inc_coefficient", tmp_mat);
-	/*ÏÂÊÓ½ÇÄâºÏÏµÊır*/
+	/*ä¸‹è§†è§’æ‹Ÿåˆç³»æ•°r*/
 	if (!read_array_from_h5(Input_file, "inc_coefficient_r", tmp_mat))
 		write_array_to_h5(Output_file, "inc_coefficient_r", tmp_mat);
-	/*ÖĞĞÄÏÂÊÓ½Ç*/
+	/*ä¸­å¿ƒä¸‹è§†è§’*/
 	if (!read_array_from_h5(Input_file, "incidence_center", tmp_mat))
 		write_array_to_h5(Output_file, "incidence_center", tmp_mat);
-	/*ĞĞ×ø±êÄâºÏÏµÊı*/
+	/*è¡Œåæ ‡æ‹Ÿåˆç³»æ•°*/
 	if (!read_array_from_h5(Input_file, "row_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "row_coefficient", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "slant_range_first_pixel", tmp_mat))
 		write_array_to_h5(Output_file, "slant_range_first_pixel", tmp_mat);
-	///*ĞĞÆ«ÒÆÁ¿*/
+	///*è¡Œåç§»é‡*/
 	//if (!read_array_from_h5(Input_file, "offset_row", tmp_mat))
 	//	write_array_to_h5(Output_file, "offset_row", tmp_mat);
-	///*ÁĞÆ«ÒÆÁ¿*/
+	///*åˆ—åç§»é‡*/
 	//if (!read_array_from_h5(Input_file, "offset_col", tmp_mat))
 	//	write_array_to_h5(Output_file, "offset_col", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "topLeftLon", tmp_mat))
 		write_array_to_h5(Output_file, "topLeftLon", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "topLeftLat", tmp_mat))
 		write_array_to_h5(Output_file, "topLeftLat", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "topRightLon", tmp_mat))
 		write_array_to_h5(Output_file, "topRightLon", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "topRightLat", tmp_mat))
 		write_array_to_h5(Output_file, "topRightLat", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "bottomLeftLon", tmp_mat))
 		write_array_to_h5(Output_file, "bottomLeftLon", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "bottomLeftLat", tmp_mat))
 		write_array_to_h5(Output_file, "bottomLeftLat", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "bottomRightLon", tmp_mat))
 		write_array_to_h5(Output_file, "bottomRightLon", tmp_mat);
-	/*×î½üĞ±¾à*/
+	/*æœ€è¿‘æ–œè·*/
 	if (!read_array_from_h5(Input_file, "bottomRightLat", tmp_mat))
 		write_array_to_h5(Output_file, "bottomRightLat", tmp_mat);
-	/*ÊÕ·¢Ä£Ê½*/
+	/*æ”¶å‘æ¨¡å¼*/
 	if (!read_array_from_h5(Input_file, "TR_mode", tmp_mat))
 		write_array_to_h5(Output_file, "TR_mode", tmp_mat);
-	//ÊÕ·¢Ä£Ê½£º1-ÊÕ·¢Í¬ÖÃ£¬2-ÊÕ·¢·ÖÖÃ
+	//æ”¶å‘æ¨¡å¼ï¼š1-æ”¶å‘åŒç½®ï¼Œ2-æ”¶å‘åˆ†ç½®
 	return 0;
 }
 
@@ -7989,7 +7989,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 	Mat rh100_tmp, zg_tmp, zt_tmp, lon_tmp, lat_tmp, dem_tmp, quality_index_tmp;
 	for (int i = 0; i < beam_name_list.size(); i++)
 	{
-		//¶ÁÈ¡RH100²ÎÊı
+		//è¯»å–RH100å‚æ•°
 		string str = beam_name_list[i] + "rh100";
 		hid_t dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8022,7 +8022,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡zg²ÎÊı
+		//è¯»å–zgå‚æ•°
 		str = beam_name_list[i] + "geolocation/elev_lowestmode";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8054,7 +8054,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡zt²ÎÊı
+		//è¯»å–ztå‚æ•°
 		str = beam_name_list[i] + "geolocation/elev_highestreturn";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8086,7 +8086,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡lat²ÎÊı
+		//è¯»å–latå‚æ•°
 		str = beam_name_list[i] + "geolocation/lat_highestreturn";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8118,7 +8118,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡lon²ÎÊı
+		//è¯»å–lonå‚æ•°
 		str = beam_name_list[i] + "geolocation/lon_highestreturn";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8150,7 +8150,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡dem²ÎÊı
+		//è¯»å–demå‚æ•°
 		str = beam_name_list[i] + "geolocation/digital_elevation_model";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8182,7 +8182,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		//¶ÁÈ¡quality_index²ÎÊı
+		//è¯»å–quality_indexå‚æ•°
 		str = beam_name_list[i] + "l2b_quality_flag";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
 		if (dataset_id < 0)
@@ -8257,8 +8257,8 @@ int FormatConversion::ell2xyz(double lon, double lat, double elevation, Position
 	const double pi = 3.14159265358979323846;
 	const double d2r = pi / 180;
 	const double r2d = 180 / pi;
-	const double a = 6378137.0;		//ÍÖÇò³¤°ëÖá
-	const double f_inverse = 298.257223563;			//±âÂÊµ¹Êı
+	const double a = 6378137.0;		//æ¤­çƒé•¿åŠè½´
+	const double f_inverse = 298.257223563;			//æ‰ç‡å€’æ•°
 	const double b = a - a / f_inverse;
 	const double e = sqrt(a * a - b * b) / a;
 	double y = lat;
@@ -8401,7 +8401,7 @@ int FormatConversion::real_coherent(ComplexMat& Master, ComplexMat& Slave, int* 
 	mulSpectrums(im1fft, im2fft, spectrum, 0, true);
 
 	Mat result;
-	idft(spectrum, result, cv::DFT_REAL_OUTPUT);//ĞèÒªÏÔÊ¾Í¼ÏñÊ±¿ÉÒÔÓÃDFT_SCALE
+	idft(spectrum, result, cv::DFT_REAL_OUTPUT);//éœ€è¦æ˜¾ç¤ºå›¾åƒæ—¶å¯ä»¥ç”¨DFT_SCALE
 
 	ret = fftshift2(result);
 	if (return_check(ret, "fftshift2(*)", error_head)) return -1;
@@ -8463,7 +8463,7 @@ int FormatConversion::fft2(Mat& Src, Mat& Dst)
 }
 
 /*------------------------------------------------*/
-/*               ÉÚ±øÒ»ºÅÊı¾İ¶ÁÈ¡¹¤¾ß             */
+/*               å“¨å…µä¸€å·æ•°æ®è¯»å–å·¥å…·             */
 /*------------------------------------------------*/
 Sentinel1Reader::Sentinel1Reader()
 {
@@ -8529,7 +8529,7 @@ Sentinel1Reader::~Sentinel1Reader()
 
 int Sentinel1Reader::load(const char* xmlfile, const char* tiffFile)
 {
-	if (bXmlLoad) return 0;//Ö»ÔÊĞí¼ÓÔØ1´Î
+	if (bXmlLoad) return 0;//åªå…è®¸åŠ è½½1æ¬¡
 	this->tiffFile = tiffFile;
 	if (!xmldoc.XMLFile_load(xmlfile)) {
 		bXmlLoad = true;
@@ -8832,7 +8832,7 @@ int Sentinel1Reader::getGeolocationGridPoint()
 		return -1;
 	}
 	/*
-	* È·¶¨¿ØÖÆµã¸öÊı
+	* ç¡®å®šæ§åˆ¶ç‚¹ä¸ªæ•°
 	*/
 	int n_gcps = 1;
 	int ret;
@@ -8844,7 +8844,7 @@ int Sentinel1Reader::getGeolocationGridPoint()
 		return -1;
 	}
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &n_gcps);
-	geolocationGridPoint.create(n_gcps, 7, CV_64F);//×îºóÒ»ĞĞÊÇ·½Î»ÏòÊ±¼ä
+	geolocationGridPoint.create(n_gcps, 7, CV_64F);//æœ€åä¸€è¡Œæ˜¯æ–¹ä½å‘æ—¶é—´
 	TiXmlElement* pchild = NULL;
 	ret = xmldoc._find_node(pnode, "geolocationGridPoint", pchild);
 	double lon, lat, height, row, col, inc, azimuthTime;
@@ -8929,10 +8929,10 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 	lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinelĞĞÁĞÆğµãÎª0£¬+1Í³Ò»Îª1.
+	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinelè¡Œåˆ—èµ·ç‚¹ä¸º0ï¼Œ+1ç»Ÿä¸€ä¸º1.
 	col = (col + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);
 
-	//ÄâºÏ¾­¶È
+	//æ‹Ÿåˆç»åº¦
 
 	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
 	double rms;
@@ -9024,7 +9024,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(lon_coefficient);
 	}
 
-	//ÄâºÏÎ³¶È
+	//æ‹Ÿåˆçº¬åº¦
 
 	lat.copyTo(b);
 
@@ -9115,7 +9115,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(lat_coefficient);
 	}
 
-	//ÄâºÏÏÂÊÓ½Ç
+	//æ‹Ÿåˆä¸‹è§†è§’
 
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -9154,7 +9154,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(inc_coefficient);
 	}
 
-	//ÄâºÏĞĞ×ø±ê
+	//æ‹Ÿåˆè¡Œåæ ‡
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -9244,7 +9244,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(row_coefficient);
 	}
 
-	//ÄâºÏÁĞ×ø±ê
+	//æ‹Ÿåˆåˆ—åæ ‡
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -9356,31 +9356,31 @@ int Sentinel1Reader::getOrbitList()
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = xmldoc._find_node(pnode, "time", pchild);
 		ret = UTC2GPS(pchild->GetText(), &time);
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = xmldoc._find_node(pnode, "position", pchild);
 		ret = xmldoc._find_node(pchild, "x", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &x);
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = xmldoc._find_node(pchild, "y", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &y);
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = xmldoc._find_node(pchild, "z", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &z);
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = xmldoc._find_node(pnode, "velocity", pchild);
 		ret = xmldoc._find_node(pchild, "x", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vx);
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = xmldoc._find_node(pchild, "y", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vy);
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = xmldoc._find_node(pchild, "z", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vz);
 
-		//¸³Öµ
+		//èµ‹å€¼
 		orbitList.at<double>(i, 0) = time;
 		orbitList.at<double>(i, 1) = x;
 		orbitList.at<double>(i, 2) = y;
@@ -9401,7 +9401,7 @@ int Sentinel1Reader::getPOD(const char* POD_file)
 		return -1;
 	}
 	/*
-	* ¶ÁÈ¡¾«ÃÜ¹ìµÀÊı¾İ
+	* è¯»å–ç²¾å¯†è½¨é“æ•°æ®
 	*/
 
 	int ret, numOfstateVec;
@@ -9438,7 +9438,7 @@ int Sentinel1Reader::getPOD(const char* POD_file)
 		if (gps_time <= start_time && fabs(gps_time - start_time) <= 100.0) start = true;
 		if (gps_time >= stop_time && fabs(gps_time - stop_time) >= 100.0) stop = true;
 
-		if (start && !stop)//¿ªÊ¼¼ÇÂ¼
+		if (start && !stop)//å¼€å§‹è®°å½•
 		{
 			ret = doc._find_node(pnode, "X", pchild);
 			ret = sscanf(pchild->GetText(), "%lf", &x);
@@ -9529,9 +9529,9 @@ int Sentinel1Reader::prepareData(const char* PODFile)
 	{
 		this->getPOD(PODFile);
 	}
-	//¸üĞÂ¿ØÖÆµã
+	//æ›´æ–°æ§åˆ¶ç‚¹
 	updateGeolocationGridPoint();
-	//ÄâºÏ×ø±ê×ª»»ÏµÊı
+	//æ‹Ÿåˆåæ ‡è½¬æ¢ç³»æ•°
 	fitCoordinateConversionCoefficient();
 	isDataAvailable = true;
 	return 0;
@@ -9649,7 +9649,7 @@ int Sentinel1Reader::writeToh5(const char* h5File)
 	if(!preciseOrbitList.empty())
 		conversion.write_array_to_h5(h5File, "fine_state_vec", this->preciseOrbitList);
 
-	//Ğ´ÈëÍ¼ÏñÊı¾İ
+	//å†™å…¥å›¾åƒæ•°æ®
 	ComplexMat slc;
 	ret = getSLC(slc);
 	if (return_check(ret, "getSLC()", error_head)) return -1;
@@ -9659,7 +9659,7 @@ int Sentinel1Reader::writeToh5(const char* h5File)
 }
 
 /*------------------------------------------------*/
-/*             ÉÚ±øÒ»ºÅÊı¾İ/¼ÆËã¶ÁÈ¡¹¤¾ß          */
+/*             å“¨å…µä¸€å·æ•°æ®/è®¡ç®—è¯»å–å·¥å…·          */
 /*------------------------------------------------*/
 
 Sentinel1Utils::Sentinel1Utils(const char* h5File)
@@ -9714,7 +9714,7 @@ int Sentinel1Utils::init()
 		return -1;
 	}
 	int ret; FormatConversion conversion;
-	//¶ÁÈ¡Êı¾İ
+	//è¯»å–æ•°æ®
 	ret = conversion.read_double_from_h5(h5File.c_str(), "azimuth_spacing", &this->azimuthPixelSpacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	ret = conversion.read_double_from_h5(h5File.c_str(), "azimuthSteeringRate", &this->azimuthSteeringRate);
@@ -10283,7 +10283,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 		return -1;
 	}
 
-	//´´½¨ĞÂµÄdeburstÎÄ¼ş
+	//åˆ›å»ºæ–°çš„deburstæ–‡ä»¶
 
 	FormatConversion conversion;
 	int ret = conversion.creat_new_h5(outFile);
@@ -10325,7 +10325,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 		cv::vconcat(slc.re, tmp2.re, slc.re);
 		cv::vconcat(slc.im, tmp2.im, slc.im);
 	}
-	//ÍùÎÄ¼şÀïĞ´ÈëÎÀĞÇÊı¾İºÍ¸¨ÖúÊı¾İ
+	//å¾€æ–‡ä»¶é‡Œå†™å…¥å«æ˜Ÿæ•°æ®å’Œè¾…åŠ©æ•°æ®
 	ret = conversion.write_slc_to_h5(outFile, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(this->h5File.c_str(), outFile);
@@ -10613,7 +10613,7 @@ int DigitalElevationModel::getRawDEM(
 	vector<bool> bAlreadyExist;
 	int ret = getSRTMFileName(lonMin, lonMax, latMin, latMax, srtmFileName);
 	if (return_check(ret, "getSRTMFileName()", error_head)) return -1;
-	//ÅĞ¶ÏÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	//åˆ¤æ–­æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string tmp = this->DEMPath + "\\" + srtmFileName[i];
@@ -10621,13 +10621,13 @@ int DigitalElevationModel::getRawDEM(
 		if (-1 != GetFileAttributesA(tmp.c_str()))bAlreadyExist.push_back(true);
 		else bAlreadyExist.push_back(false);
 	}
-	//²»´æÔÚÔòÏÂÔØ
+	//ä¸å­˜åœ¨åˆ™ä¸‹è½½
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		if (!bAlreadyExist[i])
 		{
 			ret = downloadSRTM(srtmFileName[i].c_str());
-			if (ret < 0)//Î´ÏÂÔØµ½DEMÊı¾İ,ÔòÒÔ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°DEMæ•°æ®,åˆ™ä»¥0å¡«å……
 			{
 				int rows = (latMax - latMin) / latSpacing;
 				int cols = (lonMax - lonMin) / lonSpacing;
@@ -10639,7 +10639,7 @@ int DigitalElevationModel::getRawDEM(
 			}
 		}
 	}
-	//½âÑ¹ÎÄ¼ş
+	//è§£å‹æ–‡ä»¶
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string folderName = srtmFileName[i];
@@ -10659,7 +10659,7 @@ int DigitalElevationModel::getRawDEM(
 	double lonUpperLeft, lonLowerRight, latUpperLeft, latLowerRight;
 	int total_rows, total_cols;
 
-	//DEMÔÚÒ»¸öSRTM·½¸ñÄÚ
+	//DEMåœ¨ä¸€ä¸ªSRTMæ–¹æ ¼å†…
 	if (srtmFileName.size() == 1)
 	{
 		total_rows = 6000, total_cols = 6000;
@@ -10684,7 +10684,7 @@ int DigitalElevationModel::getRawDEM(
 		endCol = endCol > total_cols ? total_cols : endCol;
 
 		string folderName = srtmFileName[0];
-		folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+		folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 		string path = this->DEMPath + string("\\") + folderName;
 		path = path + string("\\") + folderName + string(".tif");
 		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
@@ -10695,13 +10695,13 @@ int DigitalElevationModel::getRawDEM(
 		this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
 		this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
 	}
-	//DEMÔÚ2¸ö·½¸ñÄÚ
+	//DEMåœ¨2ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 2)
 	{
 		int xx, yy, xx2, yy2;
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
-		//Í¬Ò»ÁĞ
+		//åŒä¸€åˆ—
 		if (xx == xx2)
 		{
 			total_rows = 6000 * 2; total_cols = 6000;
@@ -10729,7 +10729,7 @@ int DigitalElevationModel::getRawDEM(
 			if (yy < yy2)
 			{
 				string folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -10738,7 +10738,7 @@ int DigitalElevationModel::getRawDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -10750,7 +10750,7 @@ int DigitalElevationModel::getRawDEM(
 			else
 			{
 				string folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -10759,7 +10759,7 @@ int DigitalElevationModel::getRawDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -10773,11 +10773,11 @@ int DigitalElevationModel::getRawDEM(
 			this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
 			this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
 		}
-		//Í¬Ò»ĞĞ
+		//åŒä¸€è¡Œ
 		else if(yy == yy2)
 		{
 			total_cols = 6000 * 2; total_rows = 6000;
-			//¿çÔ½-180.0/180.0Ïß
+			//è·¨è¶Š-180.0/180.0çº¿
 			if ((xx == 1 && xx2 == 72) || (xx == 72 && xx2 == 1))
 			{
 				latUpperLeft = 60.0 - (yy - 1) * 5.0;
@@ -10802,7 +10802,7 @@ int DigitalElevationModel::getRawDEM(
 				if (xx > xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10811,7 +10811,7 @@ int DigitalElevationModel::getRawDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10823,7 +10823,7 @@ int DigitalElevationModel::getRawDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10832,7 +10832,7 @@ int DigitalElevationModel::getRawDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10872,7 +10872,7 @@ int DigitalElevationModel::getRawDEM(
 				if (xx < xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10881,7 +10881,7 @@ int DigitalElevationModel::getRawDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10893,7 +10893,7 @@ int DigitalElevationModel::getRawDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10902,7 +10902,7 @@ int DigitalElevationModel::getRawDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -10925,7 +10925,7 @@ int DigitalElevationModel::getRawDEM(
 
 		
 	}
-	//DEMÔÚ4¸ö·½¸ñÄÚ
+	//DEMåœ¨4ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 4)
 	{
 		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
@@ -10934,7 +10934,7 @@ int DigitalElevationModel::getRawDEM(
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
 		sscanf(srtmFileName[3].c_str(), "srtm_%d_%d.zip", &xx4, &yy4);
 		total_rows = 6000 * 2; total_cols = 6000 * 2;
-		//¿çÔ½-180.0/180.0Ïß
+		//è·¨è¶Š-180.0/180.0çº¿
 		if (lonMax * lonMin < 0 && (fabs(lonMin) + fabs(lonMax)) > 180.0)
 		{
 			startRow = (int)((60.0 - latMax) / 5.0) + 1;
@@ -10958,7 +10958,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -10972,7 +10972,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -10987,7 +10987,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11001,7 +11001,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11053,7 +11053,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11067,7 +11067,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11082,7 +11082,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11096,7 +11096,7 @@ int DigitalElevationModel::getRawDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -11155,20 +11155,20 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 {
 	if (!filename) return -1;
-	GDALAllRegister();	//×¢²áÒÑÖªÇı¶¯
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//´ò¿ªgeotiffÎÄ¼ş
+	GDALAllRegister();	//æ³¨å†Œå·²çŸ¥é©±åŠ¨
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//æ‰“å¼€geotiffæ–‡ä»¶
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "geotiffread(): failed to open %s!\n", filename);
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//»ñÈ¡²¨¶ÎÊı£¨geotiffÓ¦Îª1£©
+	int nBand = poDataset->GetRasterCount();	//è·å–æ³¢æ®µæ•°ï¼ˆgeotiffåº”ä¸º1ï¼‰
 	int xsize = 0;
 	int ysize = 0;
 	if (nBand == 1)
 	{
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
 		if (xsize < 0 || ysize < 0)
@@ -11178,9 +11178,9 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬geotiffÓ¦Îª16Î»ÕûĞÍ
+		GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œgeotiffåº”ä¸º16ä½æ•´å‹
 		short* pbuf = NULL;
-		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 		if (!pbuf)
 		{
 			fprintf(stderr, "geotiffread(): out of memory!\n");
@@ -11188,7 +11188,7 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 		int i, j;
 		outDEM.create(ysize, xsize, CV_16S);
 		memcpy(outDEM.data, pbuf, sizeof(short) * xsize * ysize);
@@ -11228,13 +11228,13 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 		return -1;
 	}
 	int ret;
-	//Èç¹ûÄ¿±êÎÄ¼ş¼Ğ²»´æÔÚ£¬Ôò´´½¨
+	//å¦‚æœç›®æ ‡æ–‡ä»¶å¤¹ä¸å­˜åœ¨ï¼Œåˆ™åˆ›å»º
 	if (-1 == GetFileAttributesA(dstPath))
 	{
 		ret = _mkdir(dstPath);
 		if (ret < 0)return -1;
 	}
-	//////////////////////////´´½¨²¢µ÷ÓÃunzip.exe½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨unzip.exeè¿›ç¨‹///////////////////////////////
 	char szFilePath[MAX_PATH + 1] = { 0 };
 	GetModuleFileNameA(NULL, szFilePath, MAX_PATH);
 	string str(szFilePath);
@@ -11250,14 +11250,14 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcessA(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -11374,7 +11374,7 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 	}
 	int ret;
 	this->numOfImages = h5Files.size();
-	//Çå¿ÕÒÑÓĞÊı¾İ
+	//æ¸…ç©ºå·²æœ‰æ•°æ®
 	for (int i = 0; i < su.size(); i++)
 	{
 		if (su[i])
@@ -11639,7 +11639,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 	{
 		for (int j = 0; j < slaveAzimuthOffset.cols; j++)
 		{
-			//·½Î»ÏòÆ«ÒÆÁ¿¼ÆËã
+			//æ–¹ä½å‘åç§»é‡è®¡ç®—
 			if (masterAzimuth.at<double>(i, j) < -0.5 || slaveAzimuth.at<double>(i, j) < -0.5)
 			{
 				slaveAzimuthOffset.at<double>(i, j) = invalidOffset;
@@ -11648,7 +11648,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 			{
 				slaveAzimuthOffset.at<double>(i, j) = slaveAzimuth.at<double>(i, j) - masterAzimuth.at<double>(i, j);
 			}
-			//¾àÀëÏòÆ«ÒÆÁ¿¼ÆËã
+			//è·ç¦»å‘åç§»é‡è®¡ç®—
 			if (masterRange.at<double>(i, j) < -0.5 || slaveRange.at<double>(i, j) < -0.5)
 			{
 				slaveRangeOffset.at<double>(i, j) = invalidOffset;
@@ -11782,11 +11782,11 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 				mm1 = mm + 1; nn1 = nn + 1;
 				mm1 = mm1 >= rows_slave - 1 ? rows_slave - 1 : mm1;
 				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
-				//Êµ²¿²åÖµ
+				//å®éƒ¨æ’å€¼
 				upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
 				lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
 				slcResampled.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-				//Ğé²¿²åÖµ
+				//è™šéƒ¨æ’å€¼
 				upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
 				lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
 				slcResampled.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
@@ -11969,7 +11969,7 @@ orbitStateVectors::orbitStateVectors(Mat& stateVectors, double startTime, double
 	double delta_time = stateVectors.at<double>(1, 0) - stateVectors.at<double>(0, 0);
 	if (fabs(delta_time) <= 1.0)
 	{
-		this->isOrbitUpdated = true;//²»ÓÃÔÙ¸üĞÂ¹ìµÀ
+		this->isOrbitUpdated = true;//ä¸ç”¨å†æ›´æ–°è½¨é“
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
 	this->dt = delta_time;
@@ -11985,7 +11985,7 @@ orbitStateVectors::orbitStateVectors(Mat& stateVectors, double startTime, double
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
 	if (fabs(delta_time) <= 1.0)
 	{
-		this->isOrbitUpdated = true;//²»ÓÃÔÙ¸üĞÂ¹ìµÀ
+		this->isOrbitUpdated = true;//ä¸ç”¨å†æ›´æ–°è½¨é“
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
 	
@@ -12412,7 +12412,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 	get_array_attribute(dataset, "Far Look Angle", temp);
 	far_look_angle = temp.at<double>(0, 0);
 
-	//ÄâºÏÏÂÊÓ½Ç
+	//æ‹Ÿåˆä¸‹è§†è§’
 	
 	this->inc_coefficient.create(1, 11, CV_64F); this->inc_coefficient = 0.0;
 	inc_coefficient.at<double>(0, 0) = 0.0;//offset
@@ -12420,7 +12420,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 	inc_coefficient.at<double>(0, 2) = near_look_angle;
 	inc_coefficient.at<double>(0, 3) = (far_look_angle - near_look_angle) / (double)cols;
 
-	//ÄâºÏ¾­¶È
+	//æ‹Ÿåˆç»åº¦
 	Mat near_edge_geodetic_coordinates, far_edge_geodetic_coordinates;
 	ret = get_array_attribute(file, "Scene Far Edge Geodetic Coordinates", far_edge_geodetic_coordinates);
 	ret += get_array_attribute(file, "Scene Near Edge Geodetic Coordinates", near_edge_geodetic_coordinates);
@@ -12487,7 +12487,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 	}
 
 
-	//ÄâºÏÎ³¶È
+	//æ‹Ÿåˆçº¬åº¦
 	lat_coefficient.create(1, 32, CV_64F); lat_coefficient = 0.0;
 	A = Mat::ones(lon.rows, 3, CV_64F);
 	lat.copyTo(b);
@@ -12521,7 +12521,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 		lat_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
 	}
 
-	//ÄâºÏĞĞ×ø±ê
+	//æ‹Ÿåˆè¡Œåæ ‡
 	row_coefficient.create(1, 32, CV_64F); row_coefficient = 0.0;
 	A = Mat::ones(lon.rows, 3, CV_64F);
 	row.copyTo(b);
@@ -12556,7 +12556,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 		row_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
 	}
 
-	//ÄâºÏÁĞ×ø±ê
+	//æ‹Ÿåˆåˆ—åæ ‡
 	col_coefficient.create(1, 32, CV_64F); col_coefficient = 0.0;
 	A = Mat::ones(lon.rows, 3, CV_64F);
 	col.copyTo(b);
@@ -12778,18 +12778,18 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//×¢²áÒÑÖªÇı¶¯
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//´ò¿ªtiffÎÄ¼ş
+	GDALAllRegister();	//æ³¨å†Œå·²çŸ¥é©±åŠ¨
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//æ‰“å¼€tiffæ–‡ä»¶
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//»ñÈ¡²¨¶ÎÊı£¨cosÓ¦Îª1£©
+	int nBand = poDataset->GetRasterCount();	//è·å–æ³¢æ®µæ•°ï¼ˆcosåº”ä¸º1ï¼‰
 	int xsize = 0;
 	int ysize = 0;
-	//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+	//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 	GDALRasterBand* poBand = poDataset->GetRasterBand(1);	
 	xsize = poBand->GetXSize();		//cols
 	ysize = poBand->GetYSize();		//rows
@@ -12800,9 +12800,9 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
+	GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
 	short* pbuf = NULL;
-	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 	if (!pbuf)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
@@ -12810,7 +12810,7 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 	int i, j;
 	slc.re.create(ysize, xsize, CV_16S);
 	slc.im.create(ysize, xsize, CV_16S);
@@ -12821,7 +12821,7 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 			slc.re.ptr<short>(i)[j] = pbuf[offset];
 			offset++;
 		}
-	//»ñÈ¡Ö¸Ïò²¨¶Î2µÄÖ¸Õë
+	//è·å–æŒ‡å‘æ³¢æ®µ2çš„æŒ‡é’ˆ
 	poBand = poDataset->GetRasterBand(2);
 	xsize = poBand->GetXSize();		//cols
 	ysize = poBand->GetYSize();		//rows
@@ -12832,8 +12832,8 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+	dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
+	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 	offset = 0;
 	for (i = 0; i < ysize; i++)
 		for (j = 0; j < xsize; j++)
@@ -12873,7 +12873,7 @@ int HTHT_reader::read_data(const char* xml_file, const char* data_file)
 		return -1;
 	}
 
-	//¶ÁÈ¡¹ìµÀ²ÎÊı
+	//è¯»å–è½¨é“å‚æ•°
 	TiXmlElement* pnode, * pchild, * pchild1;
 	int numOfstateVec;
 	ret = xmldoc.find_node("orbitList", pnode);
@@ -12885,29 +12885,29 @@ int HTHT_reader::read_data(const char* xml_file, const char* data_file)
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = xmldoc._find_node(pnode, "timeStamp", pchild);
 		ret = UTC2GPS(pchild->GetText(), &time);
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = xmldoc._find_node(pnode, "xPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = xmldoc._find_node(pnode, "yPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = xmldoc._find_node(pnode, "zPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vz);
 
-		//¸³Öµ
+		//èµ‹å€¼
 		state_vec.at<double>(i, 0) = time;
 		state_vec.at<double>(i, 1) = x;
 		state_vec.at<double>(i, 2) = y;
@@ -12918,29 +12918,29 @@ int HTHT_reader::read_data(const char* xml_file, const char* data_file)
 		pnode = pnode->NextSiblingElement();
 	}
 
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.get_str_para("imagingStartTime", this->acquisition_start_time);
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.get_str_para("imagingEndTime", this->acquisition_stop_time);
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	ret = xmldoc.get_str_para("satellite", this->sensor);
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("prf", &this->prf);
-	//ÖĞĞÄÆµÂÊ
+	//ä¸­å¿ƒé¢‘ç‡
 	ret = xmldoc.get_double_para("radarCenterFrequency", &this->carrier_frequency);
 	this->carrier_frequency = this->carrier_frequency * 1e9;
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
-	//¾àÀë·½Î»²ÉÑù¼ä¸ô/·Ö±æÂÊ
+	//è·ç¦»æ–¹ä½é‡‡æ ·é—´éš”/åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
 	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
 	ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
 	ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
 
-	//ÖĞĞÄÏÂÊÓ½ÇincidenceAngleMidSwath
+	//ä¸­å¿ƒä¸‹è§†è§’incidenceAngleMidSwath
 	ret = xmldoc.get_double_para("incidenceCenter", &this->inc_center);
 
-	//ËÄ½Ç¾­Î³¶È
+	//å››è§’ç»çº¬åº¦
 	ret = xmldoc.get_double_para("topLeftLat", &this->topleft_lat);
 	ret = xmldoc.get_double_para("topLeftLon", &this->topleft_lon);
 	ret = xmldoc.get_double_para("topRightLat", &this->topright_lat);
@@ -13005,7 +13005,7 @@ int HTHT_reader::write_to_h5(const char* dst_h5)
 	conversion.write_int_to_h5(dst_h5, "offset_row", 0);
 	conversion.write_int_to_h5(dst_h5, "offset_col", 0);
 
-	//ÊÕ·¢Ä£Ê½£º1-ÊÕ·¢Í¬ÖÃ£¬2-ÊÕ·¢·ÖÖÃ
+	//æ”¶å‘æ¨¡å¼ï¼š1-æ”¶å‘åŒç½®ï¼Œ2-æ”¶å‘åˆ†ç½®
 	conversion.write_int_to_h5(dst_h5, "TR_mode", this->mode + 1);
 
 	conversion.write_slc_to_h5(dst_h5, slc);
@@ -13050,18 +13050,18 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//×¢²áÒÑÖªÇı¶¯
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//´ò¿ªtiffÎÄ¼ş
+	GDALAllRegister();	//æ³¨å†Œå·²çŸ¥é©±åŠ¨
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//æ‰“å¼€tiffæ–‡ä»¶
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//»ñÈ¡²¨¶ÎÊı£¨cosÓ¦Îª1£©
+	int nBand = poDataset->GetRasterCount();	//è·å–æ³¢æ®µæ•°ï¼ˆcosåº”ä¸º1ï¼‰
 	int xsize = 0;
 	int ysize = 0;
-	//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+	//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 	GDALRasterBand* poBand = poDataset->GetRasterBand(1);
 	xsize = poBand->GetXSize();		//cols
 	ysize = poBand->GetYSize();		//rows
@@ -13072,9 +13072,9 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
+	GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
 	short* pbuf = NULL;
-	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 	if (!pbuf)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
@@ -13082,7 +13082,7 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 	int i, j;
 	slc.re.create(ysize, xsize, CV_16S);
 	slc.im.create(ysize, xsize, CV_16S);
@@ -13093,7 +13093,7 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 			slc.re.ptr<short>(i)[j] = pbuf[offset];
 			offset++;
 		}
-	//»ñÈ¡Ö¸Ïò²¨¶Î2µÄÖ¸Õë
+	//è·å–æŒ‡å‘æ³¢æ®µ2çš„æŒ‡é’ˆ
 	poBand = poDataset->GetRasterBand(2);
 	xsize = poBand->GetXSize();		//cols
 	ysize = poBand->GetYSize();		//rows
@@ -13104,8 +13104,8 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+	dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
+	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 	offset = 0;
 	for (i = 0; i < ysize; i++)
 		for (j = 0; j < xsize; j++)
@@ -13145,7 +13145,7 @@ int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
 		return -1;
 	}
 
-	//¶ÁÈ¡¹ìµÀ²ÎÊı
+	//è¯»å–è½¨é“å‚æ•°
 	TiXmlElement* pnode, * pchild, * pchild1;
 	int numOfstateVec;
 	ret = xmldoc.get_int_para("numStateVectors", &numOfstateVec);
@@ -13156,29 +13156,29 @@ int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 		ret = UTC2GPS(pchild->GetText(), &time);
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = xmldoc._find_node(pnode, "posX", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = xmldoc._find_node(pnode, "posY", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = xmldoc._find_node(pnode, "posZ", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = xmldoc._find_node(pnode, "velX", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = xmldoc._find_node(pnode, "velY", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = xmldoc._find_node(pnode, "velZ", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vz);
 
-		//¸³Öµ
+		//èµ‹å€¼
 		state_vec.at<double>(i, 0) = time;
 		state_vec.at<double>(i, 1) = x;
 		state_vec.at<double>(i, 2) = y;
@@ -13189,33 +13189,33 @@ int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
 		pnode = pnode->NextSiblingElement();
 	}
 
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.find_node("start", pnode);
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	this->acquisition_start_time = pchild->GetText();
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.find_node("stop", pnode);
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	this->acquisition_stop_time = pchild->GetText();
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	ret = xmldoc.get_str_para("mission", this->sensor);
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("PRF", &this->prf);
-	//ÖĞĞÄÆµÂÊ
+	//ä¸­å¿ƒé¢‘ç‡
 	ret = xmldoc.get_double_para("centerFrequency", &this->carrier_frequency);
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("firstPixel", &this->slant_range_first_pixel);
 	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//¾àÀë·½Î»²ÉÑù¼ä¸ô/·Ö±æÂÊ
+	//è·ç¦»æ–¹ä½é‡‡æ ·é—´éš”/åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("columnSpacing", &this->range_spacing);
 	ret = xmldoc.get_double_para("rowSpacing", &this->azimuth_spacing);
 	ret = xmldoc.get_double_para("slantRangeResolution", &this->range_resolution);
 	ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
 
-	//ÖĞĞÄÏÂÊÓ½ÇincidenceAngleMidSwath
+	//ä¸­å¿ƒä¸‹è§†è§’incidenceAngleMidSwath
 	ret = xmldoc.get_double_para("incidenceAngle", &this->inc_center);
 
-	//ËÄ½Ç¾­Î³¶È
+	//å››è§’ç»çº¬åº¦
 	ret = xmldoc.find_node("sceneCornerCoord", pnode);
 	//bottomleft
 	ret = xmldoc._find_node(pnode, "lat", pchild);
@@ -13296,7 +13296,7 @@ int LUTAN_reader::write_to_h5(const char* dst_h5)
 	conversion.write_int_to_h5(dst_h5, "offset_row", 0);
 	conversion.write_int_to_h5(dst_h5, "offset_col", 0);
 
-	//ÊÕ·¢Ä£Ê½£º1-ÊÕ·¢Í¬ÖÃ£¬2-ÊÕ·¢·ÖÖÃ
+	//æ”¶å‘æ¨¡å¼ï¼š1-æ”¶å‘åŒç½®ï¼Œ2-æ”¶å‘åˆ†ç½®
 	conversion.write_int_to_h5(dst_h5, "TR_mode", this->mode);
 
 	conversion.write_slc_to_h5(dst_h5, slc);
@@ -13361,20 +13361,20 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//×¢²áÒÑÖªÇı¶¯
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//´ò¿ªtiffÎÄ¼ş
+	GDALAllRegister();	//æ³¨å†Œå·²çŸ¥é©±åŠ¨
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//æ‰“å¼€tiffæ–‡ä»¶
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		GDALDestroyDriverManager();
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//»ñÈ¡²¨¶ÎÊı£¨cosÓ¦Îª1£©
+	int nBand = poDataset->GetRasterCount();	//è·å–æ³¢æ®µæ•°ï¼ˆcosåº”ä¸º1ï¼‰
 	if (nBand == 1)
 	{
 		int xsize = 0;
 		int ysize = 0;
-		//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+		//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 		GDALRasterBand* poBand = poDataset->GetRasterBand(1);
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
@@ -13385,9 +13385,9 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
+		GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
 		int* pbuf = NULL;
-		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 		if (!pbuf)
 		{
 			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
@@ -13395,7 +13395,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 		int i, j;
 		slc.re.create(ysize, xsize, CV_16S);
 		slc.im.create(ysize, xsize, CV_16S);
@@ -13417,7 +13417,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		int xsize = 0;
 		int ysize = 0;
-		//»ñÈ¡Ö¸Ïò²¨¶Î1µÄÖ¸Õë
+		//è·å–æŒ‡å‘æ³¢æ®µ1çš„æŒ‡é’ˆ
 		GDALRasterBand* poBand = poDataset->GetRasterBand(1);
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
@@ -13428,9 +13428,9 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
+		GDALDataType dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
 		short* pbuf = NULL;
-		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//·ÖÅäÊı¾İÖ¸Õë¿Õ¼ä
+		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//åˆ†é…æ•°æ®æŒ‡é’ˆç©ºé—´
 		if (!pbuf)
 		{
 			fprintf(stderr, "read_slc(): out of memory!\n");
@@ -13438,7 +13438,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 		int i, j;
 		slc.re.create(ysize, xsize, CV_16S);
 		slc.im.create(ysize, xsize, CV_16S);
@@ -13449,7 +13449,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 				slc.re.ptr<short>(i)[j] = pbuf[offset];
 				offset++;
 			}
-		//»ñÈ¡Ö¸Ïò²¨¶Î2µÄÖ¸Õë
+		//è·å–æŒ‡å‘æ³¢æ®µ2çš„æŒ‡é’ˆ
 		poBand = poDataset->GetRasterBand(2);
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
@@ -13460,8 +13460,8 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			GDALDestroyDriverManager();
 			return -1;
 		}
-		dataType = poBand->GetRasterDataType();	//Êı¾İ´æ´¢ÀàĞÍ£¬cosÓ¦ÎªGDT_CInt16
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//¶ÁÈ¡¸´Í¼ÏñÊı¾İµ½pbufÖĞ
+		dataType = poBand->GetRasterDataType();	//æ•°æ®å­˜å‚¨ç±»å‹ï¼Œcosåº”ä¸ºGDT_CInt16
+		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//è¯»å–å¤å›¾åƒæ•°æ®åˆ°pbufä¸­
 		offset = 0;
 		for (i = 0; i < ysize; i++)
 			for (j = 0; j < xsize; j++)
@@ -13503,7 +13503,7 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 		return -1;
 	}
 
-	//¶ÁÈ¡¹ìµÀ²ÎÊı
+	//è¯»å–è½¨é“å‚æ•°
 	TiXmlElement* pnode, * pchild, * pchild1;
 	int numOfstateVec;
 	ret = xmldoc.find_node("orbitList", pnode);
@@ -13515,32 +13515,32 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = xmldoc._find_node(pnode, "time", pchild);
 		ret = UTC2GPS(pchild->GetText(), &time);
 		ret = xmldoc._find_node(pnode, "position", pchild1);
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = xmldoc._find_node(pchild1, "x", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = xmldoc._find_node(pchild1, "y", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = xmldoc._find_node(pchild1, "z", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &z);
 
 		ret = xmldoc._find_node(pnode, "velocity", pchild1);
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = xmldoc._find_node(pchild1, "x", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = xmldoc._find_node(pchild1, "y", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = xmldoc._find_node(pchild1, "z", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vz);
 
-		//¸³Öµ
+		//èµ‹å€¼
 		state_vec.at<double>(i, 0) = time;
 		state_vec.at<double>(i, 1) = x;
 		state_vec.at<double>(i, 2) = y;
@@ -13551,30 +13551,30 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 		pnode = pnode->NextSiblingElement();
 	}
 
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.get_str_para("productFirstLineUtcTime", this->acquisition_start_time);
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.get_str_para("productLastLineUtcTime", this->acquisition_stop_time);
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	this->sensor = "fucheng-1";
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("prf", &this->prf);
-	//ÖĞĞÄÆµÂÊ
+	//ä¸­å¿ƒé¢‘ç‡
 	ret = xmldoc.get_double_para("radarFrequency", &this->carrier_frequency);
 	//this->carrier_frequency = this->carrier_frequency * 1e9;
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("slantRangeTime", &this->slant_range_first_pixel);
 	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//¾àÀë·½Î»²ÉÑù¼ä¸ô/·Ö±æÂÊ
+	//è·ç¦»æ–¹ä½é‡‡æ ·é—´éš”/åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
 	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
 	//ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
 	//ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
 	
-	//ÖĞĞÄÏÂÊÓ½ÇincidenceAngleMidSwath
+	//ä¸­å¿ƒä¸‹è§†è§’incidenceAngleMidSwath
 	ret = xmldoc.get_double_para("incidenceAngleMidSwath", &this->inc_center);
 
-	//ËÄ½Ç¾­Î³¶È
+	//å››è§’ç»çº¬åº¦
 	int num_geolocation_points = 0;
 	ret = xmldoc.find_node("geolocationGridPointList", pnode);
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &num_geolocation_points);
@@ -13584,10 +13584,10 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 	for (int i = 0; i < num_geolocation_points; i++)
 	{
 		if (!pnode) break;
-		//ĞĞÊı
+		//è¡Œæ•°
 		ret = xmldoc._find_node(pnode, "line", pchild);
 		ret = sscanf(pchild->GetText(), "%d", &line);
-		//ÁĞÊı
+		//åˆ—æ•°
 		ret = xmldoc._find_node(pnode, "pixel", pchild);
 		ret = sscanf(pchild->GetText(), "%d", &pixel);
 		if (line == 0 && pixel == 0)
@@ -13645,7 +13645,7 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 		return -1;
 	}
 
-	//¶ÁÈ¡¹ìµÀ²ÎÊı
+	//è¯»å–è½¨é“å‚æ•°
 	TiXmlElement* pnode, * pchild, * pchild1;
 	int numOfstateVec = 6;
 	pnode = NULL;
@@ -13655,33 +13655,33 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 	{
 		if (i == 0) ret = xmldoc.find_node("GPSParam", pnode);
 		
-		//GPSÊ±¼ä
+		//GPSæ—¶é—´
 		ret = xmldoc._find_node(pnode, "TimeStamp", pchild);
 		string tmp = pchild->GetText();
 		int rpos = tmp.rfind("-");
 		string tmp2 = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
 		ret = UTC2GPS(tmp2.c_str(), &time);
-		//Î»ÖÃx
+		//ä½ç½®x
 		ret = xmldoc._find_node(pnode, "xPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//Î»ÖÃy
+		//ä½ç½®y
 		ret = xmldoc._find_node(pnode, "yPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//Î»ÖÃz
+		//ä½ç½®z
 		ret = xmldoc._find_node(pnode, "zPosition", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &z);
 
-		//ËÙ¶Èx
+		//é€Ÿåº¦x
 		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//ËÙ¶Èy
+		//é€Ÿåº¦y
 		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//ËÙ¶Èz
+		//é€Ÿåº¦z
 		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
 		ret = sscanf(pchild->GetText(), "%lf", &vz);
 
-		//¸³Öµ
+		//èµ‹å€¼
 		state_vec.at<double>(i, 0) = time;
 		state_vec.at<double>(i, 1) = x;
 		state_vec.at<double>(i, 2) = y;
@@ -13692,36 +13692,36 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 		pnode = pnode->NextSiblingElement();
 	}
 
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	ret = xmldoc.get_str_para("imagingTimestart", this->acquisition_start_time);
 	string tmp = this->acquisition_start_time;
 	int rpos = tmp.rfind("-");
 	this->acquisition_start_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	ret = xmldoc.get_str_para("imagingTimeend", this->acquisition_stop_time);
 	tmp = this->acquisition_stop_time;
 	rpos = tmp.rfind("-");
 	this->acquisition_stop_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
-	//ÎÀĞÇÃû³Æ
+	//å«æ˜Ÿåç§°
 	this->sensor = "fucheng-1";
-	//Âö³åÖØ¸´ÆµÂÊ
+	//è„‰å†²é‡å¤é¢‘ç‡
 	ret = xmldoc.get_double_para("eqvPRF", &this->prf);
-	//ÖĞĞÄÆµÂÊ
+	//ä¸­å¿ƒé¢‘ç‡
 	ret = xmldoc.get_double_para("RadarCenterFrequency", &this->carrier_frequency);
 	this->carrier_frequency = this->carrier_frequency * 1e9;
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
 	//this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//¾àÀë·½Î»²ÉÑù¼ä¸ô/·Ö±æÂÊ
+	//è·ç¦»æ–¹ä½é‡‡æ ·é—´éš”/åˆ†è¾¨ç‡
 	ret = xmldoc.get_double_para("widthspace", &this->range_spacing);
 	ret = xmldoc.get_double_para("heightspace", &this->azimuth_spacing);
 	//ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
 	//ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
 
-	//ÖĞĞÄÏÂÊÓ½ÇincidenceAngleMidSwath
+	//ä¸­å¿ƒä¸‹è§†è§’incidenceAngleMidSwath
 	ret = xmldoc.get_double_para("incidenceAngleNearRange", &this->inc_center);
 
-	//ËÄ½Ç¾­Î³¶È
+	//å››è§’ç»çº¬åº¦
 	double latitude, longitude;
 	ret = xmldoc.get_double_para("latitude", &latitude);
 	ret = xmldoc.get_double_para("longitude", &longitude);

@@ -1,4 +1,4 @@
-// Deflat.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
+// Deflat.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
 //
 
 #include "stdafx.h"
@@ -285,7 +285,7 @@ int Deflat::deflat(
 			gcps.at<double>(i, 1) = gcps.at<double>(i, 1) / multilook_times + 1;
 		}
 	}
-	///////////////////////////////////»úÔØÎŞ¹ìµÀÊı¾İÇé¿ö//////////////////////////////////////////
+	///////////////////////////////////æœºè½½æ— è½¨é“æ•°æ®æƒ…å†µ//////////////////////////////////////////
 	if (orbit_main.rows == 1 && orbit_slave.rows == 1 && gcps.rows == 2)
 	{
 		double delta_r1 = cv::norm(orbit_main(Range(0, 1), Range(1, 4)) - gcps(Range(0, 1), Range(2, 5))) - 
@@ -313,9 +313,9 @@ int Deflat::deflat(
 		if (return_check(ret, "util.wrap(*, *)", error_head)) return -1;
 
 	}
-	///////////////////////////////////»úÔØÎŞ¹ìµÀÊı¾İÇé¿ö//////////////////////////////////////////
+	///////////////////////////////////æœºè½½æ— è½¨é“æ•°æ®æƒ…å†µ//////////////////////////////////////////
 
-	///////////////////////////////////ĞÇÔØÓĞ¹ìµÀÊı¾İÇé¿ö//////////////////////////////////////////
+	///////////////////////////////////æ˜Ÿè½½æœ‰è½¨é“æ•°æ®æƒ…å†µ//////////////////////////////////////////
 	else
 	{
 		Mat coef_m, coef_s;
@@ -372,7 +372,7 @@ int Deflat::deflat(
 		if (return_check(ret, "util.wrap(*, *)", error_head)) return -1;
 
 	}
-	///////////////////////////////////ĞÇÔØÓĞ¹ìµÀÊı¾İÇé¿ö//////////////////////////////////////////
+	///////////////////////////////////æ˜Ÿè½½æœ‰è½¨é“æ•°æ®æƒ…å†µ//////////////////////////////////////////
 	return 0;
 }
 
@@ -424,7 +424,7 @@ int Deflat::deflat(
 	int ret;
 	int rows = phase.rows; int cols = phase.cols;
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	Mat state_vec1, state_vec2;
 	stateVec1.copyTo(state_vec1);
@@ -440,7 +440,7 @@ int Deflat::deflat(
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(1, 4)).copyTo(sate2_xyz);
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
 	/*
-	* Í¼Ïñ×ø±ê×ª¾­Î³×ø±ê
+	* å›¾åƒåæ ‡è½¬ç»çº¬åæ ‡
 	*/
 	Mat row, col;
 	row.create(rows, cols, CV_64F); col.create(rows, cols, CV_64F);
@@ -462,7 +462,7 @@ int Deflat::deflat(
 
 
 	/*
-	* Í¼Ïñ1³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ1æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	Mat sate1 = Mat::zeros(rows, 3, CV_64F);
@@ -476,7 +476,7 @@ int Deflat::deflat(
 		tmp.at<double>(0, 2) = height;
 		util.ell2xyz(tmp, xyz);
 		
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate1_xyz.rows; j++)
@@ -496,7 +496,7 @@ int Deflat::deflat(
 	}
 
 	/*
-	* Í¼Ïñ2³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ2æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	for (int i = 0; i < 1; i++)
@@ -507,7 +507,7 @@ int Deflat::deflat(
 		tmp.at<double>(0, 2) = height;
 		util.ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate2_xyz.rows; j++)
@@ -528,7 +528,7 @@ int Deflat::deflat(
 
 
 	/*
-	* ¼ÆËãĞ±¾àºÍÆ½µØÏàÎ»
+	* è®¡ç®—æ–œè·å’Œå¹³åœ°ç›¸ä½
 	*/
 
 #pragma omp parallel for schedule(guided)
@@ -542,15 +542,15 @@ int Deflat::deflat(
 			tmp.at<double>(0, 2) = height;
 			util.ell2xyz(tmp, xyz);
 			r = xyz - sate1(Range(i, i + 1), Range(0, 3));
-			r1 = sqrt(sum(r.mul(r))[0]);//Ö÷ĞÇĞ±¾à
+			r1 = sqrt(sum(r.mul(r))[0]);//ä¸»æ˜Ÿæ–œè·
 			r = xyz - sate2(Range(i, i + 1), Range(0, 3));
-			r2 = sqrt(sum(r.mul(r))[0]);//¸¨ĞÇĞ±¾à
+			r2 = sqrt(sum(r.mul(r))[0]);//è¾…æ˜Ÿæ–œè·
 			lat.at<double>(i, j) = (r2 - r1) / wave_length * (1 / (double)mode) * 4 * PI;
 		}
 	}
 
 	/*
-	* ÄâºÏÆ½µØÏàÎ»£¨¶ş½×ÄâºÏ£©£¬È¡1/20½øĞĞÄâºÏ
+	* æ‹Ÿåˆå¹³åœ°ç›¸ä½ï¼ˆäºŒé˜¶æ‹Ÿåˆï¼‰ï¼Œå–1/20è¿›è¡Œæ‹Ÿåˆ
 	*/
 	int rows1 = (int)floor(rows * cols / 20);
 	Mat A = Mat::ones(rows1, 6, CV_64F); Mat ro(rows1, 1, CV_64F); Mat co(rows1, 1, CV_64F); Mat delta_phi(rows1, 1, CV_64F);
@@ -583,7 +583,7 @@ int Deflat::deflat(
 		return -1;
 	}
 
-	//ÇóÆ½µØÏàÎ»
+	//æ±‚å¹³åœ°ç›¸ä½
 	cv::transpose(coef, coef);
 	coef.copyTo(flat_phase_coef);
 	lat = lat.reshape(0, rows);
@@ -647,7 +647,7 @@ int Deflat::topo_removal(
 	}
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 
 	FormatConversion conversion;
@@ -655,7 +655,7 @@ int Deflat::topo_removal(
 	int ret;
 	int rows = phase.rows; int cols = phase.cols;
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	Mat state_vec1, state_vec2;
 	stateVec1.copyTo(state_vec1);
@@ -671,7 +671,7 @@ int Deflat::topo_removal(
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(1, 4)).copyTo(sate2_xyz);
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
 	/*
-	* Í¼Ïñ×ø±ê×ª¾­Î³×ø±ê
+	* å›¾åƒåæ ‡è½¬ç»çº¬åæ ‡
 	*/
 	Mat row, col;
 	row.create(rows, cols, CV_64F); col.create(rows, cols, CV_64F);
@@ -692,7 +692,7 @@ int Deflat::topo_removal(
 	if (return_check(ret, "coord_conversion()", error_head)) return -1;
 
 	/*
-	* Í¼Ïñ1³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ1æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	Mat sate1 = Mat::zeros(rows, 3, CV_64F);
@@ -705,7 +705,7 @@ int Deflat::topo_removal(
 		tmp.at<double>(0, 2) = 0;
 		util.ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate1_xyz.rows; j++)
@@ -724,7 +724,7 @@ int Deflat::topo_removal(
 	}
 
 	/*
-	* Í¼Ïñ2³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ2æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	for (int i = 0; i < 1; i++)
@@ -735,7 +735,7 @@ int Deflat::topo_removal(
 		tmp.at<double>(0, 2) = 0;
 		util.ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate2_xyz.rows; j++)
@@ -754,7 +754,7 @@ int Deflat::topo_removal(
 	}
 
 	/*
-	* ¸ù¾İÍâ²¿DEMÊı¾İ¼ÆËãÏàÓ¦µÄµØĞÎÏàÎ»
+	* æ ¹æ®å¤–éƒ¨DEMæ•°æ®è®¡ç®—ç›¸åº”çš„åœ°å½¢ç›¸ä½
 	*/
 	double lon_left, lon_right, lat_top, lat_bottom, delta_lon_dem, delta_lat_dem,
 		offset_inc, scale_inc, offset_y, scale_y, a0, a1, a2, a3, a4, a5;
@@ -808,7 +808,7 @@ int Deflat::topo_removal(
 			DEM.at<double>(i, j) = dem_interp;
 			util.ell2xyz(tmp, xyz);
 			r = xyz - sate1(Range(i, i + 1), Range(0, 3));
-			r1 = sqrt(sum(r.mul(r))[0]);//Ö÷ĞÇĞ±¾à
+			r1 = sqrt(sum(r.mul(r))[0]);//ä¸»æ˜Ÿæ–œè·
 			lat.at<double>(i, j) =  4 * PI * dem_interp * B_effect / wavelength / r1 / sin(inc / 180.0 * PI) / ((double)mode);
 		}
 	}
@@ -928,7 +928,7 @@ int Deflat::demMapping(
 		return -1;
 	}
 
-	//84×ø±êÏµDEM²åÖµ
+	//84åæ ‡ç³»DEMæ’å€¼
 	Mat DEM, stateVector_interp;
 	interp_times = interp_times < 1 ? 1 : interp_times;
 	cv::resize(DEM84, DEM, cv::Size(DEM84.cols * interp_times, DEM84.rows * interp_times));
@@ -937,7 +937,7 @@ int Deflat::demMapping(
 	DEM_out = DEM_out + invalid;
 	lon_spacing = lon_spacing / (double)interp_times;
 	lat_spacing = lat_spacing / (double)interp_times;
-	//³õÊ¼»¯¹ìµÀÀà
+	//åˆå§‹åŒ–è½¨é“ç±»
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
@@ -946,7 +946,7 @@ int Deflat::demMapping(
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
-	//²ÉÓÃµü´ú¼ÆËãÃ¿¸öDEMµãÔÚSARÍ¼ÏñÖĞµÄ×ø±ê£¬ÒÔ¼õĞ¡¼ÆËãÁ¿
+	//é‡‡ç”¨è¿­ä»£è®¡ç®—æ¯ä¸ªDEMç‚¹åœ¨SARå›¾åƒä¸­çš„åæ ‡ï¼Œä»¥å‡å°è®¡ç®—é‡
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
@@ -1045,7 +1045,7 @@ int Deflat::demMapping(
 		}
 	}
 	
-	//Í¶Ó°DEM²åÖµ
+	//æŠ•å½±DEMæ’å€¼
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		for (int j = 0; j < sceneWidth; j++)
@@ -1053,7 +1053,7 @@ int Deflat::demMapping(
 			if (DEM_out.at<short>(i, j) != invalid) continue;
 			int up, down, left, right, up_count, down_count, left_count, right_count;
 			double value1, value2, ratio1, ratio2;
-			//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 			up = i;
 			while (true)
 			{
@@ -1061,7 +1061,7 @@ int Deflat::demMapping(
 				if (up < 0) break;
 				if (DEM_out.at<short>(up, j) != invalid) break;
 			}
-			//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 			down = i;
 			while (true)
 			{
@@ -1069,7 +1069,7 @@ int Deflat::demMapping(
 				if (down > sceneHeight - 1) break;
 				if (DEM_out.at<short>(down, j) != invalid) break;
 			}
-			//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 			left = j;
 			while (true)
 			{
@@ -1077,7 +1077,7 @@ int Deflat::demMapping(
 				if (left < 0) break;
 				if (DEM_out.at<short>(i, left) != invalid) break;
 			}
-			//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 			right = j;
 			while (true)
 			{
@@ -1086,7 +1086,7 @@ int Deflat::demMapping(
 				if (DEM_out.at<short>(i, right) != invalid) break;
 			}
 
-			//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1098,7 +1098,7 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = (value1 + value2) / 2.0;
 				continue;
 			}
-			//ÉÏÏÂÓĞÖµ
+			//ä¸Šä¸‹æœ‰å€¼
 			if (up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio2 = double(i - up) / double(down - up);
@@ -1107,7 +1107,7 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = value2;
 				continue;
 			}
-			//×óÓÒÓĞÖµ
+			//å·¦å³æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1116,31 +1116,31 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = value1;
 				continue;
 			}
-			//ÉÏ±ßÓĞÖµ
+			//ä¸Šè¾¹æœ‰å€¼
 			if (up >= 0)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(up, j);
 				continue;
 			}
-			//ÏÂ±ßÓĞÖµ
+			//ä¸‹è¾¹æœ‰å€¼
 			if (down <= sceneHeight - 1)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(down, j);
 				continue;
 			}
-			//×ó±ßÓĞÖµ
+			//å·¦è¾¹æœ‰å€¼
 			if (left >= 0)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, left);
 				continue;
 			}
-			//ÓÒ±ßÓĞÖµ
+			//å³è¾¹æœ‰å€¼
 			if (right <= sceneWidth - 1)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, right);
 				continue;
 			}
-			//ÉÏÏÂ×óÓÒ¶¼Ã»ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æ²¡æœ‰å€¼
 			DEM_out.at<short>(i, j) = 0;
 			
 		}
@@ -1195,7 +1195,7 @@ int Deflat::demMapping(
 		return -1;
 	}
 
-	//84×ø±êÏµDEM²åÖµ
+	//84åæ ‡ç³»DEMæ’å€¼
 	Mat DEM, stateVector_interp;
 	interp_times = interp_times < 1 ? 1 : interp_times;
 	cv::resize(DEM84, DEM, cv::Size(DEM84.cols * interp_times, DEM84.rows * interp_times));
@@ -1209,7 +1209,7 @@ int Deflat::demMapping(
 	DEM_out = DEM_out + invalid;
 	lon_spacing = lon_spacing / (double)interp_times;
 	lat_spacing = lat_spacing / (double)interp_times;
-	//³õÊ¼»¯¹ìµÀÀà
+	//åˆå§‹åŒ–è½¨é“ç±»
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
@@ -1218,7 +1218,7 @@ int Deflat::demMapping(
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
-	//²ÉÓÃµü´ú¼ÆËãÃ¿¸öDEMµãÔÚSARÍ¼ÏñÖĞµÄ×ø±ê£¬ÒÔ¼õĞ¡¼ÆËãÁ¿
+	//é‡‡ç”¨è¿­ä»£è®¡ç®—æ¯ä¸ªDEMç‚¹åœ¨SARå›¾åƒä¸­çš„åæ ‡ï¼Œä»¥å‡å°è®¡ç®—é‡
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
@@ -1318,7 +1318,7 @@ int Deflat::demMapping(
 			}
 		}
 	}
-	//Í¶Ó°DEM²åÖµ
+	//æŠ•å½±DEMæ’å€¼
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		for (int j = 0; j < sceneWidth; j++)
@@ -1326,7 +1326,7 @@ int Deflat::demMapping(
 			if (DEM_out.at<short>(i, j) != invalid) continue;
 			int up, down, left, right, up_count, down_count, left_count, right_count;
 			double value1, value2, ratio1, ratio2;
-			//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 			up = i;
 			while (true)
 			{
@@ -1334,7 +1334,7 @@ int Deflat::demMapping(
 				if (up < 0) break;
 				if (DEM_out.at<short>(up, j) != invalid) break;
 			}
-			//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 			down = i;
 			while (true)
 			{
@@ -1342,7 +1342,7 @@ int Deflat::demMapping(
 				if (down > sceneHeight - 1) break;
 				if (DEM_out.at<short>(down, j) != invalid) break;
 			}
-			//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 			left = j;
 			while (true)
 			{
@@ -1350,7 +1350,7 @@ int Deflat::demMapping(
 				if (left < 0) break;
 				if (DEM_out.at<short>(i, left) != invalid) break;
 			}
-			//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 			right = j;
 			while (true)
 			{
@@ -1359,7 +1359,7 @@ int Deflat::demMapping(
 				if (DEM_out.at<short>(i, right) != invalid) break;
 			}
 
-			//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1371,7 +1371,7 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = (value1 + value2) / 2.0;
 				continue;
 			}
-			//ÉÏÏÂÓĞÖµ
+			//ä¸Šä¸‹æœ‰å€¼
 			if (up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio2 = double(i - up) / double(down - up);
@@ -1380,7 +1380,7 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = value2;
 				continue;
 			}
-			//×óÓÒÓĞÖµ
+			//å·¦å³æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1389,37 +1389,37 @@ int Deflat::demMapping(
 				DEM_out.at<short>(i, j) = value1;
 				continue;
 			}
-			//ÉÏ±ßÓĞÖµ
+			//ä¸Šè¾¹æœ‰å€¼
 			if (up >= 0)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(up, j);
 				continue;
 			}
-			//ÏÂ±ßÓĞÖµ
+			//ä¸‹è¾¹æœ‰å€¼
 			if (down <= sceneHeight - 1)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(down, j);
 				continue;
 			}
-			//×ó±ßÓĞÖµ
+			//å·¦è¾¹æœ‰å€¼
 			if (left >= 0)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, left);
 				continue;
 			}
-			//ÓÒ±ßÓĞÖµ
+			//å³è¾¹æœ‰å€¼
 			if (right <= sceneWidth - 1)
 			{
 				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, right);
 				continue;
 			}
-			//ÉÏÏÂ×óÓÒ¶¼Ã»ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æ²¡æœ‰å€¼
 			DEM_out.at<short>(i, j) = 0;
 
 		}
 	}
 
-	//Í¶Ó°¾­¶È²åÖµ
+	//æŠ•å½±ç»åº¦æ’å€¼
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		for (int j = 0; j < sceneWidth; j++)
@@ -1427,7 +1427,7 @@ int Deflat::demMapping(
 			if (mappedLon.at<double>(i, j) > -998.0) continue;
 			int up, down, left, right, up_count, down_count, left_count, right_count;
 			double value1, value2, ratio1, ratio2;
-			//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 			up = i;
 			while (true)
 			{
@@ -1435,7 +1435,7 @@ int Deflat::demMapping(
 				if (up < 0) break;
 				if (mappedLat.at<double>(up, j) > -998.0) break;
 			}
-			//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+			//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 			down = i;
 			while (true)
 			{
@@ -1443,7 +1443,7 @@ int Deflat::demMapping(
 				if (down > sceneHeight - 1) break;
 				if (mappedLat.at<double>(down, j) > -998.0) break;
 			}
-			//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 			left = j;
 			while (true)
 			{
@@ -1451,7 +1451,7 @@ int Deflat::demMapping(
 				if (left < 0) break;
 				if (mappedLat.at<double>(i, left) > -998.0) break;
 			}
-			//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+			//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 			right = j;
 			while (true)
 			{
@@ -1460,7 +1460,7 @@ int Deflat::demMapping(
 				if (mappedLat.at<double>(i, right) > -998.0) break;
 			}
 
-			//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1482,7 +1482,7 @@ int Deflat::demMapping(
 
 				continue;
 			}
-			//ÉÏÏÂÓĞÖµ
+			//ä¸Šä¸‹æœ‰å€¼
 			if (up >= 0 && down <= sceneHeight - 1)
 			{
 				ratio2 = double(i - up) / double(down - up);
@@ -1497,7 +1497,7 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = value2;
 				continue;
 			}
-			//×óÓÒÓĞÖµ
+			//å·¦å³æœ‰å€¼
 			if (left >= 0 && right <= sceneWidth - 1)
 			{
 				ratio1 = double(j - left) / double(right - left);
@@ -1512,7 +1512,7 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = value1;
 				continue;
 			}
-			//ÉÏ±ßÓĞÖµ
+			//ä¸Šè¾¹æœ‰å€¼
 			if (up >= 0)
 			{
 				mappedLat.at<double>(i, j) = mappedLat.at<double>(up, j);
@@ -1520,7 +1520,7 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = mappedLon.at<double>(up, j);
 				continue;
 			}
-			//ÏÂ±ßÓĞÖµ
+			//ä¸‹è¾¹æœ‰å€¼
 			if (down <= sceneHeight - 1)
 			{
 				mappedLat.at<double>(i, j) = mappedLat.at<double>(down, j);
@@ -1528,7 +1528,7 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = mappedLon.at<double>(down, j);
 				continue;
 			}
-			//×ó±ßÓĞÖµ
+			//å·¦è¾¹æœ‰å€¼
 			if (left >= 0)
 			{
 				mappedLat.at<double>(i, j) = mappedLat.at<double>(i, left);
@@ -1536,7 +1536,7 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = mappedLon.at<double>(i, left);
 				continue;
 			}
-			//ÓÒ±ßÓĞÖµ
+			//å³è¾¹æœ‰å€¼
 			if (right <= sceneWidth - 1)
 			{
 				mappedLat.at<double>(i, j) = mappedLat.at<double>(i, right);
@@ -1544,12 +1544,12 @@ int Deflat::demMapping(
 				mappedLon.at<double>(i, j) = mappedLon.at<double>(i, right);
 				continue;
 			}
-			//ÉÏÏÂ×óÓÒ¶¼Ã»ÓĞÖµ
+			//ä¸Šä¸‹å·¦å³éƒ½æ²¡æœ‰å€¼
 			mappedLat.at<double>(i, j) = 0;
 			mappedLon.at<double>(i, j) = 0;
 		}
 	}
-	//Í¶Ó°Î³¶È²åÖµ
+	//æŠ•å½±çº¬åº¦æ’å€¼
 	cv::GaussianBlur(mappedLat, mappedLat, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(mappedLon, mappedLon, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
@@ -1909,7 +1909,7 @@ int Deflat::SLCs_deramp(
 		return -1;
 	}
 	/*
-	* ×¼±¸Êä³öh5ÎÄ¼ş
+	* å‡†å¤‡è¾“å‡ºh5æ–‡ä»¶
 	*/
 	int ret;
 	FormatConversion conversion;
@@ -2044,7 +2044,7 @@ int Deflat::topography_phase_simulation(
 			inc = a0 + a1 * jj + a2 * jj * jj + a3 * jj * jj * jj + a4 * jj * jj * jj * jj + a5 * jj * jj * jj * jj * jj;
 			inc = inc * scale_inc + offset_inc;
 
-			r1 = nearRangeTime * VEL_C / 2.0 + rangeSpacing * (double)j;//Ö÷ĞÇĞ±¾à
+			r1 = nearRangeTime * VEL_C / 2.0 + rangeSpacing * (double)j;//ä¸»æ˜Ÿæ–œè·
 			topography_phase.at<double>(i, j) = - 4 * PI * mappedDEM.at<short>(i, j) * B_effect / wavelength / r1 / sin(inc / 180.0 * PI);
 		}
 	}
@@ -2081,20 +2081,20 @@ int Deflat::computeImageGeoBoundry(
 	int ret;
 	Utils util;
 	/*
-	* Í¼Ïñ×ø±ê×ª¾­Î³×ø±ê
+	* å›¾åƒåæ ‡è½¬ç»çº¬åæ ‡
 	*/
 	Mat row, col;
 	row.create(4, 1, CV_64F); col.create(4, 1, CV_64F);
-	row.at<double>(0, 0) = offset_row;//×óÉÏ½Ç
+	row.at<double>(0, 0) = offset_row;//å·¦ä¸Šè§’
 	col.at<double>(0, 0) = offset_col;
 
-	row.at<double>(1, 0) = offset_row;//ÓÒÉÏ½Ç
+	row.at<double>(1, 0) = offset_row;//å³ä¸Šè§’
 	col.at<double>(1, 0) = offset_col + sceneWidth;
 
-	row.at<double>(2, 0) = offset_row + sceneHeight;//×óÏÂ½Ç
+	row.at<double>(2, 0) = offset_row + sceneHeight;//å·¦ä¸‹è§’
 	col.at<double>(2, 0) = offset_col;
 
-	row.at<double>(3, 0) = offset_row + sceneHeight;//ÓÒÏÂ½Ç
+	row.at<double>(3, 0) = offset_row + sceneHeight;//å³ä¸‹è§’
 	col.at<double>(3, 0) = offset_col + sceneWidth;
 	Mat lon, lat;
 	ret = util.coord_conversion(lon_coefficient, row, col, lon);
@@ -2367,7 +2367,7 @@ int Deflat::getSRTMDEM(
 	vector<bool> bAlreadyExist;
 	int ret = getSRTMFileName(lonMin, lonMax, latMin, latMax, srtmFileName);
 	if (return_check(ret, "getSRTMFileName()", error_head)) return -1;
-	//ÅĞ¶ÏÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	//åˆ¤æ–­æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string tmp = this->DEMPath + "\\" + srtmFileName[i];
@@ -2375,7 +2375,7 @@ int Deflat::getSRTMDEM(
 		if (-1 != GetFileAttributesA(tmp.c_str()))bAlreadyExist.push_back(true);
 		else bAlreadyExist.push_back(false);
 	}
-	//²»´æÔÚÔòÏÂÔØ
+	//ä¸å­˜åœ¨åˆ™ä¸‹è½½
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		if (!bAlreadyExist[i])
@@ -2384,7 +2384,7 @@ int Deflat::getSRTMDEM(
 			if (return_check(ret, "downloadSRTM()", error_head)) return -1;
 		}
 	}
-	//½âÑ¹ÎÄ¼ş
+	//è§£å‹æ–‡ä»¶
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string folderName = srtmFileName[i];
@@ -2404,7 +2404,7 @@ int Deflat::getSRTMDEM(
 	double lonUpperLeft, lonLowerRight, latUpperLeft, latLowerRight;
 	int total_rows, total_cols;
 
-	//DEMÔÚÒ»¸öSRTM·½¸ñÄÚ
+	//DEMåœ¨ä¸€ä¸ªSRTMæ–¹æ ¼å†…
 	if (srtmFileName.size() == 1)
 	{
 		total_rows = 6000, total_cols = 6000;
@@ -2429,7 +2429,7 @@ int Deflat::getSRTMDEM(
 		endCol = endCol > total_cols ? total_cols : endCol;
 
 		string folderName = srtmFileName[0];
-		folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+		folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 		string path = this->DEMPath + string("\\") + folderName;
 		path = path + string("\\") + folderName + string(".tif");
 		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
@@ -2440,13 +2440,13 @@ int Deflat::getSRTMDEM(
 		*lonUL = lonUpperLeft + (startCol - 1) * lonSpacing;
 		*latUL = latUpperLeft - (startRow - 1) * latSpacing;
 	}
-	//DEMÔÚ2¸ö·½¸ñÄÚ
+	//DEMåœ¨2ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 2)
 	{
 		int xx, yy, xx2, yy2;
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
-		//Í¬Ò»ÁĞ
+		//åŒä¸€åˆ—
 		if (xx == xx2)
 		{
 			total_rows = 6000 * 2; total_cols = 6000;
@@ -2474,7 +2474,7 @@ int Deflat::getSRTMDEM(
 			if (yy < yy2)
 			{
 				string folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -2483,7 +2483,7 @@ int Deflat::getSRTMDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -2495,7 +2495,7 @@ int Deflat::getSRTMDEM(
 			else
 			{
 				string folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -2504,7 +2504,7 @@ int Deflat::getSRTMDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = this->DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -2518,11 +2518,11 @@ int Deflat::getSRTMDEM(
 			*lonUL = lonUpperLeft + (startCol - 1) * lonSpacing;
 			*latUL = latUpperLeft - (startRow - 1) * latSpacing;
 		}
-		//Í¬Ò»ĞĞ
+		//åŒä¸€è¡Œ
 		else if (yy == yy2)
 		{
 			total_cols = 6000 * 2; total_rows = 6000;
-			//¿çÔ½-180.0/180.0Ïß
+			//è·¨è¶Š-180.0/180.0çº¿
 			if ((xx == 1 && xx2 == 72) || (xx == 72 && xx2 == 1))
 			{
 				latUpperLeft = 60.0 - (yy - 1) * 5.0;
@@ -2547,7 +2547,7 @@ int Deflat::getSRTMDEM(
 				if (xx > xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2556,7 +2556,7 @@ int Deflat::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2568,7 +2568,7 @@ int Deflat::getSRTMDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2577,7 +2577,7 @@ int Deflat::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2617,7 +2617,7 @@ int Deflat::getSRTMDEM(
 				if (xx < xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2626,7 +2626,7 @@ int Deflat::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2638,7 +2638,7 @@ int Deflat::getSRTMDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2647,7 +2647,7 @@ int Deflat::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = this->DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -2670,7 +2670,7 @@ int Deflat::getSRTMDEM(
 
 
 	}
-	//DEMÔÚ4¸ö·½¸ñÄÚ
+	//DEMåœ¨4ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 4)
 	{
 		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
@@ -2679,7 +2679,7 @@ int Deflat::getSRTMDEM(
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
 		sscanf(srtmFileName[3].c_str(), "srtm_%d_%d.zip", &xx4, &yy4);
 		total_rows = 6000 * 2; total_cols = 6000 * 2;
-		//¿çÔ½-180.0/180.0Ïß
+		//è·¨è¶Š-180.0/180.0çº¿
 		if (lonMax * lonMin < 0 && (fabs(lonMin) + fabs(lonMax)) > 180.0)
 		{
 			startRow = (int)((60.0 - latMax) / 5.0) + 1;
@@ -2703,7 +2703,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2717,7 +2717,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2732,7 +2732,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2746,7 +2746,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2798,7 +2798,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2812,7 +2812,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2827,7 +2827,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -2841,7 +2841,7 @@ int Deflat::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = this->DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');

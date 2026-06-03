@@ -12,7 +12,7 @@ public:
 	ComplexMat();
 	ComplexMat(Mat& real, Mat& imagine);
 	ComplexMat(int rows, int cols);
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	ComplexMat(const ComplexMat& b);
 	~ComplexMat();
 	void SetRe(Mat& re);
@@ -20,48 +20,48 @@ public:
 	Mat GetRe() const;
 	Mat GetIm() const;
 	Mat GetMod() const;
-	/*¼ÆËã¸´¾ØÕóµÄÏàÎ»*/
+	/*è®¡ç®—å¤çŸ©é˜µçš„ç›¸ä½*/
 	Mat GetPhase();
-	/*ÊÍ·ÅÊı¾İÕ¼ÓÃÄÚ´æ*/
+	/*é‡Šæ”¾æ•°æ®å ç”¨å†…å­˜*/
 	void release();
 	int type() const;
 	int GetRows() const;
 	int GetCols() const;
-	/*¼ÆËã¸´¾ØÕó(¹²éî)³Ë·¨*/
+	/*è®¡ç®—å¤çŸ©é˜µ(å…±è½­)ä¹˜æ³•*/
 	int mul(const ComplexMat& Src, ComplexMat& Dst, bool bConj = false);
-	/*¼ÆËã¸´Êı£¨¹²éî£©µã³Ë*/
+	/*è®¡ç®—å¤æ•°ï¼ˆå…±è½­ï¼‰ç‚¹ä¹˜*/
 	int Mul(const ComplexMat& Src, ComplexMat& Dst, bool bConj) const;
-	/*¼ÆËã¸´Êı³Ë»ı(µã³Ë,elementwise)*/
+	/*è®¡ç®—å¤æ•°ä¹˜ç§¯(ç‚¹ä¹˜,elementwise)*/
 	ComplexMat operator*(const ComplexMat& b) const;
-	/*¸´Êı¾ØÕóÓëÊµÊı¾ØÕó¶ÔÓ¦Ïà³Ë*/
+	/*å¤æ•°çŸ©é˜µä¸å®æ•°çŸ©é˜µå¯¹åº”ç›¸ä¹˜*/
 	ComplexMat operator*(const Mat& a) const;
-	/*¸´Êı¾ØÕó³ËÒÔ³£Êı*/
+	/*å¤æ•°çŸ©é˜µä¹˜ä»¥å¸¸æ•°*/
 	ComplexMat operator*(const double& a) const;
-	/*È¡³ö²¿·Ö¸´Êı¾ØÕó*/
+	/*å–å‡ºéƒ¨åˆ†å¤æ•°çŸ©é˜µ*/
 	ComplexMat operator()(cv::Range _rowRange, cv::Range _colRange) const;
-	/*½«¸´Êı¾ØÕó²¿·Ö½øĞĞ¸³Öµ*/
+	/*å°†å¤æ•°çŸ©é˜µéƒ¨åˆ†è¿›è¡Œèµ‹å€¼*/
 	int SetValue(cv::Range _rowRange, cv::Range _colRange, ComplexMat& src);
-	/*¸´Êı¾ØÕó¼Ó·¨*/
+	/*å¤æ•°çŸ©é˜µåŠ æ³•*/
 	ComplexMat operator+(const ComplexMat& b) const;
-	/*Éî¿½±´¸³Öµ*/
+	/*æ·±æ‹·è´èµ‹å€¼*/
 	ComplexMat operator=(const ComplexMat&);
-	/*¸´Êı¾ØÕóÄÚÇóºÍ
-	* ²ÎÊı1 ÇóºÍ·½Ïò£¨0ÎªÑØ×ÅÃ¿ÁĞÇóºÍ£¬1ÎªÑØ×ÅÃ¿ĞĞÇóºÍ£©
+	/*å¤æ•°çŸ©é˜µå†…æ±‚å’Œ
+	* å‚æ•°1 æ±‚å’Œæ–¹å‘ï¼ˆ0ä¸ºæ²¿ç€æ¯åˆ—æ±‚å’Œï¼Œ1ä¸ºæ²¿ç€æ¯è¡Œæ±‚å’Œï¼‰
 	*/
 	ComplexMat sum(int dim = 0) const;
-	/*ÇóÈ¡¸´¾ØÕóĞĞÁĞÊ½*/
+	/*æ±‚å–å¤çŸ©é˜µè¡Œåˆ—å¼*/
 	complex<double> determinant() const;
-	/*ÇóÈ¡¸´¹²éî*/
+	/*æ±‚å–å¤å…±è½­*/
 	ComplexMat conj() const;
-	/*ÇóÈ¡(¹²éî)×ªÖÃ*/
+	/*æ±‚å–(å…±è½­)è½¬ç½®*/
 	ComplexMat transpose(bool conj=true) const;
-	/*MATLABÊ½reshapeº¯Êı*/
+	/*MATLABå¼reshapeå‡½æ•°*/
 	int reshape(int rows, int cols, ComplexMat& dst);
-	/*¼ÆËã·ÇÁãÔªËØ¸öÊı*/
+	/*è®¡ç®—éé›¶å…ƒç´ ä¸ªæ•°*/
 	int countNonzero() const;
-	/*Êı×éÊÇ·ñÎª¿Õ*/
+	/*æ•°ç»„æ˜¯å¦ä¸ºç©º*/
 	bool isempty()const;
-	/*×ª»»ÀàĞÍ*/
+	/*è½¬æ¢ç±»å‹*/
 	void convertTo(ComplexMat& out, int type) const;
 	Mat re;
 	Mat im;

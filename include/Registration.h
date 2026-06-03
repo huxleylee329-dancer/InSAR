@@ -12,71 +12,71 @@ class InSAR_API Registration
 public:
 	Registration();
 	~Registration();
-	/*ÇóÈ¡Á½·ù¸¨Í¼ÏñµÄÊµÏà¹Øº¯Êı
-	 ²ÎÊı1 Ö÷Í¼Ïñ£¨¸´£©
-	 ²ÎÊı2 ¸¨Í¼Ïñ£¨¸´£©
-	 ²ÎÊı3 ĞĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
-	 ²ÎÊı4 ÁĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
+	/*æ±‚å–ä¸¤å¹…è¾…å›¾åƒçš„å®ç›¸å…³å‡½æ•°
+	 å‚æ•°1 ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°2 è¾…å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°3 è¡Œåç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	 å‚æ•°4 åˆ—åç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col);
-	/*2D FFTSHIFT(Ô­µØ²Ù×÷)*/
+	/*2D FFTSHIFT(åŸåœ°æ“ä½œ)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT
-	 ²ÎÊı1 ÊäÈë¾ØÕó
-	 ²ÎÊı2 Êä³ö¾ØÕó
+	 å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	 å‚æ•°2 è¾“å‡ºçŸ©é˜µ
 	*/
 	int fft2(Mat& Src, Mat& Dst);
-	/*ÏñÔª¼¶Åä×¼£¨Ô­µØ²Ù×÷£©
-	 ²ÎÊı1 Ö÷Í¼Ïñ£¨¸´£©£¨ÊäÈëÖµ/·µ»ØÖµ£©
-	 ²ÎÊı2 ¸¨Í¼Ïñ£¨¸´£©£¨ÊäÈëÖµ/·µ»ØÖµ£©
-	 ²ÎÊı3 ĞĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
-	 ²ÎÊı4 ÁĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
+	/*åƒå…ƒçº§é…å‡†ï¼ˆåŸåœ°æ“ä½œï¼‰
+	 å‚æ•°1 ä¸»å›¾åƒï¼ˆå¤ï¼‰ï¼ˆè¾“å…¥å€¼/è¿”å›å€¼ï¼‰
+	 å‚æ•°2 è¾…å›¾åƒï¼ˆå¤ï¼‰ï¼ˆè¾“å…¥å€¼/è¿”å›å€¼ï¼‰
+	 å‚æ•°3 è¡Œåç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	 å‚æ•°4 åˆ—åç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int registration_pixel(ComplexMat& Master, ComplexMat& Slave, int* move_r = NULL, int* move_c = NULL);
-	/*ÆµÓò²¹Áã²åÖµ
-	 ²ÎÊı1 ÊäÈë¾ØÕó£¨¸´£©
-	 ²ÎÊı2 Êä³ö¾ØÕó£¨¸´£©
-	 ²ÎÊı3 ²åÖµ±¶Êı£¨´óÓÚ1£¬ ÇÒÊÇ2µÄn´ÎÃİ£©
+	/*é¢‘åŸŸè¡¥é›¶æ’å€¼
+	 å‚æ•°1 è¾“å…¥çŸ©é˜µï¼ˆå¤ï¼‰
+	 å‚æ•°2 è¾“å‡ºçŸ©é˜µï¼ˆå¤ï¼‰
+	 å‚æ•°3 æ’å€¼å€æ•°ï¼ˆå¤§äº1ï¼Œ ä¸”æ˜¯2çš„næ¬¡å¹‚ï¼‰
 	*/
 	int interp_paddingzero(ComplexMat& InputMatrix, ComplexMat& OutputMatrix, int interp_times);
-	/*Á¢·½²åÖµ
-	 ²ÎÊı1 ÊäÈë¾ØÕó
-	 ²ÎÊı2 Êä³ö¾ØÕó
-	 ²ÎÊı3 ĞĞÆ«ÒÆÁ¿
-	 ²ÎÊı4 ÁĞÆ«ÒÆÁ¿
+	/*ç«‹æ–¹æ’å€¼
+	 å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	 å‚æ•°2 è¾“å‡ºçŸ©é˜µ
+	 å‚æ•°3 è¡Œåç§»é‡
+	 å‚æ•°4 åˆ—åç§»é‡
 	*/
 	int interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix, double offset_row, double offset_col);
-	/*Á¢·½²åÖµ
-	²ÎÊı1 ÊäÈë¾ØÕó
-	²ÎÊı2 Êä³ö¾ØÕó
-	²ÎÊı3 ÄâºÏÏµÊı
+	/*ç«‹æ–¹æ’å€¼
+	å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	å‚æ•°2 è¾“å‡ºçŸ©é˜µ
+	å‚æ•°3 æ‹Ÿåˆç³»æ•°
 	*/
 	int interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix, Mat& Coefficient);
-	/*¼ÆËãÃ¿¸öÏñËØµÄÆ«ÒÆÁ¿
-	 ²ÎÊı1 ÏñËØĞĞºÅ
-	 ²ÎÊı2 ÏñËØÁĞºÅ
-	 ²ÎÊı3 ÄâºÏÏµÊı
-	 ²ÎÊı4 ĞĞÆ«ÒÆÁ¿
-	 ²ÎÊı5 ÁĞÆ«ÒÆÁ¿
+	/*è®¡ç®—æ¯ä¸ªåƒç´ çš„åç§»é‡
+	 å‚æ•°1 åƒç´ è¡Œå·
+	 å‚æ•°2 åƒç´ åˆ—å·
+	 å‚æ•°3 æ‹Ÿåˆç³»æ•°
+	 å‚æ•°4 è¡Œåç§»é‡
+	 å‚æ•°5 åˆ—åç§»é‡
 	*/
 	int every_subpixel_move(int i, int j, Mat& coefficient, double* offset_row, double* offset_col);
-	/*¼ÆËã¾í»ıºËÈ¨ÖØ*/
+	/*è®¡ç®—å·ç§¯æ ¸æƒé‡*/
 	double WeightCalculation(double offset);
-	/*ÑÇÏñËØ¼¶Åä×¼
-	 ²ÎÊı1 Ö÷Í¼Ïñ£¨¸´£©
-	 ²ÎÊı2 ¸¨Í¼Ïñ£¨¸´£©
-	 ²ÎÊı3 ×Ó¿é´óĞ¡£¨´óÓÚ1£©
-	 ²ÎÊı4 ²åÖµ±¶Êı£¨´óÓÚ1£©
+	/*äºšåƒç´ çº§é…å‡†
+	 å‚æ•°1 ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°2 è¾…å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°3 å­å—å¤§å°ï¼ˆå¤§äº1ï¼‰
+	 å‚æ•°4 æ’å€¼å€æ•°ï¼ˆå¤§äº1ï¼‰
 	*/
 	int registration_subpixel(ComplexMat& Master, ComplexMat& Slave, int blocksize, int interp_times);
-	/** @brief ¾«Åä×¼£¨Ö§³Ö16Î»ÕûĞÍºÍ64Î»¸¡µãĞÍÊäÈë£©
+	/** @brief ç²¾é…å‡†ï¼ˆæ”¯æŒ16ä½æ•´å‹å’Œ64ä½æµ®ç‚¹å‹è¾“å…¥ï¼‰
 	
-	@param master              Ö÷Í¼Ïñ
-	@param slave               ¸¨Í¼Ïñ
-	@param blocksize           Ö÷Í¼Ïñ²Î¿¼¿é·Ö¿é´óĞ¡£¨blocksize¡Áblocksize£¬blocksizeÎª2µÄn´ÎÃİ£©
-	@param interp_times        ²åÖµ±¶Êı(InSARÒªÇóÖÁÉÙ8±¶²åÖµ)
-	@param offset_row          ¸¨Í¼ÏñĞĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
-	@param offset_col          ¸¨Í¼ÏñÁĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
+	@param master              ä¸»å›¾åƒ
+	@param slave               è¾…å›¾åƒ
+	@param blocksize           ä¸»å›¾åƒå‚è€ƒå—åˆ†å—å¤§å°ï¼ˆblocksizeÃ—blocksizeï¼Œblocksizeä¸º2çš„næ¬¡å¹‚ï¼‰
+	@param interp_times        æ’å€¼å€æ•°(InSARè¦æ±‚è‡³å°‘8å€æ’å€¼)
+	@param offset_row          è¾…å›¾åƒè¡Œåç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	@param offset_col          è¾…å›¾åƒåˆ—åç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int coregistration_subpixel(
 		ComplexMat& master,
@@ -86,43 +86,43 @@ public:
 		int* offset_row = NULL,
 		int* offset_col = NULL
 	);
-	/*ÄâºÏÏñËØÆ«ÒÆÁ¿
-	 ²ÎÊı1 ĞĞĞòÁĞºÅ
-	 ²ÎÊı2 ÁĞĞòÁĞºÅ
-	 ²ÎÊı3 ĞĞÆ«ÒÆÁ¿
-	 ²ÎÊı4 ÁĞÆ«ÒÆÁ¿
-	 ²ÎÊı5 ÄâºÏÏµÊı£¨·µ»ØÖµ£©
+	/*æ‹Ÿåˆåƒç´ åç§»é‡
+	 å‚æ•°1 è¡Œåºåˆ—å·
+	 å‚æ•°2 åˆ—åºåˆ—å·
+	 å‚æ•°3 è¡Œåç§»é‡
+	 å‚æ•°4 åˆ—åç§»é‡
+	 å‚æ•°5 æ‹Ÿåˆç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& offset_row, Mat& offset_col, Mat& para);
-	/*¸ù¾İ´ÖÅä×¼Æ«ÒÆÁ¿É¸Ñ¡¿ØÖÆµã
-	* ²ÎÊı1 Ô­Ê¼Í¼ÏñĞĞÊı
-	* ²ÎÊı2 Ô­Ê¼Í¼ÏñÁĞÊı
-	* ²ÎÊı3 ĞĞÆ«ÒÆ
-	* ²ÎÊı4 ÁĞÆ«ÒÆ
-	* ²ÎÊı5 ¿ØÖÆµãĞÅÏ¢
+	/*æ ¹æ®ç²—é…å‡†åç§»é‡ç­›é€‰æ§åˆ¶ç‚¹
+	* å‚æ•°1 åŸå§‹å›¾åƒè¡Œæ•°
+	* å‚æ•°2 åŸå§‹å›¾åƒåˆ—æ•°
+	* å‚æ•°3 è¡Œåç§»
+	* å‚æ•°4 åˆ—åç§»
+	* å‚æ•°5 æ§åˆ¶ç‚¹ä¿¡æ¯
 	*/
 	int gcps_sift(int rows, int cols, int move_rows, int move_cols, Mat& gcps);
 
-	/*@brief ¸ù¾İDEMºÍÎÀĞÇ¹ìµÀµÈ¸¨Öú²ÎÊı¼ÆËãDEMµãÔÚSARÍ¼ÏñÖĞµÄÎ»ÖÃ
-	* @param DEM                          DEM£¨shortĞÍ¾ØÕó£©
-	* @param stateVector                  ÎÀĞÇ¹ìµÀÊı¾İ£¨Î´²åÖµ£©
-	* @param rangePos                     DEMµãÔÚSARÍ¼ÏñÖĞ¾àÀëÏò×ø±ê£¨ÁĞ£¬doubleĞÍ¾ØÕó£¬·µ»ØÖµ£©
-	* @param azimuthPos                   DEMµãÔÚSARÍ¼ÏñÖĞ·½Î»Ïò×ø±ê£¨ĞĞ£¬doubleĞÍ¾ØÕó£¬·µ»ØÖµ£©
-	* @param lon_upperleft                84×ø±êÏµDEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                84×ø±êÏµDEM×óÉÏ½ÇÎ³¶È
-	* @param offset_row                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄĞĞÆ«ÒÆÁ¿
-	* @param offset_col                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄÁĞÆ«ÒÆÁ¿
-	* @param sceneHeight                  SARÍ¼Ïñ³¡¾°¸ß¶È
-	* @param sceneWidth                   SARÍ¼Ïñ³¡¾°¿í¶È
-	* @param prf                          SARÎÀĞÇÀ×´ïÂö³åÖØ¸´ÆµÂÊ
-	* @param rangeSpacing                 ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param wavelength                   ²¨³¤
-	* @param nearRangeTime                ×î½üĞ±¾àÊ±¼ä
-	* @param acquisitionStartTime         ·½Î»Ïò²ÉÑù¿ªÊ¼Ê±¼ä
-	* @param acquisitionStopTime          ·½Î»Ïò²ÉÑù½áÊøÊ±¼ä
-	* @param lon_spacing                  84×ø±êÏµDEM¾­¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @param lat_spacing                  84×ø±êÏµDEMÎ³¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®DEMå’Œå«æ˜Ÿè½¨é“ç­‰è¾…åŠ©å‚æ•°è®¡ç®—DEMç‚¹åœ¨SARå›¾åƒä¸­çš„ä½ç½®
+	* @param DEM                          DEMï¼ˆshortå‹çŸ©é˜µï¼‰
+	* @param stateVector                  å«æ˜Ÿè½¨é“æ•°æ®ï¼ˆæœªæ’å€¼ï¼‰
+	* @param rangePos                     DEMç‚¹åœ¨SARå›¾åƒä¸­è·ç¦»å‘åæ ‡ï¼ˆåˆ—ï¼Œdoubleå‹çŸ©é˜µï¼Œè¿”å›å€¼ï¼‰
+	* @param azimuthPos                   DEMç‚¹åœ¨SARå›¾åƒä¸­æ–¹ä½å‘åæ ‡ï¼ˆè¡Œï¼Œdoubleå‹çŸ©é˜µï¼Œè¿”å›å€¼ï¼‰
+	* @param lon_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’çº¬åº¦
+	* @param offset_row                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„è¡Œåç§»é‡
+	* @param offset_col                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„åˆ—åç§»é‡
+	* @param sceneHeight                  SARå›¾åƒåœºæ™¯é«˜åº¦
+	* @param sceneWidth                   SARå›¾åƒåœºæ™¯å®½åº¦
+	* @param prf                          SARå«æ˜Ÿé›·è¾¾è„‰å†²é‡å¤é¢‘ç‡
+	* @param rangeSpacing                 è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param wavelength                   æ³¢é•¿
+	* @param nearRangeTime                æœ€è¿‘æ–œè·æ—¶é—´
+	* @param acquisitionStartTime         æ–¹ä½å‘é‡‡æ ·å¼€å§‹æ—¶é—´
+	* @param acquisitionStopTime          æ–¹ä½å‘é‡‡æ ·ç»“æŸæ—¶é—´
+	* @param lon_spacing                  84åæ ‡ç³»DEMç»åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @param lat_spacing                  84åæ ‡ç³»DEMçº¬åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int getDEMRgAzPos(
 		Mat& DEM,
@@ -144,14 +144,14 @@ public:
 		double lon_spacing,
 		double lat_spacing
 	);
-	/*@brief ÄâºÏ¸¨Í¼ÏñÆ«ÒÆ£¨1½×ÄâºÏ£¬offset = a0 + a1 * x + a2 * y£©
-	* @param slaveOffset                           Æ«ÒÆÁ¿
-	* @param masterRange                           DEMµãÔÚÖ÷Í¼ÖĞµÄ¾àÀëÏò×ø±ê£¨ÁĞÊı£¬doubleĞÍ¾ØÕó£©
-	* @param masterAzimuth                         DEMµãÔÚÖ÷Í¼ÖĞµÄ·½Î»Ïò×ø±ê£¨ĞĞÊı£¬doubleĞÍ¾ØÕó£©
-	* @param a0                                    ÄâºÏÏµÊı
-	* @param a1                                    ÄâºÏÏµÊı
-	* @param a2                                    ÄâºÏÏµÊı
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ‹Ÿåˆè¾…å›¾åƒåç§»ï¼ˆ1é˜¶æ‹Ÿåˆï¼Œoffset = a0 + a1 * x + a2 * yï¼‰
+	* @param slaveOffset                           åç§»é‡
+	* @param masterRange                           DEMç‚¹åœ¨ä¸»å›¾ä¸­çš„è·ç¦»å‘åæ ‡ï¼ˆåˆ—æ•°ï¼Œdoubleå‹çŸ©é˜µï¼‰
+	* @param masterAzimuth                         DEMç‚¹åœ¨ä¸»å›¾ä¸­çš„æ–¹ä½å‘åæ ‡ï¼ˆè¡Œæ•°ï¼Œdoubleå‹çŸ©é˜µï¼‰
+	* @param a0                                    æ‹Ÿåˆç³»æ•°
+	* @param a1                                    æ‹Ÿåˆç³»æ•°
+	* @param a2                                    æ‹Ÿåˆç³»æ•°
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int fitSlaveOffset(
 		Mat& slaveOffset,
@@ -161,14 +161,14 @@ public:
 		double* a1,
 		double* a2
 	);
-	/*@brief ¼ÆËã¸¨Í¼ÏñÆ«ÒÆ
-	* @param masterRange                           DEMµãÔÚÖ÷Í¼ÖĞµÄ¾àÀëÏò×ø±ê£¨ÁĞÊı£©
-	* @param masterAzimuth                         DEMµãÔÚÖ÷Í¼ÖĞµÄ·½Î»Ïò×ø±ê£¨ĞĞÊı£©
-	* @param slaveRange                            DEMµãÔÚ¸¨Í¼ÖĞµÄ¾àÀëÏò×ø±ê£¨ÁĞÊı£©
-	* @param slaveAzimuth                          DEMµãÔÚ¸¨Í¼ÖĞµÄ·½Î»Ïò×ø±ê£¨ĞĞÊı£©
-	* @param slaveAzimuthOffset                    ¸¨Í¼Ïñ·½Î»ÏòÆ«ÒÆ£¨·µ»ØÖµ£©
-	* @param slaveRangeOffset                      ¸¨Í¼Ïñ¾àÀëÏòÆ«ÒÆ£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è®¡ç®—è¾…å›¾åƒåç§»
+	* @param masterRange                           DEMç‚¹åœ¨ä¸»å›¾ä¸­çš„è·ç¦»å‘åæ ‡ï¼ˆåˆ—æ•°ï¼‰
+	* @param masterAzimuth                         DEMç‚¹åœ¨ä¸»å›¾ä¸­çš„æ–¹ä½å‘åæ ‡ï¼ˆè¡Œæ•°ï¼‰
+	* @param slaveRange                            DEMç‚¹åœ¨è¾…å›¾ä¸­çš„è·ç¦»å‘åæ ‡ï¼ˆåˆ—æ•°ï¼‰
+	* @param slaveAzimuth                          DEMç‚¹åœ¨è¾…å›¾ä¸­çš„æ–¹ä½å‘åæ ‡ï¼ˆè¡Œæ•°ï¼‰
+	* @param slaveAzimuthOffset                    è¾…å›¾åƒæ–¹ä½å‘åç§»ï¼ˆè¿”å›å€¼ï¼‰
+	* @param slaveRangeOffset                      è¾…å›¾åƒè·ç¦»å‘åç§»ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int computeSlaveOffset(
 		Mat& masterRange,
@@ -178,19 +178,19 @@ public:
 		Mat& slaveAzimuthOffset,
 		Mat& slaveRangeOffset
 	);
-	/*@brief ¸´Í¼ÏñË«ÏßĞÔ²åÖµÖØ²ÉÑù£¨inplace£¬Ô­µØ²Ù×÷£©
-	* @param slc                                   ´ıÖØ²ÉÑùÍ¼Ïñ£¨Ô­µØ²Ù×÷£©
-	* @param dstHeight                             ÖØ²ÉÑùÍ¼Ïñ¸ß¶È
-	* @param dstWidth                              ÖØ²ÉÑùÍ¼Ïñ¿í¶È
-	* @param a0Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param a1Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param a2Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param a0Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param a1Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param a2Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
-	* @param offset_row                            ¸¨Í¼Ïñ×óÉÏ½ÇÏà¶ÔÓÚÖ÷Í¼ÏñµÄĞĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
-	* @param offset_col                            ¸¨Í¼Ïñ×óÉÏ½ÇÏà¶ÔÓÚÖ÷Í¼ÏñµÄÁĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å¤å›¾åƒåŒçº¿æ€§æ’å€¼é‡é‡‡æ ·ï¼ˆinplaceï¼ŒåŸåœ°æ“ä½œï¼‰
+	* @param slc                                   å¾…é‡é‡‡æ ·å›¾åƒï¼ˆåŸåœ°æ“ä½œï¼‰
+	* @param dstHeight                             é‡é‡‡æ ·å›¾åƒé«˜åº¦
+	* @param dstWidth                              é‡é‡‡æ ·å›¾åƒå®½åº¦
+	* @param a0Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param a1Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param a2Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param a0Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param a1Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param a2Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
+	* @param offset_row                            è¾…å›¾åƒå·¦ä¸Šè§’ç›¸å¯¹äºä¸»å›¾åƒçš„è¡Œåç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	* @param offset_col                            è¾…å›¾åƒå·¦ä¸Šè§’ç›¸å¯¹äºä¸»å›¾åƒçš„åˆ—åç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int performBilinearResampling(
 		ComplexMat& slc,
