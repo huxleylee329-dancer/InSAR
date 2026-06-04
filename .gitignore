@@ -219,9 +219,6 @@ _Pvt_Extensions
 
 # self defined ignore files
 
-test/
-test2/
-test3/
 lib/
 
 #*.vcxproj
