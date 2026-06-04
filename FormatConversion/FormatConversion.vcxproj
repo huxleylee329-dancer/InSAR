@@ -137,7 +137,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
       <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\HDF5\lib;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;zlib-static.lib;shlwapi.lib;libszaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;zlibstatic.lib;shlwapi.lib;libszaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
