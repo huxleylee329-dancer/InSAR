@@ -3,6 +3,7 @@
 #include"gdal.h"
 #include "cpl_conv.h"
 #include"..\include\FormatConversion.h"
+#include"..\include\tinyxml.h"
 //#include<atlconv.h>
 //#include<tchar.h>
 #include<urlmon.h>
@@ -132,6 +133,14 @@ inline bool return_check(int ret, const char* detail_info, const char* error_hea
 	else
 	{
 		return false;
+	}
+}
+
+inline void report_progress(ProgressCallback progressCallback, void* userData, int percent, const char* message)
+{
+	if (progressCallback)
+	{
+		progressCallback(percent, message, userData);
 	}
 }
 
@@ -1091,6 +1100,11 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename)
 {
+	return TSX2h5(cosar_filename, xml_filename, GEOREF_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
+{
 	if (cosar_filename == NULL ||
 		xml_filename == NULL ||
 		GEOREF_filename == NULL ||
@@ -1100,6 +1114,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		fprintf(stderr, "TSX2h5(): input check failed!\n");
 		return -1;
 	}
+	report_progress(progressCallback, userData, 0, "开始导入TerraSAR-X数据");
 	/*
 	* 检查h5文件是否已经存在
 	*/
@@ -1107,6 +1122,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	int ret;
 	ret = creat_new_h5(dst_h5_filename);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 5, "创建H5文件完成");
 
 	/*
 	* 写入slc数据
@@ -1114,6 +1130,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	ComplexMat slc;
 	int rows, cols;
+	report_progress(progressCallback, userData, 10, "读取TerraSAR-X SLC数据");
 	ret = read_slc_from_TSXcos(cosar_filename, slc);
 	if (return_check(ret, "read_slc_from_TSXcos()", error_head)) return -1;
 	rows = slc.GetRows(); cols = slc.GetCols();
@@ -1123,6 +1140,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	slc.re.release();
 	slc.im.release();
+	report_progress(progressCallback, userData, 35, "写入SLC数据完成");
 
 	/*
 	* 写入控制点数据
@@ -1130,12 +1148,14 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	Mat gcps;
 	XMLFile xmldoc;
+	report_progress(progressCallback, userData, 40, "读取TerraSAR-X控制点数据");
 	ret = xmldoc.XMLFile_load(GEOREF_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	ret = xmldoc.get_gcps_from_TSX(gcps);
 	if (return_check(ret, "get_gcps_from_TSX", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5", error_head)) return -1;
+	report_progress(progressCallback, userData, 50, "写入控制点数据完成");
 
 	/*
 	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
@@ -1160,6 +1180,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	row = (row - double(rows) * 0.5) / (double(rows) + 1e-10);
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
+	report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数");
 	//拟合经度
 
 	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
@@ -1571,6 +1592,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
+	report_progress(progressCallback, userData, 80, "坐标转换系数写入完成");
 	/*
 	* 写入轨道数据
 	*/
@@ -1593,6 +1615,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
+	report_progress(progressCallback, userData, 90, "写入TerraSAR-X轨道和多普勒参数完成");
 	/*
 	* 写入其他辅助参数
 	*/
@@ -1763,10 +1786,16 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp_int.at<int>(0, 0) = range_len;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 100, "TerraSAR-X数据导入完成");
 	return 0;
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename)
+{
+	return TSX2h5(xml_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
@@ -1801,12 +1830,17 @@ int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filena
 	ret = xmldoc._find_node(pRoot, "filename", pnode);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	COSAR = COSAR + pnode->GetText();
-	ret = TSX2h5(COSAR.c_str(), xml_filename, GEOREF.c_str(), dst_h5_filename);
+	ret = TSX2h5(COSAR.c_str(), xml_filename, GEOREF.c_str(), dst_h5_filename, progressCallback, userData);
 	if (return_check(ret, "TSX2h5()", error_head)) return -1;
 	return 0;
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization)
+{
+	return TSX2h5(xml_filename, dst_h5_filename, polarization, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization, ProgressCallback progressCallback, void* userData)
 {
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
@@ -2240,6 +2274,11 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 
 int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file)
 {
+	return sentinel2h5(tiff_filename, xml_filename, dst_h5_filename, POD_file, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file, ProgressCallback progressCallback, void* userData)
+{
 	if (tiff_filename == NULL ||
 		xml_filename == NULL ||
 		dst_h5_filename == NULL
@@ -2249,6 +2288,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		return -1;
 	}
 
+	report_progress(progressCallback, userData, 0, "开始导入Sentinel-1数据");
 	/*
 	* 检查h5文件是否已经存在
 	*/
@@ -2263,6 +2303,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 
 	ComplexMat slc;Mat gcps_line_index;
 	int rows, cols;
+	report_progress(progressCallback, userData, 10, "读取Sentinel-1 SLC数据");
 	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index);//需要deburst
 	if (return_check(ret, "read_slc_from_Sentinel()", error_head)) return -1;
 	//ret = sentinel_deburst(xml_filename, slc, sentinel);
@@ -2300,6 +2341,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 50, "写入控制点数据完成");
 
 	/*
 	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
@@ -2758,6 +2800,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
+	report_progress(progressCallback, userData, 90, "写入Sentinel-1轨道和多普勒参数完成");
 	/*
 	* 其他辅助数据
 	*/
@@ -2900,6 +2943,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	tmp_int.at<int>(0, 0) = cols;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 100, "Sentinel-1数据导入完成");
 
 	return 0;
 }
@@ -2912,6 +2956,19 @@ int FormatConversion::import_sentinel(
 	const char* PODFile
 )
 {
+	return import_sentinel(manifest, subswath_name, polarization, dest_h5_file, PODFile, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::import_sentinel(
+	const char* manifest,
+	const char* subswath_name,
+	const char* polarization,
+	const char* dest_h5_file,
+	const char* PODFile,
+	ProgressCallback progressCallback,
+	void* userData
+)
+{
 	if (manifest == NULL ||
 		subswath_name == NULL ||
 		polarization == NULL ||
@@ -2920,6 +2977,7 @@ int FormatConversion::import_sentinel(
 		fprintf(stderr, "import_sentinel(): input check failed!\n");
 		return -1;
 	}
+	report_progress(progressCallback, userData, 0, "开始导入Sentinel-1产品");
 	int ret;
 	string xmlhead, tiffhead, subswath, polar;
 	if (0 == strcmp("iw2", subswath_name))subswath = "iw2";
@@ -2930,6 +2988,7 @@ int FormatConversion::import_sentinel(
 	else polar = "vv";
 
 	XMLFile xmldoc;
+	report_progress(progressCallback, userData, 10, "读取Sentinel-1 manifest文件");
 	ret = xmldoc.XMLFile_load(manifest);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	TiXmlElement* root = NULL, * pnode = NULL;
@@ -2977,6 +3036,7 @@ int FormatConversion::import_sentinel(
 		return -1;
 	}
 	TiXmlElement* pchild = NULL;
+	report_progress(progressCallback, userData, 30, "查找Sentinel-1 XML和TIFF文件");
 
 	while (pnode)
 	{
@@ -3003,9 +3063,11 @@ int FormatConversion::import_sentinel(
 		}
 		pnode = pnode->NextSiblingElement();
 	}
+	report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件");
 	Sentinel1Reader reader(xml_filename.c_str(), tiff_filename.c_str(), PODFile);
 	ret = reader.writeToh5(dest_h5_file);
 	if (return_check(ret, "writeToh5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成");
 	return 0;
 }
 
@@ -3765,6 +3827,11 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 
 int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5)
 {
+	return ALOS2h5(IMG_file, LED_file, dst_h5, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+}
+
+int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5, ProgressCallback progressCallback, void* userData)
+{
 	if (IMG_file == NULL ||
 		LED_file == NULL ||
 		dst_h5 == NULL)
@@ -3773,14 +3840,17 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
+	report_progress(progressCallback, userData, 0, "开始导入ALOS数据");
 	///////////////////////创建h5文件////////////
 
 	int ret;
 	if (return_check(creat_new_h5(dst_h5), "creat_new_h5()", error_head)) return -1;
+	report_progress(progressCallback, userData, 5, "创建H5文件完成");
 
 	//////////////读取slc数据并写入到目标文件中/////////////
 
 	ComplexMat slc;
+	report_progress(progressCallback, userData, 10, "读取ALOS SLC数据");
 	ret = read_slc_from_ALOS(IMG_file, slc);
 	if (return_check(ret, "read_slc_from_ALOS()", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5, "s_re", slc.re);
@@ -3793,6 +3863,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	//////////////读取并写入轨道数据//////////////////////
 
+	report_progress(progressCallback, userData, 45, "读取ALOS轨道数据");
 	Mat stateVec;
 	ret = read_stateVec_from_ALOS(LED_file, stateVec);
 	if (return_check(ret, "read_stateVec_from_ALOS()", error_head)) return -1;
@@ -3801,6 +3872,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	////////////读取并写入图像坐标与经纬坐标转换关系////////////////////
 
+	report_progress(progressCallback, userData, 60, "读取ALOS坐标转换系数");
 	Mat lon_coef, lat_coef, row_coef, col_coef;
 	ret = read_conversion_coefficient_from_ALOS(LED_file, lon_coef, lat_coef, row_coef, col_coef);
 	if (return_check(ret, "read_conversion_coefficient_from_ALOS()", error_head)) return -1;
@@ -3861,6 +3933,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	string temp_str = str;
 	sscanf(temp_str.c_str(), "%lf", &inc_center);
 	write_double_to_h5(dst_h5, "inc_center", inc_center);
+	report_progress(progressCallback, userData, 85, "写入ALOS辅助参数");
 	///////////写入其他辅助参数//////////////
 
 	string file_type, sensor, polarization, imaging_mode,
@@ -4090,6 +4163,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	write_str_to_h5(dst_h5, "comment", sss.c_str());
 
 	if (fp)fclose(fp);
+	report_progress(progressCallback, userData, 100, "ALOS数据导入完成");
 	return 0;
 }
 
@@ -4110,15 +4184,44 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 
 
-XMLFile::XMLFile()
+struct XMLFile::Impl
 {
-	memset(m_xmlFileName, 0, 2048);
-	memset(this->error_head, 0, 256);
-	strcpy(this->error_head, "XMLFILE_DLL_ERROR: error happens when using ");
+	char m_xmlFileName[2048];
+	TiXmlDocument doc;
+	int data_node_count;
+	char error_head[256];
+
+	Impl()
+	{
+		memset(m_xmlFileName, 0, 2048);
+		memset(error_head, 0, 256);
+		data_node_count = 0;
+		strcpy(error_head, "XMLFILE_DLL_ERROR: error happens when using ");
+	}
+};
+
+XMLFile::XMLFile()
+	: impl_(new Impl())
+{
+}
+
+XMLFile::XMLFile(const XMLFile& other)
+	: impl_(new Impl(*other.impl_))
+{
+}
+
+XMLFile& XMLFile::operator=(const XMLFile& other)
+{
+	if (this != &other)
+	{
+		*impl_ = *other.impl_;
+	}
+	return *this;
 }
 
 XMLFile::~XMLFile()
 {
+	delete impl_;
 }
 
 int XMLFile::XMLFile_creat_new_project(const char* project_path, const char* project_name, const char* project_version)
@@ -4132,9 +4235,9 @@ int XMLFile::XMLFile_creat_new_project(const char* project_path, const char* pro
 		return -1;
 	}
 	TiXmlDeclaration* declaration = new TiXmlDeclaration("1.0", "UTF-8", "yes");
-	doc.LinkEndChild(declaration);
+	impl_->doc.LinkEndChild(declaration);
 	TiXmlElement* Root = new TiXmlElement("Root");
-	doc.LinkEndChild(Root);
+	impl_->doc.LinkEndChild(Root);
 	TiXmlElement* prj_info_node = new TiXmlElement("project_info");
 	Root->LinkEndChild(prj_info_node);
 	prj_info_node->SetAttribute("version", "1.0");
@@ -4150,7 +4253,7 @@ int XMLFile::XMLFile_creat_new_project(const char* project_path, const char* pro
 	string path(project_path); string name(project_name);
 	string filename = path + "\\" + name;
 	std::replace(filename.begin(), filename.end(), '/', '\\');
-	this->doc.SaveFile(filename.c_str());
+	impl_->doc.SaveFile(filename.c_str());
 	return 0;
 }
 
@@ -4171,12 +4274,12 @@ int XMLFile::XMLFile_add_origin(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	TiXmlElement* p = doc.RootElement();
+	TiXmlElement* p = impl_->doc.RootElement();
 	int ret = find_node_with_attribute(p, "DataNode", "name", datanode_node, DataNode);
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
-		doc.RootElement()->LinkEndChild(DataNode);
+		impl_->doc.RootElement()->LinkEndChild(DataNode);
 		DataNode->SetAttribute("name", datanode_node);
 		DataNode->SetAttribute("index", "1");
 		DataNode->SetAttribute("data_count", "1");
@@ -4214,9 +4317,9 @@ int XMLFile::XMLFile_add_origin(
 	}
 	else
 	{
-		data_node_count = atoi(DataNode->Attribute("data_count")) + 1;
+		impl_->data_node_count = atoi(DataNode->Attribute("data_count")) + 1;
 		string tmp;
-		tmp = int2str(data_node_count);
+		tmp = int2str(impl_->data_node_count);
 		DataNode->SetAttribute("data_count", tmp.c_str());
 		TiXmlElement* LastNode = DataNode->LastChild()->ToElement();
 
@@ -4264,12 +4367,12 @@ int XMLFile::XMLFile_add_origin_14(const char* datanode_node, const char* node_n
 	char rank[256];
 	sprintf(rank, "%d-complex-0.0", mode);
 	TiXmlElement* DataNode = NULL;
-	TiXmlElement* p = doc.RootElement();
+	TiXmlElement* p = impl_->doc.RootElement();
 	int ret = find_node_with_attribute(p, "DataNode", "name", datanode_node, DataNode);
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
-		doc.RootElement()->LinkEndChild(DataNode);
+		impl_->doc.RootElement()->LinkEndChild(DataNode);
 		DataNode->SetAttribute("name", datanode_node);
 		DataNode->SetAttribute("index", "1");
 		DataNode->SetAttribute("data_count", "1");
@@ -4308,9 +4411,9 @@ int XMLFile::XMLFile_add_origin_14(const char* datanode_node, const char* node_n
 	}
 	else
 	{
-		data_node_count = atoi(DataNode->Attribute("data_count")) + 1;
+		impl_->data_node_count = atoi(DataNode->Attribute("data_count")) + 1;
 		string tmp;
-		tmp = int2str(data_node_count);
+		tmp = int2str(impl_->data_node_count);
 		DataNode->SetAttribute("data_count", tmp.c_str());
 		TiXmlElement* LastNode = DataNode->LastChild()->ToElement();
 
@@ -4383,14 +4486,14 @@ int XMLFile::XMLFile_add_cut(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -4469,11 +4572,11 @@ int XMLFile::XMLFile_add_cut(
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -4548,14 +4651,14 @@ int XMLFile::XMLFile_add_cut_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -4633,11 +4736,11 @@ int XMLFile::XMLFile_add_cut_14(
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -4702,14 +4805,14 @@ int XMLFile::XMLFile_add_regis(const char* datanode_name, const char* node_name,
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
@@ -4779,11 +4882,11 @@ int XMLFile::XMLFile_add_regis(const char* datanode_name, const char* node_name,
 		Data_Processing_Parameters->LinkEndChild(H_baseline);
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -4861,14 +4964,14 @@ int XMLFile::XMLFile_add_regis14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp; int mode2; double level; char rank[256];
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			ret = sscanf(safe_rank(root), "%d-complex-%lf", &mode2, &level);
@@ -4937,11 +5040,11 @@ int XMLFile::XMLFile_add_regis14(
 		Data_Processing_Parameters->LinkEndChild(H_baseline);
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5005,14 +5108,14 @@ int XMLFile::XMLFile_add_backgeocoding(const char* dataNode, const char* dataNam
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", dataNode, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", dataNode, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", dataNode);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
@@ -5060,11 +5163,11 @@ int XMLFile::XMLFile_add_backgeocoding(const char* dataNode, const char* dataNam
 		
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5124,14 +5227,14 @@ int XMLFile::XMLFile_add_SLC_deramp(const char* dataNode, const char* dataName, 
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", dataNode, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", dataNode, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", dataNode);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
@@ -5181,11 +5284,11 @@ int XMLFile::XMLFile_add_SLC_deramp(const char* dataNode, const char* dataName, 
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5251,7 +5354,7 @@ int XMLFile::XMLFile_add_SLC_deramp_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", dataNode, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", dataNode, DataNode);
 	string tmp;
 	char rank[256];
 	sprintf(rank, "%d-complex-3.0", mode);
@@ -5260,7 +5363,7 @@ int XMLFile::XMLFile_add_SLC_deramp_14(
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", dataNode);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			string rank2 = safe_rank(root);
@@ -5307,11 +5410,11 @@ int XMLFile::XMLFile_add_SLC_deramp_14(
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5375,7 +5478,7 @@ int XMLFile::XMLFile_add_SBAS(const char* dataNode, const char* dataName, const 
 	DataNode = new TiXmlElement("DataNode");
 	DataNode->SetAttribute("name", dataNode);
 	int index = 1;
-	TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+	TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 	for (; root != NULL; root = root->NextSiblingElement(), index++)
 	{
 		if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
@@ -5429,11 +5532,11 @@ int XMLFile::XMLFile_add_SBAS(const char* dataNode, const char* dataName, const 
 
 	if (!root)
 	{
-		doc.RootElement()->LinkEndChild(DataNode);
+		impl_->doc.RootElement()->LinkEndChild(DataNode);
 	}
 	else
 	{
-		doc.RootElement()->InsertBeforeChild(root, *DataNode);
+		impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 		while (root)
 		{
 			index_str = int2str(++index);
@@ -5456,14 +5559,14 @@ int XMLFile::XMLFile_add_S1_Deburst(const char* dataNode, const char* dataName, 
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", dataNode, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", dataNode, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", dataNode);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 			if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
@@ -5510,11 +5613,11 @@ int XMLFile::XMLFile_add_S1_Deburst(const char* dataNode, const char* dataName, 
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5575,14 +5678,14 @@ int XMLFile::XMLFile_add_geocoding(const char* dataNode, const char* dataName, c
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", dataNode, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", dataNode, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", dataNode);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
 
@@ -5624,7 +5727,7 @@ int XMLFile::XMLFile_add_geocoding(const char* dataNode, const char* dataName, c
 		Data_Processing_Parameters->LinkEndChild(nill);
 
 
-		doc.RootElement()->LinkEndChild(DataNode);
+		impl_->doc.RootElement()->LinkEndChild(DataNode);
 	}
 	else
 	{
@@ -5687,14 +5790,14 @@ int XMLFile::XMLFile_add_interferometric_phase_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -5753,11 +5856,11 @@ int XMLFile::XMLFile_add_interferometric_phase_14(
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5820,14 +5923,14 @@ int XMLFile::XMLFile_add_interferometric_phase(const char* datanode_name, const 
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -5908,11 +6011,11 @@ int XMLFile::XMLFile_add_interferometric_phase(const char* datanode_name, const 
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -5991,7 +6094,7 @@ int XMLFile::XMLFile_add_denoise_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	char rank[256];
 	sprintf(rank, "%d-phase-2.0", mode);
@@ -6000,7 +6103,7 @@ int XMLFile::XMLFile_add_denoise_14(
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6102,11 +6205,11 @@ int XMLFile::XMLFile_add_denoise_14(
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6170,14 +6273,14 @@ int XMLFile::XMLFile_add_denoise(const char* datanode_name, const char* node_nam
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6276,11 +6379,11 @@ int XMLFile::XMLFile_add_denoise(const char* datanode_name, const char* node_nam
 
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6343,14 +6446,14 @@ int XMLFile::XMLFile_add_unwrap(const char* datanode_name, const char* node_name
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6412,11 +6515,11 @@ int XMLFile::XMLFile_add_unwrap(const char* datanode_name, const char* node_name
 		}
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6488,7 +6591,7 @@ int XMLFile::XMLFile_add_unwrap_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	char rank[256];
 	sprintf(rank, "%d-phase-3.0", mode);
@@ -6497,7 +6600,7 @@ int XMLFile::XMLFile_add_unwrap_14(
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6555,11 +6658,11 @@ int XMLFile::XMLFile_add_unwrap_14(
 		}
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6622,14 +6725,14 @@ int XMLFile::XMLFile_add_dem(const char* datanode_name, const char* node_name, c
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	if (!DataNode)
 	{
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6692,11 +6795,11 @@ int XMLFile::XMLFile_add_dem(const char* datanode_name, const char* node_name, c
 		}
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6768,7 +6871,7 @@ int XMLFile::XMLFile_add_dem_14(
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	char rank[256];
 	sprintf(rank, "%d-dem-1.0", mode);
@@ -6777,7 +6880,7 @@ int XMLFile::XMLFile_add_dem_14(
 		DataNode = new TiXmlElement("DataNode");
 		DataNode->SetAttribute("name", datanode_name);
 		int index = 1;
-		TiXmlElement* root = doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
 		tmp = root->Value();
 		for (; root != NULL; root = root->NextSiblingElement(), index++)
 		{
@@ -6836,11 +6939,11 @@ int XMLFile::XMLFile_add_dem_14(
 		}
 		if (!root)
 		{
-			doc.RootElement()->LinkEndChild(DataNode);
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
 		}
 		else
 		{
-			doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
 			while (root)
 			{
 				index_str = int2str(++index);
@@ -6902,7 +7005,7 @@ int XMLFile::XMLFile_remove_node(const char* datanode_name, const char* node_nam
 		return -1;
 	}
 	TiXmlElement* DataNode = NULL;
-	int ret = find_node_with_attribute(doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
 	string tmp;
 	// removed unused: rank (planned rank attribute read, never implemented)
 	if (DataNode)
@@ -6972,7 +7075,7 @@ int XMLFile::XMLFile_save(const char* save_path)
 		fprintf(stderr, "XMLFile_save(): input check failed!\n");
 		return -1;
 	}
-	doc.SaveFile(save_path);
+	impl_->doc.SaveFile(save_path);
 	return 0;
 }
 
@@ -6983,8 +7086,8 @@ int XMLFile::XMLFile_load(const char* xmlFileName)
 		fprintf(stderr, "XMLFile_load(): input check failed!\n");
 		return -1;
 	}
-	strcpy_s(m_xmlFileName, 2047, xmlFileName);
-	if (!doc.LoadFile(xmlFileName))
+	strcpy_s(impl_->m_xmlFileName, 2047, xmlFileName);
+	if (!impl_->doc.LoadFile(xmlFileName))
 	{
 		fprintf(stderr, "XMLFile_load(): can't load XML file %s!\n", xmlFileName);
 		return -1;
@@ -6994,7 +7097,7 @@ int XMLFile::XMLFile_load(const char* xmlFileName)
 
 int XMLFile::get_root(TiXmlElement*& root)
 {
-	root = doc.RootElement();
+	root = impl_->doc.RootElement();
 	return 0;
 }
 
@@ -7045,7 +7148,7 @@ int XMLFile::find_node(const char* node_name, TiXmlElement*& pnode)
 		fprintf(stderr, "find_node(): input check failed!\n");
 		return -1;
 	}
-	TiXmlElement* root = doc.RootElement();
+	TiXmlElement* root = impl_->doc.RootElement();
 	int ret = _find_node(root, node_name, pnode);
 	if (ret < 0)
 	{
@@ -7090,13 +7193,13 @@ int XMLFile::find_node_with_attribute(
 {
 	if (node_name == NULL ||
 		attribute_name == NULL ||
-		doc.RootElement() == NULL ||
+		impl_->doc.RootElement() == NULL ||
 		attribute_value == NULL)
 	{
 		fprintf(stderr, "find_node_with_attribute(): input check failed!\n");
 		return -1;
 	}
-	TiXmlElement* pRoot = doc.RootElement();
+	TiXmlElement* pRoot = impl_->doc.RootElement();
 	const char* value = pRoot->Value();
 	const char* attribute = pRoot->Attribute(attribute_name);
 	if (strcmp(value, node_name) == 0 && strcmp(attribute, attribute_value) == 0)
@@ -7124,7 +7227,7 @@ int XMLFile::get_str_para(const char* node_name, string& value)
 	int ret;
 	TiXmlElement* pnode = NULL;
 	ret = find_node(node_name, pnode);
-	if (return_check(ret, "get_str_para()", error_head)) return -1;
+	if (return_check(ret, "get_str_para()", impl_->error_head)) return -1;
 	if (pnode)
 	{
 		string x(pnode->GetText());
@@ -7143,7 +7246,7 @@ int XMLFile::get_double_para(const char* node_name, double* value)
 	int ret;
 	string tmp;
 	ret = get_str_para(node_name, tmp);
-	if (return_check(ret, "get_double_para()", error_head)) return -1;
+	if (return_check(ret, "get_double_para()", impl_->error_head)) return -1;
 	ret = sscanf(tmp.c_str(), "%lf", value);
 	if (ret != 1)
 	{
@@ -7172,7 +7275,7 @@ int XMLFile::getDoubleArray(const char* node_name, Mat& Array, TiXmlElement* roo
 	{
 		ret = find_node(node_name, pnode);
 	}
-	if (return_check(ret, "getDoubleArray()", error_head)) return -1;
+	if (return_check(ret, "getDoubleArray()", impl_->error_head)) return -1;
 	if (pnode)
 	{
 		if (!pnode->FirstAttribute())
@@ -7207,7 +7310,7 @@ int XMLFile::get_int_para(const char* node_name, int* value)
 	int ret;
 	string tmp;
 	ret = get_str_para(node_name, tmp);
-	if (return_check(ret, "get_int_para()", error_head)) return -1;
+	if (return_check(ret, "get_int_para()", impl_->error_head)) return -1;
 	ret = sscanf(tmp.c_str(), "%d", value);
 	if (ret != 1)
 	{
@@ -7236,7 +7339,7 @@ int XMLFile::getIntArray(const char* node_name, Mat& Array, TiXmlElement* rootNo
 	{
 		ret = find_node(node_name, pnode);
 	}
-	if (return_check(ret, "getIntArray()", error_head)) return -1;
+	if (return_check(ret, "getIntArray()", impl_->error_head)) return -1;
 	if (pnode)
 	{
 		if (!pnode->FirstAttribute())
@@ -7267,18 +7370,18 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	* 验证根节点
 	*/
 	TiXmlElement* pRoot = NULL;
-	pRoot = doc.RootElement();
+	pRoot = impl_->doc.RootElement();
 	if (pRoot)
 	{
 		if (0 != strcmp(pRoot->Value(), "geoReference"))
 		{
-			fprintf(stderr, "get_gcps_from_TSX():  %s: unknown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX():  %s: unknown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 	}
 	else
 	{
-		fprintf(stderr, "get_gcps_from_TSX():  %s: root element error!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_gcps_from_TSX():  %s: root element error!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	/*
@@ -7287,13 +7390,13 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	int n_gcps = 1;
 	TiXmlElement* pnode = NULL;
 	int ret = find_node("numberOfGridPoints", pnode);
-	if (return_check(ret, "get_gcps_from_TSX()", error_head)) return -1;
+	if (return_check(ret, "get_gcps_from_TSX()", impl_->error_head)) return -1;
 	pnode = pnode->FirstChildElement();
 	string tmp(pnode->GetText());
 	ret = sscanf(tmp.c_str(), "%d", &n_gcps);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	Mat x(n_gcps, 6, CV_64F);
@@ -7301,7 +7404,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	* 读取控制点
 	*/
 	ret = find_node("gridPoint", pnode);
-	if (return_check(ret, "get_gcps_from_TSX()", error_head)) return -1;
+	if (return_check(ret, "get_gcps_from_TSX()", impl_->error_head)) return -1;
 	TiXmlElement* pchild = NULL;
 	double lon, lat, height, row, col, inc;
 	for (int i = 1; i <= n_gcps; i++)
@@ -7311,84 +7414,84 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 		ret = _find_node(pnode, "lon", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &lon);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//读取纬度
 		ret = _find_node(pnode, "lat", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &lat);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//读取高度
 		ret = _find_node(pnode, "height", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &height);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//读取行数
 		ret = _find_node(pnode, "row", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &row);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//读取列数
 		ret = _find_node(pnode, "col", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &col);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//读取下视角
 		ret = _find_node(pnode, "inc", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		tmp = pchild->GetText();
 		ret = sscanf(tmp.c_str(), "%lf", &inc);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//赋值
@@ -7408,10 +7511,10 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 {
 	TiXmlElement* pRoot = NULL;
-	pRoot = doc.RootElement();
+	pRoot = impl_->doc.RootElement();
 	if (!pRoot)
 	{
-		fprintf(stderr, "get_stateVec_from_TSX(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_stateVec_from_TSX(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 
@@ -7423,14 +7526,14 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	int ret = _find_node(pRoot, "numStateVectors", pnode);
 	if (ret < 0)
 	{
-		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	int numstateVec;
 	ret = sscanf(pnode->GetText(), "%d", &numstateVec);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	Mat x(numstateVec, 7, CV_64F);
@@ -7441,7 +7544,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	ret = _find_node(pRoot, "stateVec", pnode);
 	if (ret < 0)
 	{
-		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	TiXmlElement* pchild = NULL;
@@ -7453,92 +7556,92 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 		ret = _find_node(pnode, "timeUTC", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		UTC2GPS(pchild->GetText(), &GPS_time);
 		//ret = sscanf(pchild->GetText(), "%lf", &GPS_time);
 		//if (ret != 1)
 		//{
-		//	fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+		//	fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 		//	return -1;
 		//}
 		//posX
 		ret = _find_node(pnode, "posX", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posX);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//posY
 		ret = _find_node(pnode, "posY", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posY);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//posZ
 		ret = _find_node(pnode, "posZ", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posZ);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//velX
 		ret = _find_node(pnode, "velX", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velX);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//velY
 		ret = _find_node(pnode, "velY", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velY);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//velZ
 		ret = _find_node(pnode, "velZ", pchild);
 		if (ret < 0)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velZ);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 
@@ -7564,15 +7667,15 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 	TiXmlElement* pchild2 = NULL;
 	int ret, numberOfDopplerRecords, polynomialDegree;
 	ret = find_node("numberOfDopplerRecords", pnode);
-	if (return_check(ret, "find_node", error_head)) return -1;
+	if (return_check(ret, "find_node", impl_->error_head)) return -1;
 	ret = sscanf(pnode->GetText(), "%d", &numberOfDopplerRecords);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	ret = find_node("dopplerEstimate", pnode);
-	if (return_check(ret, "find_node", error_head)) return -1;
+	if (return_check(ret, "find_node", impl_->error_head)) return -1;
 	ret = _find_node(pnode, "combinedDoppler", pchild);
 	if (ret < 0)
 	{
@@ -7588,13 +7691,13 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 	ret = sscanf(pnode->GetText(), "%d", &polynomialDegree);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 
 	doppler.create(numberOfDopplerRecords, polynomialDegree + 2, CV_64F);
 	ret = find_node("dopplerEstimate", pnode);
-	if (return_check(ret, "find_node", error_head)) return -1;
+	if (return_check(ret, "find_node", impl_->error_head)) return -1;
 	double ref_time, c;
 	for (int i = 0; i < numberOfDopplerRecords; i++)
 	{
@@ -7614,7 +7717,7 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 		ret = sscanf(pchild2->GetText(), "%lf", &ref_time);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		doppler.at<double>(i, 0) = ref_time;
@@ -7625,7 +7728,7 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 			ret = sscanf(pchild->GetText(), "%lf", &c);
 			if (ret != 1)
 			{
-				fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", this->m_xmlFileName);
+				fprintf(stderr, "get_dopplerCentroid_from_TSX(): %s: unknown data format!\n", impl_->m_xmlFileName);
 				return -1;
 			}
 			doppler.at<double>(i, j + 1) = c;
@@ -7642,7 +7745,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 	* 确定控制点个数
 	*/
 	int n_gcps = 1;
-	TiXmlElement* pRoot = doc.RootElement();
+	TiXmlElement* pRoot = impl_->doc.RootElement();
 	int ret;
 	TiXmlElement* pnode = NULL;
 	ret = _find_node(pRoot, "geolocationGridPointList", pnode);
@@ -7654,7 +7757,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &n_gcps);
 	if (ret != 1)
 	{
-		fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	gcps.create(n_gcps, 6, CV_64F);
@@ -7680,7 +7783,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &lon);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 
@@ -7694,7 +7797,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &lat);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 
@@ -7708,7 +7811,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &height);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 
@@ -7722,7 +7825,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &row);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 
@@ -7736,7 +7839,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &col);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//incidence angle
@@ -7749,7 +7852,7 @@ int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 		ret = sscanf(pnode->GetText(), "%lf", &inc);
 		if (ret != 1)
 		{
-			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "XMLFile::get_gcps_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//assignment
@@ -7770,11 +7873,11 @@ int XMLFile::get_dopplerCentroid_from_sentinel(Mat& doppler)
 	// removed unused: pchild2 (copy-paste remnant from similar XML parsing)
 	int ret, numOfDcEstimates, polynomialDegree;
 	ret = find_node("dopplerCentroid", pnode);
-	if (return_check(ret, "find_node", error_head)) return -1;
+	if (return_check(ret, "find_node", impl_->error_head)) return -1;
 	ret = sscanf(pnode->FirstChildElement()->FirstAttribute()->Value(), "%d", &numOfDcEstimates);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	ret = _find_node(pnode, "dataDcPolynomial", pchild1);
@@ -7786,14 +7889,14 @@ int XMLFile::get_dopplerCentroid_from_sentinel(Mat& doppler)
 	ret = sscanf(pchild1->FirstAttribute()->Value(), "%d", &polynomialDegree);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 	doppler.create(numOfDcEstimates, polynomialDegree + 1, CV_64F);
 	double t0, c;
 	char* ptr;
 	ret = find_node("dcEstimate", pnode);
-	if (return_check(ret, "find_node", error_head)) return -1;
+	if (return_check(ret, "find_node", impl_->error_head)) return -1;
 	for (int i = 0; i < numOfDcEstimates; i++)
 	{
 		if (!pnode) break;
@@ -7806,7 +7909,7 @@ int XMLFile::get_dopplerCentroid_from_sentinel(Mat& doppler)
 		ret = sscanf(pchild1->GetText(), "%lf", &t0);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_dopplerCentroid_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		doppler.at<double>(i, 0) = t0;
@@ -7834,16 +7937,16 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 	FormatConversion conversion;
 	int ret, numOfstateVec;
 	ret = find_node("orbitList", pnode);
-	if (return_check(ret, "find_node()", error_head)) return -1;
+	if (return_check(ret, "find_node()", impl_->error_head)) return -1;
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &numOfstateVec);
 	if (ret != 1)
 	{
-		fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+		fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
 	}
 
 	ret = find_node("orbit", pnode);
-	if (return_check(ret, "find_node()", error_head)) return -1;
+	if (return_check(ret, "find_node()", impl_->error_head)) return -1;
 	double time, x, y, z, vx, vy, vz;
 	stateVec.create(numOfstateVec, 7, CV_64F);
 	for (int i = 0; i < numOfstateVec; i++)
@@ -7857,7 +7960,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			return -1;
 		}
 		ret = conversion.utc2gps(pchild->GetText(), &time);
-		if (return_check(ret, "utc2gps()", error_head)) return -1;
+		if (return_check(ret, "utc2gps()", impl_->error_head)) return -1;
 		//位置x
 		ret = _find_node(pnode, "position", pchild);
 		if (ret < 0)
@@ -7874,7 +7977,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &x);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//位置y
@@ -7887,7 +7990,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &y);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//位置z
@@ -7900,7 +8003,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &z);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//速度x
@@ -7919,7 +8022,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &vx);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//速度y
@@ -7932,7 +8035,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &vy);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 		//速度z
@@ -7945,7 +8048,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		ret = sscanf(pchild1->GetText(), "%lf", &vz);
 		if (ret != 1)
 		{
-			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", this->m_xmlFileName);
+			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
 

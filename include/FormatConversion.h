@@ -5,7 +5,6 @@
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include"hdf5.h"
-#include"..\include\tinyxml.h"
 #define Big2Little64(A) ((uint64_t)(A&0xff00000000000000)>>56|(A&0x00ff000000000000)>>40|(A&0x0000ff0000000000)>>24|(A&0x000000ff00000000)>>8|(A&0x00000000ff000000)<<8|(A&0x0000000000ff0000)<<24|(A&0x000000000000ff00)<<40|(A&0x00000000000000ff)<<56)
 #define Big2Little32(A) ((uint32_t)(A&0xff000000)>>24|(uint32_t)(A&0x00ff0000)>>8 | (uint32_t)(A&0x0000ff00)<<8|(uint32_t)(A&0x000000ff)<<24)
 #define Big2Little16(A) ((uint16_t)(A&0xff00)>>8 | (uint16_t)(A&0x00ff)<<8)
@@ -15,10 +14,14 @@
 /***************   XML文件参数读写类库    ****************/
 /*********************************************************/
 
+class TiXmlElement;
+
 class InSAR_API XMLFile
 {
 public:
 	XMLFile();
+	XMLFile(const XMLFile& other);
+	XMLFile& operator=(const XMLFile& other);
 	~XMLFile();
 
 	/** @brief 创建新的工程文件
@@ -595,13 +598,9 @@ public:
 
 
 private:
-	char m_xmlFileName[2048];
-	TiXmlDocument doc;
-	int data_node_count;
-	char error_head[256];
+	struct Impl;
+	Impl* impl_;
 
-
-	
 };
 
 
@@ -609,6 +608,8 @@ private:
 /**************************************************/
 /*********           格式转换类库        **********/
 /**************************************************/
+
+typedef void (*ProgressCallback)(int percent, const char* message, void* userData);
 
 class InSAR_API FormatConversion
 {
@@ -785,6 +786,14 @@ public:
 		const char* GEOREF_filename,
 		const char* dst_h5_filename
 	);
+	int TSX2h5(
+		const char* cosar_filename,
+		const char* xml_filename,
+		const char* GEOREF_filename,
+		const char* dst_h5_filename,
+		ProgressCallback progressCallback,
+		void* userData
+	);
 	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式
 
 	@param xml_filename                       TerraSAR-X 主xml文件名
@@ -794,6 +803,12 @@ public:
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename
+	);
+	int TSX2h5(
+		const char* xml_filename,
+		const char* dst_h5_filename,
+		ProgressCallback progressCallback,
+		void* userData
 	);
 	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式(带极化选项)
 
@@ -806,6 +821,13 @@ public:
 		const char* xml_filename,
 		const char* dst_h5_filename,
 		const char* polarization ="HH"
+	);
+	int TSX2h5(
+		const char* xml_filename,
+		const char* dst_h5_filename,
+		const char* polarization,
+		ProgressCallback progressCallback,
+		void* userData
 	);
 
 
@@ -853,6 +875,14 @@ public:
 		const char* dst_h5_filename,
 		const char* POD_file = NULL
 	);
+	int sentinel2h5(
+		const char* tiff_filename,
+		const char* xml_filename,
+		const char* dst_h5_filename,
+		const char* POD_file,
+		ProgressCallback progressCallback,
+		void* userData
+	);
 	/** 导入sentinel卫星数据至h5文件中
 	* @param manifest                            sentinel卫星数据manifest文件
 	* @param subswath_name                       sentinel卫星IW模式中为（iw1/iw2/iw3）
@@ -867,6 +897,15 @@ public:
 		const char* polarization,
 		const char* dest_h5_file,
 		const char* PODFile = NULL
+	);
+	int import_sentinel(
+		const char* manifest,
+		const char* subswath_name,
+		const char* polarization,
+		const char* dest_h5_file,
+		const char* PODFile,
+		ProgressCallback progressCallback,
+		void* userData
 	);
 	/** @brief 读出一个burst数据
 	* 
@@ -968,6 +1007,13 @@ public:
 	* 参数3：自定义h5文件
 	*/
 	int ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5);
+	int ALOS2h5(
+		const char* IMG_file,
+		const char* LED_file,
+		const char* dst_h5,
+		ProgressCallback progressCallback,
+		void* userData
+	);
 	/** @brief 将原h5文件中的参数信息拷贝到另一个h5中
 	
     @param Input_file        原始h5文件
