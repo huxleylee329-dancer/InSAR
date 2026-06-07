@@ -9,6 +9,7 @@
 #include <atlconv.h>
 #include"gdal_priv.h"
 #include"../include/FormatConversion.h"
+#include"../include/tinyxml.h"
 #include"Eigen/Dense"
 
 #pragma comment(lib,"URlmon")
