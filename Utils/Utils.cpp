@@ -1,4 +1,6 @@
 #include<complex.h>
+#include <atomic>
+#include <omp.h>
 #include "stdafx.h"
 #include"..\include\Utils.h"
 #include<direct.h>
@@ -35,7 +37,7 @@ using namespace cv;
 { \
     if( !fgets( instring, 256, fp ) ) \
         ch = 0; \
-	    else \
+    else \
         ch = *instring; \
 }
 inline bool return_check(int ret, const char* detail_info, const char* error_head)
@@ -74,18 +76,20 @@ inline bool parallel_check(volatile bool parallel_flag, const char* detail_info,
 	}
 }
 
-inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
+// 获取PROJ数据路径，PROJ_DATA优先(PROJ 9+)，回退PROJ_LIB(PROJ 7/8)
+static void setupProjSearchPaths()
 {
-	if (ret < 0)
-	{
-		parallel_flag = false;
-		return true;
+	const char* projData = getenv("PROJ_DATA");
+	if (!projData) projData = getenv("PROJ_LIB");
+	if (projData) {
+		const char* path[] = { projData, nullptr };
+		OSRSetPROJSearchPaths(path);
 	}
-	else
-	{
-		return false;
+	else {
+		fprintf(stderr, "警告: PROJ_DATA/PROJ_LIB 环境变量未设置，使用PROJ默认搜索路径\n");
 	}
 }
+
 Utils::Utils()
 {
 
@@ -834,7 +838,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	//	Nodes_num = residue.rows * residue.cols;
 	//	Arcs_num = 2 * (residue.rows - 1) * residue.cols + 2 * residue.rows * (residue.cols - 1);
 	//}
-	ofstream fout;
+	//ofstream fout; // 未使用，已注释
 	FILE* fp = NULL;
 	fopen_s(&fp, DIMACS_file_problem, "wt");
 	if (!fp)
@@ -847,11 +851,11 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	fprintf(fp, "p min %ld %ld\n", Nodes_num, Arcs_num);
 	fprintf(fp, "c Node descriptor lines (supply+ or demand-)\n");
 
-	
+
 	/*
 	* 写入节点的度（残差值1，-1）
 	*/
-	
+
 	for (i = 0; i < nr; i++)
 	{
 		for (j = 0; j < nc; j++)
@@ -1115,7 +1119,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		Arcs_num = Arcs_num;
 		//Arcs_num = 2 * (residue.rows - 1) * residue.cols + 2 * residue.rows * (residue.cols - 1);
 	}
-	ofstream fout;
+	//ofstream fout; // 未使用，已注释
 	FILE* fp = NULL;
 	fopen_s(&fp, DIMACS_problem_file, "wt");
 	if (!fp)
@@ -1520,8 +1524,7 @@ int Utils::residue(Mat& phase, Mat& residuemat)
 		Diff_2(Range(0, Diff_2.rows - 1), Range(0, Diff_2.cols));
 
 	Diff_1 = Diff_2 - Diff_1;
-	double pi = 3.1415926535;
-	Diff_1 = Diff_1 / (2 * pi);
+	Diff_1 = Diff_1 / (2 * PI);
 	//Diff_1.copyTo(residuemat);
 	residuemat = Diff_1;
 	return 0;
@@ -2699,17 +2702,8 @@ int Utils::bin2cvmat(const char* filename, Mat& dst)
 		if (fp) fclose(fp);
 		return -1;
 	}
-	Mat matrix(rows, cols, CV_64F, cv::Scalar::all(0));
-	double* p = (double*)malloc(sizeof(double) * rows * cols);
-	if (p == NULL)
-	{
-		fprintf(stderr, "failed to allocate memory for reading data from %s!\n", filename);
-		if (fp) fclose(fp);
-		return -1;
-	}
-	fread(p, sizeof(double), rows * cols, fp);
-	std::memcpy(matrix.data, p, sizeof(double) * rows * cols);
-	if (p != NULL) free(p);
+	Mat matrix(rows, cols, CV_64F);
+	fread(matrix.data, sizeof(double), rows * cols, fp);
 	if (fp != NULL) fclose(fp);
 	dst = matrix;
 	return 0;
@@ -3022,9 +3016,8 @@ int Utils::xyz2ell(const Mat& xyz, Mat& llh)
 	}
 
 	const double epsilon = 0.000000000000001;
-	const double pi = 3.14159265358979323846;
-	const double d2r = pi / 180;
-	const double r2d = 180 / pi;
+	const double d2r = PI / 180;
+	const double r2d = 180 / PI;
 
 	const double a = 6378137.0;		//椭球长半轴
 	const double f_inverse = 298.257223563;			//扁率倒数
@@ -3077,9 +3070,8 @@ int Utils::ell2xyz(const Mat& llh, Mat& xyz)
 		return -1;
 	}
 	const double epsilon = 0.000000000000001;
-	const double pi = 3.14159265358979323846;
-	const double d2r = pi / 180;
-	const double r2d = 180 / pi;
+	const double d2r = PI / 180;
+	const double r2d = 180 / PI;
 
 	const double a = 6378137.0;		//椭球长半轴
 	const double f_inverse = 298.257223563;			//扁率倒数
@@ -3114,9 +3106,8 @@ int Utils::ell2xyz(double lon, double lat, double elevation, Position& xyz)
 		return -1;
 	}
 	const double epsilon = 0.000000000000001;
-	const double pi = 3.14159265358979323846;
-	const double d2r = pi / 180;
-	const double r2d = 180 / pi;
+	const double d2r = PI / 180;
+	const double r2d = 180 / PI;
 	const double a = 6378137.0;		//椭球长半轴
 	const double f_inverse = 298.257223563;			//扁率倒数
 	const double b = a - a / f_inverse;
@@ -12655,7 +12646,7 @@ int Utils::geo_transformation(
 	DTM_mapped_Y = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
 	DTM_mapped_X = -1;
 	DTM_mapped_Y = -1;
-	volatile int count = 0;
+	std::atomic<int> count(0);
 	Mat mask = Mat::zeros(DTM_rows, DTM_cols, CV_8UC1);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < SAR_extent_y; i++)
@@ -12947,20 +12938,29 @@ int Utils::geo_transformation(
 	DTM_mapped_Y = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
 	DTM_mapped_X = -1;
 	DTM_mapped_Y = -1;
-	volatile int count = 0;
+	std::atomic<int> count(0);
 	//Mat mask = Mat::zeros(DTM_rows, DTM_cols, CV_8UC1);
+	setupProjSearchPaths();
+	OGRSpatialReference monUtm;
+	monUtm.SetWellKnownGeogCS("WGS84");
+	monUtm.SetUTM(22, 1);
+	OGRSpatialReference monGeo;
+	monGeo.SetWellKnownGeogCS("WGS84");
+	int max_threads = omp_get_max_threads();
+	std::vector<OGRCoordinateTransformation*> coordTransList(max_threads, nullptr);
+	for (int t = 0; t < max_threads; ++t)
+	{
+		coordTransList[t] = OGRCreateCoordinateTransformation(&monUtm, &monGeo);
+		if (coordTransList[t] == nullptr)
+		{
+			for (int k = 0; k < t; ++k) delete coordTransList[k];
+			fprintf(stderr, "Error: OGRCreateCoordinateTransformation failed!\n");
+			return -1;
+		}
+	}
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < SAR_extent_y; i++)
 	{
-		const char* path[] = { "D:\\softwarepackages\\release-1928-x64-gdal-3-3-1-mapserver-7-6-4\\bin\\proj7\\share" ,nullptr };
-		OSRSetPROJSearchPaths(path);
-		OGRSpatialReference monUtm;
-		monUtm.SetWellKnownGeogCS("WGS84");
-		monUtm.SetUTM(22, 1);
-		OGRSpatialReference monGeo;
-		monGeo.SetWellKnownGeogCS("WGS84");
-		OGRCoordinateTransformation* coordTrans = OGRCreateCoordinateTransformation(&monUtm, &monGeo);
-
 		for (int j = 0; j < SAR_extent_x; j++)
 		{
 			//首先确定DTM值是否有效
@@ -13061,7 +13061,8 @@ int Utils::geo_transformation(
 								double lat_x, lon_y;
 								lat_x = UTM_x_final;
 								lon_y = UTM_y_final;
-								int reprojected = coordTrans->Transform(1, &lat_x, &lon_y);
+								int thread_num = omp_get_thread_num();
+								int reprojected = coordTransList[thread_num]->Transform(1, &lat_x, &lon_y);
 
 
 								//通过插值得到的lat_x和lon_y再次插值得到DTM
@@ -13101,6 +13102,13 @@ int Utils::geo_transformation(
 		{
 			printf("\r估计进度1：%lf%%", double(count) / double(SAR_extent_y) * 100.0);
 			fflush(stdout);
+		}
+	}
+	for (int t = 0; t < max_threads; ++t)
+	{
+		if (coordTransList[t] != nullptr)
+		{
+			delete coordTransList[t];
 		}
 	}
 	return 0;
@@ -13179,8 +13187,7 @@ int Utils::lonlat2utm(Mat lon, Mat lat, Mat& UTM_X, Mat& UTM_Y)
 		fprintf(stderr, "lonlat2utm(): input check failed!\n");
 		return -1;
 	}
-	const char* path[] = { "D:\\softwarepackages\\release-1928-x64-gdal-3-3-1-mapserver-7-6-4\\bin\\proj7\\share" ,nullptr };
-	OSRSetPROJSearchPaths(path);
+	setupProjSearchPaths();
 	OGRSpatialReference monUtm;
 	monUtm.SetWellKnownGeogCS("WGS84");
 	monUtm.SetUTM(22, true);
@@ -13330,8 +13337,7 @@ int Utils::geo2sar_DLR(
 	Mat lon, lat;
 	lon.create(4, 1, CV_64F); lon = 0.0; lon.copyTo(lat);
 	// removed unused: utm_x, utm_y (UTM coordinates computed inline via x/y variables)
-	const char* path[] = { "D:\\softwarepackages\\release-1928-x64-gdal-3-3-1-mapserver-7-6-4\\bin\\proj7\\share" ,nullptr };
-	OSRSetPROJSearchPaths(path);
+	setupProjSearchPaths();
 	OGRSpatialReference monUtm;
 	monUtm.SetWellKnownGeogCS("WGS84");
 	monUtm.SetUTM(abs(projection_zone), projection_zone>0);
