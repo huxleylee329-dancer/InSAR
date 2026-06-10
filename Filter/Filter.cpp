@@ -1,4 +1,4 @@
-// Filter.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
+// Filter.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
 //
 
 #include "stdafx.h"
@@ -94,38 +94,38 @@ int Filter::czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0)
 
 
 	int j;
-	//////////////////////////////////////////h(n)¸³Öµ
+	//////////////////////////////////////////h(n)èµ‹å€¼
 	for (j = 0; j < nc; j++)
 	{
 		for (i = 0; i < M; i++)
 		{
-			h.at<Vec2d>(i, j)[0] = cos(phi0 * 0.5 * i * i);//Êµ²¿
-			h.at<Vec2d>(i, j)[1] = sin(phi0 * 0.5 * i * i);//Ğé²¿
+			h.at<Vec2d>(i, j)[0] = cos(phi0 * 0.5 * i * i);//å®éƒ¨
+			h.at<Vec2d>(i, j)[1] = sin(phi0 * 0.5 * i * i);//è™šéƒ¨
 		}
 		for (i = M; i < L - N + 1; i++)
 		{
-			h.at<Vec2d>(i, j)[0] = 0;//Êµ²¿
-			h.at<Vec2d>(i, j)[1] = 0;//Ğé²¿
+			h.at<Vec2d>(i, j)[0] = 0;//å®éƒ¨
+			h.at<Vec2d>(i, j)[1] = 0;//è™šéƒ¨
 		}
 		for (i = L - N + 1; i < L; i++)
 		{
-			h.at<Vec2d>(i, j)[0] = cos(phi0 * 0.5 * ((double)(L - i)) * ((double)(L - i)));//Êµ²¿
-			h.at<Vec2d>(i, j)[1] = sin(phi0 * 0.5 * ((double)(L - i)) * ((double)(L - i)));//Ğé²¿
+			h.at<Vec2d>(i, j)[0] = cos(phi0 * 0.5 * ((double)(L - i)) * ((double)(L - i)));//å®éƒ¨
+			h.at<Vec2d>(i, j)[1] = sin(phi0 * 0.5 * ((double)(L - i)) * ((double)(L - i)));//è™šéƒ¨
 		}
 	}
 
 
 	////////////////////////////////////////////////////////////
 
-	/////////////////////////////////////////////////////x(n)¼ÓÈ¨²¢²¹ÁãµÃµ½g(n)
+	/////////////////////////////////////////////////////x(n)åŠ æƒå¹¶è¡¥é›¶å¾—åˆ°g(n)
 	Mat W(N, nc, CV_64FC2, Scalar::all(0));
 	//for (j = 0; j < nc; j++)
 	//{
 	//	for (i = 0; i < N; i++)
 	//	{
 
-	//		W.at<Vec2d>(i, j)[0] = cos(theta0 * i - phi0 * 0.5 * i * i);/*Êµ²¿*/
-	//		W.at<Vec2d>(i, j)[1] = sin(theta0 * i - phi0 * 0.5 * i * i);/*Ğé²¿*/
+	//		W.at<Vec2d>(i, j)[0] = cos(theta0 * i - phi0 * 0.5 * i * i);/*å®éƒ¨*/
+	//		W.at<Vec2d>(i, j)[1] = sin(theta0 * i - phi0 * 0.5 * i * i);/*è™šéƒ¨*/
 
 	//	}
 	//}
@@ -133,8 +133,8 @@ int Filter::czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0)
 	{
 		for (j = 0; j < nc; j++)
 		{
-			W.at<Vec2d>(i, j)[0] = cos(theta0 * i - phi0 * 0.5 * i * i);/*Êµ²¿*/
-			W.at<Vec2d>(i, j)[1] = sin(theta0 * i - phi0 * 0.5 * i * i);/*Ğé²¿*/
+			W.at<Vec2d>(i, j)[0] = cos(theta0 * i - phi0 * 0.5 * i * i);/*å®éƒ¨*/
+			W.at<Vec2d>(i, j)[1] = sin(theta0 * i - phi0 * 0.5 * i * i);/*è™šéƒ¨*/
 		}
 	}
 	Mat tmp;
@@ -159,8 +159,8 @@ int Filter::czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0)
 
 	/////////////////////////////////////////////////////
 
-	/*h(n)ºÍg(n)½øĞĞ¸µÀïÒ¶±ä»»
-	µÃµ½H(k)ºÍG(k)
+	/*h(n)å’Œg(n)è¿›è¡Œå‚…é‡Œå¶å˜æ¢
+	å¾—åˆ°H(k)å’ŒG(k)
 	*/
 	transpose(h, h);
 	transpose(g, g);
@@ -256,56 +256,56 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	nn = getOptimalDFTSize(2 * wndsize_filter);
 	mm = nn;
 	double pi = 3.1415926535;
-	int Radius = (wndsize_filter - 1) / 2; /*´°°ë¾¶*/
-	int nr_orig = phase.rows;/*Ô­Ê¼³ß´çrows*/
-	int nc_orig = phase.cols;/*Ô­Ê¼³ß´çcols*/
-	Mat phase_enlarged(nr_orig + wndsize_filter - 1, nc_orig + wndsize_filter - 1, CV_64F, Scalar::all(0));/*À©³ä¾ØÕó*/
+	int Radius = (wndsize_filter - 1) / 2; /*çª—åŠå¾„*/
+	int nr_orig = phase.rows;/*åŸå§‹å°ºå¯¸rows*/
+	int nc_orig = phase.cols;/*åŸå§‹å°ºå¯¸cols*/
+	Mat phase_enlarged(nr_orig + wndsize_filter - 1, nc_orig + wndsize_filter - 1, CV_64F, Scalar::all(0));/*æ‰©å……çŸ©é˜µ*/
 	int nr_new = phase_enlarged.rows;
 	int nc_new = phase_enlarged.cols;
 
-	phase.copyTo(phase_enlarged(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)));/*Ô­Ê¼¾ØÕó¸´ÖÆµ½ÖĞĞÄ*/
+	phase.copyTo(phase_enlarged(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)));/*åŸå§‹çŸ©é˜µå¤åˆ¶åˆ°ä¸­å¿ƒ*/
 
-	/*±ßÔµ¸³Öµ*/
+	/*è¾¹ç¼˜èµ‹å€¼*/
 	Mat temp;
-	flip(phase_enlarged(Range(Radius, 2 * Radius), Range(0, nc_new)), temp, 0);/*up - down·­×ª*/
+	flip(phase_enlarged(Range(Radius, 2 * Radius), Range(0, nc_new)), temp, 0);/*up - downç¿»è½¬*/
 
 	temp.copyTo(phase_enlarged(Range(0, Radius), Range(0, nc_new)));
 
-	flip(phase_enlarged(Range(0, nr_new), Range(Radius, 2 * Radius)), temp, 1);/*×óÓÒ·´×ª*/
+	flip(phase_enlarged(Range(0, nr_new), Range(Radius, 2 * Radius)), temp, 1);/*å·¦å³åè½¬*/
 
 	temp.copyTo(phase_enlarged(Range(0, nr_new), Range(0, Radius)));
 
-	flip(phase_enlarged(Range(nr_new - 2 * Radius, nr_new - Radius), Range(0, nc_new)), temp, 0);/*ÉÏÏÂ·­×ª*/
+	flip(phase_enlarged(Range(nr_new - 2 * Radius, nr_new - Radius), Range(0, nc_new)), temp, 0);/*ä¸Šä¸‹ç¿»è½¬*/
 
 	temp.copyTo(phase_enlarged(Range(nr_new - Radius, nr_new), Range(0, nc_new)));
 
-	flip(phase_enlarged(Range(0, nr_new), Range(nc_new - 2 * Radius, nc_new - Radius)), temp, 1);/*×óÓÒ·­×ª*/
+	flip(phase_enlarged(Range(0, nr_new), Range(nc_new - 2 * Radius, nc_new - Radius)), temp, 1);/*å·¦å³ç¿»è½¬*/
 
 	temp.copyTo(phase_enlarged(Range(0, nr_new), Range(nc_new - Radius, nc_new)));
 
-	Mat phase_update(nr_new, nc_new, CV_64FC2, Scalar::all(0));/*ÏàÎ»¾ØÕó×ª»»Îª¸´Êı*/
+	Mat phase_update(nr_new, nc_new, CV_64FC2, Scalar::all(0));/*ç›¸ä½çŸ©é˜µè½¬æ¢ä¸ºå¤æ•°*/
 
 	int i, j;
 	for (i = 0; i < nr_new; i++)
 	{
 		for (j = 0; j < nc_new; j++)
 		{
-			phase_update.at<Vec2d>(i, j)[0] = cos(phase_enlarged.at<double>(i, j));/*Êµ²¿*/
-			phase_update.at<Vec2d>(i, j)[1] = sin(phase_enlarged.at<double>(i, j));/*Ğé²¿*/
+			phase_update.at<Vec2d>(i, j)[0] = cos(phase_enlarged.at<double>(i, j));/*å®éƒ¨*/
+			phase_update.at<Vec2d>(i, j)[1] = sin(phase_enlarged.at<double>(i, j));/*è™šéƒ¨*/
 
 		}
 	}
 
 
-	//int nn = 32;/*2D FFT µãÊı*/
-	//int mm = 32;/*CZT µãÊı*/
-	int mn = mm * nn;/*ÆµÆ××Ü·Ö±æÂÊ*/
+	//int nn = 32;/*2D FFT ç‚¹æ•°*/
+	//int mm = 32;/*CZT ç‚¹æ•°*/
+	int mn = mm * nn;/*é¢‘è°±æ€»åˆ†è¾¨ç‡*/
 
 	Mat phase_filtered = Mat::zeros(nr_new, nc_new, CV_64F);
 
 
-	Mat tempi(wndsize_filter, 1, CV_64F, Scalar::all(0));/*ĞĞÏßĞÔÏàÎ»Íø¸ñ*/
-	Mat tempj(1, wndsize_filter, CV_64F, Scalar::all(0));/*ÁĞÏßĞÔÏàÎ»Íø¸ñ*/
+	Mat tempi(wndsize_filter, 1, CV_64F, Scalar::all(0));/*è¡Œçº¿æ€§ç›¸ä½ç½‘æ ¼*/
+	Mat tempj(1, wndsize_filter, CV_64F, Scalar::all(0));/*åˆ—çº¿æ€§ç›¸ä½ç½‘æ ¼*/
 
 	for (i = 0; i < wndsize_filter; i++)
 	{
@@ -313,7 +313,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		tempj.at<double>(0, i) = (double)i;
 	}
 
-	double phi0 = 2.0 * pi / ((double)mn); /*CZT±ä»»²ÎÊı*/
+	double phi0 = 2.0 * pi / ((double)mn); /*CZTå˜æ¢å‚æ•°*/
 	int ret;
 	volatile bool parallel_flag = true;
 //#pragma omp parallel for schedule(guided) \
@@ -327,7 +327,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		{
 			if (!parallel_flag) continue;
 			int k, kk;
-			Mat phase_estimation(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));/*ÂË²¨´°¿ÚÄÚÏàÎ»*/
+			Mat phase_estimation(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));/*æ»¤æ³¢çª—å£å†…ç›¸ä½*/
 			Mat window_mean;
 			Mat planes[] = { Mat::zeros(wndsize_filter, wndsize_filter, CV_64F),
 				Mat::zeros(wndsize_filter, wndsize_filter, CV_64F) };
@@ -339,7 +339,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			Mat phase_0(1, 1, CV_64FC2, Scalar::all(0));
 			phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)).copyTo(phase_estimation);
 			phase_estimation.copyTo(window_mean);
-			/*ÆµÂÊ¹À¼ÆÇ°Ô¤ÂË²¨*/
+			/*é¢‘ç‡ä¼°è®¡å‰é¢„æ»¤æ³¢*/
 			ret = meanfilter(window_mean, wndsize_prefilter);
 			if (ret < 0)
 			{
@@ -349,7 +349,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			
 			//if (parallel_flag_change(parallel_flag, ret)) continue;
 
-			/*nnµã¸µÀïÒ¶±ä»»*/
+			/*nnç‚¹å‚…é‡Œå¶å˜æ¢*/
 			copyMakeBorder(window_mean, window_mean, 0, nn - wndsize_filter, 0, nn - wndsize_filter, BORDER_CONSTANT, Scalar::all(0));
 			dft(window_mean, window_mean);
 			split(window_mean, planes);
@@ -363,7 +363,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			if (ret < 0) continue;
 			if (parallel_flag_change(parallel_flag, ret)) continue;
 			minMaxLoc(planes[0], NULL, NULL, NULL, &peak_loc);
-			fi = ((double)(peak_loc.y - nn / 2 - 1)) / ((double)nn);/*´Ë´¦¼õ2ÊÇÎªÁËÀ©´óCZT±ä»»µÄËÑË÷·¶Î§*/
+			fi = ((double)(peak_loc.y - nn / 2 - 1)) / ((double)nn);/*æ­¤å¤„å‡2æ˜¯ä¸ºäº†æ‰©å¤§CZTå˜æ¢çš„æœç´¢èŒƒå›´*/
 			fj = ((double)(peak_loc.x - nn / 2 - 1)) / ((double)nn);
 
 			theta0_i = 2.0 * pi * fi;
@@ -390,10 +390,10 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			minMaxLoc(planes[0], NULL, NULL, NULL, &peak_loc);
 
 			fii = fi + ((double)(peak_loc.y) / (double)mn);
-			fjj = fj + ((double)(peak_loc.x) / (double)mn);/*ÆµÆ×Ï¸»¯ºó·åÖµÎ»ÖÃ*/
+			fjj = fj + ((double)(peak_loc.x) / (double)mn);/*é¢‘è°±ç»†åŒ–åå³°å€¼ä½ç½®*/
 
 			theta0_i = 2.0 * pi * fii;
-			theta0_j = 2.0 * pi * fjj;/*¸üĞÂÏ¸»¯Öµ*/
+			theta0_j = 2.0 * pi * fjj;/*æ›´æ–°ç»†åŒ–å€¼*/
 
 			/*tempi = tempi * theta0_i;
 			tempj = tempj * theta0_j;*/
@@ -405,13 +405,13 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			{
 				for (kk = 0; kk < wndsize_filter; kk++)
 				{
-					aa.at<Vec2d>(k, kk)[0] = cos(AA.at<double>(k, kk));/*Êµ²¿*/
-					aa.at<Vec2d>(k, kk)[1] = sin(AA.at<double>(k, kk));/*Ğé²¿*/
+					aa.at<Vec2d>(k, kk)[0] = cos(AA.at<double>(k, kk));/*å®éƒ¨*/
+					aa.at<Vec2d>(k, kk)[1] = sin(AA.at<double>(k, kk));/*è™šéƒ¨*/
 				}
 			}
 			//#pragma omp critical 
 			//{
-			mulSpectrums(phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)), aa, phase_0_matrix, 0, true);/*Òì³£*/
+			mulSpectrums(phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)), aa, phase_0_matrix, 0, true);/*å¼‚å¸¸*/
 			//}
 
 			phase_0.at<Vec2d>(0, 0)[0] = mean(phase_0_matrix)[0];
@@ -420,11 +420,11 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			mulSpectrums(phase_0, aa(Range((wndsize_filter - 3) / 2, (wndsize_filter - 1) / 2),
 				Range((wndsize_filter - 3) / 2, (wndsize_filter - 1) / 2)), phase_0, 0, false);
 
-			/*×ª»»ÎªÏàÎ»*/
+			/*è½¬æ¢ä¸ºç›¸ä½*/
 			phase_filtered.at<double>(i, j) = atan2(phase_0.at<Vec2d>(0, 0)[1], phase_0.at<Vec2d>(0, 0)[0]);
 		}
 
-		fprintf(stdout, "process: %lf %\n", double(i - Radius) / double(nr_new - 2 * Radius + 1) * 100);
+		fprintf(stdout, "process: %lf %%\n", double(i - Radius) / double(nr_new - 2 * Radius + 1) * 100);
 	}
 	//if (parallel_check(parallel_flag, "slope_adaptive_filter()", parallel_error_head)) return -1;
 	phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)).copyTo(phase_filter);
@@ -470,7 +470,7 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 	if (return_check(ret, "util.cvmat2bin(*, *)", error_head)) return -1;
 	ret = util.cvmat2bin(sin_file.c_str(), sin);
 	if (return_check(ret, "util.cvmat2bin(*, *)", error_head)) return -1;
-	///////////////////////////´´½¨²¢µ÷ÓÃÉî¶ÈÑ§Ï°ÂË²¨½ø³Ì//////////////////////
+	///////////////////////////åˆ›å»ºå¹¶è°ƒç”¨æ·±åº¦å­¦ä¹ æ»¤æ³¢è¿›ç¨‹//////////////////////
 	USES_CONVERSION;
 	LPWSTR szCommandLine = new TCHAR[512];
 	string Filter_dl_path(filter_dl_path);
@@ -490,14 +490,14 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -531,7 +531,7 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
-	///////////////////////////´´½¨²¢µ÷ÓÃÉî¶ÈÑ§Ï°ÂË²¨½ø³Ì//////////////////////
+	///////////////////////////åˆ›å»ºå¹¶è°ƒç”¨æ·±åº¦å­¦ä¹ æ»¤æ³¢è¿›ç¨‹//////////////////////
 	cos_file.append(".out");
 	sin_file.append(".out");
 	Mat cos1, sin1;
@@ -572,10 +572,10 @@ int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_
 	//ph.SetRe(cos);
 
 	ComplexMat ph_out(n_i, n_j);
-	int n_inc = floor(n_win / 4);
-	int n_win_i = ceil(n_i / n_inc) - 1;
-	int n_win_j = ceil(n_j / n_inc) - 1;
-	int x = floor(n_win / 2 - 1);
+	int n_inc = static_cast<int>(floor(n_win / 4));
+	int n_win_i = static_cast<int>(ceil(n_i / n_inc)) - 1;
+	int n_win_j = static_cast<int>(ceil(n_j / n_inc)) - 1;
+	int x = static_cast<int>(floor(n_win / 2 - 1));
 	Mat qua_wnd = Mat::zeros(x + 1, x + 1, CV_64F);
 	for (int i = 0; i <= x; i++)
 	{
@@ -707,10 +707,10 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 	util.phase2cos(phase, ph.re, ph.im);
 
 	ComplexMat ph_out(n_i, n_j);
-	int n_inc = floor(n_win / 4);
-	int n_win_i = ceil(n_i / n_inc) - 1;
-	int n_win_j = ceil(n_j / n_inc) - 1;
-	int x = floor(n_win / 2 - 1);
+	int n_inc = static_cast<int>(floor(n_win / 4));
+	int n_win_i = static_cast<int>(ceil(n_i / n_inc)) - 1;
+	int n_win_j = static_cast<int>(ceil(n_j / n_inc)) - 1;
+	int x = static_cast<int>(floor(n_win / 2 - 1));
 	Mat qua_wnd = Mat::zeros(x + 1, x + 1, CV_64F);
 	for (int i = 0; i <= x; i++)
 	{
@@ -811,17 +811,17 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 	return 0;
 }
 
-// °´¶şÎ¬¸ßË¹º¯ÊıÊµÏÖ¸ßË¹ÂË²¨
+// æŒ‰äºŒç»´é«˜æ–¯å‡½æ•°å®ç°é«˜æ–¯æ»¤æ³¢
 int Filter::GaussianFilter(cv::Mat& src, cv::Mat& dst, cv::Mat window) 
 {
 	int hh = (window.rows - 1) / 2;
 	int hw = (window.cols - 1) / 2;
 	Mat Dst = cv::Mat::zeros(src.size(), src.type());
-	//±ß½çÌî³ä
+	//è¾¹ç•Œå¡«å……
 	cv::Mat Newsrc;
-	cv::copyMakeBorder(src, Newsrc, hh, hh, hw, hw, cv::BORDER_REPLICATE);//±ß½ç¸´ÖÆ
+	cv::copyMakeBorder(src, Newsrc, hh, hh, hw, hw, cv::BORDER_REPLICATE);//è¾¹ç•Œå¤åˆ¶
 	Dst.zeros(src.size(), src.type());
-	//¸ßË¹ÂË²¨
+	//é«˜æ–¯æ»¤æ³¢
 	for (int i = hh; i < src.rows + hh; ++i) {
 		for (int j = hw; j < src.cols + hw; ++j) {
 			double sum = 0.0;
@@ -851,7 +851,7 @@ int Filter::GenerateGaussMask(Mat& Mask, int window_height, int window_width, do
 		y = pow(i - center_h, 2);
 		for (int j = 0; j < w; ++j) {
 			x = pow(j - center_w, 2);
-			//ÒòÎª×îºó¶¼Òª¹éÒ»»¯µÄ£¬³£Êı²¿·Ö¿ÉÒÔ²»¼ÆËã£¬Ò²¼õÉÙÁËÔËËãÁ¿
+			//å› ä¸ºæœ€åéƒ½è¦å½’ä¸€åŒ–çš„ï¼Œå¸¸æ•°éƒ¨åˆ†å¯ä»¥ä¸è®¡ç®—ï¼Œä¹Ÿå‡å°‘äº†è¿ç®—é‡
 			double g = exp(-(x + y) / (2 * sigma * sigma));
 			Mask.ptr<double>(i)[j] = g;
 			sum += g;

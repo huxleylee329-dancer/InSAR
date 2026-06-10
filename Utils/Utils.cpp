@@ -24,7 +24,7 @@
 #endif // _DEBUG
 
 using namespace cv;
-/*ºê¶¨Òå*/
+/*å®å®šä¹‰*/
 #define RETURN_MSG \
 { \
     if( fp ) fclose( fp ); \
@@ -289,7 +289,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 		}
 	}
 
-	//Í³¼ÆÕı¸º²Ğ²îµã²¢Ğ´Èë½ÚµãĞÅÏ¢
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹å¹¶å†™å…¥èŠ‚ç‚¹ä¿¡æ¯
 	int positive, negative, total;
 	positive = 0;
 	negative = 0;
@@ -314,7 +314,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	}
 	fprintf(fp, "c This is MCF problem file.\n");
 	fprintf(fp, "c Problem line(nodes, links)\n");
-	//Í³¼Æ±ßÔµÈı½ÇĞÎ¸öÊı
+	//ç»Ÿè®¡è¾¹ç¼˜ä¸‰è§’å½¢ä¸ªæ•°
 	long boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -358,13 +358,13 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 			sum += (tri + i)->residue;
 		}
 	}
-	//Ğ´Èë´óµØ½Úµã
+	//å†™å…¥å¤§åœ°èŠ‚ç‚¹
 	if (!b_balanced)
 	{
 		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
 	}
 
-	//Ğ´ÈëÁ÷·ÑÓÃ
+	//å†™å…¥æµè´¹ç”¨
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
 	int rows, cols;
 	int lower_bound = 0;
@@ -398,7 +398,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	}
 	if (!b_balanced)
 	{
-		//Ğ´Èë±ß½çÁ÷·ÑÓÃ
+		//å†™å…¥è¾¹ç•Œæµè´¹ç”¨
 		for (int i = 0; i < num_triangle; i++)
 		{
 			if ((tri + i) != NULL &&
@@ -465,7 +465,7 @@ int Utils::write_DIMACS(
 		if (triangle[i].neigh3 > 0) num_arcs++;
 	}
 
-	//Í³¼ÆÕı¸º²Ğ²îµã²¢Ğ´Èë½ÚµãĞÅÏ¢
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹å¹¶å†™å…¥èŠ‚ç‚¹ä¿¡æ¯
 	int positive, negative, total;
 	positive = 0;
 	negative = 0;
@@ -490,7 +490,7 @@ int Utils::write_DIMACS(
 	}
 	fprintf(fp, "c This is MCF problem file.\n");
 	fprintf(fp, "c Problem line(nodes, links)\n");
-	//Í³¼Æ±ßÔµÈı½ÇĞÎ¸öÊı
+	//ç»Ÿè®¡è¾¹ç¼˜ä¸‰è§’å½¢ä¸ªæ•°
 	long boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -531,13 +531,13 @@ int Utils::write_DIMACS(
 			sum += triangle[i].residue;
 		}
 	}
-	//Ğ´Èë´óµØ½Úµã
+	//å†™å…¥å¤§åœ°èŠ‚ç‚¹
 	if (!b_balanced)
 	{
 		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
 	}
 
-	//Ğ´ÈëÁ÷·ÑÓÃ
+	//å†™å…¥æµè´¹ç”¨
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
 	int rows, cols;
 	int lower_bound = 0;
@@ -570,7 +570,7 @@ int Utils::write_DIMACS(
 	}
 	if (!b_balanced)
 	{
-		//Ğ´Èë±ß½çÁ÷·ÑÓÃ
+		//å†™å…¥è¾¹ç•Œæµè´¹ç”¨
 		for (int i = 0; i < num_triangle; i++)
 		{
 			if (edges[triangle[i].edge1 - 1].isBoundry ||
@@ -618,7 +618,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int r
 		fprintf(stderr, "read_DIMACS(): can't open file %s\n\n", DIMACS_file_solution);
 		return -1;
 	}
-	/////////////////////¶ÁÈ¡×¢ÊÍ///////////////////////////
+	/////////////////////è¯»å–æ³¨é‡Š///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
 	{
@@ -630,7 +630,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int r
 		}
 		GET_NEXT_LINE;
 	}
-	/////////////////////¶ÁÈ¡ÓÅ»¯Ä¿±êÖµ/////////////////////
+	/////////////////////è¯»å–ä¼˜åŒ–ç›®æ ‡å€¼/////////////////////
 	for (i = 1; i < 81; i++)
 	{
 		if (isspace((int)instring[i]) > 0)
@@ -651,7 +651,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int r
 		fprintf(stderr, "read_DIMACS(): this problem can't be solved(unbounded or infeasible)!\n\n");
 		return -1;
 	}
-	////////////////////¶ÁÈ¡MCF½á¹û/////////////////////////
+	////////////////////è¯»å–MCFç»“æœ/////////////////////////
 	GET_NEXT_LINE;
 	while (ch && ch == 'f')
 	{
@@ -662,7 +662,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int r
 			fprintf(stderr, "read_DIMACS(): unknown file format!\n\n");
 			return -1;
 		}
-		//ÊÇ·ñÎª½ÓµØ»¡
+		//æ˜¯å¦ä¸ºæ¥åœ°å¼§
 		if (from == earth_node_indx || to == earth_node_indx)
 		{
 			if (from == earth_node_indx)
@@ -799,7 +799,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	long i, j;
 	long node_index = 1;
 	double sum = 0.0;
-	//Í³¼ÆÕı¸º²Ğ²îµãÊı
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹æ•°
 	long positive, negative, total, Arcs_num, Nodes_num;
 	positive = 0;
 	negative = 0;
@@ -844,7 +844,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 
 	
 	/*
-	* Ğ´Èë½ÚµãµÄ¶È£¨²Ğ²îÖµ1£¬-1£©
+	* å†™å…¥èŠ‚ç‚¹çš„åº¦ï¼ˆæ®‹å·®å€¼1ï¼Œ-1ï¼‰
 	*/
 	
 	for (i = 0; i < nr; i++)
@@ -866,20 +866,20 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		}
 	}
 
-	/*Ğ´½ÓµØ½Úµã*/
+	/*å†™æ¥åœ°èŠ‚ç‚¹*/
 	
 	node_index = nc * nr + 1;
 	fprintf(fp, "n %ld %lf\n", node_index, -sum);
 	long earth_node_index = node_index;
 
 	/*
-	* Ğ´ÈëÃ¿¸öÓĞÏò»¡µÄ·ÑÓÃ£¨Á÷·ÑÓÃ£©
+	* å†™å…¥æ¯ä¸ªæœ‰å‘å¼§çš„è´¹ç”¨ï¼ˆæµè´¹ç”¨ï¼‰
 	*/
 	long lower_bound = 0;
 	long upper_bound = 5;
 	double mean_coherence1, mean_coherence2, mean_coherence3, mean_coherence4;
 	fprintf(fp, "c Arc descriptor lines (from, to, minflow, maxflow, cost)\n");
-	/*½ÓµØ½ÚµãµÄÓĞÏò»¡Á÷·ÑÓÃ*/
+	/*æ¥åœ°èŠ‚ç‚¹çš„æœ‰å‘å¼§æµè´¹ç”¨*/
 	//top
 	for (i = 0; i < nc; i++)
 	{
@@ -921,21 +921,21 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 			earth_node_index, node_index, lower_bound, upper_bound, mean_coherence2);
 	}
 
-	/*·Ç½ÓµØ½ÚµãµÄÓĞÏò»¡Á÷·ÑÓÃ*/
+	/*éæ¥åœ°èŠ‚ç‚¹çš„æœ‰å‘å¼§æµè´¹ç”¨*/
 	for (i = 0; i < nr - 1; i++)
 	{
 		for (j = 0; j < nc - 1; j++)
 		{
 			node_index = i * nc + j + 1;
-			/*ÕıÏò*/
+			/*æ­£å‘*/
 			mean_coherence1 = mean(coherence(Range(i, i + 2), Range(j, j + 3))).val[0];
-			/*ÄæÏò*/
+			/*é€†å‘*/
 			mean_coherence2 = mean(coherence(Range(i, i + 2), Range(j, j + 3))).val[0];
 
 
-			/*ÕıÏò*/
+			/*æ­£å‘*/
 			mean_coherence3 = mean(coherence(Range(i, i + 3), Range(j, j + 2))).val[0];
-			/*ÄæÏò*/
+			/*é€†å‘*/
 			mean_coherence4 = mean(coherence(Range(i, i + 3), Range(j, j + 2))).val[0];
 			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
 				node_index, node_index + 1, lower_bound, upper_bound, mean_coherence1,
@@ -951,9 +951,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	for (j = 0; j < nc - 1; j++)
 	{
 		node_index = (nr - 1) * nc + j + 1;
-		/*ÕıÏò*/
+		/*æ­£å‘*/
 		mean_coherence1 = mean(coherence(Range(nr - 1, nr + 1), Range(j, j + 3))).val[0];
-		/*ÄæÏò*/
+		/*é€†å‘*/
 		mean_coherence2 = mean(coherence(Range(nr - 1, nr + 1), Range(j, j + 3))).val[0];
 		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
 			node_index, node_index + 1, lower_bound, upper_bound, mean_coherence1,
@@ -963,9 +963,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	for (i = 0; i < nr - 1; i++)
 	{
 		node_index = (i + 1) * nc;
-		/*ÕıÏò*/
+		/*æ­£å‘*/
 		mean_coherence1 = mean(coherence(Range(i, i + 3), Range(nc - 1, nc + 1))).val[0];
-		/*ÄæÏò*/
+		/*é€†å‘*/
 		mean_coherence2 = mean(coherence(Range(i, i + 3), Range(nc - 1, nc + 1))).val[0];
 		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
 			node_index, node_index + nc, lower_bound, upper_bound, mean_coherence1,
@@ -1002,7 +1002,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	Mat new_mask; mask.copyTo(new_mask);
 	new_mask = 1 - new_mask;
 	Mat residue_mask = Mat::zeros(nr, nc, CV_32S);
-	//¸ù¾İÊäÈëÑÚÄ¤Êı¾İºÍ²Ğ²îµãÊı¾İ¸üĞÂÑÚÄ¤
+	//æ ¹æ®è¾“å…¥æ©è†œæ•°æ®å’Œæ®‹å·®ç‚¹æ•°æ®æ›´æ–°æ©è†œ
 	for (int i = 0; i < nr; i++)
 	{
 		for (int j = 0; j < nc; j++)
@@ -1018,7 +1018,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		}
 	}
 	mask = 1 - new_mask;
-	//¸ù¾İ¸üĞÂµÄÑÚÄ¤¼ÆËã¿ÉĞĞµÄÍøÂç½ÚµãºÍÁ÷ÊıÁ¿
+	//æ ¹æ®æ›´æ–°çš„æ©è†œè®¡ç®—å¯è¡Œçš„ç½‘ç»œèŠ‚ç‚¹å’Œæµæ•°é‡
 	for (int i = 0; i < nr + 1; i++)
 	{
 		for (int j = 0; j < nc + 1; j++)
@@ -1062,7 +1062,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 			}
 		}
 	}
-	//¼ÆËã¿ÉĞĞ½ÚµãÑÚÄ¤±ßÔµµãÊı
+	//è®¡ç®—å¯è¡ŒèŠ‚ç‚¹æ©è†œè¾¹ç¼˜ç‚¹æ•°
 	int edge_node_num = 0;
 	for (int j = 0; j < nc; j++)
 	{
@@ -1078,7 +1078,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	long node_index = 1;
 	long node_index2;
 	double sum = 0.0;
-	//Í³¼ÆÕı¸º²Ğ²îµãÊı
+	//ç»Ÿè®¡æ­£è´Ÿæ®‹å·®ç‚¹æ•°
 	positive = 0;
 	negative = 0;
 	for (i = 0; i < nr; i++)
@@ -1124,7 +1124,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 
 
 	/*
-	* Ğ´Èë½ÚµãµÄ¶È£¨²Ğ²îÖµ1£¬-1£©
+	* å†™å…¥èŠ‚ç‚¹çš„åº¦ï¼ˆæ®‹å·®å€¼1ï¼Œ-1ï¼‰
 	*/
 
 	for (i = 0; i < nr; i++)
@@ -1146,7 +1146,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		}
 	}
 
-	/*Ğ´½ÓµØ½Úµã*/
+	/*å†™æ¥åœ°èŠ‚ç‚¹*/
 
 	node_index = nc * nr + 1;
 	if (/*!b_balanced*/1)
@@ -1158,13 +1158,13 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	long earth_node_index = node_index;
 
 	/*
-	* Ğ´ÈëÃ¿¸öÓĞÏò»¡µÄ·ÑÓÃ£¨Á÷·ÑÓÃ£©
+	* å†™å…¥æ¯ä¸ªæœ‰å‘å¼§çš„è´¹ç”¨ï¼ˆæµè´¹ç”¨ï¼‰
 	*/
 	long lower_bound = 0;
 	long upper_bound = 5;
 	double mean_cost;
 	fprintf(fp, "c Arc descriptor lines (from, to, minflow, maxflow, cost)\n");
-	/*½ÓµØ½ÚµãµÄÓĞÏò»¡Á÷·ÑÓÃ*/
+	/*æ¥åœ°èŠ‚ç‚¹çš„æœ‰å‘å¼§æµè´¹ç”¨*/
 	if (/*!b_balanced*/1)
 	{
 		//top
@@ -1205,7 +1205,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		}
 	}
 
-	/*·Ç½ÓµØ½ÚµãµÄÓĞÏò»¡Á÷·ÑÓÃ*/
+	/*éæ¥åœ°èŠ‚ç‚¹çš„æœ‰å‘å¼§æµè´¹ç”¨*/
 	for (i = 0; i < nr; i++)
 	{
 		for (j = 0; j < nc; j++)
@@ -1263,8 +1263,8 @@ int Utils::cumsum(Mat& phase, int dim)
 {
 	/*
 	cumulates along the dimension specified by dim
-	dim = 1,°´ÁĞ¼ÆËã
-	dim = 2,°´ĞĞ¼ÆËã
+	dim = 1,æŒ‰åˆ—è®¡ç®—
+	dim = 2,æŒ‰è¡Œè®¡ç®—
 	*/
 	int rows = phase.rows;
 	int cols = phase.cols;
@@ -1580,7 +1580,7 @@ int Utils::residue(triangle* tri, int num_triangle, vector<tri_node>& nodes, tri
 		delta31 = atan2(sin(phi1 - phi3), cos(phi1 - phi3));
 
 		double res = (delta12 + delta23 + delta31) / 2.0 / PI;
-		if (fabs(res) > 0.7 && !b_res)//±ê×¢±ß³¤³¬¹ıãĞÖµµÄ²Ğ²î±ßºÍ²Ğ²î½Úµã
+		if (fabs(res) > 0.7 && !b_res)//æ ‡æ³¨è¾¹é•¿è¶…è¿‡é˜ˆå€¼çš„æ®‹å·®è¾¹å’Œæ®‹å·®èŠ‚ç‚¹
 		{
 			(edges + (tri + i)->edge1 - 1)->isResidueEdge = true;
 			(edges + (tri + i)->edge2 - 1)->isResidueEdge = true;
@@ -1590,7 +1590,7 @@ int Utils::residue(triangle* tri, int num_triangle, vector<tri_node>& nodes, tri
 			nodes[(tri + i)->p3 - 1].set_residue(true);
 		}
 		res = b_res ? res : 0.0;
-		if (direction > 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò(²Ğ²î·½Ïò¶¨ÒåÎªÄæÊ±Õë·½Ïò)
+		if (direction > 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘(æ®‹å·®æ–¹å‘å®šä¹‰ä¸ºé€†æ—¶é’ˆæ–¹å‘)
 		{
 			(tri + i)->residue = res;
 		}
@@ -1658,7 +1658,7 @@ int Utils::residue(vector<triangle>& triangle, vector<tri_node>& nodes, vector<t
 		delta31 = atan2(sin(phi1 - phi3), cos(phi1 - phi3));
 
 		double res = (delta12 + delta23 + delta31) / 2.0 / PI;
-		if (fabs(res) > 0.7 && !b_res)//±ê×¢±ß³¤³¬¹ıãĞÖµµÄ²Ğ²î±ßºÍ²Ğ²î½Úµã
+		if (fabs(res) > 0.7 && !b_res)//æ ‡æ³¨è¾¹é•¿è¶…è¿‡é˜ˆå€¼çš„æ®‹å·®è¾¹å’Œæ®‹å·®èŠ‚ç‚¹
 		{
 			edges[triangle[i].edge1 - 1].isResidueEdge = true;
 			edges[triangle[i].edge2 - 1].isResidueEdge = true;
@@ -1669,7 +1669,7 @@ int Utils::residue(vector<triangle>& triangle, vector<tri_node>& nodes, vector<t
 			nodes[triangle[i].p3 - 1].set_residue(true);
 		}
 		res = b_res ? res : 0.0;
-		if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò(²Ğ²î·½Ïò¶¨ÒåÎªÄæÊ±Õë·½Ïò)
+		if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘(æ®‹å·®æ–¹å‘å®šä¹‰ä¸ºé€†æ—¶é’ˆæ–¹å‘)
 		{
 			triangle[i].residue = res;
 		}
@@ -1755,8 +1755,8 @@ int Utils::gen_mask_pdv(Mat& phase_derivatives_variance, Mat& mask, int wndsize,
 
 int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
 {
-	int wa = 3;  //´°¿Ú·½Î»Ïò³ß´ç
-	int wr = 3;  //´°¿Ú¾àÀëÏò³ß´ç
+	int wa = 3;  //çª—å£æ–¹ä½å‘å°ºå¯¸
+	int wr = 3;  //çª—å£è·ç¦»å‘å°ºå¯¸
 
 	int na = Mast.GetRows();
 	int nr = Mast.GetCols();
@@ -1771,8 +1771,8 @@ int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
 		return -1;
 	}
 
-	int win_a = (wa - 1) / 2; //·½Î»´°°ë¾¶
-	int win_r = (wr - 1) / 2; //¾àÀë´°°ë¾¶
+	int win_a = (wa - 1) / 2; //æ–¹ä½çª—åŠå¾„
+	int win_r = (wr - 1) / 2; //è·ç¦»çª—åŠå¾„
 
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
@@ -1832,8 +1832,8 @@ int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slav
 		return -1;
 	}
 
-	int win_a = (est_wndsize_az - 1) / 2; //·½Î»´°°ë¾¶
-	int win_r = (est_wndsize_rg - 1) / 2; //¾àÀë´°°ë¾¶
+	int win_a = (est_wndsize_az - 1) / 2; //æ–¹ä½çª—åŠå¾„
+	int win_r = (est_wndsize_rg - 1) / 2; //è·ç¦»çª—åŠå¾„
 
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
@@ -1873,8 +1873,8 @@ int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slav
 
 int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
 {
-	int wa = 3;  //´°¿Ú·½Î»Ïò³ß´ç
-	int wr = 3;  //´°¿Ú¾àÀëÏò³ß´ç
+	int wa = 3;  //çª—å£æ–¹ä½å‘å°ºå¯¸
+	int wr = 3;  //çª—å£è·ç¦»å‘å°ºå¯¸
 
 	int na = Mast.GetRows();
 	int nr = Mast.GetCols();
@@ -1890,8 +1890,8 @@ int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence
 		return -1;
 	}
 
-	int win_a = (wa - 1) / 2; //·½Î»´°°ë¾¶
-	int win_r = (wr - 1) / 2; //¾àÀë´°°ë¾¶
+	int win_a = (wa - 1) / 2; //æ–¹ä½çª—åŠå¾„
+	int win_r = (wr - 1) / 2; //è·ç¦»çª—åŠå¾„
 
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
@@ -1960,8 +1960,8 @@ int Utils::complex_coherence(
 		return -1;
 	}
 
-	int win_a = (est_wndsize_az - 1) / 2; //·½Î»´°°ë¾¶
-	int win_r = (est_wndsize_rg - 1) / 2; //¾àÀë´°°ë¾¶
+	int win_a = (est_wndsize_az - 1) / 2; //æ–¹ä½çª—åŠå¾„
+	int win_r = (est_wndsize_rg - 1) / 2; //è·ç¦»çª—åŠå¾„
 
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
@@ -2214,7 +2214,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 	long* ptr_neigh = NULL;
 	int num_neigh, target_edges;
 	int num_nodes = nodes.size();
-	/////////////////////¶ÁÈ¡×¢ÊÍ///////////////////////////
+	/////////////////////è¯»å–æ³¨é‡Š///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
 	{
@@ -2226,7 +2226,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 		}
 		GET_NEXT_LINE;
 	}
-	/////////////////////¶ÁÈ¡ÓÅ»¯Ä¿±êÖµ/////////////////////
+	/////////////////////è¯»å–ä¼˜åŒ–ç›®æ ‡å€¼/////////////////////
 	for (i = 1; i < 81; i++)
 	{
 		if (isspace((int)instring[i]) > 0)
@@ -2247,7 +2247,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 		fprintf(stderr, "read_DIMACS(): this problem can't be solved(unbounded or infeasible)!\n\n");
 		return -1;
 	}
-	////////////////////////¶ÁÈ¡MCF½á¹û////////////////////////
+	////////////////////////è¯»å–MCFç»“æœ////////////////////////
 	GET_NEXT_LINE;
 	while (ch && ch == 'f')
 	{
@@ -2332,7 +2332,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 
 			if (end1 > 0 && end1 <= num_nodes && end2 > 0 && end2 <= num_nodes && end3 > 0 && end3 <= num_nodes)
 			{
-				//ÕÒµ½±ßĞòºÅtarget_edges
+				//æ‰¾åˆ°è¾¹åºå·target_edges
 				nodes[end1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
 				for (i = 0; i < num_neigh; i++)
 				{
@@ -2353,7 +2353,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 				x2 = double(col2 - col1);
 				y2 = double(row1 - row2);
 				direction = x1 * y2 - x2 * y1;
-				if (direction > 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò
+				if (direction > 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘
 				{
 					(edges + target_edges - 1)->gain = flow;
 				}
@@ -2413,7 +2413,7 @@ int Utils::read_DIMACS(
 	int num_neigh, target_edges;
 	int num_nodes = nodes.size();
 	int num_triangle = triangle.size(); int num_edges = edges.size();
-	/////////////////////¶ÁÈ¡×¢ÊÍ///////////////////////////
+	/////////////////////è¯»å–æ³¨é‡Š///////////////////////////
 	GET_NEXT_LINE;
 	while (ch != 's' && ch)
 	{
@@ -2425,7 +2425,7 @@ int Utils::read_DIMACS(
 		}
 		GET_NEXT_LINE;
 	}
-	/////////////////////¶ÁÈ¡ÓÅ»¯Ä¿±êÖµ/////////////////////
+	/////////////////////è¯»å–ä¼˜åŒ–ç›®æ ‡å€¼/////////////////////
 	for (i = 1; i < 81; i++)
 	{
 		if (isspace((int)instring[i]) > 0)
@@ -2446,7 +2446,7 @@ int Utils::read_DIMACS(
 		fprintf(stderr, "read_DIMACS(): this problem can't be solved(unbounded or infeasible)!\n\n");
 		return -1;
 	}
-	////////////////////////¶ÁÈ¡MCF½á¹û////////////////////////
+	////////////////////////è¯»å–MCFç»“æœ////////////////////////
 	GET_NEXT_LINE;
 	while (ch && ch == 'f')
 	{
@@ -2457,13 +2457,13 @@ int Utils::read_DIMACS(
 			fprintf(stderr, "read_DIMACS(): unknown file format!\n\n");
 			return -1;
 		}
-		//·Ç½ÓµØ±ß
+		//éæ¥åœ°è¾¹
 		if (from > 0 &&
 			from <= num_triangle &&
 			to > 0 &&
 			to <= num_triangle)
 		{
-			/////////Ñ°ÕÒÁ½¸öÈı½ÇĞÎµÄ¹«¹²±ß//////////////
+			/////////å¯»æ‰¾ä¸¤ä¸ªä¸‰è§’å½¢çš„å…¬å…±è¾¹//////////////
 			{
 				end[0] = -1;
 				end[1] = -1;
@@ -2519,13 +2519,13 @@ int Utils::read_DIMACS(
 				end2 = end[1];
 			}
 			end3 = end[2];
-			/////////Ñ°ÕÒÁ½¸öÈı½ÇĞÎµÄ¹«¹²±ß//////////////
+			/////////å¯»æ‰¾ä¸¤ä¸ªä¸‰è§’å½¢çš„å…¬å…±è¾¹//////////////
 
 
 
 			if (end1 > 0 && end1 <= num_nodes && end2 > 0 && end2 <= num_nodes && end3 > 0 && end3 <= num_nodes)
 			{
-				//ÕÒµ½±ßĞòºÅtarget_edges
+				//æ‰¾åˆ°è¾¹åºå·target_edges
 				nodes[end1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
 				for (i = 0; i < num_neigh; i++)
 				{
@@ -2546,7 +2546,7 @@ int Utils::read_DIMACS(
 				x2 = double(col2 - col1);
 				y2 = -double(row1 - row2);
 				direction = x1 * y2 - x2 * y1;
-				if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò
+				if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘
 				{
 					edges[target_edges - 1].gain = -flow;
 				}
@@ -2556,7 +2556,7 @@ int Utils::read_DIMACS(
 				}
 			}
 		}
-		//½ÓµØ±ß
+		//æ¥åœ°è¾¹
 		if (from == num_triangle + 1 || to == num_triangle + 1)
 		{
 			if (from == num_triangle + 1)
@@ -2589,7 +2589,7 @@ int Utils::read_DIMACS(
 				x2 = double(col2 - col1);
 				y2 = -double(row1 - row2);
 				direction = x1 * y2 - x2 * y1;
-				if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò
+				if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘
 				{
 					edges[target_edges - 1].gain = flow;
 				}
@@ -2628,7 +2628,7 @@ int Utils::read_DIMACS(
 				x2 = double(col2 - col1);
 				y2 = -double(row1 - row2);
 				direction = x1 * y2 - x2 * y1;
-				if (direction < 0.0)//ÔÚÄ¿±êÈı½ÇĞÎÖĞË³²Ğ²î·½Ïò
+				if (direction < 0.0)//åœ¨ç›®æ ‡ä¸‰è§’å½¢ä¸­é¡ºæ®‹å·®æ–¹å‘
 				{
 					edges[target_edges - 1].gain = -flow;
 				}
@@ -2877,7 +2877,7 @@ int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az
 	ComplexMat slc;
 	int ret;
 	phase.copyTo(outPhase);
-	outPhase.convertTo(outPhase, CV_32F);//½ÚÊ¡ÄÚ´æ
+	outPhase.convertTo(outPhase, CV_32F);//èŠ‚çœå†…å­˜
 	ret = phase2cos(outPhase, slc.re, slc.im);
 	if (return_check(ret, "phase2cos()", error_head)) return -1;
 	int nr = slc.GetRows();
@@ -3018,10 +3018,10 @@ int Utils::xyz2ell(const Mat& xyz, Mat& llh)
 	const double d2r = pi / 180;
 	const double r2d = 180 / pi;
 
-	const double a = 6378137.0;		//ÍÖÇò³¤°ëÖá
-	const double f_inverse = 298.257223563;			//±âÂÊµ¹Êı
+	const double a = 6378137.0;		//æ¤­çƒé•¿åŠè½´
+	const double f_inverse = 298.257223563;			//æ‰ç‡å€’æ•°
 	const double b = a - a / f_inverse;
-	//const double b = 6356752.314245;			//ÍÖÇò¶Ì°ëÖá
+	//const double b = 6356752.314245;			//æ¤­çƒçŸ­åŠè½´
 
 	const double e = sqrt(a * a - b * b) / a;
 
@@ -3073,8 +3073,8 @@ int Utils::ell2xyz(const Mat& llh, Mat& xyz)
 	const double d2r = pi / 180;
 	const double r2d = 180 / pi;
 
-	const double a = 6378137.0;		//ÍÖÇò³¤°ëÖá
-	const double f_inverse = 298.257223563;			//±âÂÊµ¹Êı
+	const double a = 6378137.0;		//æ¤­çƒé•¿åŠè½´
+	const double f_inverse = 298.257223563;			//æ‰ç‡å€’æ•°
 	const double b = a - a / f_inverse;
 	const double e = sqrt(a * a - b * b) / a;
 
@@ -3109,8 +3109,8 @@ int Utils::ell2xyz(double lon, double lat, double elevation, Position& xyz)
 	const double pi = 3.14159265358979323846;
 	const double d2r = pi / 180;
 	const double r2d = 180 / pi;
-	const double a = 6378137.0;		//ÍÖÇò³¤°ëÖá
-	const double f_inverse = 298.257223563;			//±âÂÊµ¹Êı
+	const double a = 6378137.0;		//æ¤­çƒé•¿åŠè½´
+	const double f_inverse = 298.257223563;			//æ‰ç‡å€’æ•°
 	const double b = a - a / f_inverse;
 	const double e = sqrt(a * a - b * b) / a;
 	double y = lat;
@@ -3768,7 +3768,7 @@ int Utils::read_edges(const char* filename, tri_edge** edges, long* num_edges, i
 			}
 			return -1;
 		}
-		*(*neighbours + end1 - 1) = *(*neighbours + end1 - 1) + 1;//Í³¼ÆÃ¿¸ö½ÚµãÓĞ¶àÉÙÁÚ½Ó±ß
+		*(*neighbours + end1 - 1) = *(*neighbours + end1 - 1) + 1;//ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹æœ‰å¤šå°‘é‚»æ¥è¾¹
 		*(*neighbours + end2 - 1) = *(*neighbours + end2 - 1) + 1;
 	}
 	if (fp)
@@ -3845,8 +3845,8 @@ int Utils::read_edges(const char* edge_file, vector<tri_edge>& edges, std::vecto
 			}
 			return -1;
 		}
-		node_neighbours[end1 - 1] += 1;//Í³¼ÆÃ¿¸ö½ÚµãÓĞ¶àÉÙÁÚ½Ó±ß
-		node_neighbours[end2 - 1] += 1;//Í³¼ÆÃ¿¸ö½ÚµãÓĞ¶àÉÙÁÚ½Ó±ß
+		node_neighbours[end1 - 1] += 1;//ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹æœ‰å¤šå°‘é‚»æ¥è¾¹
+		node_neighbours[end2 - 1] += 1;//ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹æœ‰å¤šå°‘é‚»æ¥è¾¹
 	}
 	if (fp)
 	{
@@ -3893,7 +3893,7 @@ int Utils::init_tri_node(vector<tri_node>& node_array, Mat& phase, Mat& mask, tr
 			{
 				Phase = phase.at<double>(i, j);
 				ptr = new tri_node(i, j, *(num_neighbour + count), Phase);
-				if (mask.at<int>(i, j) > 1)//ÁÚ½ÓÒÑ½â²ø½Úµã±ê¼Ç
+				if (mask.at<int>(i, j) > 1)//é‚»æ¥å·²è§£ç¼ èŠ‚ç‚¹æ ‡è®°
 				{
 					ptr->set_status(true);
 				}
@@ -3985,7 +3985,7 @@ int Utils::init_tri_node(
 			{
 				Phase = phase.at<double>(i, j);
 				ptr = new tri_node(i, j, node_neighbours[count], Phase);
-				if (mask.at<int>(i, j) > 1)//ÁÚ½ÓÒÑ½â²ø½Úµã±ê¼Ç
+				if (mask.at<int>(i, j) > 1)//é‚»æ¥å·²è§£ç¼ èŠ‚ç‚¹æ ‡è®°
 				{
 					ptr->set_status(true);
 				}
@@ -4225,7 +4225,7 @@ int Utils::read_triangle(
 		fclose(fp_neigh);
 		fp_neigh = NULL;
 	}
-	//»ñÈ¡Èı½ÇĞÎµÄ±ßĞòºÅ
+	//è·å–ä¸‰è§’å½¢çš„è¾¹åºå·
 	long* ptr_neigh = NULL;
 	int num_neigh, count;
 	int edge[3];
@@ -4359,7 +4359,7 @@ int Utils::read_triangle(
 		fclose(fp_neigh);
 		fp_neigh = NULL;
 	}
-	//»ñÈ¡Èı½ÇĞÎµÄ±ßĞòºÅ
+	//è·å–ä¸‰è§’å½¢çš„è¾¹åºå·
 	long* ptr_neigh = NULL;
 	int num_neigh, count;
 	int edge[3];
@@ -4433,14 +4433,14 @@ int Utils::gen_delaunay(const char* filename, const char* exe_path)
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -4829,7 +4829,7 @@ int Utils::std(const Mat& input, double* std)
 //			count++;
 //		}
 //	}
-//	////////////´ÖÅä×¼///////////////
+//	////////////ç²—é…å‡†///////////////
 //	ComplexMat master;
 //	master = SAR_images[Master_index - 1];
 //	volatile bool parallel_flag = true;
@@ -4851,7 +4851,7 @@ int Utils::std(const Mat& input, double* std)
 //		move_col.at<int>(0, slave_img) = move_c;
 //	}
 //	if (parallel_check(parallel_flag, "stack_coregistration()", parallel_error_head)) return -1;
-//	////////////´ÖÅä×¼¹«¹²²¿·Ö²Ã¼ô///////////////
+//	////////////ç²—é…å‡†å…¬å…±éƒ¨åˆ†è£å‰ª///////////////
 //	int move_r_min, move_r_max, move_c_min, move_c_max;
 //	move_r_min = 100000000;
 //	move_r_max = -100000000;
@@ -4980,10 +4980,10 @@ int Utils::std(const Mat& input, double* std)
 //	}
 //	offset_topleft.copyTo(offset);
 //
-//	////////////////////////¾«Åä×¼////////////////////////////
+//	////////////////////////ç²¾é…å‡†////////////////////////////
 //	SAR_images[Master_index - 1] = SAR_images_out[Master_index - 1];
 //	master = SAR_images_out[Master_index - 1];
-//	//ÕâÀï²¢ĞĞ¼ÓËÙ£¬ÒòÎª×Óº¯ÊıÒÑ¾­½øĞĞÁË¼ÓËÙ
+//	//è¿™é‡Œå¹¶è¡ŒåŠ é€Ÿï¼Œå› ä¸ºå­å‡½æ•°å·²ç»è¿›è¡Œäº†åŠ é€Ÿ
 ////#pragma omp parallel for schedule(guided)
 //	for (int i = 0; i < n_images - 1; i++)
 //	{
@@ -5027,7 +5027,7 @@ int Utils::std(const Mat& input, double* std)
 //	Mat Slave_indx = Mat::zeros(1, n_images - 1, CV_32S);
 //	Mat offset_topleft = Mat::zeros(n_images, 2, CV_32S);
 //	int count = 0;
-//	//´´½¨Åä×¼ºóÊä³öµÄh5ÎÄ¼ş
+//	//åˆ›å»ºé…å‡†åè¾“å‡ºçš„h5æ–‡ä»¶
 //	for (int i = 0; i < n_images; i++)
 //	{
 //		ret = conversion.creat_new_h5(SAR_images_out[i].c_str());
@@ -5041,7 +5041,7 @@ int Utils::std(const Mat& input, double* std)
 //			count++;
 //		}
 //	}
-//	//¼ì²é²¢È·±£SARÍ¼Ïñ³ß´ç´óĞ¡Ò»ÖÂ
+//	//æ£€æŸ¥å¹¶ç¡®ä¿SARå›¾åƒå°ºå¯¸å¤§å°ä¸€è‡´
 //	int min_row = 10000000, min_col = 10000000;
 //	Mat azimuth_len, range_len;
 //	for (int i = 0; i < n_images; i++)
@@ -5059,7 +5059,7 @@ int Utils::std(const Mat& input, double* std)
 //		return -1;
 //	}
 //	
-//	////////////´ÖÅä×¼///////////////
+//	////////////ç²—é…å‡†///////////////
 //	ComplexMat master, slave, master_out, slave_out;
 //	ret = conversion.read_slc_from_h5(SAR_images[Master_index - 1].c_str(), master);
 //	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
@@ -5081,7 +5081,7 @@ int Utils::std(const Mat& input, double* std)
 //		move_row.at<int>(0, slave_img) = move_r;
 //		move_col.at<int>(0, slave_img) = move_c;
 //	}
-//	////////////´ÖÅä×¼¹«¹²²¿·Ö²Ã¼ô///////////////
+//	////////////ç²—é…å‡†å…¬å…±éƒ¨åˆ†è£å‰ª///////////////
 //	int move_r_min, move_r_max, move_c_min, move_c_max;
 //	move_r_min = 100000000;
 //	move_r_max = -100000000;
@@ -5108,7 +5108,7 @@ int Utils::std(const Mat& input, double* std)
 //		return -1;
 //	}
 //
-//	//Ö÷Í¼Ïñ²Ã¼ô
+//	//ä¸»å›¾åƒè£å‰ª
 //	if (move_r_min >= 0)
 //	{
 //		master = master(Range(0, nr - move_r_max), Range(0, nc));
@@ -5150,7 +5150,7 @@ int Utils::std(const Mat& input, double* std)
 //	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 //	ret = conversion.write_array_to_h5(SAR_images_out[Master_index - 1].c_str(), "range_len", range_len);
 //	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-//	//¸¨Í¼Ïñ²Ã¼ô
+//	//è¾…å›¾åƒè£å‰ª
 //	for (int i = 0; i < n_images - 1; i++)
 //	{
 //		int slave_ix, row_start, row_end, col_start, col_end;
@@ -5216,10 +5216,10 @@ int Utils::std(const Mat& input, double* std)
 //			offset_topleft.at<int>(slave_ix, 1) = move_col.at<int>(0, slave_ix) - move_c_min;
 //		}
 //
-//		//¾«Åä×¼
+//		//ç²¾é…å‡†
 //		ret = coregis.coregistration_subpixel(master, slave, blocksize, interp_times);
 //		if (return_check(ret, "coregistration_subpixel()", error_head)) return -1;
-//		//Ğ´³ö
+//		//å†™å‡º
 //		ret = conversion.write_slc_to_h5(SAR_images_out[slave_ix].c_str(), slave);
 //		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 //		azimuth_len.at<int>(0, 0) = slave.GetRows();
@@ -5254,7 +5254,7 @@ int Utils::std(const Mat& input, double* std)
 //		fprintf(stderr, "stack_coregistration(): input check failed!\n\n");
 //		return -1;
 //	}
-//	//»ñÈ¡¸÷Í¼ÏñµÄ³ß´ç£¬²¢´´½¨Êä³öh5ÎÄ¼ş
+//	//è·å–å„å›¾åƒçš„å°ºå¯¸ï¼Œå¹¶åˆ›å»ºè¾“å‡ºh5æ–‡ä»¶
 //	FormatConversion conversion;
 //	int ret, type;
 //	int n_images = SAR_images.size();
@@ -5273,7 +5273,7 @@ int Utils::std(const Mat& input, double* std)
 //		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 //		images_rows.at<int>(i, 0) = tmp.at<int>(0, 0);
 //	}
-//	//·Ö¿é¶ÁÈ¡Êı¾İ²¢ÇóÈ¡Æ«ÒÆÁ¿
+//	//åˆ†å—è¯»å–æ•°æ®å¹¶æ±‚å–åç§»é‡
 //	Utils util; Registration regis;
 //	int rows = images_rows.at<int>(Master_index - 1, 0); int cols = images_cols.at<int>(Master_index - 1, 0);
 //	int m = rows / blocksize;
@@ -5286,7 +5286,7 @@ int Utils::std(const Mat& input, double* std)
 //	Mat offset_r = Mat::zeros(m, n, CV_64F); Mat offset_c = Mat::zeros(m, n, CV_64F);
 //	Mat offset_coord_row = Mat::zeros(m, n, CV_64F);
 //	Mat offset_coord_col = Mat::zeros(m, n, CV_64F);
-//	//×Ó¿éÖĞĞÄ×ø±ê
+//	//å­å—ä¸­å¿ƒåæ ‡
 //	for (int i = 0; i < m; i++)
 //	{
 //		for (int j = 0; j < n; j++)
@@ -5295,14 +5295,14 @@ int Utils::std(const Mat& input, double* std)
 //			offset_coord_col.at<double>(i, j) = ((double)blocksize) / 2 * (double)(2 * j + 1);
 //		}
 //	}
-//	//¸ù¾İÊäÈëÍ¼Ïñ³ß´ç´óĞ¡ÅĞ¶ÏÊÇ·ñ·Ö¿é¶ÁÈ¡£¨³¬¹ı20000¡Á20000Ôò·Ö¿é¶ÁÈ¡£¬·ñÔòÒ»´ÎĞÔ¶ÁÈ¡£©
+//	//æ ¹æ®è¾“å…¥å›¾åƒå°ºå¯¸å¤§å°åˆ¤æ–­æ˜¯å¦åˆ†å—è¯»å–ï¼ˆè¶…è¿‡20000Ã—20000åˆ™åˆ†å—è¯»å–ï¼Œå¦åˆ™ä¸€æ¬¡æ€§è¯»å–ï¼‰
 //	ComplexMat master_w, slave_w;
 //	bool b_block = true; bool master_read = false;
 //	if (rows * cols < 20000 * 20000) b_block = false;
 //	for (int ii = 0; ii < n_images; ii++)
 //	{
 //		if (ii == Master_index - 1) continue;
-//		if (!b_block)//²»·Ö¿é¶ÁÈ¡
+//		if (!b_block)//ä¸åˆ†å—è¯»å–
 //		{
 //			if (!master_read)
 //			{
@@ -5310,7 +5310,7 @@ int Utils::std(const Mat& input, double* std)
 //				if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 //				master_read = true;
 //				type = master_w.type();
-//				ret = conversion.write_slc_to_h5(SAR_images_out[Master_index - 1].c_str(), master_w);//Ğ´Ö÷Í¼Ïñ
+//				ret = conversion.write_slc_to_h5(SAR_images_out[Master_index - 1].c_str(), master_w);//å†™ä¸»å›¾åƒ
 //			}
 //			
 //			ret = conversion.read_slc_from_h5(SAR_images[ii].c_str(), slave_w);
@@ -5326,7 +5326,7 @@ int Utils::std(const Mat& input, double* std)
 //				return -1;
 //			}
 //		}
-//		//·Ö¿é¶ÁÈ¡²¢¼ÆËãÆ«ÒÆÁ¿
+//		//åˆ†å—è¯»å–å¹¶è®¡ç®—åç§»é‡
 //		int mm, nn;
 //		mm = images_rows.at<int>(ii, 0) / blocksize;
 //		nn = images_cols.at<int>(ii, 0) / blocksize;
@@ -5348,7 +5348,7 @@ int Utils::std(const Mat& input, double* std)
 //
 //
 //
-//						//¼ÆËãÆ«ÒÆÁ¿
+//						//è®¡ç®—åç§»é‡
 //						if (master.type() != CV_64F) master.convertTo(master, CV_64F);
 //						if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 //						move_r = 0; move_c = 0;
@@ -5377,7 +5377,7 @@ int Utils::std(const Mat& input, double* std)
 //					offset_row = j * blocksize; offset_col = k * blocksize;
 //					if ((j + 1) * blocksize < images_rows.at<int>(ii, 0) && (k + 1) * blocksize < images_cols.at<int>(ii, 0))
 //					{
-//						//mm = j + 1; nn = k + 1;//¼ÇÂ¼Êµ¼ÊµÄ×Ó¿éĞĞÁĞÊı
+//						//mm = j + 1; nn = k + 1;//è®°å½•å®é™…çš„å­å—è¡Œåˆ—æ•°
 //						ret = conversion.read_subarray_from_h5(SAR_images[Master_index - 1].c_str(), "s_im", offset_row, offset_col, blocksize, blocksize, master.im);
 //						if (return_check(ret, "read_subarray_from_h5()", error_head)) return -1;
 //						ret = conversion.read_subarray_from_h5(SAR_images[Master_index - 1].c_str(), "s_re", offset_row, offset_col, blocksize, blocksize, master.re);
@@ -5387,7 +5387,7 @@ int Utils::std(const Mat& input, double* std)
 //						ret = conversion.read_subarray_from_h5(SAR_images[ii].c_str(), "s_re", offset_row, offset_col, blocksize, blocksize, slave.re);
 //						if (return_check(ret, "read_subarray_from_h5()", error_head)) return -1;
 //
-//						//¼ÆËãÆ«ÒÆÁ¿
+//						//è®¡ç®—åç§»é‡
 //						if (master.type() != CV_64F) master.convertTo(master, CV_64F);
 //						if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 //
@@ -5406,8 +5406,8 @@ int Utils::std(const Mat& input, double* std)
 //		}
 //		
 //
-//		//ÌŞ³ıoutliers
-//		m = mm; n = nn;//¸üĞÂÊµ¼Ê×Ó¿éĞĞÁĞÊı
+//		//å‰”é™¤outliers
+//		m = mm; n = nn;//æ›´æ–°å®é™…å­å—è¡Œåˆ—æ•°
 //		Mat sentinel = Mat::zeros(m, n, CV_64F);
 //		int ix, iy, count = 0, c = 0; double delta, thresh = 2.0;
 //		for (int i = 0; i < m; i++)
@@ -5415,25 +5415,25 @@ int Utils::std(const Mat& input, double* std)
 //			for (int j = 0; j < n; j++)
 //			{
 //				count = 0;
-//				//ÉÏ
+//				//ä¸Š
 //				ix = j;
 //				iy = i - 1; iy = iy < 0 ? 0 : iy;
 //				delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 //				delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 //				if (fabs(delta) >= thresh) count++;
-//				//ÏÂ
+//				//ä¸‹
 //				ix = j;
 //				iy = i + 1; iy = iy > m - 1 ? m - 1 : iy;
 //				delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 //				delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 //				if (fabs(delta) >= thresh) count++;
-//				//×ó
+//				//å·¦
 //				ix = j - 1; ix = ix < 0 ? 0 : ix;
 //				iy = i;
 //				delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 //				delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 //				if (fabs(delta) >= thresh) count++;
-//				//ÓÒ
+//				//å³
 //				ix = j + 1; ix = ix > n - 1 ? n - 1 : ix;
 //				iy = i;
 //				delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
@@ -5471,8 +5471,8 @@ int Utils::std(const Mat& input, double* std)
 //			fprintf(stderr, "stack_coregistration(): insufficient valide sub blocks!\n");
 //			return -1;
 //		}
-//		//Æ«ÒÆÁ¿ÄâºÏ£¨×ø±ê×ö¹éÒ»»¯´¦Àí£©
-//		//ÄâºÏ¹«Ê½Îª offser_row / offser_col = a0 + a1 * x + a2 * y;
+//		//åç§»é‡æ‹Ÿåˆï¼ˆåæ ‡åšå½’ä¸€åŒ–å¤„ç†ï¼‰
+//		//æ‹Ÿåˆå…¬å¼ä¸º offser_row / offser_col = a0 + a1 * x + a2 * y;
 //		double offset_x = (double)cols / 2;
 //		double offset_y = (double)rows / 2;
 //		double scale_x = (double)cols;
@@ -5532,7 +5532,7 @@ int Utils::std(const Mat& input, double* std)
 //		}
 //
 //		/*---------------------------------------*/
-//	    /*    Ë«ÏßĞÔ²åÖµ»ñÈ¡ÖØ²ÉÑùºóµÄ¸¨Í¼Ïñ     */
+//	    /*    åŒçº¿æ€§æ’å€¼è·å–é‡é‡‡æ ·åçš„è¾…å›¾åƒ     */
 //	    /*---------------------------------------*/
 //		ComplexMat slave1;
 //		ret = conversion.read_slc_from_h5(SAR_images[ii].c_str(), slave1);
@@ -5589,22 +5589,22 @@ int Utils::std(const Mat& input, double* std)
 //					nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
 //					if (type == CV_16S)
 //					{
-//						//Êµ²¿²åÖµ
+//						//å®éƒ¨æ’å€¼
 //						upper = (double)slave1.re.at<short>(mm0, nn0) + double(slave1.re.at<short>(mm0, nn1) - slave1.re.at<short>(mm0, nn0)) * (jjjj - (double)nn0);
 //						lower = (double)slave1.re.at<short>(mm1, nn0) + double(slave1.re.at<short>(mm1, nn1) - slave1.re.at<short>(mm1, nn0)) * (jjjj - (double)nn0);
 //						slave_tmp.re.at<short>(i, j) = upper + double(lower - upper) * (iiii - (double)mm0);
-//						//Ğé²¿²åÖµ
+//						//è™šéƒ¨æ’å€¼
 //						upper = (double)slave1.im.at<short>(mm0, nn0) + double(slave1.im.at<short>(mm0, nn1) - slave1.im.at<short>(mm0, nn0)) * (jjjj - (double)nn0);
 //						lower = (double)slave1.im.at<short>(mm1, nn0) + double(slave1.im.at<short>(mm1, nn1) - slave1.im.at<short>(mm1, nn0)) * (jjjj - (double)nn0);
 //						slave_tmp.im.at<short>(i, j) = upper + double(lower - upper) * (iiii - (double)mm0);
 //					}
 //					else
 //					{
-//						//Êµ²¿²åÖµ
+//						//å®éƒ¨æ’å€¼
 //						upper = slave1.re.at<double>(mm0, nn0) + (slave1.re.at<double>(mm0, nn1) - slave1.re.at<double>(mm0, nn0)) * (jjjj - (double)nn0);
 //						lower = slave1.re.at<double>(mm1, nn0) + (slave1.re.at<double>(mm1, nn1) - slave1.re.at<double>(mm1, nn0)) * (jjjj - (double)nn0);
 //						slave_tmp.re.at<double>(i, j) = upper + (lower - upper) * (iiii - (double)mm0);
-//						//Ğé²¿²åÖµ
+//						//è™šéƒ¨æ’å€¼
 //						upper = slave1.im.at<double>(mm0, nn0) + (slave1.im.at<double>(mm0, nn1) - slave1.im.at<double>(mm0, nn0)) * (jjjj - (double)nn0);
 //						lower = slave1.im.at<double>(mm1, nn0) + (slave1.im.at<double>(mm1, nn1) - slave1.im.at<double>(mm1, nn0)) * (jjjj - (double)nn0);
 //						slave_tmp.im.at<double>(i, j) = upper + (lower - upper) * (iiii - (double)mm0);
@@ -5766,7 +5766,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	time = time - time.at<double>(0, 0);
 	Mat A = Mat::ones(rows, 6, CV_64F);
 	Mat temp, b;
-	//ÄâºÏx
+	//æ‹Ÿåˆx
 	Mat x; statevec(cv::Range(0, rows), cv::Range(1, 2)).copyTo(x);
 	time.copyTo(A(cv::Range(0, rows), cv::Range(1, 2)));
 	temp = time.mul(time);
@@ -5786,7 +5786,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//ÄâºÏy
+	//æ‹Ÿåˆy
 	A = Mat::ones(rows, 6, CV_64F);
 	Mat y; statevec(cv::Range(0, rows), cv::Range(2, 3)).copyTo(y);
 	time.copyTo(A(cv::Range(0, rows), cv::Range(1, 2)));
@@ -5807,7 +5807,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//ÄâºÏz
+	//æ‹Ÿåˆz
 
 	A = Mat::ones(rows, 6, CV_64F);
 	Mat z; statevec(cv::Range(0, rows), cv::Range(3, 4)).copyTo(z);
@@ -5829,7 +5829,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//ÄâºÏvx
+	//æ‹Ÿåˆvx
 
 	A = Mat::ones(rows, 6, CV_64F);
 	Mat vx; statevec(cv::Range(0, rows), cv::Range(4, 5)).copyTo(vx);
@@ -5851,7 +5851,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//ÄâºÏvy
+	//æ‹Ÿåˆvy
 
 	A = Mat::ones(rows, 6, CV_64F);
 	Mat vy; statevec(cv::Range(0, rows), cv::Range(5, 6)).copyTo(vy);
@@ -5873,7 +5873,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//ÄâºÏvz
+	//æ‹Ÿåˆvz
 
 	A = Mat::ones(rows, 6, CV_64F);
 	Mat vz; statevec(cv::Range(0, rows), cv::Range(6, 7)).copyTo(vz);
@@ -5895,7 +5895,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 		return -1;
 	}
 
-	//²åÖµ
+	//æ’å€¼
 
 	int count = 1;
 	double t = 0;
@@ -5947,7 +5947,7 @@ int Utils::get_AOI_from_h5SLC(const char* h5_file, double lon_topleft, double la
 	FormatConversion conversion;
 	Mat row_coef, col_coef, lon_coef, lat_coef;
 
-	//»ñÈ¡¾­Î³¶È·¶Î§
+	//è·å–ç»çº¬åº¦èŒƒå›´
 	int rows, cols;
 	Mat tmp;
 	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
@@ -6038,7 +6038,7 @@ int Utils::get_AOI_from_h5SLC(const char* h5_file, double lon_topleft, double la
 	if (return_check(ret, "coord_conversion()", error_head)) return -1;
 	col_end = (int)floor(tmp_out.at<double>(0, 0));
 
-	//¶ÁÈ¡slcÊı¾İ
+	//è¯»å–slcæ•°æ®
 	
 	row_start = row_start < 0 ? 0 : row_start;
 	row_start = row_start > (rows - 1) ? (rows - 1) : row_start;
@@ -6080,14 +6080,14 @@ int Utils::get_AOI_from_h5slc(const char* h5_file, double lon_center, double lat
 	Mat row_coef, col_coef, lon, lat, tmp;
 	lon = Mat::zeros(1, 1, CV_64F); lon.at<double>(0, 0) = lon_center;
 	lat = Mat::zeros(1, 1, CV_64F); lat.at<double>(0, 0) = lat_center;
-	//¶ÁÈ¡Í¼ÏñĞĞÁĞ×ÜÊı
+	//è¯»å–å›¾åƒè¡Œåˆ—æ€»æ•°
 	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_rows = tmp.at<int>(0, 0);
 	ret = conversion.read_array_from_h5(h5_file, "range_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_cols = tmp.at<int>(0, 0);
-	//¶ÁÈ¡²ÉÑù¼ä¸ôºÍÏÂÊÓ½Ç
+	//è¯»å–é‡‡æ ·é—´éš”å’Œä¸‹è§†è§’
 	ret = conversion.read_array_from_h5(h5_file, "azimuth_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	azimuth_spacing = tmp.at<double>(0, 0);
@@ -6097,7 +6097,7 @@ int Utils::get_AOI_from_h5slc(const char* h5_file, double lon_center, double lat
 	ret = conversion.read_array_from_h5(h5_file, "incidence_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
-	//È·¶¨AOIÖĞĞÄÍ¼Ïñ×ø±ê
+	//ç¡®å®šAOIä¸­å¿ƒå›¾åƒåæ ‡
 	ret = conversion.read_array_from_h5(h5_file, "row_coefficient", row_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(h5_file, "col_coefficient", col_coef);
@@ -6152,14 +6152,14 @@ int Utils::get_AOI_size(const char* h5_file, double lon_center, double lat_cente
 	Mat row_coef, col_coef, lon, lat, tmp;
 	lon = Mat::zeros(1, 1, CV_64F); lon.at<double>(0, 0) = lon_center;
 	lat = Mat::zeros(1, 1, CV_64F); lat.at<double>(0, 0) = lat_center;
-	//¶ÁÈ¡Í¼ÏñĞĞÁĞ×ÜÊı
+	//è¯»å–å›¾åƒè¡Œåˆ—æ€»æ•°
 	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_rows = tmp.at<int>(0, 0);
 	ret = conversion.read_array_from_h5(h5_file, "range_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_cols = tmp.at<int>(0, 0);
-	//¶ÁÈ¡²ÉÑù¼ä¸ôºÍÏÂÊÓ½Ç
+	//è¯»å–é‡‡æ ·é—´éš”å’Œä¸‹è§†è§’
 	ret = conversion.read_array_from_h5(h5_file, "azimuth_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	azimuth_spacing = tmp.at<double>(0, 0);
@@ -6169,7 +6169,7 @@ int Utils::get_AOI_size(const char* h5_file, double lon_center, double lat_cente
 	ret = conversion.read_array_from_h5(h5_file, "incidence_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
-	//È·¶¨AOIÖĞĞÄÍ¼Ïñ×ø±ê
+	//ç¡®å®šAOIä¸­å¿ƒå›¾åƒåæ ‡
 	ret = conversion.read_array_from_h5(h5_file, "row_coefficient", row_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(h5_file, "col_coefficient", col_coef);
@@ -6322,7 +6322,7 @@ int Utils::baseline_estimation(
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	Mat state_vec1, state_vec2;
 	stateVec1.copyTo(state_vec1);
@@ -6338,7 +6338,7 @@ int Utils::baseline_estimation(
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(1, 4)).copyTo(sate2_xyz);
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
 	/*
-	* Í¼Ïñ×ø±ê×ª¾­Î³×ø±ê
+	* å›¾åƒåæ ‡è½¬ç»çº¬åæ ‡
 	*/
 	Mat row, col;
 	int j_col = (int)cols / 2;
@@ -6358,7 +6358,7 @@ int Utils::baseline_estimation(
 
 
 	/*
-	* Í¼Ïñ1³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ1æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	Mat sate1 = Mat::zeros(rows, 3, CV_64F);
@@ -6373,7 +6373,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = 0;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate1_xyz.rows; j++)
@@ -6393,7 +6393,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	* Í¼Ïñ2³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ2æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 
@@ -6405,7 +6405,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = 0;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate2_xyz.rows; j++)
@@ -6425,7 +6425,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	*¹À¼Æ»ùÏß 
+	*ä¼°è®¡åŸºçº¿ 
 	*/
 	Mat B_effe(rows, 1, CV_64F); Mat B_para(rows, 1, CV_64F);
 #pragma omp parallel for schedule(guided)
@@ -6442,7 +6442,7 @@ int Utils::baseline_estimation(
 		r = sqrt(sum(R.mul(R))[0]);
 		R = R / r;
 		B = sate2(Range(i, i + 1), Range(0, 3)) - sate1(Range(i, i + 1), Range(0, 3));
-		B_para.at<double>(i, 0) = sum(R.mul(B))[0];//Æ½ĞĞ»ùÏß
+		B_para.at<double>(i, 0) = sum(R.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 
 		tmp = satev1(Range(i, i + 1), Range(0, 3));
 		cross(tmp, R, effect_dir);
@@ -6452,7 +6452,7 @@ int Utils::baseline_estimation(
 		xyz = xyz / r;
 		r = sum(xyz.mul(effect_dir))[0];
 		effect_dir = r < 0.0 ? -effect_dir : effect_dir;
-		B_effe.at<double>(i, 0) = sum(effect_dir.mul(B))[0];//Æ½ĞĞ»ùÏß
+		B_effe.at<double>(i, 0) = sum(effect_dir.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 	}
 	*B_effect = sum(B_effe)[0] / (double)rows;
 	*B_parallel = sum(B_para)[0] / (double)rows;
@@ -6503,7 +6503,7 @@ int Utils::baseline_estimation(
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	Mat state_vec1, state_vec2;
 	stateVec1.copyTo(state_vec1);
@@ -6520,7 +6520,7 @@ int Utils::baseline_estimation(
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
 
 	/*
-	* Í¼Ïñ1³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ1æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	Mat sate1 = Mat::zeros(rows, 3, CV_64F);
@@ -6535,7 +6535,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = 0;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate1_xyz.rows; j++)
@@ -6555,7 +6555,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	* Í¼Ïñ2³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ2æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 
@@ -6567,7 +6567,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = 0;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate2_xyz.rows; j++)
@@ -6587,7 +6587,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	*¹À¼Æ»ùÏß
+	*ä¼°è®¡åŸºçº¿
 	*/
 	Mat R, B, tmp, xyz, effect_dir; double r;
 	tmp = Mat::zeros(1, 3, CV_64F);
@@ -6600,7 +6600,7 @@ int Utils::baseline_estimation(
 	r = sqrt(sum(R.mul(R))[0]);
 	R = R / r;
 	B = sate2(Range(0, 1), Range(0, 3)) - sate1(Range(0, 1), Range(0, 3));
-	*B_parallel = sum(R.mul(B))[0];//Æ½ĞĞ»ùÏß
+	*B_parallel = sum(R.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 
 	tmp = satev1(Range(0, 1), Range(0, 3));
 	cross(tmp, R, effect_dir);
@@ -6610,7 +6610,7 @@ int Utils::baseline_estimation(
 	xyz = xyz / r;
 	r = sum(xyz.mul(effect_dir))[0];
 	effect_dir = r < 0.0 ? -effect_dir : effect_dir;
-	*B_effect = sum(effect_dir.mul(B))[0];//Æ½ĞĞ»ùÏß
+	*B_effect = sum(effect_dir.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 
 
 	return 0;
@@ -6653,7 +6653,7 @@ int Utils::baseline_estimation(
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	Mat state_vec1, state_vec2;
 	stateVec1.copyTo(state_vec1);
@@ -6670,7 +6670,7 @@ int Utils::baseline_estimation(
 	state_vec2(cv::Range(0, state_vec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
 
 	/*
-	* Í¼Ïñ1³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ1æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 	Mat sate1 = Mat::zeros(rows, 3, CV_64F);
@@ -6685,7 +6685,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = dem_center;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate1_xyz.rows; j++)
@@ -6705,7 +6705,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	* Í¼Ïñ2³ÉÏñµãÎ»ÖÃ¼ÆËã
+	* å›¾åƒ2æˆåƒç‚¹ä½ç½®è®¡ç®—
 	*/
 
 
@@ -6717,7 +6717,7 @@ int Utils::baseline_estimation(
 		tmp.at<double>(0, 2) = 0;
 		ell2xyz(tmp, xyz);
 
-		//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+		//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 		Mat dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 		Mat r;
 		for (int j = 0; j < sate2_xyz.rows; j++)
@@ -6737,7 +6737,7 @@ int Utils::baseline_estimation(
 	}
 
 	/*
-	*¹À¼Æ»ùÏß
+	*ä¼°è®¡åŸºçº¿
 	*/
 	Mat R, B, tmp, xyz, effect_dir; double r;
 	tmp = Mat::zeros(1, 3, CV_64F);
@@ -6750,7 +6750,7 @@ int Utils::baseline_estimation(
 	r = sqrt(sum(R.mul(R))[0]);
 	R = R / r;
 	B = sate2(Range(0, 1), Range(0, 3)) - sate1(Range(0, 1), Range(0, 3));
-	*B_parallel = sum(R.mul(B))[0];//Æ½ĞĞ»ùÏß
+	*B_parallel = sum(R.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 
 	tmp = satev1(Range(0, 1), Range(0, 3));
 	cross(tmp, R, effect_dir);
@@ -6760,7 +6760,7 @@ int Utils::baseline_estimation(
 	xyz = xyz / r;
 	r = sum(xyz.mul(effect_dir))[0];
 	effect_dir = r < 0.0 ? -effect_dir : effect_dir;
-	*B_effect = sum(effect_dir.mul(B))[0];//Æ½ĞĞ»ùÏß
+	*B_effect = sum(effect_dir.mul(B))[0];//å¹³è¡ŒåŸºçº¿
 	return 0;
 }
 
@@ -6787,7 +6787,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 		return -1;
 	}
 	int n_images = slc_stack.size();
-	//¼ì²é¸÷Í¼ÏñÊı¾İ³ß´çÊÇ·ñÒ»ÖÂ
+	//æ£€æŸ¥å„å›¾åƒæ•°æ®å°ºå¯¸æ˜¯å¦ä¸€è‡´
 	int nr = slc_stack[0].GetRows();
 	int nc = slc_stack[0].GetCols();
 	for (int i = 0; i < n_images; i++)
@@ -6798,14 +6798,14 @@ int Utils::homogeneous_selection_and_phase_linking(
 			return -1;
 		}
 	}
-	//½«´ı´¦ÀíÊı¾İ¿½±´ÖÁ½á¹ûÊı¾İ
+	//å°†å¾…å¤„ç†æ•°æ®æ‹·è´è‡³ç»“æœæ•°æ®
 	for (int i = 0; i < n_images; i++)
 	{
 		slc_stack_filtered.push_back(slc_stack[i]);
 	}
 	int radius_test = (test_wndsize - 1) / 2;
 	int radius_estimation = (est_wndsize - 1) / 2;
-	//À©Õ¹Êı¾İ±ßÔµ
+	//æ‰©å±•æ•°æ®è¾¹ç¼˜
 	 for (int i = 0; i < n_images; i++)
 	{
 		 cv::copyMakeBorder(slc_stack[i].re, slc_stack[i].re, radius_test + radius_estimation,
@@ -6820,7 +6820,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 	double Look = 5.5;
 	double thresh = 13.3;
 	double rho = 0.8409;
-	//Ô¤ÏÈ¼ÆËãµÚÒ»¿éÏà¹Ø¾ØÕó
+	//é¢„å…ˆè®¡ç®—ç¬¬ä¸€å—ç›¸å…³çŸ©é˜µ
 	vector<ComplexMat> pre_covariance;
 	ComplexMat temp((2 * radius_test + 1) * (nc + 2 * radius_test), 4);
 	int x = n_images * (n_images - 1) / 2;
@@ -6867,7 +6867,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 	Mat homo_num = Mat::zeros(nr, nc, CV_32S);
 	Mat homo_index = Mat::zeros(nr * nc, test_wndsize * test_wndsize, CV_16S);
 	int total_count = 0;
-	//Ô¤ÏÈ¶ÔµÚÒ»ĞĞÔªËØµÄ½øĞĞÍ¬ÖÊµãÑ¡È¡ºÍphase-linking
+	//é¢„å…ˆå¯¹ç¬¬ä¸€è¡Œå…ƒç´ çš„è¿›è¡ŒåŒè´¨ç‚¹é€‰å–å’Œphase-linking
 #pragma omp parallel for schedule(guided)
 	for (int j = radius_test + radius_estimation; j < nc + radius_test + radius_estimation; j++)
 	{
@@ -6883,7 +6883,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 		{
 			for (int nn = mm + 1; nn < n_images; nn++)
 			{
-				//Ñ¡È¡ÖĞĞÄµãÏà¹Ø¾ØÕó
+				//é€‰å–ä¸­å¿ƒç‚¹ç›¸å…³çŸ©é˜µ
 				ComplexMat Cov_center, Cov_other, vec(2, 1), tmp;
 				double a_re, a_im, b_re, b_im;
 				int row = (i - radius_estimation) * (nc + 2 * radius_test) + j - radius_estimation;
@@ -6901,7 +6901,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 				Mat mask = Mat::zeros(test_wndsize, test_wndsize, CV_16S);
 				mask.at<short>(radius_test, radius_test) = 1;
 				//homo_num.at<int>(i - radius_estimation - radius_test, j - radius_estimation - radius_test) += 1;
-				//²âÊÔ´°¿ÚÄÚÍ¬ÖÊÏñÔª
+				//æµ‹è¯•çª—å£å†…åŒè´¨åƒå…ƒ
 				for (int ii = i - radius_test; ii < i + 1 + radius_test; ii++)
 				{
 					for (int jj = j - radius_test; jj < j + 1 + radius_test; jj++)
@@ -6949,7 +6949,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 				Covariance.im.at<double>(nn, mm) = -Covariance.im.at<double>(mm, nn);
 			}
 		}
-		//±£´æÏàÎ»ºÍÏà¹ØÏµÊı£¨µ÷ÊÔÓÃ£©
+		//ä¿å­˜ç›¸ä½å’Œç›¸å…³ç³»æ•°ï¼ˆè°ƒè¯•ç”¨ï¼‰
 		double re = Covariance.re.at<double>(0, 1);
 		double im = Covariance.im.at<double>(0, 1);
 		phase.at<double>(i - radius_estimation - radius_test, j - radius_estimation - radius_test) =
@@ -6960,7 +6960,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 		//int ret = HermitianEVD(Covariance, eigenvalue, eigenvector);
 		//if (ret == 0)
 		//{
-		//	//¼ÆËãgoodness of fit
+		//	//è®¡ç®—goodness of fit
 		//	/*for (int mm = 0; mm < n_images; mm++)
 		//	{
 		//		for (int nn = mm + 1; nn < n_images; nn++)
@@ -6994,26 +6994,26 @@ int Utils::homogeneous_selection_and_phase_linking(
 		
 	}
 	total_count++;
-	printf("\r¹À¼Æ½ø¶È£º%lf%%", double(total_count) / double(nr) * 100.0);
+	printf("\rä¼°è®¡è¿›åº¦ï¼š%lf%%", double(total_count) / double(nr) * 100.0);
 	fflush(stdout);
-	//¶ÔÊ£ÓàĞĞ½øĞĞÑ­»·´¦Àí
+	//å¯¹å‰©ä½™è¡Œè¿›è¡Œå¾ªç¯å¤„ç†
 
 
 	for (int i = radius_estimation + radius_test + 1; i < nr + radius_estimation + radius_test; i++)
 	{
-		//¸üĞÂÏà¹Ø¾ØÕó¿é
+		//æ›´æ–°ç›¸å…³çŸ©é˜µå—
 #pragma omp parallel for schedule(guided)
 		for (int mm = 0; mm < n_images; mm++)
 		{
 			for (int nn = mm + 1; nn < n_images; nn++)
 			{
 				int count = (n_images - 1 + n_images - mm) * mm / 2 + nn - mm - 1;
-				//É¾³ıÒÑ¾­´¦ÀíµÄµÚÒ»ĞĞ²¢½«Ê£Óà²¿·ÖÉÏÒÆÒ»ĞĞ
+				//åˆ é™¤å·²ç»å¤„ç†çš„ç¬¬ä¸€è¡Œå¹¶å°†å‰©ä½™éƒ¨åˆ†ä¸Šç§»ä¸€è¡Œ
 				pre_covariance[count].SetValue(cv::Range(0, (2 * radius_test)* (nc + 2 * radius_test)), cv::Range(0, 4),
 					pre_covariance[count](cv::Range(nc + 2 * radius_test, (2 * radius_test + 1)* (nc + 2 * radius_test)),
 						cv::Range(0, 4)));
-				//ÖØĞÂ¼ÆËãĞÂµÄÒ»ĞĞ²¢¼ÓÈëµ½Ïà¹Ø¾ØÕó¿é
-				int i_last_row = i + radius_test;//ĞÂµÄÒ»ĞĞĞĞºÅ
+				//é‡æ–°è®¡ç®—æ–°çš„ä¸€è¡Œå¹¶åŠ å…¥åˆ°ç›¸å…³çŸ©é˜µå—
+				int i_last_row = i + radius_test;//æ–°çš„ä¸€è¡Œè¡Œå·
 				for (int j = radius_estimation; j < nc + 2 * radius_test + radius_estimation; j++)
 				{
 					ComplexMat Cov(2, 2); ComplexMat Cov_t;
@@ -7039,7 +7039,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 		}
 
 
-		//´¦ÀíĞÂµÄÒ»ĞĞ
+		//å¤„ç†æ–°çš„ä¸€è¡Œ
 #pragma omp parallel for schedule(guided)
 		for (int j = radius_test + radius_estimation; j < nc + radius_test + radius_estimation; j++)
 		{
@@ -7055,10 +7055,10 @@ int Utils::homogeneous_selection_and_phase_linking(
 			{
 				for (int nn = mm + 1; nn < n_images; nn++)
 				{
-					//Ñ¡È¡ÖĞĞÄµãÏà¹Ø¾ØÕó
+					//é€‰å–ä¸­å¿ƒç‚¹ç›¸å…³çŸ©é˜µ
 					ComplexMat Cov_center, Cov_other, vec(2, 1), tmp;
 					double a_re, a_im, b_re, b_im;
-					/*×¢Òâ´Ë´¦×ÜÊÇ´¦ÀíÖĞ¼äĞĞ£¬ÒòÎªÏà¹Ø¾ØÕó¿éÒÑ¾­¸üĞÂÁË*/
+					/*æ³¨æ„æ­¤å¤„æ€»æ˜¯å¤„ç†ä¸­é—´è¡Œï¼Œå› ä¸ºç›¸å…³çŸ©é˜µå—å·²ç»æ›´æ–°äº†*/
 					int row = radius_test * (nc + 2 * radius_test) + j - radius_estimation;
 					Cov_center = pre_covariance[count](cv::Range(row, row + 1), cv::Range(0, 4));
 					Cov_center.reshape(2, 2, Cov_center);
@@ -7074,7 +7074,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 					Mat mask = Mat::zeros(test_wndsize, test_wndsize, CV_16S);
 					mask.at<short>(radius_test, radius_test) = 1;
 					//homo_num.at<int>(i - radius_estimation - radius_test, j - radius_estimation - radius_test) += 1;
-					//²âÊÔ´°¿ÚÄÚÍ¬ÖÊÏñÔª
+					//æµ‹è¯•çª—å£å†…åŒè´¨åƒå…ƒ
 					for (int ii = i - radius_test; ii < i + 1 + radius_test; ii++)
 					{
 						for (int jj = j - radius_test; jj < j + 1 + radius_test; jj++)
@@ -7123,7 +7123,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 				}
 			}
 
-			//±£´æÏàÎ»ºÍÏà¹ØÏµÊı£¨µ÷ÊÔÓÃ£©
+			//ä¿å­˜ç›¸ä½å’Œç›¸å…³ç³»æ•°ï¼ˆè°ƒè¯•ç”¨ï¼‰
 			double re = Covariance.re.at<double>(0, 1);
 			double im = Covariance.im.at<double>(0, 1);
 			phase.at<double>(i - radius_estimation - radius_test, j - radius_estimation - radius_test) =
@@ -7134,7 +7134,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 			//int ret = HermitianEVD(Covariance, eigenvalue, eigenvector);
 			//if (0)
 			//{
-			//	//¼ÆËãgoodness of fit
+			//	//è®¡ç®—goodness of fit
 			//	/*for (int mm = 0; mm < n_images; mm++)
 			//	{
 			//		for (int nn = mm + 1; nn < n_images; nn++)
@@ -7167,7 +7167,7 @@ int Utils::homogeneous_selection_and_phase_linking(
 			//}
 		}
 		total_count++;
-		printf("\r¹À¼Æ½ø¶È£º%lf%%", double(total_count) / double(nr) * 100.0);
+		printf("\rä¼°è®¡è¿›åº¦ï¼š%lf%%", double(total_count) / double(nr) * 100.0);
 		fflush(stdout);
 	}
 	//gamma = gamma / ((n_images - 1) * n_images / 2);
@@ -7197,7 +7197,7 @@ int Utils::SKP_decomposition(
 		(nr1 * nr2 == inputMat.GetRows()) &&
 		(nc1 * nc2 == inputMat.GetCols()));
 	
-	//Íê³É¸´¾ØÕóreshape
+	//å®Œæˆå¤çŸ©é˜µreshape
 	int nr_new = nr1 * nc1;
 	int nc_new = nr2 * nc2;
 	ComplexMat R(nr1 * nc1, nr2 * nc2);
@@ -7221,7 +7221,7 @@ int Utils::SKP_decomposition(
 		}
 	}
 	//cout << R.re << endl;
-	//Íê³ÉÆæÒìÖµ·Ö½â
+	//å®Œæˆå¥‡å¼‚å€¼åˆ†è§£
 	Eigen::MatrixXcd x(nr_new, nc_new);
 	complex<double> d;
 	for (int i = 0; i < nr_new; i++)
@@ -7281,7 +7281,7 @@ int Utils::homogeneous_test(const Mat& pixel1, const Mat& pixel2, int* homo_flag
 		return -1;
 	}
 
-	//Kolmogorov-Smirnov¼ìÑé
+	//Kolmogorov-Smirnovæ£€éªŒ
 	/*
 	 alpha      0.20	0.15	0.10	0.05	0.025	0.01	0.005	0.001
      c(alpha)   1.073	1.138	1.224	1.358	1.48	1.628	1.731	1.949
@@ -7299,7 +7299,7 @@ int Utils::homogeneous_test(const Mat& pixel1, const Mat& pixel2, int* homo_flag
 			*homo_flag = -1;
 			return 0;
 		}
-		//È·¶¨threshold
+		//ç¡®å®šthreshold
 		if (fabs(alpha - 0.2) < 0.01)
 		{
 			thresh = sqrt(2 / (double)N) * 1.073;
@@ -7336,7 +7336,7 @@ int Utils::homogeneous_test(const Mat& pixel1, const Mat& pixel2, int* homo_flag
 		{
 			thresh = sqrt(2 / (double)N) * 1.358;
 		}
-		//¼ÆËãC.D.F×î´ó¼ä¾à
+		//è®¡ç®—C.D.Fæœ€å¤§é—´è·
 		double Dmax = 0.0, tmp;
 		int front_1 = 0, front_2 = 0;
 		if (p1.at<double>(0, 0) > p2.at<double>(0, 0))
@@ -7380,7 +7380,7 @@ int Utils::homogeneous_test(const Mat& pixel1, const Mat& pixel2, int* homo_flag
 		else *homo_flag = 0;
 	}
 
-	//Anderson-Darling ¼ìÑé
+	//Anderson-Darling æ£€éªŒ
 	else if (strcmp(method, "AD")== 0)
 	{
 		/*
@@ -7466,7 +7466,7 @@ int Utils::homogeneous_test(
 	homo_index.create(nr * nc, windsize_az * windsize_rg, CV_8U); homo_index = 0;
 	int radius_rg = (windsize_rg - 1) / 2;
 	int radius_az = (windsize_az - 1) / 2;
-	//Í³¼ÆÍ¬ÖÊ¼ìÑé
+	//ç»Ÿè®¡åŒè´¨æ£€éªŒ
 	if (type == CV_64F)
 	{
 		for (int m = 0; m < nr; m++)
@@ -7514,7 +7514,7 @@ int Utils::homogeneous_test(
 					}
 				}
 			}
-			printf("\r¹À¼Æ½ø¶È£º%lf%%", double(m + 1) / double(nr) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦ï¼š%lf%%", double(m + 1) / double(nr) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -7565,7 +7565,7 @@ int Utils::homogeneous_test(
 					}
 				}
 			}
-			printf("\r¹À¼Æ½ø¶È£º%lf%%", double(m + 1) / double(nr) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦ï¼š%lf%%", double(m + 1) / double(nr) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -7616,7 +7616,7 @@ int Utils::homogeneous_test(
 					}
 				}
 			}
-			printf("\r¹À¼Æ½ø¶È£º%lf%%", double(m + 1) / double(nr) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦ï¼š%lf%%", double(m + 1) / double(nr) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -7721,7 +7721,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 	cols = right - left + 1;
 	if (b_homogeneous_test)
 	{
-		//Í³¼ÆÍ¬ÖÊ¼ìÑé
+		//ç»Ÿè®¡åŒè´¨æ£€éªŒ
 		ComplexMat pix1(n_images, 1); ComplexMat pix2(n_images, 1);
 		Mat pix1_amp, pix2_amp;
 		Mat mask = Mat::zeros(rows, cols, CV_32S);
@@ -7758,7 +7758,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 			//fprintf(stderr, "coherence_matrix_estimation(): no homogenous pixels inside estimation window!\n");
 			return -1;
 		}
-		//¹À¼ÆÏà¹Ø¾ØÕó
+		//ä¼°è®¡ç›¸å…³çŸ©é˜µ
 		int count2 = count; count = 0;
 		ComplexMat Covariance;
 		Mat sum(n_images, 1, CV_64F), A(n_images, count2, CV_64F), B(n_images, count2, CV_64F), C, A_t, B_t;
@@ -7812,7 +7812,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 	}
 	else
 	{
-		//¹À¼ÆÏà¹Ø¾ØÕó
+		//ä¼°è®¡ç›¸å…³çŸ©é˜µ
 		int count2 = rows * cols; int count;
 		ComplexMat Covariance;
 		Mat sum(n_images, 1, CV_64F), A(n_images, count2, CV_64F), B(n_images, count2, CV_64F), C, A_t, B_t;
@@ -7910,7 +7910,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 //	nc = tmp.at<int>(0, 0);
 //	Mat mask = Mat::zeros(nr, nc, CV_32S); mask.copyTo(out_mask); mask.release();
-//	//¼ì²éÊäÈëSARÍ¼Ïñ³ß´çÊÇ·ñÏàÍ¬
+//	//æ£€æŸ¥è¾“å…¥SARå›¾åƒå°ºå¯¸æ˜¯å¦ç›¸åŒ
 //	for (int i = 1; i < n_images; i++)
 //	{
 //		ret = conversion.read_array_from_h5(coregis_slc_files[i].c_str(), "azimuth_len", tmp);
@@ -7929,7 +7929,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //		}
 //	}
 //
-//	//È¥Æ½µØÏàÎ»
+//	//å»å¹³åœ°ç›¸ä½
 //	Mat stateVec1, prf, lon_coef, lat_coef, 
 //		carrier_frequency, stateVec2, prf2, phase,
 //		phase_deflat, flat_phase_coef, azimuth_len, range_len;
@@ -7954,7 +7954,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 //	for (int i = 0; i < n_images; i++)
 //	{
-//		//Ô¤ÏÈÌî³äÏà¹ØÏµÊı
+//		//é¢„å…ˆå¡«å……ç›¸å…³ç³»æ•°
 //		if (b_coh_est)
 //		{
 //			ret = conversion.creat_new_h5(coherence_files[i].c_str());
@@ -7967,7 +7967,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //			ret = conversion.write_array_to_h5(coherence_files[i].c_str(), "range_len", range_len);
 //			if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 //		}
-//		//Ô¤ÏÈÌî³ä¸ÉÉæÏàÎ»
+//		//é¢„å…ˆå¡«å……å¹²æ¶‰ç›¸ä½
 //		ret = conversion.creat_new_h5(phase_files[i].c_str());
 //		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 //		ret = conversion.write_array_to_h5(phase_files[i].c_str(), "phase", phase);
@@ -7988,10 +7988,10 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //			ret = conversion.write_array_to_h5(phase_files[i].c_str(), "flat_phase_coefficient", flat_phase_coef);
 //			if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 //		}
-//		fprintf(stdout, "È¥Æ½µØ½ø¶È£º%d/%d\n", i, n_images - 1);
+//		fprintf(stdout, "å»å¹³åœ°è¿›åº¦ï¼š%d/%d\n", i, n_images - 1);
 //	}
 //
-//	//·Ö¿é¶ÁÈ¡¡¢¼ÆËãºÍ´¢´æ
+//	//åˆ†å—è¯»å–ã€è®¡ç®—å’Œå‚¨å­˜
 //
 //	int left, right, top, bottom, block_num_row, block_num_col, left_pad, right_pad, top_pad, bottom_pad;
 //	vector<ComplexMat> slc_series, slc_series_filter;
@@ -8015,7 +8015,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //			right = left + blocksize_col; right = right > nc ? nc : right;
 //			right_pad = right + homotest_radius; right_pad = right_pad > nc ? nc : right_pad;
 //
-//			//¶ÁÈ¡Êı¾İ
+//			//è¯»å–æ•°æ®
 //			for (int k = 0; k < n_images; k++)
 //			{
 //				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_re",
@@ -8056,7 +8056,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //				slc_series_filter.push_back(slc);
 //			}
 //
-//			//Ìî³äÏà¹ØÏµÊı
+//			//å¡«å……ç›¸å…³ç³»æ•°
 //			if (b_coh_est)
 //			{
 //				zeromat = Mat::zeros(flat_phase.rows, flat_phase.cols, CV_64F);
@@ -8065,7 +8065,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //					zeromat.copyTo(coherence_series[mm]);
 //				}
 //			}
-//			//¼ÆËã
+//			//è®¡ç®—
 //#pragma omp parallel for schedule(guided)
 //			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 //			{
@@ -8100,7 +8100,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //				}
 //			}
 //
-//			//´¢´æ
+//			//å‚¨å­˜
 //			slc = slc_series_filter[master_indx - 1];
 //			for (int kk = 0; kk < n_images; kk++)
 //			{
@@ -8118,7 +8118,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 //			slc_series.clear();
 //			slc_series_filter.clear();
 //			
-//			fprintf(stdout, "¹À¼ÆÏàÎ»½ø¶È£º%lf\n", double((i + 1) * block_num_col + j + 1) / double((block_num_col) * (block_num_row)));
+//			fprintf(stdout, "ä¼°è®¡ç›¸ä½è¿›åº¦ï¼š%lf\n", double((i + 1) * block_num_col + j + 1) / double((block_num_col) * (block_num_row)));
 //		}
 //	}
 //
@@ -8231,7 +8231,7 @@ int Utils::unwrap_region_growing(
 	}
 	if (distance_thresh < 1.0) distance_thresh = 1.0;
 	if (quality_thresh > 0.9) quality_thresh = 0.9;
-	//ÕÒµ½ÔöÁ¿»ı·ÖÆğÊ¼µã
+	//æ‰¾åˆ°å¢é‡ç§¯åˆ†èµ·å§‹ç‚¹
 	int ix = 0;
 	double MC = -1.0;
 	size_t num_edges = edges.size();
@@ -8245,10 +8245,10 @@ int Utils::unwrap_region_growing(
 	//}
 	size_t start = edges[start_edge - 1].end1;
 
-	//²ÉÓÃÀàËÆÖÊÁ¿Í¼·¨½â²øµÄËã·¨½øĞĞÔöÁ¿»ı·Ö¼¯³É
+	//é‡‡ç”¨ç±»ä¼¼è´¨é‡å›¾æ³•è§£ç¼ çš„ç®—æ³•è¿›è¡Œå¢é‡ç§¯åˆ†é›†æˆ
 	edge_index tmp;
 	priority_queue<edge_index> que;
-	//nodes[start - 1].set_vel(0.0);//ÆğÊ¼µãĞÎ±äËÙÂÊºÍ¸ß³ÌÎó²îÉèÖÃÎª0£¬ºóĞø¿É¸ù¾İ²Î¿¼µã½øĞĞĞ£Õı
+	//nodes[start - 1].set_vel(0.0);//èµ·å§‹ç‚¹å½¢å˜é€Ÿç‡å’Œé«˜ç¨‹è¯¯å·®è®¾ç½®ä¸º0ï¼Œåç»­å¯æ ¹æ®å‚è€ƒç‚¹è¿›è¡Œæ ¡æ­£
 	//nodes[start - 1].set_height(0.0);
 	nodes[start - 1].set_status(true);
 	long* ptr_neigh = NULL;
@@ -8375,20 +8375,20 @@ int Utils::computeImageGeoBoundry(
 	int ret;
 	Utils util;
 	/*
-	* Í¼Ïñ×ø±ê×ª¾­Î³×ø±ê
+	* å›¾åƒåæ ‡è½¬ç»çº¬åæ ‡
 	*/
 	Mat row, col;
 	row.create(4, 1, CV_64F); col.create(4, 1, CV_64F);
-	row.at<double>(0, 0) = offset_row;//×óÉÏ½Ç
+	row.at<double>(0, 0) = offset_row;//å·¦ä¸Šè§’
 	col.at<double>(0, 0) = offset_col;
 
-	row.at<double>(1, 0) = offset_row;//ÓÒÉÏ½Ç
+	row.at<double>(1, 0) = offset_row;//å³ä¸Šè§’
 	col.at<double>(1, 0) = offset_col + sceneWidth;
 
-	row.at<double>(2, 0) = offset_row + sceneHeight;//×óÏÂ½Ç
+	row.at<double>(2, 0) = offset_row + sceneHeight;//å·¦ä¸‹è§’
 	col.at<double>(2, 0) = offset_col;
 
-	row.at<double>(3, 0) = offset_row + sceneHeight;//ÓÒÏÂ½Ç
+	row.at<double>(3, 0) = offset_row + sceneHeight;//å³ä¸‹è§’
 	col.at<double>(3, 0) = offset_col + sceneWidth;
 	Mat lon, lat;
 	ret = util.coord_conversion(lon_coefficient, row, col, lon);
@@ -8493,7 +8493,7 @@ int Utils::getSRTMDEM(
 	vector<string> srtmFileName;
 	vector<bool> bAlreadyExist;
 	int ret = getSRTMFileName(lonMin, lonMax, latMin, latMax, srtmFileName);
-	if (ret < 0)//²»ÔÚSRTMÊı¾İ·¶Î§ÄÚ£¨-60¡ã,60¡ã£©,ÔòÒÔ0Ìî³ä
+	if (ret < 0)//ä¸åœ¨SRTMæ•°æ®èŒƒå›´å†…ï¼ˆ-60Â°,60Â°ï¼‰,åˆ™ä»¥0å¡«å……
 	{
 		int rows = (latMax - latMin) / latSpacing;
 		int cols = (lonMax - lonMin) / lonSpacing;
@@ -8504,7 +8504,7 @@ int Utils::getSRTMDEM(
 		return 0;
 	}
 	//if (return_check(ret, "getSRTMFileName()", error_head)) return -1;
-	//ÅĞ¶ÏÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	//åˆ¤æ–­æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string tmp = DEMPath + "\\" + srtmFileName[i];
@@ -8512,13 +8512,13 @@ int Utils::getSRTMDEM(
 		if (-1 != GetFileAttributesA(tmp.c_str()))bAlreadyExist.push_back(true);
 		else bAlreadyExist.push_back(false);
 	}
-	//²»´æÔÚÔòÏÂÔØ
+	//ä¸å­˜åœ¨åˆ™ä¸‹è½½
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		if (!bAlreadyExist[i])
 		{
 			ret = downloadSRTM(srtmFileName[i].c_str(), DEMPath.c_str());
-			if (ret < 0)//Î´ÏÂÔØµ½DEMÊı¾İ,ÔòÒÔ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°DEMæ•°æ®,åˆ™ä»¥0å¡«å……
 			{
 				int rows = (latMax - latMin) / latSpacing;
 				int cols = (lonMax - lonMin) / lonSpacing;
@@ -8530,7 +8530,7 @@ int Utils::getSRTMDEM(
 			}
 		}
 	}
-	//½âÑ¹ÎÄ¼ş
+	//è§£å‹æ–‡ä»¶
 	for (int i = 0; i < srtmFileName.size(); i++)
 	{
 		string folderName = srtmFileName[i];
@@ -8550,7 +8550,7 @@ int Utils::getSRTMDEM(
 	double lonUpperLeft, lonLowerRight, latUpperLeft, latLowerRight;
 	int total_rows, total_cols;
 
-	//DEMÔÚÒ»¸öSRTM·½¸ñÄÚ
+	//DEMåœ¨ä¸€ä¸ªSRTMæ–¹æ ¼å†…
 	if (srtmFileName.size() == 1)
 	{
 		total_rows = 6000, total_cols = 6000;
@@ -8575,7 +8575,7 @@ int Utils::getSRTMDEM(
 		endCol = endCol > total_cols ? total_cols : endCol;
 
 		string folderName = srtmFileName[0];
-		folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+		folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 		string path = DEMPath + string("\\") + folderName;
 		path = path + string("\\") + folderName + string(".tif");
 		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
@@ -8586,13 +8586,13 @@ int Utils::getSRTMDEM(
 		*lonUL = lonUpperLeft + (startCol - 1) * lonSpacing;
 		*latUL = latUpperLeft - (startRow - 1) * latSpacing;
 	}
-	//DEMÔÚ2¸ö·½¸ñÄÚ
+	//DEMåœ¨2ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 2)
 	{
 		int xx, yy, xx2, yy2;
 		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
 		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
-		//Í¬Ò»ÁĞ
+		//åŒä¸€åˆ—
 		if (xx == xx2)
 		{
 			total_rows = 6000 * 2; total_cols = 6000;
@@ -8620,7 +8620,7 @@ int Utils::getSRTMDEM(
 			if (yy < yy2)
 			{
 				string folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -8629,7 +8629,7 @@ int Utils::getSRTMDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -8641,7 +8641,7 @@ int Utils::getSRTMDEM(
 			else
 			{
 				string folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				string path = DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -8650,7 +8650,7 @@ int Utils::getSRTMDEM(
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+				folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 				path = DEMPath + string("\\") + folderName;
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
@@ -8664,11 +8664,11 @@ int Utils::getSRTMDEM(
 			*lonUL = lonUpperLeft + (startCol - 1) * lonSpacing;
 			*latUL = latUpperLeft - (startRow - 1) * latSpacing;
 		}
-		//Í¬Ò»ĞĞ
+		//åŒä¸€è¡Œ
 		else if (yy == yy2)
 		{
 			total_cols = 6000 * 2; total_rows = 6000;
-			//¿çÔ½-180.0/180.0Ïß
+			//è·¨è¶Š-180.0/180.0çº¿
 			if ((xx == 1 && xx2 == 72) || (xx == 72 && xx2 == 1))
 			{
 				latUpperLeft = 60.0 - (yy - 1) * 5.0;
@@ -8693,7 +8693,7 @@ int Utils::getSRTMDEM(
 				if (xx > xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8702,7 +8702,7 @@ int Utils::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8714,7 +8714,7 @@ int Utils::getSRTMDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8723,7 +8723,7 @@ int Utils::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8763,7 +8763,7 @@ int Utils::getSRTMDEM(
 				if (xx < xx2)
 				{
 					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8772,7 +8772,7 @@ int Utils::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8784,7 +8784,7 @@ int Utils::getSRTMDEM(
 				else
 				{
 					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					string path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8793,7 +8793,7 @@ int Utils::getSRTMDEM(
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+					folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 					path = DEMPath + string("\\") + folderName;
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
@@ -8816,7 +8816,7 @@ int Utils::getSRTMDEM(
 
 
 	}
-	//DEMÔÚ4¸ö·½¸ñÄÚ
+	//DEMåœ¨4ä¸ªæ–¹æ ¼å†…
 	else if (srtmFileName.size() == 4)
 	{
 		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4, temp;
@@ -8825,7 +8825,7 @@ int Utils::getSRTMDEM(
 		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
 		sscanf(srtmFileName[3].c_str(), "srtm_%d_%d.zip", &xx4, &yy4);
 		total_rows = 6000 * 2; total_cols = 6000 * 2;
-		//¿çÔ½-180.0/180.0Ïß
+		//è·¨è¶Š-180.0/180.0çº¿
 		if (lonMax * lonMin < 0 && (fabs(lonMin) + fabs(lonMax)) > 180.0)
 		{
 			startRow = (int)((60.0 - latMax) / 5.0) + 1;
@@ -8849,7 +8849,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8863,7 +8863,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8878,7 +8878,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8892,7 +8892,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8944,7 +8944,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
 			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			string path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8958,7 +8958,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8973,7 +8973,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -8987,7 +8987,7 @@ int Utils::getSRTMDEM(
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
 			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//È¥µô.zipºó×º
+			folderName = folderName.substr(0, folderName.length() - 4);//å»æ‰.zipåç¼€
 			path = DEMPath + string("\\") + folderName;
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
@@ -9045,7 +9045,7 @@ int Utils::getCopernicusDEM(
 	vector<string> CopernicusDEMFileName;
 	vector<bool> bAlreadyExist;
 	int ret = getCopernicusDEMFileName(lonMin, lonMax, latMin, latMax, CopernicusDEMFileName);
-	if (ret < 0)//ÒÔ0Ìî³ä
+	if (ret < 0)//ä»¥0å¡«å……
 	{
 		int rows = (latMax - latMin) / latSpacing;
 		int cols = (lonMax - lonMin) / lonSpacing;
@@ -9061,7 +9061,7 @@ int Utils::getCopernicusDEM(
 		*lat_spacing = latSpacing;
 		return 0;
 	}
-	//ÅĞ¶ÏÎÄ¼şÊÇ·ñÒÑ¾­´æÔÚ
+	//åˆ¤æ–­æ–‡ä»¶æ˜¯å¦å·²ç»å­˜åœ¨
 	for (int i = 0; i < CopernicusDEMFileName.size(); i++)
 	{
 		string tmp = DEMPath + "\\" + CopernicusDEMFileName[i];
@@ -9069,13 +9069,13 @@ int Utils::getCopernicusDEM(
 		if (-1 != GetFileAttributesA(tmp.c_str()))bAlreadyExist.push_back(true);
 		else bAlreadyExist.push_back(false);
 	}
-	//²»´æÔÚÔòÏÂÔØ
+	//ä¸å­˜åœ¨åˆ™ä¸‹è½½
 	for (int i = 0; i < CopernicusDEMFileName.size(); i++)
 	{
 		if (!bAlreadyExist[i])
 		{
 			ret = downloadCopernicusDEM(CopernicusDEMFileName[i].c_str(), DEMPath.c_str());
-			//if (ret < 0)//Î´ÏÂÔØµ½DEMÊı¾İ,ÔòÒÔ0Ìî³ä
+			//if (ret < 0)//æœªä¸‹è½½åˆ°DEMæ•°æ®,åˆ™ä»¥0å¡«å……
 			//{
 			//	int rows = (latMax - latMin) / latSpacing;
 			//	int cols = (lonMax - lonMin) / lonSpacing;
@@ -9100,7 +9100,7 @@ int Utils::getCopernicusDEM(
 	double lonUpperLeft, lonLowerRight, latUpperLeft, latLowerRight;
 	int total_rows, total_cols;
 
-	//DEMÔÚÒ»¸öSRTM·½¸ñÄÚ
+	//DEMåœ¨ä¸€ä¸ªSRTMæ–¹æ ¼å†…
 	if (CopernicusDEMFileName.size() == 1)
 	{
 		int xx, yy;
@@ -9139,7 +9139,7 @@ int Utils::getCopernicusDEM(
 		Mat outDEM;
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9181,7 +9181,7 @@ int Utils::getCopernicusDEM(
 		*lon_spacing = lonSpacing;
 		*lat_spacing = latSpacing;
 	}
-	//DEMÔÚ2¸ö·½¸ñÄÚ
+	//DEMåœ¨2ä¸ªæ–¹æ ¼å†…
 	else if (CopernicusDEMFileName.size() == 2)
 	{
 		int xx, yy, xx2, yy2;
@@ -9236,7 +9236,7 @@ int Utils::getCopernicusDEM(
 			return -1;
 		}
 
-		//Í¬Ò»ÁĞ
+		//åŒä¸€åˆ—
 		if (yy == yy2)
 		{
 			Mat outDEM, outDEM2;
@@ -9244,7 +9244,7 @@ int Utils::getCopernicusDEM(
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9252,7 +9252,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9304,7 +9304,7 @@ int Utils::getCopernicusDEM(
 			*lon_spacing = lonSpacing;
 			*lat_spacing = latSpacing;
 		}
-		//Í¬Ò»ĞĞ
+		//åŒä¸€è¡Œ
 		else if (xx == xx2)
 		{
 			Mat outDEM, outDEM2;
@@ -9312,7 +9312,7 @@ int Utils::getCopernicusDEM(
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9320,7 +9320,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9381,7 +9381,7 @@ int Utils::getCopernicusDEM(
 
 
 	}
-	//DEMÔÚ3¸ö·½¸ñÄÚ
+	//DEMåœ¨3ä¸ªæ–¹æ ¼å†…
 	else if (CopernicusDEMFileName.size() == 3)
 	{
 	int xx, yy, xx2, yy2, xx3,yy3;
@@ -9461,7 +9461,7 @@ int Utils::getCopernicusDEM(
 		return -1;
 	}
 
-	//Í¬Ò»ÁĞ
+	//åŒä¸€åˆ—
 	if (yy == yy2)
 	{
 		Mat outDEM, outDEM2, outDEM3;
@@ -9469,7 +9469,7 @@ int Utils::getCopernicusDEM(
 		string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9477,7 +9477,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9485,7 +9485,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9544,7 +9544,7 @@ int Utils::getCopernicusDEM(
 		*lon_spacing = lonSpacing;
 		*lat_spacing = latSpacing;
 	}
-	//Í¬Ò»ĞĞ
+	//åŒä¸€è¡Œ
 	else if (xx == xx2)
 	{
 		Mat outDEM, outDEM2, outDEM3;
@@ -9552,7 +9552,7 @@ int Utils::getCopernicusDEM(
 		string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9560,7 +9560,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9568,7 +9568,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9635,7 +9635,7 @@ int Utils::getCopernicusDEM(
 
 
 	}
-	//DEMÔÚ4¸ö·½¸ñÄÚ
+	//DEMåœ¨4ä¸ªæ–¹æ ¼å†…
 	else if (CopernicusDEMFileName.size() == 4)
 	{
 		int xx[4], yy[4], temp;
@@ -9675,7 +9675,7 @@ int Utils::getCopernicusDEM(
 		string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9683,7 +9683,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 		}
@@ -9693,7 +9693,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -9703,7 +9703,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 		}
@@ -9760,7 +9760,7 @@ int Utils::getCopernicusDEM(
 		*lat_spacing = latSpacing;
 
 	}
-	//DEMÔÚ6¸ö·½¸ñÄÚ	
+	//DEMåœ¨6ä¸ªæ–¹æ ¼å†…	
 	else if (CopernicusDEMFileName.size() == 6)
 	{
 		int xx[6], yy[6], temp;
@@ -9793,13 +9793,13 @@ int Utils::getCopernicusDEM(
 			}
 		}
 		Mat outDEM, outDEM2, outDEM3, outDEM4;
-		//ÈıĞĞÁ½ÁĞ
+		//ä¸‰è¡Œä¸¤åˆ—
 		if (xx[0] != xx[2] && xx[0] == xx[1])
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9807,7 +9807,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -9817,7 +9817,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9825,7 +9825,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -9835,7 +9835,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9843,7 +9843,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -9874,13 +9874,13 @@ int Utils::getCopernicusDEM(
 			lonUpperLeft = yy[0];
 			lonLowerRight = yy[0] + 2;
 		}
-		//Á½ĞĞÈıÁĞ
+		//ä¸¤è¡Œä¸‰åˆ—
 		else if(xx[0] == xx[2] && xx[0] != xx[3])
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9888,7 +9888,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -9896,7 +9896,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -9907,7 +9907,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -9915,7 +9915,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -9923,7 +9923,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -9988,7 +9988,7 @@ int Utils::getCopernicusDEM(
 		*lon_spacing = lonSpacing;
 		*lat_spacing = latSpacing;
 	}
-	//DEMÔÚ8¸ö·½¸ñÄÚ	
+	//DEMåœ¨8ä¸ªæ–¹æ ¼å†…	
 	else if (CopernicusDEMFileName.size() == 8)
 	{
 		int xx[8], yy[8], temp;
@@ -10021,13 +10021,13 @@ int Utils::getCopernicusDEM(
 			}
 		}
 		Mat outDEM, outDEM2, outDEM3, outDEM4, outDEM5;
-		//ËÄĞĞÁ½ÁĞ
+		//å››è¡Œä¸¤åˆ—
 		if (xx[0] != xx[2] && xx[0] == xx[1])
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10035,7 +10035,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10045,7 +10045,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10054,7 +10054,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10064,7 +10064,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10072,7 +10072,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10083,7 +10083,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[6];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10092,7 +10092,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[7];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM4.rows, outDEM4.cols, CV_32F);
 			}
@@ -10128,13 +10128,13 @@ int Utils::getCopernicusDEM(
 			lonUpperLeft = yy[0];
 			lonLowerRight = yy[0] + 2;
 		}
-		//Á½ĞĞËÄÁĞ
+		//ä¸¤è¡Œå››åˆ—
 		else
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10142,7 +10142,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10150,7 +10150,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10158,7 +10158,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10170,7 +10170,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10178,7 +10178,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10186,7 +10186,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[6];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10194,7 +10194,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[7];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10260,7 +10260,7 @@ int Utils::getCopernicusDEM(
 		*lon_spacing = lonSpacing;
 		*lat_spacing = latSpacing;
 	}
-	//DEMÔÚ9¸ö·½¸ñÄÚ
+	//DEMåœ¨9ä¸ªæ–¹æ ¼å†…
 	else if (CopernicusDEMFileName.size() == 9)
 	{
 		int xx[9], yy[9], temp;
@@ -10293,11 +10293,11 @@ int Utils::getCopernicusDEM(
 			}
 		}
 		Mat outDEM, outDEM2, outDEM3, outDEM4, outDEM5;
-		//ÈıĞĞÈıÁĞ
+		//ä¸‰è¡Œä¸‰åˆ—
 		string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -10305,7 +10305,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 		}
@@ -10315,7 +10315,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 		}
@@ -10327,7 +10327,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -10336,7 +10336,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 		}
@@ -10345,7 +10345,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM4 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 		}
@@ -10356,7 +10356,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[6];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 		}
@@ -10364,7 +10364,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[7];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM4 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 		}
@@ -10373,7 +10373,7 @@ int Utils::getCopernicusDEM(
 		path = DEMPath + string("\\") + CopernicusDEMFileName[8];
 		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-		if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+		if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 		{
 			outDEM5 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 		}
@@ -10436,7 +10436,7 @@ int Utils::getCopernicusDEM(
 		*lon_spacing = lonSpacing;
 		*lat_spacing = latSpacing;
 	}
-	//DEMÔÚ12¸ö·½¸ñÄÚ
+	//DEMåœ¨12ä¸ªæ–¹æ ¼å†…
 	else if (CopernicusDEMFileName.size() == 12)
 	{
 		int xx[12], yy[12], temp;
@@ -10469,13 +10469,13 @@ int Utils::getCopernicusDEM(
 			}
 		}
 		Mat outDEM, outDEM2, outDEM3, outDEM4, outDEM5, outDEM6;
-		//ÈıĞĞËÄÁĞ
+		//ä¸‰è¡Œå››åˆ—
 		if (xx[0] != xx[4] && xx[0] == xx[3])
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10483,7 +10483,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10492,7 +10492,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10501,7 +10501,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10515,7 +10515,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10523,7 +10523,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10533,7 +10533,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[6];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10541,7 +10541,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[7];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10553,7 +10553,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[8];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10562,7 +10562,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[9];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10571,7 +10571,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[10];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10579,7 +10579,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[11];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM6);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM6 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10614,13 +10614,13 @@ int Utils::getCopernicusDEM(
 			lonUpperLeft = yy[0];
 			lonLowerRight = yy[0] + 4;
 		}
-		//ËÄĞĞÈıÁĞ
+		//å››è¡Œä¸‰åˆ—
 		else
 		{
 			string path = DEMPath + string("\\") + CopernicusDEMFileName[0];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10629,7 +10629,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[1];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10638,7 +10638,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[2];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM.rows, outDEM.cols, CV_32F);
 			}
@@ -10652,7 +10652,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[3];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM2);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM2 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10661,7 +10661,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[4];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10671,7 +10671,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[5];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM2.rows, outDEM2.cols, CV_32F);
 			}
@@ -10683,7 +10683,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[6];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM3);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM3 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10692,7 +10692,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[7];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10702,7 +10702,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[8];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM3.rows, outDEM3.cols, CV_32F);
 			}
@@ -10713,7 +10713,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[9];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM4);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM4 = Mat::zeros(3600, 3600, CV_32F);
 			}
@@ -10722,7 +10722,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[10];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM5);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM5 = Mat::zeros(outDEM4.rows, outDEM4.cols, CV_32F);
 			}
@@ -10731,7 +10731,7 @@ int Utils::getCopernicusDEM(
 			path = DEMPath + string("\\") + CopernicusDEMFileName[11];
 			std::replace(path.begin(), path.end(), '/', '\\');
 			ret = CopernicusDEM_geotiffread(path.c_str(), outDEM6);
-			if (ret < 0)//Î´ÏÂÔØµ½ÓÃ0Ìî³ä
+			if (ret < 0)//æœªä¸‹è½½åˆ°ç”¨0å¡«å……
 			{
 				outDEM6 = Mat::zeros(outDEM4.rows, outDEM4.cols, CV_32F);
 			}
@@ -11035,7 +11035,7 @@ int Utils::getCopernicusDEMFileName(double lonMin, double lonMax, double latMin,
 	startLon2 = startLon;
 	endLon = ceil(lonMax);
 	endLon2 = endLon;
-	if (fabs(lonMax - lonMin) > 180.0)//crossing the 180¡ã/-180¡ã longitude line
+	if (fabs(lonMax - lonMin) > 180.0)//crossing the 180Â°/-180Â° longitude line
 	{
 		endLon2 = ceil(lonMax + fabs(lonMax - lonMin));
 		startLon2 = floor(lonMax);
@@ -11120,7 +11120,7 @@ int Utils::CopernicusDEM_geotiffread(const char* filename, Mat& outDEM)
 	if (!filename)
 		return -1;
 
-	GDALAllRegister();   // ×¢²áÇı¶¯
+	GDALAllRegister();   // æ³¨å†Œé©±åŠ¨
 
 	GDALDatasetH hDataset = GDALOpen(filename, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -11161,7 +11161,7 @@ int Utils::CopernicusDEM_geotiffread(const char* filename, Mat& outDEM)
 	}
 
 	GDALDataType dataType = GDALGetRasterDataType(hBand);
-	/* Copernicus DEM Í¨³£ÊÇ GDT_Int16 »ò GDT_Float32 */
+	/* Copernicus DEM é€šå¸¸æ˜¯ GDT_Int16 æˆ– GDT_Float32 */
 
 	float* pbuf = (float*)malloc(sizeof(float) * xsize * ysize);
 	if (!pbuf)
@@ -11179,7 +11179,7 @@ int Utils::CopernicusDEM_geotiffread(const char* filename, Mat& outDEM)
 		xsize, ysize,
 		pbuf,
 		xsize, ysize,
-		GDT_Float32,   /* Ö±½Ó×ª³É float */
+		GDT_Float32,   /* ç›´æ¥è½¬æˆ float */
 		0, 0) != CE_None)
 	{
 		fprintf(stderr,
@@ -11282,7 +11282,7 @@ int Utils::writeOverlayKML(
 	coordinates->LinkEndChild(content5);
 	LatLonQuad->LinkEndChild(coordinates);
 	
-	//Èç¹ûÓĞÍ¼ÀıÎÄ¼ş
+	//å¦‚æœæœ‰å›¾ä¾‹æ–‡ä»¶
 	if (Legend_file)
 	{
 		TiXmlElement* Folder2 = new TiXmlElement("Folder");
@@ -11338,7 +11338,7 @@ int Utils::writeOverlayKML(
 		ScreenOverlay->LinkEndChild(size);
 	}
 
-	//²Î¿¼µã±ê¼Ç
+	//å‚è€ƒç‚¹æ ‡è®°
 	TiXmlElement* Placemark = new TiXmlElement("Placemark");
 	Document->LinkEndChild(Placemark);
 
@@ -11461,7 +11461,7 @@ int Utils::S1_subswath_merge(
 	conversion.utc2gps(start_time.c_str(), &start3);
 	conversion.utc2gps(end_time.c_str(), &end3);
 
-	//IW1ºÍIW2Æ´½Ó
+	//IW1å’ŒIW2æ‹¼æ¥
 
 	int x = (double(cols1 * mul_rg) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0;
 	int tmp = x + (int)round((first_pixel2 - first_pixel1) / range_spacing);
@@ -11520,7 +11520,7 @@ int Utils::S1_subswath_merge(
 		(phase_tmp(cv::Range(0, phase2.rows), cv::Range(col_end_last, total_cols)));
 	}
 
-	//Æ´½ÓIW3
+	//æ‹¼æ¥IW3
 
 	x = (double(total_cols * mul_rg) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0;
 	tmp = x + (int)round((first_pixel3 - first_pixel1) / range_spacing);
@@ -11593,7 +11593,7 @@ int Utils::S1_subswath_merge(
 	conversion.write_int_to_h5(merged_phase_h5file, "azimuth_len", phase1.rows);
 	conversion.write_int_to_h5(merged_phase_h5file, "range_len", phase1.cols);
 
-	//Ğ´ÈëÈı¸ö×Ó´øµÄsource_1ºÍsource_2
+	//å†™å…¥ä¸‰ä¸ªå­å¸¦çš„source_1å’Œsource_2
 
 	string source_1, source_2;
 	ret = conversion.read_str_from_h5(IW1_h5file, "source_1", source_1);
@@ -11693,7 +11693,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	conversion.utc2gps(start_time.c_str(), &start3);
 	conversion.utc2gps(end_time.c_str(), &end3);
 
-	//IW1ºÍIW2Æ´½Ó
+	//IW1å’ŒIW2æ‹¼æ¥
 
 	int x = (double(cols1) - round((first_pixel2 - first_pixel1) / range_spacing)) / 2.0;
 	int col_end_last = x + (int)round((first_pixel2 - first_pixel1) / range_spacing);
@@ -11736,7 +11736,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		(slc_tmp.im(cv::Range(0, slc2.im.rows), cv::Range(col_end_last, total_cols)));
 	}
 
-	//Æ´½ÓIW3
+	//æ‹¼æ¥IW3
 
 	x = (double(total_cols) - round((first_pixel3 - first_pixel1) / range_spacing)) / 2.0;
 	col_end_last = x + (int)round((first_pixel3 - first_pixel1) / range_spacing);
@@ -11787,8 +11787,8 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	conversion.write_int_to_h5(merged_phase_h5file, "azimuth_len", slc_tmp2.re.rows);
 	conversion.write_int_to_h5(merged_phase_h5file, "range_len", slc_tmp2.re.cols);
 
-	/////Ğ´ÈëÆäËü²ÎÊı
-	//ÅÄÉãÆğÊ¼Ê±¼ä
+	/////å†™å…¥å…¶å®ƒå‚æ•°
+	//æ‹æ‘„èµ·å§‹æ—¶é—´
 	if (start1 < start2 && start1 < start3)
 	{
 		ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_start_time", start_time);
@@ -11804,7 +11804,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_start_time", start_time);
 		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
 	}
-	//ÅÄÉã½áÊøÊ±¼ä
+	//æ‹æ‘„ç»“æŸæ—¶é—´
 	if (end1 > end2 && end1 > end3)
 	{
 		ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_stop_time", end_time);
@@ -11820,31 +11820,31 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_stop_time", end_time);
 		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
 	}
-	//×î½üĞ±¾à
+	//æœ€è¿‘æ–œè·
 	conversion.write_double_to_h5(merged_phase_h5file, "slant_range_first_pixel", first_pixel1);
 
-	//²ÉÑù¼ä¸ô
+	//é‡‡æ ·é—´éš”
 	conversion.write_double_to_h5(merged_phase_h5file, "range_spacing", range_spacing);
 	conversion.read_double_from_h5(IW3_h5file, "azimuth_spacing", &range_spacing);
 	conversion.write_double_to_h5(merged_phase_h5file, "azimuth_spacing", range_spacing);
-	//ÖĞĞÄÏÂÊÓ½Ç
+	//ä¸­å¿ƒä¸‹è§†è§’
 	conversion.read_double_from_h5(IW2_h5file, "incidence_center", &range_spacing);
 	conversion.write_double_to_h5(merged_phase_h5file, "incidence_center", range_spacing);
 	//prf
 	conversion.write_double_to_h5(merged_phase_h5file, "prf", prf);
-	//ÔØÆµ
+	//è½½é¢‘
 	conversion.read_double_from_h5(IW3_h5file, "carrier_frequency", &range_spacing);
 	conversion.write_double_to_h5(merged_phase_h5file, "carrier_frequency", range_spacing);
-	//¼«»¯¡¢swath¡¢´«¸ĞÆ÷Ãû
+	//æåŒ–ã€swathã€ä¼ æ„Ÿå™¨å
 	ret = conversion.read_str_from_h5(IW3_h5file, "polarization", end_time);
 	conversion.write_str_to_h5(merged_phase_h5file, "polarization", end_time.c_str());
 	conversion.write_str_to_h5(merged_phase_h5file, "swath", "IW123");
 	//conversion.write_str_to_h5(merged_phase_h5file, "sensor", "sentinel");
-	//¹ìµÀ
+	//è½¨é“
 	Mat state_vec;
 	ret = conversion.read_array_from_h5(IW3_h5file, "state_vec", state_vec);
 	conversion.write_array_to_h5(merged_phase_h5file, "state_vec", state_vec);
-	//¿ØÖÆµã
+	//æ§åˆ¶ç‚¹
 	Mat gcps1, gcps2, gcps3, lon, lat;
 	ret = conversion.read_array_from_h5(IW1_h5file, "gcps", gcps1);
 	ret = conversion.read_array_from_h5(IW2_h5file, "gcps", gcps2);
@@ -11895,7 +11895,7 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 	}
 	Mat phase;
 	int num_files = h5files.size();
-	//¸ù¾İÃ¿¸öÅÄÉãframeµÄÅÄÉãÆğÊ¼Ê±¼ä¶ÔÎÄ¼şÅÅĞò£¨´ÓĞ¡µ½´ó£©
+	//æ ¹æ®æ¯ä¸ªæ‹æ‘„frameçš„æ‹æ‘„èµ·å§‹æ—¶é—´å¯¹æ–‡ä»¶æ’åºï¼ˆä»å°åˆ°å¤§ï¼‰
 	int ret; string start_time; double start;
 	Mat stime(1, num_files, CV_64F), order;
 	FormatConversion conversion;
@@ -11909,7 +11909,7 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 	}
 	cv::sortIdx(stime, order, cv::SORT_EVERY_ROW + cv::SORT_ASCENDING);
 
-	//¼ì²é¶àÊÓ±¶ÊıºÍ×î½üĞ±¾àÊÇ·ñÏàÍ¬
+	//æ£€æŸ¥å¤šè§†å€æ•°å’Œæœ€è¿‘æ–œè·æ˜¯å¦ç›¸åŒ
 	double start1, start2, start3, end1, end2, end3, first_pixel1, first_pixel2, first_pixel3,
 		range_spacing, prf;
 	int mul_az, mul_rg, mul_az1, mul_rg1;
@@ -12010,7 +12010,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		fprintf(stderr, "S1_frame_merge(): input check failed!\n");
 		return -1;
 	}
-	//¼ì²éÊÇ·ñÊôÓÚÍ¬Ò»¹ìµÀÏàÁÚframe
+	//æ£€æŸ¥æ˜¯å¦å±äºåŒä¸€è½¨é“ç›¸é‚»frame
 	int ret;
 	FormatConversion conversion;
 	double start1, start2, end1, end2, prf, slant_range_first_pixel1, slant_range_first_pixel2;
@@ -12055,7 +12055,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 
 	ret = conversion.creat_new_h5(outframe_h5);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ÈÚºÏazimuthFmRateList
+	//èåˆazimuthFmRateList
 	Mat azimuthFmRateList1, azimuthFmRateList2;
 	ret = conversion.read_array_from_h5(frame1_h5, "azimuthFmRateList", azimuthFmRateList1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12089,7 +12089,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(azimuthFmRateList2, azimuthFmRateList1, azimuthFmRateList1);
 		conversion.write_array_to_h5(outframe_h5, "azimuthFmRateList", azimuthFmRateList1);
 	}
-	//ÈÚºÏdcEstimateList
+	//èåˆdcEstimateList
 	Mat dcEstimateList1, dcEstimateList2;
 	ret = conversion.read_array_from_h5(frame1_h5, "dcEstimateList", dcEstimateList1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12123,7 +12123,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(dcEstimateList2, dcEstimateList1, dcEstimateList1);
 		conversion.write_array_to_h5(outframe_h5, "dcEstimateList", dcEstimateList1);
 	}
-	//ÈÚºÏstate_vec
+	//èåˆstate_vec
 	Mat state_vec1, state_vec2;
 	ret = conversion.read_array_from_h5(frame1_h5, "state_vec", state_vec1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12172,7 +12172,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		
 		conversion.write_array_to_h5(outframe_h5, "state_vec", state_vec1);
 	}
-	//ÈÚºÏfine_state_vec
+	//èåˆfine_state_vec
 	Mat fine_state_vec1, fine_state_vec2;
 	ret = conversion.read_array_from_h5(frame1_h5, "fine_state_vec", fine_state_vec1);
 	ret += conversion.read_array_from_h5(frame2_h5, "fine_state_vec", fine_state_vec2);
@@ -12219,7 +12219,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		}
 	}
 	
-	//ÈÚºÏgcps
+	//èåˆgcps
 	Mat gcps1, gcps2;
 	int rows1, rows2;
 	ret = conversion.read_int_from_h5(frame1_h5, "azimuth_len", &rows1);
@@ -12262,7 +12262,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(gcps2, gcps1, gcps1);
 		conversion.write_array_to_h5(outframe_h5, "gcps", gcps1);
 	}
-	//ÈÚºÏburstAzimuthTime
+	//èåˆburstAzimuthTime
 	Mat burstAzimuthTime1, burstAzimuthTime2;
 	ret = conversion.read_array_from_h5(frame1_h5, "burstAzimuthTime", burstAzimuthTime1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12277,7 +12277,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(burstAzimuthTime2, burstAzimuthTime1, burstAzimuthTime1);
 	}
 	conversion.write_array_to_h5(outframe_h5, "burstAzimuthTime", burstAzimuthTime1);
-	//ÈÚºÏfirstValidLine
+	//èåˆfirstValidLine
 	Mat firstValidLine1, firstValidLine2;
 	ret = conversion.read_array_from_h5(frame1_h5, "firstValidLine", firstValidLine1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12292,7 +12292,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(firstValidLine2, firstValidLine1, firstValidLine1);
 	}
 	conversion.write_array_to_h5(outframe_h5, "firstValidLine", firstValidLine1);
-	//ÈÚºÏfirstValidSample
+	//èåˆfirstValidSample
 	Mat firstValidSample1, firstValidSample2;
 	ret = conversion.read_array_from_h5(frame1_h5, "firstValidSample", firstValidSample1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12307,7 +12307,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(firstValidSample2, firstValidSample1, firstValidSample1);
 	}
 	conversion.write_array_to_h5(outframe_h5, "firstValidSample", firstValidSample1);
-	//ÈÚºÏlastValidLine
+	//èåˆlastValidLine
 	Mat lastValidLine1, lastValidLine2;
 	ret = conversion.read_array_from_h5(frame1_h5, "lastValidLine", lastValidLine1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12322,7 +12322,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(lastValidLine2, lastValidLine1, lastValidLine1);
 	}
 	conversion.write_array_to_h5(outframe_h5, "lastValidLine", lastValidLine1);
-	//ÈÚºÏlastValidSample
+	//èåˆlastValidSample
 	Mat lastValidSample1, lastValidSample2;
 	ret = conversion.read_array_from_h5(frame1_h5, "lastValidSample", lastValidSample1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -12337,7 +12337,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(lastValidSample2, lastValidSample1, lastValidSample1);
 	}
 	conversion.write_array_to_h5(outframe_h5, "lastValidSample", lastValidSample1);
-	//ÈÚºÏÅÄÉãÊ±¼ä
+	//èåˆæ‹æ‘„æ—¶é—´
 	if (start1 < start2)
 	{
 		conversion.write_str_to_h5(outframe_h5, "acquisition_start_time", start_time1.c_str());
@@ -12348,12 +12348,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		conversion.write_str_to_h5(outframe_h5, "acquisition_start_time", start_time2.c_str());
 		conversion.write_str_to_h5(outframe_h5, "acquisition_stop_time", end_time1.c_str());
 	}
-	//ÈÚºÏazimuthSteeringRate
+	//èåˆazimuthSteeringRate
 	double azimuthSteeringRate;
 	ret = conversion.read_double_from_h5(frame1_h5, "azimuthSteeringRate", &azimuthSteeringRate);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	conversion.write_double_to_h5(outframe_h5, "azimuthSteeringRate", azimuthSteeringRate);
-	//ÈÚºÏazimuth_len£¬range_len
+	//èåˆazimuth_lenï¼Œrange_len
 	int azimuth_len1, range_len1, azimuth_len2, range_len2;
 	ret = conversion.read_int_from_h5(frame1_h5, "azimuth_len", &azimuth_len1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
@@ -12367,7 +12367,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	conversion.write_int_to_h5(outframe_h5, "azimuth_len", azimuth_len1);
 	int range_len = range_len1 >= range_len2 ? range_len1 : range_len2;
 	conversion.write_int_to_h5(outframe_h5, "range_len", range_len1);
-	//ÈÚºÏazimuth_spacing£¬range_spacing
+	//èåˆazimuth_spacingï¼Œrange_spacing
 	double azimuth_spacing, range_spacing;
 	ret = conversion.read_double_from_h5(frame1_h5, "azimuth_spacing", &azimuth_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
@@ -12459,7 +12459,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	conversion.write_array_to_h5(outframe_h5, "s_im", s_re);
 
 
-	//ÄâºÏÏµÊı
+	//æ‹Ÿåˆç³»æ•°
 
 	{
 		Mat lon_coefficient, lat_coefficient, inc_coefficient, row_coefficient, col_coefficient;
@@ -12481,10 +12481,10 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 		lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 		inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-		row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinelĞĞÁĞÆğµãÎª0£¬+1Í³Ò»Îª1.
+		row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinelè¡Œåˆ—èµ·ç‚¹ä¸º0ï¼Œ+1ç»Ÿä¸€ä¸º1.
 		col = (col + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);
 
-		//ÄâºÏ¾­¶È
+		//æ‹Ÿåˆç»åº¦
 
 		Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
 		double rms;
@@ -12576,7 +12576,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			temp.copyTo(lon_coefficient);
 		}
 
-		//ÄâºÏÎ³¶È
+		//æ‹Ÿåˆçº¬åº¦
 
 		lat.copyTo(b);
 
@@ -12667,7 +12667,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			temp.copyTo(lat_coefficient);
 		}
 
-		//ÄâºÏÏÂÊÓ½Ç
+		//æ‹Ÿåˆä¸‹è§†è§’
 
 		inc.copyTo(b);
 		A = Mat::ones(inc.rows, 6, CV_64F);
@@ -12706,7 +12706,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			temp.copyTo(inc_coefficient);
 		}
 
-		//ÄâºÏĞĞ×ø±ê
+		//æ‹Ÿåˆè¡Œåæ ‡
 
 		row.copyTo(b);
 		A = Mat::ones(lon.rows, 25, CV_64F);
@@ -12796,7 +12796,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			temp.copyTo(row_coefficient);
 		}
 
-		//ÄâºÏÁĞ×ø±ê
+		//æ‹Ÿåˆåˆ—åæ ‡
 
 		col.copyTo(b);
 		A = Mat::ones(lon.rows, 25, CV_64F);
@@ -12919,7 +12919,7 @@ int Utils::SAR2UTM(
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//È·¶¨¾­Î³¶È¸²¸Ç·¶Î§
+	//ç¡®å®šç»çº¬åº¦è¦†ç›–èŒƒå›´
 	double max_lon = -380.0, min_lon = 380.0, max_lat = -380.0, min_lat = 180.0;
 	if (mapped_lat.type() == CV_32F)
 	{
@@ -12958,7 +12958,7 @@ int Utils::SAR2UTM(
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
 	
-	//È·¶¨¾­Î³¶È²ÉÑù¼ä¸ô
+	//ç¡®å®šç»çº¬åº¦é‡‡æ ·é—´éš”
 	double lon_interval, lat_interval;
 	Mat temp1, temp2;
 	int rows_start = mapped_lon.rows / 4;
@@ -13003,7 +13003,7 @@ int Utils::SAR2UTM(
 	int rows = phase.rows; int cols = phase.cols;
 	
 
-	//¼ÆËãUTM×ø±êÏµÏàÎ»³ß´ç
+	//è®¡ç®—UTMåæ ‡ç³»ç›¸ä½å°ºå¯¸
 	int UTM_rows = (max_lat - min_lat) / lat_interval;
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
@@ -13019,7 +13019,7 @@ int Utils::SAR2UTM(
 	if (lon_east) *lon_east = east;
 	Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
 	mapped_phase.create(UTM_rows, UTM_cols, CV_64F); mapped_phase = 0.0;
-	//¿ªÊ¼µØÀí±àÂë
+	//å¼€å§‹åœ°ç†ç¼–ç 
 	if (mapped_lat.type() == CV_32F)
 	{
 #pragma omp parallel for schedule(guided)
@@ -13064,7 +13064,7 @@ int Utils::SAR2UTM(
 	}
 	
 
-	//²åÖµ
+	//æ’å€¼
 	if (interpolation_method == 0)
 	{
 #pragma omp parallel for schedule(guided)
@@ -13075,7 +13075,7 @@ int Utils::SAR2UTM(
 				if (b_filled.at<uchar>(i, j) != 0) continue;
 				int up, down, left, right, up_count, down_count, left_count, right_count;
 				double value1, value2, ratio1, ratio2;
-				//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 				up = i;
 				while (true)
 				{
@@ -13083,7 +13083,7 @@ int Utils::SAR2UTM(
 					if (up < 0) break;
 					if (b_filled.at<uchar>(up, j) != 0) break;
 				}
-				//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 				down = i;
 				while (true)
 				{
@@ -13091,7 +13091,7 @@ int Utils::SAR2UTM(
 					if (down > UTM_rows - 1) break;
 					if (b_filled.at<uchar>(down, j) != 0) break;
 				}
-				//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 				left = j;
 				while (true)
 				{
@@ -13099,7 +13099,7 @@ int Utils::SAR2UTM(
 					if (left < 0) break;
 					if (b_filled.at<uchar>(i, left) != 0) break;
 				}
-				//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 				right = j;
 				while (true)
 				{
@@ -13108,7 +13108,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, right) != 0) break;
 				}
 
-				//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+				//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13135,7 +13135,7 @@ int Utils::SAR2UTM(
 					mapped_phase.at<double>(i, j) = mapped_phase.at<double>(x_i, x_j);
 					continue;
 				}
-				//ÉÏÏÂÓĞÖµ
+				//ä¸Šä¸‹æœ‰å€¼
 				if (up >= 0 && down <= UTM_rows - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13152,7 +13152,7 @@ int Utils::SAR2UTM(
 					mapped_phase.at<double>(i, j) = mapped_phase.at<double>(x_i, x_j);
 					continue;
 				}
-				//×óÓÒÓĞÖµ
+				//å·¦å³æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13182,7 +13182,7 @@ int Utils::SAR2UTM(
 				if (b_filled.at<uchar>(i, j) != 0) continue;
 				int up, down, left, right, up_count, down_count, left_count, right_count;
 				double value1, value2, ratio1, ratio2;
-				//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 				up = i;
 				while (true)
 				{
@@ -13190,7 +13190,7 @@ int Utils::SAR2UTM(
 					if (up < 0) break;
 					if (b_filled.at<uchar>(up, j) != 0) break;
 				}
-				//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 				down = i;
 				while (true)
 				{
@@ -13198,7 +13198,7 @@ int Utils::SAR2UTM(
 					if (down > UTM_rows - 1) break;
 					if (b_filled.at<uchar>(down, j) != 0) break;
 				}
-				//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 				left = j;
 				while (true)
 				{
@@ -13206,7 +13206,7 @@ int Utils::SAR2UTM(
 					if (left < 0) break;
 					if (b_filled.at<uchar>(i, left) != 0) break;
 				}
-				//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 				right = j;
 				while (true)
 				{
@@ -13215,7 +13215,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, right) != 0) break;
 				}
 
-				//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+				//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 				{
 					
@@ -13228,7 +13228,7 @@ int Utils::SAR2UTM(
 					mapped_phase.at<double>(i, j) = (value1 + value2) / 2.0;
 					continue;
 				}
-				//ÉÏÏÂÓĞÖµ
+				//ä¸Šä¸‹æœ‰å€¼
 				if (up >= 0 && down <= UTM_rows - 1)
 				{
 					ratio2 = double(i - up) / double(down - up);
@@ -13237,7 +13237,7 @@ int Utils::SAR2UTM(
 					mapped_phase.at<double>(i, j) = value2;
 					continue;
 				}
-				//×óÓÒÓĞÖµ
+				//å·¦å³æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1)
 				{
 					ratio1 = double(j - left) / double(right - left);
@@ -13269,7 +13269,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//È·¶¨¾­Î³¶È¸²¸Ç·¶Î§
+	//ç¡®å®šç»çº¬åº¦è¦†ç›–èŒƒå›´
 	double max_lon = -380.0, min_lon = 380.0, max_lat = -380.0, min_lat = 180.0;
 	if (mapped_lat.type() == CV_32F)
 	{
@@ -13308,7 +13308,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
 
-	//È·¶¨¾­Î³¶È²ÉÑù¼ä¸ô
+	//ç¡®å®šç»çº¬åº¦é‡‡æ ·é—´éš”
 	double lon_interval, lat_interval;
 	lon_interval = 5.0 / 6000.0 / (90.0 / grid_size);
 	lat_interval = lon_interval;
@@ -13316,7 +13316,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 	int rows = phase.rows; int cols = phase.cols;
 
 
-	//¼ÆËãUTM×ø±êÏµÏàÎ»³ß´ç
+	//è®¡ç®—UTMåæ ‡ç³»ç›¸ä½å°ºå¯¸
 	int UTM_rows = (max_lat - min_lat) / lat_interval;
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
@@ -13332,7 +13332,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 	if (lon_east) *lon_east = east;
 	Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
 	mapped_phase.create(UTM_rows, UTM_cols, CV_64F); mapped_phase = 0.0;
-	//¿ªÊ¼µØÀí±àÂë
+	//å¼€å§‹åœ°ç†ç¼–ç 
 	if (mapped_lat.type() == CV_32F)
 	{
 #pragma omp parallel for schedule(guided)
@@ -13376,7 +13376,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 		}
 	}
 
-	//²åÖµ
+	//æ’å€¼
 	if (interpolation_method == 0)
 	{
 #pragma omp parallel for schedule(guided)
@@ -13387,7 +13387,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 				if (b_filled.at<uchar>(i, j) != 0) continue;
 				int up, down, left, right, up_count, down_count, left_count, right_count;
 				double value1, value2, ratio1, ratio2;
-				//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 				up = i;
 				while (true)
 				{
@@ -13395,7 +13395,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (up < 0) break;
 					if (b_filled.at<uchar>(up, j) != 0) break;
 				}
-				//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 				down = i;
 				while (true)
 				{
@@ -13403,7 +13403,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (down > UTM_rows - 1) break;
 					if (b_filled.at<uchar>(down, j) != 0) break;
 				}
-				//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 				left = j;
 				while (true)
 				{
@@ -13411,7 +13411,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (left < 0) break;
 					if (b_filled.at<uchar>(i, left) != 0) break;
 				}
-				//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 				right = j;
 				while (true)
 				{
@@ -13420,7 +13420,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (b_filled.at<uchar>(i, right) != 0) break;
 				}
 
-				//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+				//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13447,7 +13447,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					mapped_phase.at<double>(i, j) = mapped_phase.at<double>(x_i, x_j);
 					continue;
 				}
-				//ÉÏÏÂÓĞÖµ
+				//ä¸Šä¸‹æœ‰å€¼
 				if (up >= 0 && down <= UTM_rows - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13464,7 +13464,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					mapped_phase.at<double>(i, j) = mapped_phase.at<double>(x_i, x_j);
 					continue;
 				}
-				//×óÓÒÓĞÖµ
+				//å·¦å³æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1)
 				{
 					int x_i = i, x_j = j;
@@ -13494,7 +13494,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 				if (b_filled.at<uchar>(i, j) != 0) continue;
 				int up, down, left, right, up_count, down_count, left_count, right_count;
 				double value1, value2, ratio1, ratio2;
-				//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 				up = i;
 				while (true)
 				{
@@ -13502,7 +13502,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (up < 0) break;
 					if (b_filled.at<uchar>(up, j) != 0) break;
 				}
-				//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+				//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 				down = i;
 				while (true)
 				{
@@ -13510,7 +13510,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (down > UTM_rows - 1) break;
 					if (b_filled.at<uchar>(down, j) != 0) break;
 				}
-				//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 				left = j;
 				while (true)
 				{
@@ -13518,7 +13518,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (left < 0) break;
 					if (b_filled.at<uchar>(i, left) != 0) break;
 				}
-				//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+				//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 				right = j;
 				while (true)
 				{
@@ -13527,7 +13527,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					if (b_filled.at<uchar>(i, right) != 0) break;
 				}
 
-				//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+				//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 				{
 
@@ -13540,7 +13540,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					mapped_phase.at<double>(i, j) = (value1 + value2) / 2.0;
 					continue;
 				}
-				//ÉÏÏÂÓĞÖµ
+				//ä¸Šä¸‹æœ‰å€¼
 				if (up >= 0 && down <= UTM_rows - 1)
 				{
 					ratio2 = double(i - up) / double(down - up);
@@ -13549,7 +13549,7 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 					mapped_phase.at<double>(i, j) = value2;
 					continue;
 				}
-				//×óÓÒÓĞÖµ
+				//å·¦å³æœ‰å€¼
 				if (left >= 0 && right <= UTM_cols - 1)
 				{
 					ratio1 = double(j - left) / double(right - left);
@@ -13592,13 +13592,13 @@ int Utils::SAR2UTM(
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//È·¶¨¾­Î³¶È¸²¸Ç·¶Î§
+	//ç¡®å®šç»çº¬åº¦è¦†ç›–èŒƒå›´
 	double max_lon, min_lon, max_lat, min_lat;
 	cv::minMaxLoc(mapped_lon, &min_lon, &max_lon);
 	cv::minMaxLoc(mapped_lat, &min_lat, &max_lat);
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
-	//È·¶¨¾­Î³¶È²ÉÑù¼ä¸ô
+	//ç¡®å®šç»çº¬åº¦é‡‡æ ·é—´éš”
 	double lon_interval, lat_interval;
 	Mat temp1, temp2;
 	mapped_lon(cv::Range(0, mapped_lon.rows - 1), cv::Range(0, mapped_lon.cols)).copyTo(temp1);
@@ -13642,7 +13642,7 @@ int Utils::SAR2UTM(
 
 	
 	
-	//¼ÆËãUTM×ø±êÏµÏàÎ»³ß´ç
+	//è®¡ç®—UTMåæ ‡ç³»ç›¸ä½å°ºå¯¸
 	int UTM_rows = (max_lat - min_lat) / lat_interval;
 	UTM_rows += 2;
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
@@ -13660,7 +13660,7 @@ int Utils::SAR2UTM(
 	mapped_slc.re.create(UTM_rows, UTM_cols, slc.type()); mapped_slc.im.create(UTM_rows, UTM_cols, slc.type());
 	mapped_slc.re = 0;
 	mapped_slc.im = 0;
-	//¿ªÊ¼µØÀí±àÂë
+	//å¼€å§‹åœ°ç†ç¼–ç 
 	if (slc.type() == CV_16S)
 	{
 		for (int i = 0; i < rows; i++)
@@ -13703,7 +13703,7 @@ int Utils::SAR2UTM(
 	}
 	
 
-	//²åÖµ
+	//æ’å€¼
 	if (interpolation_method == 0)
 	{
 		if (slc.type() == CV_16S)
@@ -13715,7 +13715,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, j) != 0) continue;
 					int up, down, left, right, up_count, down_count, left_count, right_count;
 					double value1, value2, ratio1, ratio2;
-					//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 					up = i;
 					while (true)
 					{
@@ -13723,7 +13723,7 @@ int Utils::SAR2UTM(
 						if (up < 0) break;
 						if (b_filled.at<uchar>(up, j) != 0) break;
 					}
-					//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 					down = i;
 					while (true)
 					{
@@ -13731,7 +13731,7 @@ int Utils::SAR2UTM(
 						if (down > UTM_rows - 1) break;
 						if (b_filled.at<uchar>(down, j) != 0) break;
 					}
-					//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 					left = j;
 					while (true)
 					{
@@ -13739,7 +13739,7 @@ int Utils::SAR2UTM(
 						if (left < 0) break;
 						if (b_filled.at<uchar>(i, left) != 0) break;
 					}
-					//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 					right = j;
 					while (true)
 					{
@@ -13748,7 +13748,7 @@ int Utils::SAR2UTM(
 						if (b_filled.at<uchar>(i, right) != 0) break;
 					}
 
-					//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+					//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13776,7 +13776,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<short>(i, j) = mapped_slc.im.at<short>(x_i, x_j);
 						continue;
 					}
-					//ÉÏÏÂÓĞÖµ
+					//ä¸Šä¸‹æœ‰å€¼
 					if (up >= 0 && down <= UTM_rows - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13794,7 +13794,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<short>(i, j) = mapped_slc.im.at<short>(x_i, x_j);
 						continue;
 					}
-					//×óÓÒÓĞÖµ
+					//å·¦å³æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13824,7 +13824,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, j) != 0) continue;
 					int up, down, left, right, up_count, down_count, left_count, right_count;
 					double value1, value2, ratio1, ratio2;
-					//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 					up = i;
 					while (true)
 					{
@@ -13832,7 +13832,7 @@ int Utils::SAR2UTM(
 						if (up < 0) break;
 						if (b_filled.at<uchar>(up, j) != 0) break;
 					}
-					//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 					down = i;
 					while (true)
 					{
@@ -13840,7 +13840,7 @@ int Utils::SAR2UTM(
 						if (down > UTM_rows - 1) break;
 						if (b_filled.at<uchar>(down, j) != 0) break;
 					}
-					//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 					left = j;
 					while (true)
 					{
@@ -13848,7 +13848,7 @@ int Utils::SAR2UTM(
 						if (left < 0) break;
 						if (b_filled.at<uchar>(i, left) != 0) break;
 					}
-					//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 					right = j;
 					while (true)
 					{
@@ -13857,7 +13857,7 @@ int Utils::SAR2UTM(
 						if (b_filled.at<uchar>(i, right) != 0) break;
 					}
 
-					//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+					//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13885,7 +13885,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<float>(i, j) = mapped_slc.im.at<float>(x_i, x_j);
 						continue;
 					}
-					//ÉÏÏÂÓĞÖµ
+					//ä¸Šä¸‹æœ‰å€¼
 					if (up >= 0 && down <= UTM_rows - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13903,7 +13903,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<float>(i, j) = mapped_slc.im.at<float>(x_i, x_j);
 						continue;
 					}
-					//×óÓÒÓĞÖµ
+					//å·¦å³æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1)
 					{
 						int x_i = i, x_j = j;
@@ -13937,7 +13937,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, j) != 0) continue;
 					int up, down, left, right, up_count, down_count, left_count, right_count;
 					double value1, value2, ratio1, ratio2;
-					//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 					up = i;
 					while (true)
 					{
@@ -13945,7 +13945,7 @@ int Utils::SAR2UTM(
 						if (up < 0) break;
 						if (b_filled.at<uchar>(up, j) != 0) break;
 					}
-					//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 					down = i;
 					while (true)
 					{
@@ -13953,7 +13953,7 @@ int Utils::SAR2UTM(
 						if (down > UTM_rows - 1) break;
 						if (b_filled.at<uchar>(down, j) != 0) break;
 					}
-					//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 					left = j;
 					while (true)
 					{
@@ -13961,7 +13961,7 @@ int Utils::SAR2UTM(
 						if (left < 0) break;
 						if (b_filled.at<uchar>(i, left) != 0) break;
 					}
-					//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 					right = j;
 					while (true)
 					{
@@ -13970,7 +13970,7 @@ int Utils::SAR2UTM(
 						if (b_filled.at<uchar>(i, right) != 0) break;
 					}
 
-					//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+					//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 					{
 
@@ -13989,7 +13989,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<short>(i, j) = (value1 + value2) / 2.0;
 						continue;
 					}
-					//ÉÏÏÂÓĞÖµ
+					//ä¸Šä¸‹æœ‰å€¼
 					if (up >= 0 && down <= UTM_rows - 1)
 					{
 						ratio2 = double(i - up) / double(down - up);
@@ -14002,7 +14002,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<short>(i, j) = value2;
 						continue;
 					}
-					//×óÓÒÓĞÖµ
+					//å·¦å³æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1)
 					{
 						ratio1 = double(j - left) / double(right - left);
@@ -14027,7 +14027,7 @@ int Utils::SAR2UTM(
 					if (b_filled.at<uchar>(i, j) != 0) continue;
 					int up, down, left, right, up_count, down_count, left_count, right_count;
 					double value1, value2, ratio1, ratio2;
-					//Ñ°ÕÒÉÏÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸Šé¢æœ‰å€¼çš„ç‚¹
 					up = i;
 					while (true)
 					{
@@ -14035,7 +14035,7 @@ int Utils::SAR2UTM(
 						if (up < 0) break;
 						if (b_filled.at<uchar>(up, j) != 0) break;
 					}
-					//Ñ°ÕÒÏÂÃæÓĞÖµµÄµã
+					//å¯»æ‰¾ä¸‹é¢æœ‰å€¼çš„ç‚¹
 					down = i;
 					while (true)
 					{
@@ -14043,7 +14043,7 @@ int Utils::SAR2UTM(
 						if (down > UTM_rows - 1) break;
 						if (b_filled.at<uchar>(down, j) != 0) break;
 					}
-					//Ñ°ÕÒ×ó±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å·¦è¾¹æœ‰å€¼çš„ç‚¹
 					left = j;
 					while (true)
 					{
@@ -14051,7 +14051,7 @@ int Utils::SAR2UTM(
 						if (left < 0) break;
 						if (b_filled.at<uchar>(i, left) != 0) break;
 					}
-					//Ñ°ÕÒÓÒ±ßÓĞÖµµÄµã
+					//å¯»æ‰¾å³è¾¹æœ‰å€¼çš„ç‚¹
 					right = j;
 					while (true)
 					{
@@ -14060,7 +14060,7 @@ int Utils::SAR2UTM(
 						if (b_filled.at<uchar>(i, right) != 0) break;
 					}
 
-					//ÉÏÏÂ×óÓÒ¶¼ÓĞÖµ
+					//ä¸Šä¸‹å·¦å³éƒ½æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1 && up >= 0 && down <= UTM_rows - 1)
 					{
 
@@ -14079,7 +14079,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<float>(i, j) = (value1 + value2) / 2.0;
 						continue;
 					}
-					//ÉÏÏÂÓĞÖµ
+					//ä¸Šä¸‹æœ‰å€¼
 					if (up >= 0 && down <= UTM_rows - 1)
 					{
 						ratio2 = double(i - up) / double(down - up);
@@ -14092,7 +14092,7 @@ int Utils::SAR2UTM(
 						mapped_slc.im.at<float>(i, j) = value2;
 						continue;
 					}
-					//×óÓÒÓĞÖµ
+					//å·¦å³æœ‰å€¼
 					if (left >= 0 && right <= UTM_cols - 1)
 					{
 						ratio1 = double(j - left) / double(right - left);
@@ -14166,23 +14166,23 @@ int Utils::geocode(
 		fprintf(stderr, "geocode(): input check failed!\n");
 		return -1;
 	}
-	//¼ÆËãDEM²åÖµ±¶Êı
+	//è®¡ç®—DEMæ’å€¼å€æ•°
 	int interp_times_x, interp_times_y;
 	double a = 6378137, b = 6356752;
-	double C_short = (a + b) * PI;//¾­ÏßÒ»È¦³¤¶È
+	double C_short = (a + b) * PI;//ç»çº¿ä¸€åœˆé•¿åº¦
 	double C_long = a * 2 * PI;
-	double lon_per_meter = 360.0 / C_short;//¾­ÏßÉÏÃ¿Ã×¶àÉÙ¶È
-	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//Î³ÏßÉÏÃ¿Ã×¶àÉÙ¶È
+	double lon_per_meter = 360.0 / C_short;//ç»çº¿ä¸Šæ¯ç±³å¤šå°‘åº¦
+	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//çº¬çº¿ä¸Šæ¯ç±³å¤šå°‘åº¦
 	interp_times_x = lon_spacing / lon_per_meter / mapped_resolution_x;
 	interp_times_y = lat_spacing / lat_per_meter / mapped_resolution_y;
-	//84×ø±êÏµDEM²åÖµ
+	//84åæ ‡ç³»DEMæ’å€¼
 	Mat DEM, stateVector_interp;
 	interp_times_x = interp_times_x < 1 ? 1 : interp_times_x;
 	interp_times_y = interp_times_y < 1 ? 1 : interp_times_y;
 	cv::resize(DEM84, DEM, cv::Size(DEM84.cols * interp_times_x, DEM84.rows * interp_times_y));
 	lon_spacing = lon_spacing / (double)interp_times_x;
 	lat_spacing = lat_spacing / (double)interp_times_y;
-	//³õÊ¼»¯¹ìµÀÀà
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
 	int ret;
@@ -14191,7 +14191,7 @@ int Utils::geocode(
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
 	mapped_result.create(DEM.rows, DEM.cols, input.type()); mapped_result = 0.0;
-	//µØÀí±àÂë
+	//åœ°ç†ç¼–ç 
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
@@ -14285,7 +14285,7 @@ int Utils::geocode(
 			}
 			else
 			{
-				//Ë«ÏßĞÔ²åÖµ¼ÆËã
+				//åŒçº¿æ€§æ’å€¼è®¡ç®—
 				double ratio_x = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing - floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 				double ratio_y = (zeroDopplerTime - acquisitionStartTime) / time_interval - floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
 				
@@ -14377,26 +14377,26 @@ int Utils::geocode(
 		fprintf(stderr, "geocode(): input check failed!\n");
 		return -1;
 	}
-	//¼ÆËãDEM²åÖµ±¶Êı
+	//è®¡ç®—DEMæ’å€¼å€æ•°
 	int interp_times_x, interp_times_y;
 	double a = 6378137, b = 6356752;
-	double C_short = (a + b) * PI;//¾­ÏßÒ»È¦³¤¶È
+	double C_short = (a + b) * PI;//ç»çº¿ä¸€åœˆé•¿åº¦
 	double C_long = a * 2 * PI;
-	double lon_per_meter = 360.0 / C_short;//¾­ÏßÉÏÃ¿Ã×¶àÉÙ¶È
-	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//Î³ÏßÉÏÃ¿Ã×¶àÉÙ¶È
+	double lon_per_meter = 360.0 / C_short;//ç»çº¿ä¸Šæ¯ç±³å¤šå°‘åº¦
+	double lat_per_meter = 360.0 / (C_long * cos(lat_upperleft / 180.0 * PI));//çº¬çº¿ä¸Šæ¯ç±³å¤šå°‘åº¦
 	interp_times_x = lon_spacing / lon_per_meter / mapped_resolution_x;
 	interp_times_y = lat_spacing / lat_per_meter / mapped_resolution_y;
-	//¿¼ÂÇDEMÏñËØÖĞĞÄÓë±ßÔµ²îÖµ
+	//è€ƒè™‘DEMåƒç´ ä¸­å¿ƒä¸è¾¹ç¼˜å·®å€¼
 	lat_upperleft = lat_upperleft + lat_spacing / 2.0 - lat_spacing / (double)interp_times_y * 0.5;
 	lon_upperleft = lon_upperleft - lon_spacing / 2.0 + lon_spacing / (double)interp_times_x * 0.5;
-	//84×ø±êÏµDEM²åÖµ
+	//84åæ ‡ç³»DEMæ’å€¼
 	Mat DEM, stateVector_interp;
 	interp_times_x = interp_times_x < 1 ? 1 : interp_times_x;
 	interp_times_y = interp_times_y < 1 ? 1 : interp_times_y;
 	cv::resize(DEM84, DEM, cv::Size(DEM84.cols * interp_times_x, DEM84.rows * interp_times_y));
 	lon_spacing = lon_spacing / (double)interp_times_x;
 	lat_spacing = lat_spacing / (double)interp_times_y;
-	//³õÊ¼»¯¹ìµÀÀà
+	//åˆå§‹åŒ–è½¨é“ç±»
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
 	int ret;
@@ -14406,7 +14406,7 @@ int Utils::geocode(
 	double dopplerFrequency = 0.0;
 	mapped_slc.re.create(DEM.rows, DEM.cols, slc.type()); mapped_slc.re = 0.0;
 	mapped_slc.im.create(DEM.rows, DEM.cols, slc.type()); mapped_slc.im = 0.0;
-	//µØÀí±àÂë
+	//åœ°ç†ç¼–ç 
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
@@ -14500,7 +14500,7 @@ int Utils::geocode(
 			}
 			else
 			{
-				//Ë«ÏßĞÔ²åÖµ¼ÆËã
+				//åŒçº¿æ€§æ’å€¼è®¡ç®—
 				double ratio_x = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing - floor((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 				double ratio_y = (zeroDopplerTime - acquisitionStartTime) / time_interval - floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
 				if (slc.type() == CV_32F)
@@ -14592,7 +14592,7 @@ int Utils::geo_transformation(
 	if (return_check(ret, "read_grille()", error_head)) return -1;
 	//cvmat2bin("D:\\working_dir\\projects\\software\\InSAR\\bin\\row_matrix.bin", row_matrix);
 	//cvmat2bin("D:\\working_dir\\projects\\software\\InSAR\\bin\\col_matrix.bin", col_matrix);
-	//¾­Î³¶È×ªUTM
+	//ç»çº¬åº¦è½¬UTM
 	for (int i = 0; i < height_vector.size(); i++)
 	{
 		ret = lonlat2utm(lon_matrix[i], lat_matrix[i], utm_x, utm_y);
@@ -14605,7 +14605,7 @@ int Utils::geo_transformation(
 	}
 	int DTM_rows = DTM.rows;
 	int DTM_cols = DTM.cols;
-	//DTMÖğµã×ª»»
+	//DTMé€ç‚¹è½¬æ¢
 	Mat DTM_mapped_X, DTM_mapped_Y;
 	DTM_mapped_X = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
 	DTM_mapped_Y = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
@@ -14618,7 +14618,7 @@ int Utils::geo_transformation(
 	{
 		for (int j = 0; j < SAR_extent_x; j++)
 		{
-			//Ê×ÏÈÈ·¶¨DTMÖµÊÇ·ñÓĞĞ§
+			//é¦–å…ˆç¡®å®šDTMå€¼æ˜¯å¦æœ‰æ•ˆ
 			double h = prior_DTM.at<double>(i, j);
 			//double h = 20.6;
 			if (h < -9000)
@@ -14626,7 +14626,7 @@ int Utils::geo_transformation(
 				continue;
 			}
 			mask.at<uchar>(i, j) = 1;
-			//¶¨Î»ÏàÁÚµÄÍø¸ñ²ã
+			//å®šä½ç›¸é‚»çš„ç½‘æ ¼å±‚
 			int low_ix, high_ix;
 			for (int k = 0; k < height_vector.size() - 1; k++)
 			{
@@ -14634,14 +14634,14 @@ int Utils::geo_transformation(
 				{
 					low_ix = k;
 					high_ix = k + 1;
-					//¶ÔÏÂ²ãÍø¸ñÑ°ÕÒ¶¨Î»µã
+					//å¯¹ä¸‹å±‚ç½‘æ ¼å¯»æ‰¾å®šä½ç‚¹
 					bool located1 = false;
 					for (int ii = 0; ii < row_matrix.rows - 1; ii++)
 					{
 						for (int jj = 0; jj < row_matrix.cols - 1; jj++)
 						{
 							//located1 = false; located2 = false;
-							//ÅĞ¶Ï¸ÃµãÊÇ·ñÔÚËÄ¸öµãÖĞ¼ä
+							//åˆ¤æ–­è¯¥ç‚¹æ˜¯å¦åœ¨å››ä¸ªç‚¹ä¸­é—´
 							double Mx, My, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy;
 							Ax = row_matrix.at<double>(ii, jj); Ay = col_matrix.at<double>(ii, jj);
 							Bx = row_matrix.at<double>(ii + 1, jj); Dy = col_matrix.at<double>(ii, jj + 1);
@@ -14654,8 +14654,8 @@ int Utils::geo_transformation(
 								)
 							{
 								located1 = true;
-								//ÏßĞÔ²åÖµµÃµ½ÔÚÏÂ²ãÍø¸ñÉÏµÄUTM×ø±ê
-								//UTM_x²åÖµ
+								//çº¿æ€§æ’å€¼å¾—åˆ°åœ¨ä¸‹å±‚ç½‘æ ¼ä¸Šçš„UTMåæ ‡
+								//UTM_xæ’å€¼
 								double UTM_x_upleft = lon_matrix[low_ix].at<double>(ii, jj);
 								double UTM_x_upright = lon_matrix[low_ix].at<double>(ii, jj + 1);
 								double UTM_x_lowleft = lon_matrix[low_ix].at<double>(ii + 1, jj);
@@ -14667,7 +14667,7 @@ int Utils::geo_transformation(
 								double UTM_x_final_lower = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 									(i - row_matrix.at<double>(ii + 1, jj));
 
-								//UTM_y²åÖµ
+								//UTM_yæ’å€¼
 								double UTM_y_upleft = lat_matrix[low_ix].at<double>(ii, jj);
 								double UTM_y_upright = lat_matrix[low_ix].at<double>(ii, jj + 1);
 								double UTM_y_lowleft = lat_matrix[low_ix].at<double>(ii + 1, jj);
@@ -14679,8 +14679,8 @@ int Utils::geo_transformation(
 								double UTM_y_final_lower = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 									(i - row_matrix.at<double>(ii + 1, jj));
 
-								//ÏßĞÔ²åÖµµÃµ½ÔÚÉÏ²ãÍø¸ñÉÏµÄUTM×ø±ê
-								//UTM_x²åÖµ
+								//çº¿æ€§æ’å€¼å¾—åˆ°åœ¨ä¸Šå±‚ç½‘æ ¼ä¸Šçš„UTMåæ ‡
+								//UTM_xæ’å€¼
 								UTM_x_upleft = lon_matrix[high_ix].at<double>(ii, jj);
 								UTM_x_upright = lon_matrix[high_ix].at<double>(ii, jj + 1);
 								UTM_x_lowleft = lon_matrix[high_ix].at<double>(ii + 1, jj);
@@ -14692,7 +14692,7 @@ int Utils::geo_transformation(
 								double UTM_x_final_higher = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 									(i - row_matrix.at<double>(ii + 1, jj));
 
-								//UTM_y²åÖµ
+								//UTM_yæ’å€¼
 								UTM_y_upleft = lat_matrix[high_ix].at<double>(ii, jj);
 								UTM_y_upright = lat_matrix[high_ix].at<double>(ii, jj + 1);
 								UTM_y_lowleft = lat_matrix[high_ix].at<double>(ii + 1, jj);
@@ -14706,7 +14706,7 @@ int Utils::geo_transformation(
 
 
 
-								//ÉÏÏÂÁ½²ãÖ®¼ä²åÖµµÃµ½UTM_xºÍUTM_y
+								//ä¸Šä¸‹ä¸¤å±‚ä¹‹é—´æ’å€¼å¾—åˆ°UTM_xå’ŒUTM_y
 								double UTM_x_final = UTM_x_final_lower + (UTM_x_final_higher - UTM_x_final_lower) / (height_vector[high_ix] - height_vector[low_ix]) *
 									(h - height_vector[low_ix]);
 								double UTM_y_final = UTM_y_final_lower + (UTM_y_final_higher - UTM_y_final_lower) / (height_vector[high_ix] - height_vector[low_ix]) *
@@ -14714,7 +14714,7 @@ int Utils::geo_transformation(
 
 
 
-								//Í¨¹ı²åÖµµÃµ½µÄUTM_xºÍUTM_yÔÙ´Î²åÖµµÃµ½DTM
+								//é€šè¿‡æ’å€¼å¾—åˆ°çš„UTM_xå’ŒUTM_yå†æ¬¡æ’å€¼å¾—åˆ°DTM
 								if (UTM_x_final >= xllcorner &&
 									UTM_x_final < (xllcorner + DTM_cols - 1) &&
 									UTM_y_final >= yllcorner &&
@@ -14747,7 +14747,7 @@ int Utils::geo_transformation(
 		count++;
 		if (count % 10 == 0)
 		{
-			printf("\r¹À¼Æ½ø¶È1£º%lf%%", double(count) / double(SAR_extent_y) * 100.0);
+			printf("\rä¼°è®¡è¿›åº¦1ï¼š%lf%%", double(count) / double(SAR_extent_y) * 100.0);
 			fflush(stdout);
 		}
 	}
@@ -14760,7 +14760,7 @@ int Utils::geo_transformation(
 //	conversion.read_array_from_h5("D:\\working_dir\\projects\\software\\InSAR\\bin\\DTM_mapped.h5", "Y", DTM_mapped_Y);
 //
 //	
-//	//×îÁÚ½ü²åÖµ·¨µÃµ½SAR×ø±êÏµDTM
+//	//æœ€é‚»è¿‘æ’å€¼æ³•å¾—åˆ°SARåæ ‡ç³»DTM
 ////#pragma omp parallel for schedule(guided)
 //	for (int i = 0; i < DTM_rows; i++)
 //	{
@@ -14775,7 +14775,7 @@ int Utils::geo_transformation(
 //		}
 //	}
 	
-//	//²åÖµµÃµ½SAR×ø±êÏµµÄDTM
+//	//æ’å€¼å¾—åˆ°SARåæ ‡ç³»çš„DTM
 //	
 //	double minX1, maxX1, minY1, maxY1;
 //	cv::minMaxIdx(DTM_mapped_X, &minX1, &maxX1, NULL, NULL, mask);
@@ -14810,7 +14810,7 @@ int Utils::geo_transformation(
 //						)
 //					{
 //						located = true;
-//						//(·´¾àÀëÈ¨ÖØ·¨²åÖµ)
+//						//(åè·ç¦»æƒé‡æ³•æ’å€¼)
 //						double d1 = sqrt((j - DTM_mapped_X.at<double>(ii, jj)) * (j - DTM_mapped_X.at<double>(ii, jj)) +
 //							(i - DTM_mapped_Y.at<double>(ii, jj)) * (i - DTM_mapped_Y.at<double>(ii, jj)));
 //						double d2 = sqrt((j - DTM_mapped_X.at<double>(ii + 1, jj)) * (j - DTM_mapped_X.at<double>(ii + 1, jj)) +
@@ -14830,14 +14830,14 @@ int Utils::geo_transformation(
 //			count++;
 //			if (count % 1 == 0)
 //			{
-//				printf("\r¹À¼Æ½ø¶È2£º%lf%%", double(count) / double(end_y - start_y + 1) / double(end_x - start_x + 1) * 100.0);
+//				printf("\rä¼°è®¡è¿›åº¦2ï¼š%lf%%", double(count) / double(end_y - start_y + 1) / double(end_x - start_x + 1) * 100.0);
 //				fflush(stdout);
 //			}
 //		}
 //		/*count++;
 //		if (count % 10 == 0)
 //		{
-//			printf("\r¹À¼Æ½ø¶È2£º%lf%%", double(count) / double(end_y - start_y + 1) * 100.0);
+//			printf("\rä¼°è®¡è¿›åº¦2ï¼š%lf%%", double(count) / double(end_y - start_y + 1) * 100.0);
 //			fflush(stdout);
 //		}*/
 //	}
@@ -14880,7 +14880,7 @@ int Utils::geo_transformation(
 //	if (return_check(ret, "read_grille()", error_head)) return -1;
 //	//cvmat2bin("D:\\working_dir\\projects\\software\\InSAR\\bin\\row_matrix.bin", row_matrix);
 //	//cvmat2bin("D:\\working_dir\\projects\\software\\InSAR\\bin\\col_matrix.bin", col_matrix);
-//	//¾­Î³¶È×ªUTM
+//	//ç»çº¬åº¦è½¬UTM
 //	for (int i = 0; i < height_vector.size(); i++)
 //	{
 //		ret = lonlat2utm(lon_matrix[i], lat_matrix[i], utm_x, utm_y);
@@ -14896,7 +14896,7 @@ int Utils::geo_transformation(
 //
 //	int DTM_rows = DTM.rows;
 //	int DTM_cols = DTM.cols;
-//	//DTMÖğµã×ª»»
+//	//DTMé€ç‚¹è½¬æ¢
 //	Mat DTM_mapped_X, DTM_mapped_Y;
 //	DTM_mapped_X = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
 //	DTM_mapped_Y = Mat::zeros(DTM_rows, DTM_cols, CV_64F);
@@ -14918,7 +14918,7 @@ int Utils::geo_transformation(
 //
 //		for (int j = 0; j < SAR_extent_x; j++)
 //		{
-//			//Ê×ÏÈÈ·¶¨DTMÖµÊÇ·ñÓĞĞ§
+//			//é¦–å…ˆç¡®å®šDTMå€¼æ˜¯å¦æœ‰æ•ˆ
 //			double h = prior_DTM.at<double>(i, j);
 //			//double h = 20.6;
 //			if (h < -9000)
@@ -14926,7 +14926,7 @@ int Utils::geo_transformation(
 //				continue;
 //			}
 //			//mask.at<uchar>(i, j) = 1;
-//			//¶¨Î»ÏàÁÚµÄÍø¸ñ²ã
+//			//å®šä½ç›¸é‚»çš„ç½‘æ ¼å±‚
 //			int low_ix, high_ix;
 //			for (int k = 0; k < height_vector.size() - 1; k++)
 //			{
@@ -14934,14 +14934,14 @@ int Utils::geo_transformation(
 //				{
 //					low_ix = k;
 //					high_ix = k + 1;
-//					//¶ÔÏÂ²ãÍø¸ñÑ°ÕÒ¶¨Î»µã
+//					//å¯¹ä¸‹å±‚ç½‘æ ¼å¯»æ‰¾å®šä½ç‚¹
 //					bool located1 = false;
 //					for (int ii = 0; ii < row_matrix.rows - 1; ii++)
 //					{
 //						for (int jj = 0; jj < row_matrix.cols - 1; jj++)
 //						{
 //							//located1 = false; located2 = false;
-//							//ÅĞ¶Ï¸ÃµãÊÇ·ñÔÚËÄ¸öµãÖĞ¼ä
+//							//åˆ¤æ–­è¯¥ç‚¹æ˜¯å¦åœ¨å››ä¸ªç‚¹ä¸­é—´
 //							double Mx, My, Ax, Ay, Bx, By, Cx, Cy, Dx, Dy;
 //							Ax = row_matrix.at<double>(ii, jj); Ay = col_matrix.at<double>(ii, jj);
 //							Bx = row_matrix.at<double>(ii + 1, jj); Dy = col_matrix.at<double>(ii, jj + 1);
@@ -14954,8 +14954,8 @@ int Utils::geo_transformation(
 //								)
 //							{
 //								located1 = true;
-//								//ÏßĞÔ²åÖµµÃµ½ÔÚÏÂ²ãÍø¸ñÉÏµÄUTM×ø±ê
-//								//UTM_x²åÖµ
+//								//çº¿æ€§æ’å€¼å¾—åˆ°åœ¨ä¸‹å±‚ç½‘æ ¼ä¸Šçš„UTMåæ ‡
+//								//UTM_xæ’å€¼
 //								double UTM_x_upleft = lon_matrix[low_ix].at<double>(ii, jj);
 //								double UTM_x_upright = lon_matrix[low_ix].at<double>(ii, jj + 1);
 //								double UTM_x_lowleft = lon_matrix[low_ix].at<double>(ii + 1, jj);
@@ -14967,7 +14967,7 @@ int Utils::geo_transformation(
 //								double UTM_x_final_lower = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 //									(i - row_matrix.at<double>(ii + 1, jj));
 //
-//								//UTM_y²åÖµ
+//								//UTM_yæ’å€¼
 //								double UTM_y_upleft = lat_matrix[low_ix].at<double>(ii, jj);
 //								double UTM_y_upright = lat_matrix[low_ix].at<double>(ii, jj + 1);
 //								double UTM_y_lowleft = lat_matrix[low_ix].at<double>(ii + 1, jj);
@@ -14979,8 +14979,8 @@ int Utils::geo_transformation(
 //								double UTM_y_final_lower = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 //									(i - row_matrix.at<double>(ii + 1, jj));
 //
-//								//ÏßĞÔ²åÖµµÃµ½ÔÚÉÏ²ãÍø¸ñÉÏµÄUTM×ø±ê
-//								//UTM_x²åÖµ
+//								//çº¿æ€§æ’å€¼å¾—åˆ°åœ¨ä¸Šå±‚ç½‘æ ¼ä¸Šçš„UTMåæ ‡
+//								//UTM_xæ’å€¼
 //								UTM_x_upleft = lon_matrix[high_ix].at<double>(ii, jj);
 //								UTM_x_upright = lon_matrix[high_ix].at<double>(ii, jj + 1);
 //								UTM_x_lowleft = lon_matrix[high_ix].at<double>(ii + 1, jj);
@@ -14992,7 +14992,7 @@ int Utils::geo_transformation(
 //								double UTM_x_final_higher = lower + (upper - lower) / (row_matrix.at<double>(ii, jj) - row_matrix.at<double>(ii + 1, jj)) *
 //									(i - row_matrix.at<double>(ii + 1, jj));
 //
-//								//UTM_y²åÖµ
+//								//UTM_yæ’å€¼
 //								UTM_y_upleft = lat_matrix[high_ix].at<double>(ii, jj);
 //								UTM_y_upright = lat_matrix[high_ix].at<double>(ii, jj + 1);
 //								UTM_y_lowleft = lat_matrix[high_ix].at<double>(ii + 1, jj);
@@ -15006,7 +15006,7 @@ int Utils::geo_transformation(
 //
 //
 //
-//								//ÉÏÏÂÁ½²ãÖ®¼ä²åÖµµÃµ½UTM_xºÍUTM_y
+//								//ä¸Šä¸‹ä¸¤å±‚ä¹‹é—´æ’å€¼å¾—åˆ°UTM_xå’ŒUTM_y
 //								double UTM_x_final = UTM_x_final_lower + (UTM_x_final_higher - UTM_x_final_lower) / (height_vector[high_ix] - height_vector[low_ix]) *
 //									(h - height_vector[low_ix]);
 //								double UTM_y_final = UTM_y_final_lower + (UTM_y_final_higher - UTM_y_final_lower) / (height_vector[high_ix] - height_vector[low_ix]) *
@@ -15018,7 +15018,7 @@ int Utils::geo_transformation(
 //								int reprojected = coordTrans->Transform(1, &lat_x, &lon_y);
 //
 //
-//								//Í¨¹ı²åÖµµÃµ½µÄlat_xºÍlon_yÔÙ´Î²åÖµµÃµ½DTM
+//								//é€šè¿‡æ’å€¼å¾—åˆ°çš„lat_xå’Œlon_yå†æ¬¡æ’å€¼å¾—åˆ°DTM
 //								if (lat_x <= lat_upleft &&
 //									lat_x >= (lat_upleft - (DTM_rows - 1)*lat_interval) &&
 //									lon_y <= (lon_upleft + (DTM_cols - 1)*lon_interval) &&
@@ -15053,7 +15053,7 @@ int Utils::geo_transformation(
 //		count++;
 //		if (count % 10 == 0)
 //		{
-//			printf("\r¹À¼Æ½ø¶È1£º%lf%%", double(count) / double(SAR_extent_y) * 100.0);
+//			printf("\rä¼°è®¡è¿›åº¦1ï¼š%lf%%", double(count) / double(SAR_extent_y) * 100.0);
 //			fflush(stdout);
 //		}
 //	}
@@ -15280,7 +15280,7 @@ int Utils::geo2sar_DLR(
 	//	fprintf(stderr, "geo2sar_DLR(): input check failed!\n");
 	//	return -1;
 	//}
-	////È·¶¨³¡¾°µÄ¾­Î³¶È·¶Î§
+	////ç¡®å®šåœºæ™¯çš„ç»çº¬åº¦èŒƒå›´
 	//Mat lon, lat;
 	//lon.create(4, 1, CV_64F); lon = 0.0; lon.copyTo(lat);
 	//double utm_x, utm_y;
@@ -15322,7 +15322,7 @@ int Utils::geo2sar_DLR(
 	//DTM_lat.copyTo(UTM_x);
 	//DTM_lon.copyTo(UTM_y);
 	//OGRCoordinateTransformation* coordTrans2 = OGRCreateCoordinateTransformation(&monGeo , &monUtm);
-	////½«DTMµÄ¾­Î³¶È×ª»»ÎªUTM
+	////å°†DTMçš„ç»çº¬åº¦è½¬æ¢ä¸ºUTM
 	//for (int i = 0; i < DTM.rows; i++)
 	//{
 	//	for (int j = 0; j < DTM.cols; j++)
@@ -15337,7 +15337,7 @@ int Utils::geo2sar_DLR(
 	//	}
 	//}
 	//delete coordTrans2;
-	////¿ªÊ¼Í¶Ó°
+	////å¼€å§‹æŠ•å½±
 	//for (int i = 0; i < DTM.rows; i++)
 	//{
 	//	for (int j = 0; j < DTM.cols; j++)
@@ -15353,7 +15353,7 @@ int Utils::geo2sar_DLR(
 	//		{
 	//			continue;
 	//		}
-	//		//²åÖµµÃµ½2DµØÀí±àÂëÏÂµÄ¾àÀë·½Î»×ø±ê£¬²Î¿¼DEMºÍ3DµØÀí±àÂëÏµÊı
+	//		//æ’å€¼å¾—åˆ°2Dåœ°ç†ç¼–ç ä¸‹çš„è·ç¦»æ–¹ä½åæ ‡ï¼Œå‚è€ƒDEMå’Œ3Dåœ°ç†ç¼–ç ç³»æ•°
 	//		double easting, northing, rg0, az0, h0, rg_o1, rg_o2, az_o1, az_o2, upper, lower, left, right;
 	//		int row, col;
 	//		easting = (utm_x - east_min) / pixel_spacing;
@@ -15430,44 +15430,44 @@ int Utils::geo2sar_DLR(
 	return 0;
 }
 
-// ¸ù¾İ¾­Î³¶È»ñÈ¡´óµØË®×¼Ãæ¸ß²î
+// æ ¹æ®ç»çº¬åº¦è·å–å¤§åœ°æ°´å‡†é¢é«˜å·®
 double Utils::getGeoidHeight(const std::string& geoidFilePath, double lon, double lat) {
-	// ×¢²á GDAL Çı¶¯
+	// æ³¨å†Œ GDAL é©±åŠ¨
 	GDALAllRegister();
 
-	/* ´ò¿ª Geoid ÎÄ¼ş */
+	/* æ‰“å¼€ Geoid æ–‡ä»¶ */
 	GDALDatasetH hDataset = GDALOpen(geoidFilePath.c_str(), GA_ReadOnly);
 	if (hDataset == NULL)
 	{
 		fprintf(stderr,
-			"ÎŞ·¨´ò¿ª Geoid ÎÄ¼ş: %s\n",
+			"æ— æ³•æ‰“å¼€ Geoid æ–‡ä»¶: %s\n",
 			geoidFilePath);
 		return 0.0;
 	}
 
-	/* »ñÈ¡µÚÒ»¸ö²¨¶Î */
+	/* è·å–ç¬¬ä¸€ä¸ªæ³¢æ®µ */
 	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
 	if (hBand == NULL)
 	{
-		fprintf(stderr, "ÎŞ·¨»ñÈ¡²¨¶ÎÊı¾İ\n");
+		fprintf(stderr, "æ— æ³•è·å–æ³¢æ®µæ•°æ®\n");
 		GDALClose(hDataset);
 		return 0.0;
 	}
 
-	/* »ñÈ¡µØÀí±ä»» */
+	/* è·å–åœ°ç†å˜æ¢ */
 	double adfGeoTransform[6];
 	if (GDALGetGeoTransform(hDataset, adfGeoTransform) != CE_None)
 	{
-		fprintf(stderr, "ÎŞ·¨»ñÈ¡µØÀí±ä»»ĞÅÏ¢\n");
+		fprintf(stderr, "æ— æ³•è·å–åœ°ç†å˜æ¢ä¿¡æ¯\n");
 		GDALClose(hDataset);
 		return 0.0;
 	}
 
-	/* ¾­Î³¶È ¡ú ÏñËØ×ø±ê */
+	/* ç»çº¬åº¦ â†’ åƒç´ åæ ‡ */
 	double x = (lon - adfGeoTransform[0]) / adfGeoTransform[1];
 	double y = (lat - adfGeoTransform[3]) / adfGeoTransform[5];
 
-	/* ¶ÁÈ¡ Geoid Height */
+	/* è¯»å– Geoid Height */
 	float geoidHeight = 0.0f;
 	if (GDALRasterIO(
 		hBand,
@@ -15479,7 +15479,7 @@ double Utils::getGeoidHeight(const std::string& geoidFilePath, double lon, doubl
 		GDT_Float32,
 		0, 0) != CE_None)
 	{
-		fprintf(stderr, "ÎŞ·¨¶ÁÈ¡ Geoid Êı¾İ\n");
+		fprintf(stderr, "æ— æ³•è¯»å– Geoid æ•°æ®\n");
 		GDALClose(hDataset);
 		return 0.0;
 	}
@@ -15573,7 +15573,7 @@ tri_node::tri_node(int row, int col, int num_neigh_edge, double phi)
 	{
 		for (int i = 0; i < num_neigh_edge; i++)
 		{
-			*(this->neigh_edges + i) = -1;//³õÊ¼»¯ÁÚ½Ó±ßĞòºÅ¶¼Îª-1
+			*(this->neigh_edges + i) = -1;//åˆå§‹åŒ–é‚»æ¥è¾¹åºå·éƒ½ä¸º-1
 		}
 	}
 	
@@ -15592,7 +15592,7 @@ tri_node::~tri_node()
 
 tri_node tri_node::operator=(const tri_node& src)
 {
-	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//Á½ÕßÏàµÈ
+	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//ä¸¤è€…ç›¸ç­‰
 	{
 		return *this;
 	}

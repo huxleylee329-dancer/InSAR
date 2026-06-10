@@ -1,4 +1,4 @@
-// Unwrap.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
+// Unwrap.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
 //
 
 #include "stdafx.h"
@@ -142,7 +142,7 @@ int Unwrap::MCF(
 	}
 	ret = util.write_DIMACS(MCF_problem_file, residue, coherence, 0.5);
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
-	//////////////////////////´´½¨²¢µ÷ÓÃ×îĞ¡·ÑÓÃÁ÷·¨½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨æœ€å°è´¹ç”¨æµæ³•è¿›ç¨‹///////////////////////////////
 	LPWSTR szCommandLine = new TCHAR[256];
 	wcscpy(szCommandLine, A2W(MCF_EXE_PATH));
 	wcscat(szCommandLine, L"\\mcf.exe ");
@@ -155,14 +155,14 @@ int Unwrap::MCF(
 	si.dwFlags = STARTF_USESHOWWINDOW;  
 	si.wShowWindow = FALSE;          
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -262,7 +262,7 @@ int Unwrap::MCF_improved(
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	Mat m; mask.convertTo(m, CV_64F);
 	util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
-	//////////////////////////´´½¨²¢µ÷ÓÃ×îĞ¡·ÑÓÃÁ÷·¨½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨æœ€å°è´¹ç”¨æµæ³•è¿›ç¨‹///////////////////////////////
 	LPWSTR szCommandLine = new TCHAR[256];
 	wcscpy(szCommandLine, A2W(MCF_exe_path));
 	wcscat(szCommandLine, L"\\mcf.exe ");
@@ -275,14 +275,14 @@ int Unwrap::MCF_improved(
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -382,9 +382,9 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	wrapped_phase.copyTo(unwrapped_phase);
 	Mat unwrapped_status = Mat::zeros(nr, nc, CV_32S);
 
-	/*²ßÂÔ1£º¸ßÖÊÁ¿ÏÈ½â²ø£¬µÍÖÊÁ¿ºó½â²ø£¬¶¼²ÉÓÃºéË®ÑÍÃ»·¨*/
+	/*ç­–ç•¥1ï¼šé«˜è´¨é‡å…ˆè§£ç¼ ï¼Œä½è´¨é‡åè§£ç¼ ï¼Œéƒ½é‡‡ç”¨æ´ªæ°´æ·¹æ²¡æ³•*/
 #if 0
-	//ÕÒµ½ÖÊÁ¿×î¸ßµã
+	//æ‰¾åˆ°è´¨é‡æœ€é«˜ç‚¹
 	double max_quailty = 1000000000.0;
 	int i_start = 0, j_start = 0;
 	for (int i = 0; i < nr; i++)
@@ -559,7 +559,7 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		}
 	}
 #endif
-	/*²ßÂÔ2£ºµÍÖÊÁ¿ÏÈ½â²ø£¬¸ßÖÊÁ¿ºó½â²ø£¬¶¼²ÉÓÃºéË®ÑÍÃ»·¨*/
+	/*ç­–ç•¥2ï¼šä½è´¨é‡å…ˆè§£ç¼ ï¼Œé«˜è´¨é‡åè§£ç¼ ï¼Œéƒ½é‡‡ç”¨æ´ªæ°´æ·¹æ²¡æ³•*/
 #if 0
 	double max_quailty = 1000000000.0;
 	int i_start = 0, j_start = 0;
@@ -739,7 +739,7 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		}
 	}
 #endif
-	/*²ßÂÔ3£ºÍ¬Ê±½â²ø£¬²ÉÓÃºéË®ÑÍÃ»·¨*/
+	/*ç­–ç•¥3ï¼šåŒæ—¶è§£ç¼ ï¼Œé‡‡ç”¨æ´ªæ°´æ·¹æ²¡æ³•*/
 #if 0
 	double max_quailty = 1000000000.0;
 	int i_start = nr / 2, j_start = nc / 2;
@@ -796,7 +796,7 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		}
 	}
 #endif
-	/*²ßÂÔ4£ºÍ¬Ê±½â²ø£¬²ÉÓÃºéË®ÑÍÃ»·¨£¬²¢ÈÆ¹ıÖ¦ÇĞÏß*/
+	/*ç­–ç•¥4ï¼šåŒæ—¶è§£ç¼ ï¼Œé‡‡ç”¨æ´ªæ°´æ·¹æ²¡æ³•ï¼Œå¹¶ç»•è¿‡æåˆ‡çº¿*/
 #if  0
 	double max_quailty = 1000000000.0;
 	int i_start = nr / 2, j_start = nc / 2;
@@ -866,9 +866,9 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		}
 	}
 #endif
-	/*²ßÂÔ5£º¸ßÖÊÁ¿ÏÈ½â²ø£¬µÍÖÊÁ¿ºó½â²ø£¬¶¼²ÉÓÃºéË®ÑÍÃ»·¨£¬»ı·ÖÊ±ÈÆ¹ıÖ¦ÇĞÏß*/
+	/*ç­–ç•¥5ï¼šé«˜è´¨é‡å…ˆè§£ç¼ ï¼Œä½è´¨é‡åè§£ç¼ ï¼Œéƒ½é‡‡ç”¨æ´ªæ°´æ·¹æ²¡æ³•ï¼Œç§¯åˆ†æ—¶ç»•è¿‡æåˆ‡çº¿*/
 #if 0
-	//ÕÒµ½ÖÊÁ¿×î¸ßµã
+	//æ‰¾åˆ°è´¨é‡æœ€é«˜ç‚¹
 	double max_quailty = 1000000000.0;
 	int i_start = 0, j_start = 0;
 	for (int i = 0; i < nr; i++)
@@ -1055,9 +1055,9 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		}
 	}
 #endif
-	/*²ßÂÔ6£ºÖÊÁ¿Í¼Òıµ¼·¨Í¬Ê±½â²ø£¬»ı·ÖÊ±ÈÆ¹ıÖ¦ÇĞÏß*/
+	/*ç­–ç•¥6ï¼šè´¨é‡å›¾å¼•å¯¼æ³•åŒæ—¶è§£ç¼ ï¼Œç§¯åˆ†æ—¶ç»•è¿‡æåˆ‡çº¿*/
 #if 1
-	//ÕÒµ½ÖÊÁ¿×î¸ßµã
+	//æ‰¾åˆ°è´¨é‡æœ€é«˜ç‚¹
 	double max_quailty = 1000000000.0;
 	int i_start = 0, j_start = 0;
 	for (int i = 0; i < nr; i++)
@@ -1136,7 +1136,7 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	}
 
 	if ((int)cv::sum(unwrapped_status)[0] == nr * nc) return 0;
-	//´¦ÀíÎ´½â²øµÄÏñËØ
+	//å¤„ç†æœªè§£ç¼ çš„åƒç´ 
 	queue<node_index> que2;
 	for (int i = 0; i < nr; i++)
 	{
@@ -1283,7 +1283,7 @@ int Unwrap::MCF(
 		return -1;
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -1295,7 +1295,7 @@ int Unwrap::MCF(
 	}
 	long* ptr_neigh = NULL;
 	queue<int> que;
-	//int start = 1;//ÆğÊ¼µãÄ¬ÈÏÎªµÚÒ»¸öµã£¬ºóĞø¿ÉÒÔ×Ô¼ºÉè¶¨
+	//int start = 1;//èµ·å§‹ç‚¹é»˜è®¤ä¸ºç¬¬ä¸€ä¸ªç‚¹ï¼Œåç»­å¯ä»¥è‡ªå·±è®¾å®š
 	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
 	if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 	nodes[start - 1].set_status(true);
@@ -1321,7 +1321,7 @@ int Unwrap::MCF(
 			)
 		{
 			que.push(end2);
-			//½â²ø
+			//è§£ç¼ 
 			nodes[start - 1].get_phase(&phi1);
 			nodes[end2 - 1].get_phase(&phi2);
 			grad = phi2 - phi1;
@@ -1366,7 +1366,7 @@ int Unwrap::MCF(
 				)
 			{
 				que.push(end2);
-				//½â²ø
+				//è§£ç¼ 
 				nodes[number - 1].get_phase(&phi1);
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
@@ -1449,7 +1449,7 @@ int Unwrap::MCF(
 	{
 		wrapped_phase.copyTo(unwrapped_phase);
 	}
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -1459,7 +1459,7 @@ int Unwrap::MCF(
 	{
 		tt = 100000.0;
 	}
-	int num_edges = edges.size();
+	int num_edges = static_cast<int>(edges.size());
 	long* ptr_neigh = NULL;
 	queue<int> que;
 	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
@@ -1488,7 +1488,7 @@ int Unwrap::MCF(
 			)
 		{
 			que.push(end2);
-			//½â²ø
+			//è§£ç¼ 
 			nodes[start - 1].get_phase(&phi1);
 			nodes[end2 - 1].get_phase(&phi2);
 			grad = phi2 - phi1;
@@ -1513,7 +1513,7 @@ int Unwrap::MCF(
 		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 		for (int i = 0; i < num_neigh; i++)
 		{
-			int end1_row, end2_row, end1_col, end2_col;
+			// removed unused: end1_row, end2_row, end1_col, end2_col (planned edge endpoint coords, never implemented)
 			if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
 			{
 				fprintf(stderr, "MCF(): edge index exceed legal range!\n");
@@ -1535,7 +1535,7 @@ int Unwrap::MCF(
 				)
 			{
 				que.push(end2);
-				//½â²ø
+				//è§£ç¼ 
 				nodes[number - 1].get_phase(&phi1);
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
@@ -1592,8 +1592,9 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 		fprintf(stderr, "MCF_second(): input check failed!\n\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_neigh, number, ret, end2, row_start, col_start;
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_neigh, number, ret, end2;
+	// removed unused: row_start, col_start (planned start position tracking, never implemented)
 	double distance, grad, phi1, phi2, gain, tt;
 	if (pass) tt = 100000.0;
 	else
@@ -1605,7 +1606,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	queue<int> start_que;
 	int nr = unwrapped_phase.rows;
 	int nc = unwrapped_phase.cols;
-	//Î´½â²øĞòÁĞºÅ¾ØÕó
+	//æœªè§£ç¼ åºåˆ—å·çŸ©é˜µ
 
 	//Mat wrapped_num = Mat::zeros(nr, nc, CV_32S);
 	//Mat wrapped_mask = Mat::zeros(nr, nc, CV_32S);
@@ -1669,7 +1670,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	//			{
 	//				for (int j = col_search_start; j <= col_search_end; j++)
 	//				{
-	//					if (wrapped_num.at<int>(i, j) == 0)//ÕÒµ½¸½½üÒÑ¾­½â²øµÄµã
+	//					if (wrapped_num.at<int>(i, j) == 0)//æ‰¾åˆ°é™„è¿‘å·²ç»è§£ç¼ çš„ç‚¹
 	//					{
 	//						grad = atan2(sin(phi1 - unwrapped_phase.at<double>(i, j)), cos(phi1 - unwrapped_phase.at<double>(i, j)));
 	//						phi1 = unwrapped_phase.at<double>(i, j) + grad;
@@ -1690,7 +1691,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	//	
 	//}
 
-	//ÕÒµ½ÒÑ½â²øÁÚ½Ó½Úµã£¬²¢ÒÔÒÑ½â²øÁÚ½Ó½ÚµãÎªÆğÊ¼µã¿ªÊ¼½â²ø
+	//æ‰¾åˆ°å·²è§£ç¼ é‚»æ¥èŠ‚ç‚¹ï¼Œå¹¶ä»¥å·²è§£ç¼ é‚»æ¥èŠ‚ç‚¹ä¸ºèµ·å§‹ç‚¹å¼€å§‹è§£ç¼ 
 
 	for (int i = 0; i < num_nodes; i++)
 	{
@@ -1712,7 +1713,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= thresh &&
 				fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
-				!(edges + *(ptr_neigh + i) - 1)->isResidueEdge /*·Ç³¬¹ıãĞÖµµÄ²Ğ²î±ß*/
+				!(edges + *(ptr_neigh + i) - 1)->isResidueEdge /*éè¶…è¿‡é˜ˆå€¼çš„æ®‹å·®è¾¹*/
 				)
 			{
 				que.push(end2);
@@ -1752,7 +1753,7 @@ int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH)
 	}
 	USES_CONVERSION;
 	Utils util;
-	//////////////////////////´´½¨²¢µ÷ÓÃ×îĞ¡·ÑÓÃÁ÷·¨½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨æœ€å°è´¹ç”¨æµæ³•è¿›ç¨‹///////////////////////////////
 	LPWSTR szCommandLine = new TCHAR[256];
 	wcscpy(szCommandLine, A2W(MCF_EXE_PATH));
 	wcscat(szCommandLine, L"\\mcf.exe ");
@@ -1765,14 +1766,14 @@ int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH)
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -1830,7 +1831,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		return -1;
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min, max;
 	min = 1000000000.0;
@@ -1845,9 +1846,9 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 	priority_queue<edge_index> neighbour_que;
 	edge_index tmp_edge_index;
 	bool early_break = false;
-	//int start = 1;//ÆğÊ¼µãÄ¬ÈÏÎªµÚÒ»¸öµã£¬ºóĞø¿ÉÒÔ×Ô¼ºÉè¶¨
+	//int start = 1;//èµ·å§‹ç‚¹é»˜è®¤ä¸ºç¬¬ä¸€ä¸ªç‚¹ï¼Œåç»­å¯ä»¥è‡ªå·±è®¾å®š
 	if (start > num_nodes) start = 1;
-	//////////Ñ°ÕÒÏà¹ØÏµÊı×î´óµÄ±ßÎªÆğÊ¼±ß////////////
+	//////////å¯»æ‰¾ç›¸å…³ç³»æ•°æœ€å¤§çš„è¾¹ä¸ºèµ·å§‹è¾¹////////////
 	int ix = 0;
 	double qua = 100000.0;
 	for (int i = 0; i < num_edges; i++)
@@ -2004,9 +2005,10 @@ int Unwrap::_QualityGuided_MCF_1(
 	}
 
 	wrapped_phase.copyTo(unwrapped_phase);
-	int num_nodes = nodes.size();
+	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2, start;
-	double distance, grad, phi1, phi2, gain, tt, min, max;
+	// removed unused: tt (threshold logic removed from quality-guided MCF)
+	double distance, grad, phi1, phi2, gain, min, max;
 	min = 1000000000.0;
 	max = -1000000000.0;
 	long* ptr_neigh = NULL;
@@ -2014,7 +2016,7 @@ int Unwrap::_QualityGuided_MCF_1(
 	edge_index tmp_edge_index;
 	bool early_break = false;
 	size_t num_edges = edges.size();
-	//////////Ñ°ÕÒÏà¹ØÏµÊı×î´óµÄ±ßÎªÆğÊ¼±ß(¶ÔÓ¦quality×îĞ¡µÄ±ß)////////////
+	//////////å¯»æ‰¾ç›¸å…³ç³»æ•°æœ€å¤§çš„è¾¹ä¸ºèµ·å§‹è¾¹(å¯¹åº”qualityæœ€å°çš„è¾¹)////////////
 	int ix = 0;
 	double qua = 100000.0;
 	for (int i = 0; i < num_edges; i++)
@@ -2107,7 +2109,7 @@ int Unwrap::_QualityGuided_MCF_1(
 	
 	int nr = unwrapped_phase.rows;
 	int nc = unwrapped_phase.cols;
-	double phi;
+	// removed unused: phi (copy-paste remnant, phi3 used in parallel loop below)
 	Mat _mask = Mat::zeros(nr, nc, CV_32S);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < num_nodes; i++)
@@ -2155,16 +2157,18 @@ int Unwrap::_QualityGuided_MCF_2(
 		fprintf(stderr, "_QualityGuided_MCF_2(): input check failed!\n\n");
 		return -1;
 	}
-	int num_nodes = nodes.size();
-	int num_neigh, number, ret, end2, row_start, col_start;
-	double distance, grad, phi1, phi2, gain, tt;
+	int num_nodes = static_cast<int>(nodes.size());
+	int num_neigh, number, ret, end2;
+	// removed unused: row_start, col_start (planned start position tracking, never implemented)
+	// removed unused: tt (threshold logic not used in this quality-guided variant)
+	double distance, grad, phi1, phi2, gain;
 	long* ptr_neigh = NULL;
 	queue<int> que;
 	//queue<int> start_que;
 	int nr = unwrapped_phase.rows;
 	int nc = unwrapped_phase.cols;
 
-	//ÕÒµ½ÒÑ½â²øÁÚ½Ó½Úµã£¬²¢ÒÔÒÑ½â²øÁÚ½Ó½ÚµãÎªÆğÊ¼µã¿ªÊ¼½â²ø
+	//æ‰¾åˆ°å·²è§£ç¼ é‚»æ¥èŠ‚ç‚¹ï¼Œå¹¶ä»¥å·²è§£ç¼ é‚»æ¥èŠ‚ç‚¹ä¸ºèµ·å§‹ç‚¹å¼€å§‹è§£ç¼ 
 
 	for (int i = 0; i < num_nodes; i++)
 	{
@@ -2248,7 +2252,7 @@ int Unwrap::QualityGuided_MCF(
 	ret = util.gen_mask(coherence, mask, 7, coherence_thresh);
 	if (return_check(ret, "gen_mask()", error_head)) return -1;
 	count = cv::countNonZero(mask);
-	if (count < 100)//¸ßÖÊÁ¿ÏñËØĞ¡ÓÚ100£¬Ö±½ÓÊ¹ÓÃ¹æÔòÍøÂçµÄMCF
+	if (count < 100)//é«˜è´¨é‡åƒç´ å°äº100ï¼Œç›´æ¥ä½¿ç”¨è§„åˆ™ç½‘ç»œçš„MCF
 	{
 		Mat residue;
 		ret = util.residue(phase, residue);
@@ -2306,9 +2310,9 @@ int Unwrap::QualityGuided_MCF(
 			}
 		}
 	}
-	Mat _mask_sentinel; mask_2.copyTo(_mask_sentinel);//ÖÊÁ¿Í¼½â²øÎ´½â³öµÄÇøÓòÑÚÄ¤
+	Mat _mask_sentinel; mask_2.copyTo(_mask_sentinel);//è´¨é‡å›¾è§£ç¼ æœªè§£å‡ºçš„åŒºåŸŸæ©è†œ
 	if (count == 0) return 0;
-	//ÕÒ³öÁÚ½ÓÒÑ½â²ø½Úµã
+	//æ‰¾å‡ºé‚»æ¥å·²è§£ç¼ èŠ‚ç‚¹
 	Mat grad_updown, grad_leftright;
 	grad_updown = mask_2(cv::Range(1, nr), cv::Range(0, nc)) - mask_2(cv::Range(0, nr - 1), cv::Range(0, nc));
 	grad_leftright = mask_2(cv::Range(0, nr), cv::Range(1, nc)) - mask_2(cv::Range(0, nr), cv::Range(0, nc - 1));
@@ -2318,7 +2322,7 @@ int Unwrap::QualityGuided_MCF(
 		{
 			if (grad_updown.at<int>(i, j) > 0)
 			{
-				mask_2.at<int>(i, j) = 2;//2´ú±íÁÚ½ÓÒÑ½â²ø½Úµã
+				mask_2.at<int>(i, j) = 2;//2ä»£è¡¨é‚»æ¥å·²è§£ç¼ èŠ‚ç‚¹
 			}
 			if (grad_updown.at<int>(i, j) < 0)
 			{
@@ -2342,8 +2346,8 @@ int Unwrap::QualityGuided_MCF(
 	}
 
 	/*
-	* ÕÒµ½Î´½â²øµÄµãÒÔ¼°ÆäÏàÁÚÒÑ½â²øµÄµã£¬ĞÎ³ÉÈı½ÇÍøÂç
-	¼ÓÈë×ÜµÄ¶ÓÁĞwrapped_que£¬ÒÑ½â²øµÄ±ßÔµµã¼ÓÈëµ½unwrapped_neighbour_que
+	* æ‰¾åˆ°æœªè§£ç¼ çš„ç‚¹ä»¥åŠå…¶ç›¸é‚»å·²è§£ç¼ çš„ç‚¹ï¼Œå½¢æˆä¸‰è§’ç½‘ç»œ
+	åŠ å…¥æ€»çš„é˜Ÿåˆ—wrapped_queï¼Œå·²è§£ç¼ çš„è¾¹ç¼˜ç‚¹åŠ å…¥åˆ°unwrapped_neighbour_que
 	*/
 	queue<int> wrapped_que, unwrapped_neighbour_que, low_quality_que;
 	num_nodes = cv::countNonZero(mask_2);
@@ -2356,13 +2360,14 @@ int Unwrap::QualityGuided_MCF(
 	ret = util.init_tri_node(nodes, unwrapped_phase, mask_2, edges, node_neighbour, num_nodes);
 	if (return_check(ret, "init_tri_node()", error_head)) return -1;
 
-	int start, end1, end2, ambig, i;
+	// removed unused: end1 (struct member .end1 accessed directly, local var never needed)
+	int start, end2, ambig, i;
 	long* ptr_neigh = NULL; int num_neigh, row, col, num_triangle, positive, negative;
-	double distance, phi, cluster_distance_thresh = 1.2;//µÍÖÊÁ¿¾ÛÀà¾àÀëãĞÖµ
+	double distance, phi, cluster_distance_thresh = 1.2;//ä½è´¨é‡èšç±»è·ç¦»é˜ˆå€¼
 	Mat zeros = Mat::zeros(nr, nc, CV_32S);
 	Mat ambiguity, new_mask;
 	int  mask_sentinel_new = cv::countNonZero(_mask_sentinel);
-	while (mask_sentinel_new != 0)//Ö»Òª»¹´æÔÚÎ´½â²øµÄÏñËØ¾Í¼ÌĞøÑ­»·
+	while (mask_sentinel_new != 0)//åªè¦è¿˜å­˜åœ¨æœªè§£ç¼ çš„åƒç´ å°±ç»§ç»­å¾ªç¯
 	{
 		for (int i = 0; i < nodes.size(); i++)
 		{
@@ -2374,8 +2379,8 @@ int Unwrap::QualityGuided_MCF(
 			}
 		}
 		//mask_sentinel_old = cv::countNonZero(_mask_sentinel);
-		zeros.copyTo(new_mask);//Ñ­»·Ç°½«new_maskÇåÁã
-		while (!wrapped_que.empty())//Ñ°ÕÒµÍÖÊÁ¿µãcluster
+		zeros.copyTo(new_mask);//å¾ªç¯å‰å°†new_maskæ¸…é›¶
+		while (!wrapped_que.empty())//å¯»æ‰¾ä½è´¨é‡ç‚¹cluster
 		{
 			
 			start = wrapped_que.front();
@@ -2385,21 +2390,21 @@ int Unwrap::QualityGuided_MCF(
 				unwrapped_neighbour_que.push(start);
 			}
 			nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-			nodes[start - 1].get_pos(&row, &col);//ÉèÖÃĞÂµÄmask
+			nodes[start - 1].get_pos(&row, &col);//è®¾ç½®æ–°çš„mask
 			new_mask.at<int>(row, col) = 1;
-			_mask_sentinel.at<int>(row, col) = 0;//Î´½â²øµÄÏñËØÑÚÄ¤¸üĞÂ
-			nodes[start - 1].set_balance(false);//ÒÑ¼ÓÈë¶ÓÁĞÉèÖÃÎª²»Æ½ºâ£¬±ÜÃâÖØ¸´¼ÓÈë¶ÓÁĞ
+			_mask_sentinel.at<int>(row, col) = 0;//æœªè§£ç¼ çš„åƒç´ æ©è†œæ›´æ–°
+			nodes[start - 1].set_balance(false);//å·²åŠ å…¥é˜Ÿåˆ—è®¾ç½®ä¸ºä¸å¹³è¡¡ï¼Œé¿å…é‡å¤åŠ å…¥é˜Ÿåˆ—
 			for (int i = 0; i < num_neigh; i++)
 			{
 				end2 = edges[*(ptr_neigh + i) - 1].end1 == start ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
 				nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 				if (
-					distance <= cluster_distance_thresh && //Ğ¡ÓÚµÍÖÊÁ¿¾ÛÀà¾àÀëãĞÖµÔòÎªÍ¬Ò»Àà
+					distance <= cluster_distance_thresh && //å°äºä½è´¨é‡èšç±»è·ç¦»é˜ˆå€¼åˆ™ä¸ºåŒä¸€ç±»
 					nodes[end2 - 1].get_balance()
 					)
 				{
 					wrapped_que.push(end2);
-					nodes[end2 - 1].set_balance(false);//ÒÑ¼ÓÈë¶ÓÁĞÉèÖÃÎª²»Æ½ºâ£¬±ÜÃâÖØ¸´¼ÓÈë¶ÓÁĞ
+					nodes[end2 - 1].set_balance(false);//å·²åŠ å…¥é˜Ÿåˆ—è®¾ç½®ä¸ºä¸å¹³è¡¡ï¼Œé¿å…é‡å¤åŠ å…¥é˜Ÿåˆ—
 				}
 			}
 		}
@@ -2408,7 +2413,7 @@ int Unwrap::QualityGuided_MCF(
 		//util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\out_mask.bin", new_mask);
 		//new_mask.convertTo(new_mask, CV_32S);
 
-		ambiguity = Mat::zeros(1, unwrapped_neighbour_que.size(), CV_32S);
+		ambiguity = Mat::zeros(1, static_cast<int>(unwrapped_neighbour_que.size()), CV_32S);
 		num_nodes = cv::countNonZero(new_mask);
 		ret = util.write_node_file(node_file.c_str(), new_mask);
 		ret = util.gen_delaunay(node_file.c_str(), EXE_path);
@@ -2418,9 +2423,9 @@ int Unwrap::QualityGuided_MCF(
 		ret = util.residue(tri_sub, nodes_sub, edges_sub, 1000.0);
 		if (return_check(ret, "residue()", error_head)) return -1;
 		/*
-		* ¼ì²é²Ğ²îµãÊı£¬ÈôÎŞ²Ğ²îµãÔò²»Ê¹ÓÃmcf.exeÇó½â
+		* æ£€æŸ¥æ®‹å·®ç‚¹æ•°ï¼Œè‹¥æ— æ®‹å·®ç‚¹åˆ™ä¸ä½¿ç”¨mcf.exeæ±‚è§£
 		*/
-		num_triangle = tri_sub.size(); positive = 0; negative = 0;
+		num_triangle = static_cast<int>(tri_sub.size()); positive = 0; negative = 0;
 		for (int ii = 0; ii < num_triangle; ii++)
 		{
 			if (tri_sub[ii].residue > 0.7)
@@ -2450,7 +2455,7 @@ int Unwrap::QualityGuided_MCF(
 			if (return_check(ret, "MCF()", error_head)) return -1;
 		}
 
-		//Ğ£ÕıÄ£ºıÊı
+		//æ ¡æ­£æ¨¡ç³Šæ•°
 		i = 0;
 		while (!unwrapped_neighbour_que.empty())
 		{
@@ -2462,7 +2467,7 @@ int Unwrap::QualityGuided_MCF(
 			ambiguity.at<int>(0, i++) = ambig;
 		}
 		ret = util.get_mode_index(ambiguity, &ambig);
-		//Ğ£ÕıÏàÎ»
+		//æ ¡æ­£ç›¸ä½
 		for (int i = 0; i < nodes_sub.size(); i++)
 		{
 			if (nodes_sub[i].get_status())
@@ -2524,7 +2529,7 @@ int Unwrap::snaphu(
 	ret = conversion.read_array_from_h5(wrapped_phase_file, "phase", wrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
-	//¹À¼Æ»ùÏß
+	//ä¼°è®¡åŸºçº¿
 	bool b_baseline = true;
 	bool b_source = true;
 	bool b_amp = true;
@@ -2567,7 +2572,7 @@ int Unwrap::snaphu(
 	fwrite(phase.data, sizeof(float), nr * nc, fp);
 	fclose(fp);
 	fp = NULL;
-	if (b_source && b_amp)//ÓĞ·ù¶ÈĞÅÏ¢
+	if (b_source && b_amp)//æœ‰å¹…åº¦ä¿¡æ¯
 	{
 		if (master.type() != CV_64F) master.convertTo(master, CV_64F);
 		amplitude1 = master.GetMod();
@@ -2595,7 +2600,7 @@ int Unwrap::snaphu(
 		fclose(fp);
 		fp = NULL;
 	}
-	if (b_coh)//Ïà¹ØÏµÊıĞÅÏ¢
+	if (b_coh)//ç›¸å…³ç³»æ•°ä¿¡æ¯
 	{
 		coherence.convertTo(coherence, CV_32F);
 		fopen_s(&fp, coherence_file.c_str(), "wb");
@@ -2631,7 +2636,7 @@ int Unwrap::snaphu(
 
 
 
-	//Ğ´ÈëÅäÖÃ²ÎÊı
+	//å†™å…¥é…ç½®å‚æ•°
 	fopen_s(&fp, config_file.c_str(), "wt");
 	if (!fp)
 	{
@@ -2683,7 +2688,7 @@ int Unwrap::snaphu(
 	fp = NULL;
 
 	USES_CONVERSION;
-	//////////////////////////´´½¨²¢µ÷ÓÃsnaphu.exe½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨snaphu.exeè¿›ç¨‹///////////////////////////////
 	LPWSTR szCommandLine = new TCHAR[256];
 	wcscpy(szCommandLine, A2W(EXE_path.c_str()));
 	wcscat(szCommandLine, L"\\snaphu.exe -f ");
@@ -2696,14 +2701,14 @@ int Unwrap::snaphu(
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -2738,7 +2743,7 @@ int Unwrap::snaphu(
 		return -1;
 	}
 
-	//¶ÁÈ¡½á¹û
+	//è¯»å–ç»“æœ
 	unwrapped_phase.create(nr, nc, CV_32F);
 	fopen_s(&fp, OUT_file.c_str(), "rb");
 	if (!fp)
@@ -2778,7 +2783,7 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	nc = wrapped_phase.cols;
 	ret = util.phase_coherence(wrapped_phase, coherence);
 	if (return_check(ret, "phase_coherence()", error_head)) return -1;
-	//Ğ´Èë²øÈÆÏàÎ»ÎÄ¼ş
+	//å†™å…¥ç¼ ç»•ç›¸ä½æ–‡ä»¶
 	fopen_s(&fp, in_file.c_str(), "wb");
 	if (!fp)
 	{
@@ -2789,7 +2794,7 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	fwrite(phase.data, sizeof(float), nr * nc, fp);
 	fclose(fp);
 	fp = NULL;
-	//Ğ´ÈëÏà¹ØÏµÊıÎÄ¼ş
+	//å†™å…¥ç›¸å…³ç³»æ•°æ–‡ä»¶
 	fopen_s(&fp, coh_file.c_str(), "wb");
 	if (!fp)
 	{
@@ -2802,7 +2807,7 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	fp = NULL;
 
 
-	//Ğ´ÈëÅäÖÃ²ÎÊı
+	//å†™å…¥é…ç½®å‚æ•°
 	
 	fp = fopen(config_file.c_str(), "wt");
 	if (!fp)
@@ -2822,7 +2827,7 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 
 
 	USES_CONVERSION;
-	//////////////////////////´´½¨²¢µ÷ÓÃsnaphu.exe½ø³Ì///////////////////////////////
+	//////////////////////////åˆ›å»ºå¹¶è°ƒç”¨snaphu.exeè¿›ç¨‹///////////////////////////////
 	char szFilePath[MAX_PATH + 1] = { 0 };
 	GetModuleFileNameA(NULL, szFilePath, MAX_PATH);
 	string str(szFilePath);
@@ -2839,14 +2844,14 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcessA(
-		NULL,           // ²»ÔÚ´ËÖ¸¶¨¿ÉÖ´ĞĞÎÄ¼şµÄÎÄ¼şÃû
-		szCommandLine,      // ÃüÁîĞĞ²ÎÊı
-		NULL,           // Ä¬ÈÏ½ø³Ì°²È«ĞÔ
-		NULL,           // Ä¬ÈÏÏß³Ì°²È«ĞÔ
-		FALSE,          // Ö¸¶¨µ±Ç°½ø³ÌÄÚµÄ¾ä±ú²»¿ÉÒÔ±»×Ó½ø³Ì¼Ì³Ğ
-		CREATE_NEW_CONSOLE, // ÎªĞÂ½ø³Ì´´½¨Ò»¸öĞÂµÄ¿ØÖÆÌ¨´°¿Ú
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄ»·¾³±äÁ¿
-		NULL,           // Ê¹ÓÃ±¾½ø³ÌµÄÇı¶¯Æ÷ºÍÄ¿Â¼
+		NULL,           // ä¸åœ¨æ­¤æŒ‡å®šå¯æ‰§è¡Œæ–‡ä»¶çš„æ–‡ä»¶å
+		szCommandLine,      // å‘½ä»¤è¡Œå‚æ•°
+		NULL,           // é»˜è®¤è¿›ç¨‹å®‰å…¨æ€§
+		NULL,           // é»˜è®¤çº¿ç¨‹å®‰å…¨æ€§
+		FALSE,          // æŒ‡å®šå½“å‰è¿›ç¨‹å†…çš„å¥æŸ„ä¸å¯ä»¥è¢«å­è¿›ç¨‹ç»§æ‰¿
+		CREATE_NEW_CONSOLE, // ä¸ºæ–°è¿›ç¨‹åˆ›å»ºä¸€ä¸ªæ–°çš„æ§åˆ¶å°çª—å£
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„ç¯å¢ƒå˜é‡
+		NULL,           // ä½¿ç”¨æœ¬è¿›ç¨‹çš„é©±åŠ¨å™¨å’Œç›®å½•
 		&si,
 		&p_i);
 	if (bRet)
@@ -2879,7 +2884,7 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 		return -1;
 	}
 
-	//¶ÁÈ¡½á¹û
+	//è¯»å–ç»“æœ
 	fp = NULL;
 	unwrapped_phase.create(nr, nc, CV_32F);
 	fopen_s(&fp, out_file.c_str(), "rb");
@@ -2996,7 +3001,7 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 	int armw = win_w / 2;
 	int armh = win_h / 2;
 	Mat padded;
-	copyMakeBorder(wrapped_phase, padded, armh, armh, armw, armw, BORDER_REFLECT_101);//¾µÏñ·­×ª±ßÔµ
+	copyMakeBorder(wrapped_phase, padded, armh, armh, armw, armw, BORDER_REFLECT_101);//é•œåƒç¿»è½¬è¾¹ç¼˜
 	int width = padded.cols;
 	int height = padded.rows;
 	int i, j;
@@ -3013,12 +3018,12 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 			int m, n;
 			double sum = 0;
 			double delta = 0;
-			/*ÔÚ3*3µÄ´°¿ÚÄÚ¼ÆËãÓëÖĞĞÄÏñËØµÄÌİ¶È¾ø¶ÔÖµºÍ*/
+			/*åœ¨3*3çš„çª—å£å†…è®¡ç®—ä¸ä¸­å¿ƒåƒç´ çš„æ¢¯åº¦ç»å¯¹å€¼å’Œ*/
 			for (m = i - 1; m < i + 2; m++)
 				for (n = j - 1; n < j + 2; n++)
 				{
 					delta = padded.ptr<double>(i)[j] - padded.ptr<double>(m)[n];
-					/*Ìİ¶ÈÈ¡Ö÷Öµ*/
+					/*æ¢¯åº¦å–ä¸»å€¼*/
 					if (delta <= -PI)
 						sum += abs(delta + 2 * PI);
 					else if (delta > -PI && delta < PI)
@@ -3032,7 +3037,7 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 			//	for (n = j - 1; n < j + 2; n++)
 			//	{
 			//		sum += pow((padded.ptr<double>(i)[j] - k), 2);
-			//		/*Ìİ¶ÈÈ¡Ö÷Öµ*/
+			//		/*æ¢¯åº¦å–ä¸»å€¼*/
 			//		/*if (delta <= -PI)
 			//			sum += abs(delta + 2 * PI);
 			//		else if (delta > -PI && delta < PI)

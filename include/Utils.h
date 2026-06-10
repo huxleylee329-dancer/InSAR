@@ -10,151 +10,151 @@
 
 
 /*********************************************************/
-/*                DelaunayÈı½ÇÍø ½ÚµãÀà                  */
+/*                Delaunayä¸‰è§’ç½‘ èŠ‚ç‚¹ç±»                  */
 /*********************************************************/
 class InSAR_API tri_node
 {
 public:
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	tri_node();
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	tri_node(const tri_node& node);
-	/*¹¹Ôìº¯Êı
-	* ²ÎÊı1 ½ÚµãĞĞÊı
-	* ²ÎÊı2 ½ÚµãÁĞÊı
-	* ²ÎÊı3 ½ÚµãÁÚ½Ó±ßÊı
-	* ²ÎÊı4 ½ÚµãÏàÎ»
+	/*æ„é€ å‡½æ•°
+	* å‚æ•°1 èŠ‚ç‚¹è¡Œæ•°
+	* å‚æ•°2 èŠ‚ç‚¹åˆ—æ•°
+	* å‚æ•°3 èŠ‚ç‚¹é‚»æ¥è¾¹æ•°
+	* å‚æ•°4 èŠ‚ç‚¹ç›¸ä½
 	*/
 	tri_node(int, int, int, double);
 	~tri_node();
-	/*¸³Öµº¯Êı£¨Éî¿½±´¸³Öµ£©*/
+	/*èµ‹å€¼å‡½æ•°ï¼ˆæ·±æ‹·è´èµ‹å€¼ï¼‰*/
 	tri_node operator = (const tri_node& src);
-	/*»ñÈ¡½ÚµãÏàÎ»
-	* ²ÎÊı1 ÏàÎ»Ö¸Õë£¨·µ»ØÖµ£©
+	/*è·å–èŠ‚ç‚¹ç›¸ä½
+	* å‚æ•°1 ç›¸ä½æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int get_phase(double* phi) const;
-	/*»ñÈ¡½ÚµãĞĞÁĞ×ø±ê
-	* ²ÎÊı1 ĞĞĞòºÅ
-	* ²ÎÊı2 ÁĞĞòºÅ
+	/*è·å–èŠ‚ç‚¹è¡Œåˆ—åæ ‡
+	* å‚æ•°1 è¡Œåºå·
+	* å‚æ•°2 åˆ—åºå·
 	*/
 	int get_pos(int* rows, int* cols) const;
-	/*½ÚµãÏàÎ»¸³Öµ
-	* ²ÎÊı1 ÊäÈëÏàÎ»
+	/*èŠ‚ç‚¹ç›¸ä½èµ‹å€¼
+	* å‚æ•°1 è¾“å…¥ç›¸ä½
 	*/
 	int set_phase(double phi);
-	/*»ñÈ¡ÁÚ½Ó±ßÖ¸Õë
-	* ²ÎÊı1 Ö¸ÏòÁÚ½Ó±ßÖ¸ÕëµÄÖ¸Õë£¨·µ»ØÖµ£©
-	* ²ÎÊı2 ÁÚ½Ó±ß¸öÊıÖ¸Õë£¨·µ»ØÖµ£©
+	/*è·å–é‚»æ¥è¾¹æŒ‡é’ˆ
+	* å‚æ•°1 æŒ‡å‘é‚»æ¥è¾¹æŒ‡é’ˆçš„æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°2 é‚»æ¥è¾¹ä¸ªæ•°æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int get_neigh_ptr(long** ptr2ptr, int* num) const;
-	/*¸Ä±ä½â²ø×´Ì¬
-	* ²ÎÊı1 ÊÇ·ñÒÑ¾­½â²ø
+	/*æ”¹å˜è§£ç¼ çŠ¶æ€
+	* å‚æ•°1 æ˜¯å¦å·²ç»è§£ç¼ 
 	*/
 	int set_status(bool b_unwrapped);
-	/*¸Ä±äÆ½ºâ×´Ì¬
-	* ²ÎÊı1 ÊÇ·ñÊôÓÚ²Ğ²îÆ½ºâÈı½ÇĞÎ
+	/*æ”¹å˜å¹³è¡¡çŠ¶æ€
+	* å‚æ•°1 æ˜¯å¦å±äºæ®‹å·®å¹³è¡¡ä¸‰è§’å½¢
 	*/
 	int set_balance(bool b_balanced);
-	/*´òÓ¡ÁÚ½Ó±ßĞòºÅ
+	/*æ‰“å°é‚»æ¥è¾¹åºå·
 	* 
 	*/
 	int print_neighbour() const;
-	/*»ñÈ¡ÁÚ½Ó±ß¸öÊı
-	* ²ÎÊı1 ÁÚ½Ó±ß¸öÊıÖ¸Õë
+	/*è·å–é‚»æ¥è¾¹ä¸ªæ•°
+	* å‚æ•°1 é‚»æ¥è¾¹ä¸ªæ•°æŒ‡é’ˆ
 	*/
 	int get_num_neigh(int* num_neigh) const;
-	/*»ñÈ¡ÓëÁíÒ»½ÚµãµÄ¾àÀë
-	* ²ÎÊı1 ÁíÒ»½Úµã
-	* ²ÎÊı2 ¾àÀë
+	/*è·å–ä¸å¦ä¸€èŠ‚ç‚¹çš„è·ç¦»
+	* å‚æ•°1 å¦ä¸€èŠ‚ç‚¹
+	* å‚æ•°2 è·ç¦»
 	*/
 	int get_distance(tri_node node, double* distance) const;
-	/*»ñÈ¡½â²ø×´Ì¬
-	* ·µ»ØÖµ£¨ÊÇ·ñÒÑ½â²ø£©
+	/*è·å–è§£ç¼ çŠ¶æ€
+	* è¿”å›å€¼ï¼ˆæ˜¯å¦å·²è§£ç¼ ï¼‰
 	*/
 	bool get_status() const;
-	/*»ñÈ¡Æ½ºâ×´Ì¬
-	* ·µ»ØÖµ£¨ÊÇ·ñÆ½ºâ£¬Ä¬ÈÏÊÇ£©
+	/*è·å–å¹³è¡¡çŠ¶æ€
+	* è¿”å›å€¼ï¼ˆæ˜¯å¦å¹³è¡¡ï¼Œé»˜è®¤æ˜¯ï¼‰
 	*/
 	bool get_balance() const;
-	/*·µ»ØÊÇ·ñ½ÚµãÊôÓÚ²Ğ²îÈı½ÇĞÎ
+	/*è¿”å›æ˜¯å¦èŠ‚ç‚¹å±äºæ®‹å·®ä¸‰è§’å½¢
 	*/
 	bool is_residue_node() const;
-	/*ÉèÖÃ½ÚµãÊÇ·ñÊôÓÚ²Ğ²î½Úµã
+	/*è®¾ç½®èŠ‚ç‚¹æ˜¯å¦å±äºæ®‹å·®èŠ‚ç‚¹
 	*/
 	int set_residue(bool b_res);
-	/*»ñÈ¡ĞÎ±äËÙÂÊ*/
+	/*è·å–å½¢å˜é€Ÿç‡*/
 	double get_vel() const;
-	/*»ñÈ¡¸ß³ÌÎó²î*/
+	/*è·å–é«˜ç¨‹è¯¯å·®*/
 	double get_height() const;
-	/*ÉèÖÃĞÎ±äËÙÂÊ*/
+	/*è®¾ç½®å½¢å˜é€Ÿç‡*/
 	int set_vel(double vel);
-	/*ÉèÖÃ¸ß³ÌÎó²î*/
+	/*è®¾ç½®é«˜ç¨‹è¯¯å·®*/
 	int set_height(double height);
 
 private:
 
-	/*****************InSAR´¦Àí±äÁ¿*******************/
+	/*****************InSARå¤„ç†å˜é‡*******************/
 
-	/*ÊÇ·ñÒÑ½â²ø(Ä¬ÈÏÎ´½â²ø)*/
+	/*æ˜¯å¦å·²è§£ç¼ (é»˜è®¤æœªè§£ç¼ )*/
 	bool b_unwrapped;
-	/*ÊÇ·ñÊôÓÚ²Ğ²î½Úµã*/
+	/*æ˜¯å¦å±äºæ®‹å·®èŠ‚ç‚¹*/
 	bool b_residue;
-	/*ÊÇ·ñÊôÓÚÆ½ºâÈı½ÇĞÎµÄ¶¥µã£¨Ä¬ÈÏÎªÊÇ£©£¬Í¬Ê±ÔÚPS-InSARÖĞ³äµ±ÊÇ·ñ½Úµã±»¶ªÆúµÄ±êÖ¾(Îªtrue±íÊ¾²»±»¶ªÆú£¬ Îªfalse±íÊ¾±»¶ªÆú)*/
+	/*æ˜¯å¦å±äºå¹³è¡¡ä¸‰è§’å½¢çš„é¡¶ç‚¹ï¼ˆé»˜è®¤ä¸ºæ˜¯ï¼‰ï¼ŒåŒæ—¶åœ¨PS-InSARä¸­å……å½“æ˜¯å¦èŠ‚ç‚¹è¢«ä¸¢å¼ƒçš„æ ‡å¿—(ä¸ºtrueè¡¨ç¤ºä¸è¢«ä¸¢å¼ƒï¼Œ ä¸ºfalseè¡¨ç¤ºè¢«ä¸¢å¼ƒ)*/
 	bool b_balanced;
-	/*½ÚµãĞĞÊı£¨ÆğÊ¼ÖµÎª0£©*/
+	/*èŠ‚ç‚¹è¡Œæ•°ï¼ˆèµ·å§‹å€¼ä¸º0ï¼‰*/
 	int rows;
-	/*½ÚµãÁĞÊı£¨ÆğÊ¼ÖµÎª0£©*/
+	/*èŠ‚ç‚¹åˆ—æ•°ï¼ˆèµ·å§‹å€¼ä¸º0ï¼‰*/
 	int cols;
-	/*½ÚµãÁÚ½Ó±ßÊı*/
+	/*èŠ‚ç‚¹é‚»æ¥è¾¹æ•°*/
 	int num_neigh_edges;
-	/*½ÚµãÏàÎ»*/
+	/*èŠ‚ç‚¹ç›¸ä½*/
 	double phase;
-	/*½ÚµãÁÚ½Ó±ßĞòºÅ*/
+	/*èŠ‚ç‚¹é‚»æ¥è¾¹åºå·*/
 	long* neigh_edges;
 
-	/*****************PS-InSAR´¦Àí±äÁ¿*******************/
+	/*****************PS-InSARå¤„ç†å˜é‡*******************/
 	
-	/*ĞÎ±äËÙÂÊ*/
+	/*å½¢å˜é€Ÿç‡*/
 	double vel;
-	/*¸ß³ÌÎó²î*/
+	/*é«˜ç¨‹è¯¯å·®*/
 	double epsilon_height;
 };
 
 /*********************************************************/
-/*             DelaunayÈı½ÇÍø Èı½ÇĞÎ½á¹¹Ìå               */
+/*             Delaunayä¸‰è§’ç½‘ ä¸‰è§’å½¢ç»“æ„ä½“               */
 /*********************************************************/
 struct triangle
 {
-	/*Èı½ÇĞÎĞòºÅ*/
+	/*ä¸‰è§’å½¢åºå·*/
 	int num;
-	/*µã1*/
+	/*ç‚¹1*/
 	int p1;
-	/*µã2*/
+	/*ç‚¹2*/
 	int p2;
-	/*µã3*/
+	/*ç‚¹3*/
 	int p3;
-	/*Èı½ÇĞÎ²Ğ²îÖµ*/
+	/*ä¸‰è§’å½¢æ®‹å·®å€¼*/
 	double residue;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ1*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·1*/
 	int neigh1;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ2*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·2*/
 	int neigh2;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ3*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·3*/
 	int neigh3;
-	/*±ß1£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹1ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge1;
-	/*±ß2£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹2ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge2;
-	/*±ß3£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹3ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge3;
 
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	triangle()
 	{
 		num = p1 = p2 = p3 = neigh1 = neigh2 = neigh3 = edge1 = edge2 = edge3 = 0;
 		residue = 0.0;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	triangle(const triangle& cp)
 	{
 		this->edge1 = cp.edge1;
@@ -167,7 +167,7 @@ struct triangle
 		this->p1 = cp.p1; this->p2 = cp.p2; this->p3 = cp.p3;
 		this->residue = cp.residue;
 	}
-	/*¸³Öµ(Éî¿½±´)*/
+	/*èµ‹å€¼(æ·±æ‹·è´)*/
 	triangle operator= (const triangle& cp)
 	{
 		this->edge1 = cp.edge1;
@@ -185,44 +185,44 @@ struct triangle
 
 
 /*********************************************************/
-/*             DelaunayÈı½ÇÍø Èı½ÇĞÎ±ß½á¹¹Ìå             */
+/*             Delaunayä¸‰è§’ç½‘ ä¸‰è§’å½¢è¾¹ç»“æ„ä½“             */
 /*********************************************************/
 struct tri_edge
 {
-	/**********InSAR±äÁ¿**********/
+	/**********InSARå˜é‡**********/
 
-	/*»ı·ÖÔöÒæ£¨ĞòºÅ´ÓĞ¡µ½´óÎªÕı£©*/
+	/*ç§¯åˆ†å¢ç›Šï¼ˆåºå·ä»å°åˆ°å¤§ä¸ºæ­£ï¼‰*/
 	double gain;
-	/*ÏàÎ»ÖÊÁ¿£¨ÓÃÓÚÖÊÁ¿Í¼·¨½â²ø£©*/
+	/*ç›¸ä½è´¨é‡ï¼ˆç”¨äºè´¨é‡å›¾æ³•è§£ç¼ ï¼‰*/
 	double quality;
-	/*±ßĞòÁĞºÅ*/
+	/*è¾¹åºåˆ—å·*/
 	int num;
-	/*¶Ëµã1*/
+	/*ç«¯ç‚¹1*/
 	int end1;
-	/*¶Ëµã2*/
+	/*ç«¯ç‚¹2*/
 	int end2;
-	/*²Ğ²î±ß±êÖ¾*/
+	/*æ®‹å·®è¾¹æ ‡å¿—*/
 	bool isResidueEdge;
-	/*ÍøÂç±ß½ç±êÖ¾*/
+	/*ç½‘ç»œè¾¹ç•Œæ ‡å¿—*/
 	bool isBoundry;
 
 
-	/**********PS_InSAR±äÁ¿**********/
+	/**********PS_InSARå˜é‡**********/
 
-	/*ÏßĞÔĞÎ±äËÙ¶È²îÏµÊı£¨4 * pi / lambda * Ti£©*/
+	/*çº¿æ€§å½¢å˜é€Ÿåº¦å·®ç³»æ•°ï¼ˆ4 * pi / lambda * Tiï¼‰*/
 	//double coef_delta_vel;
-	/*¸ß³ÌÎó²îÏµÊı£¨4 * pi * bperp_i / lambda / R_i / sin_theta_i  £©*/
+	/*é«˜ç¨‹è¯¯å·®ç³»æ•°ï¼ˆ4 * pi * bperp_i / lambda / R_i / sin_theta_i  ï¼‰*/
 	//double coef_delta_height;
-	/*ÏßĞÔĞÎ±äËÙ¶È²î(¶¨ÒåÎª´ó×ø±ê - Ğ¡×ø±ê)*/
+	/*çº¿æ€§å½¢å˜é€Ÿåº¦å·®(å®šä¹‰ä¸ºå¤§åæ ‡ - å°åæ ‡)*/
 	double delta_vel;
-	/*¸ß³ÌÎó²î(¶¨ÒåÎª´ó×ø±ê - Ğ¡×ø±ê)*/
+	/*é«˜ç¨‹è¯¯å·®(å®šä¹‰ä¸ºå¤§åæ ‡ - å°åæ ‡)*/
 	double delta_height;
-	/*Ä£ĞÍÏà¸ÉÏµÊı*/
+	/*æ¨¡å‹ç›¸å¹²ç³»æ•°*/
 	double MC;
-	/*¶ËµãÏàÎ»²î£¨ÏàÎ»²î¶¨ÒåÎª£º´óĞòºÅ¶Ëµã¼õĞ¡ĞòºÅ¶Ëµã£©*/
+	/*ç«¯ç‚¹ç›¸ä½å·®ï¼ˆç›¸ä½å·®å®šä¹‰ä¸ºï¼šå¤§åºå·ç«¯ç‚¹å‡å°åºå·ç«¯ç‚¹ï¼‰*/
 	double phase_diff;
 
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	tri_edge() {
 		gain = 0.0;
 		quality = 0.0;
@@ -233,7 +233,7 @@ struct tri_edge
 		delta_vel = 0.0;
 		delta_height = 0.0; MC = 0.0; phase_diff = 0.0;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	tri_edge(const tri_edge& cp)
 	{
 		gain = cp.gain;
@@ -245,7 +245,7 @@ struct tri_edge
 		delta_vel = cp.delta_vel;
 		delta_height = cp.delta_height; MC = cp.MC; phase_diff = cp.phase_diff;
 	}
-	/*¸³Öµº¯Êı£¨Éî¿½±´¸³Öµ£©*/
+	/*èµ‹å€¼å‡½æ•°ï¼ˆæ·±æ‹·è´èµ‹å€¼ï¼‰*/
 	tri_edge operator = (const tri_edge& cp)
 	{
 		gain = cp.gain;
@@ -261,7 +261,7 @@ struct tri_edge
 };
 
 /*********************************************************/
-/*          DelaunayÈı½ÇÍø Èı½ÇĞÎ±ßĞòÁĞºÅ½á¹¹Ìå          */
+/*          Delaunayä¸‰è§’ç½‘ ä¸‰è§’å½¢è¾¹åºåˆ—å·ç»“æ„ä½“          */
 /*********************************************************/
 struct edge_index
 {
@@ -276,27 +276,27 @@ struct edge_index
 };
 
 /*-------------------------------------------------------*/
-/*                   ¹æÔòÍø¸ñ½Úµã½á¹¹Ìå                  */
+/*                   è§„åˆ™ç½‘æ ¼èŠ‚ç‚¹ç»“æ„ä½“                  */
 /*-------------------------------------------------------*/
 struct node_index
 {
-	/*½ÚµãĞĞÊı£¨´Ó0¿ªÊ¼£©*/
+	/*èŠ‚ç‚¹è¡Œæ•°ï¼ˆä»0å¼€å§‹ï¼‰*/
 	int row;
-	/*½ÚµãÁĞÊı£¨´Ó0¿ªÊ¼£©*/
+	/*èŠ‚ç‚¹åˆ—æ•°ï¼ˆä»0å¼€å§‹ï¼‰*/
 	int col;
-	/*½ÚµãÏàÎ»ÖÊÁ¿*/
+	/*èŠ‚ç‚¹ç›¸ä½è´¨é‡*/
 	double quality;
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	node_index()
 	{
 		row = 0; col = 0; quality = 0.0;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	node_index(const node_index& cp)
 	{
 		this->row = cp.row; this->col = cp.col; this->quality = cp.quality;
 	}
-	/*¸³Öµº¯Êı*/
+	/*èµ‹å€¼å‡½æ•°*/
 	node_index operator = (const node_index& cp)
 	{
 		this->row = cp.row; this->col = cp.col; this->quality = cp.quality;
@@ -312,25 +312,25 @@ struct node_index
 
 
 /*********************************************************/
-/*               ¸ÉÉæSAR´¦Àí»ù±¾º¯ÊıÀà¿â                 */
+/*               å¹²æ¶‰SARå¤„ç†åŸºæœ¬å‡½æ•°ç±»åº“                 */
 /*********************************************************/
 class InSAR_API Utils
 {
 public:
 	Utils();
 	~Utils();
-	/*@brief Éú³É·¶µÂÃÉ¾ØÕó
-	* @param inArray                           ×Ô±äÁ¿ĞòÁĞ
-	* @param vandermondeMatrix                 ·¶µÂÃÉ¾ØÕó
-	* @param degree                            ½×Êı
-	* @return ³É¹¦·µ»Ø-1£¬·ñÔò·µ»Ø0
+	/*@brief ç”ŸæˆèŒƒå¾·è’™çŸ©é˜µ
+	* @param inArray                           è‡ªå˜é‡åºåˆ—
+	* @param vandermondeMatrix                 èŒƒå¾·è’™çŸ©é˜µ
+	* @param degree                            é˜¶æ•°
+	* @return æˆåŠŸè¿”å›-1ï¼Œå¦åˆ™è¿”å›0
 	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
 		Mat& vandermondeMatrix,
 		int degree
 	);
-	/*@brief ¶àÏîÊ½ÄâºÏ£¨Ax=b£©
+	/*@brief å¤šé¡¹å¼æ‹Ÿåˆï¼ˆAx=bï¼‰
 	* @param A
 	* @param b
 	* @param x
@@ -346,42 +346,42 @@ public:
 	* @param val
 	*/
 	static int polyVal(Mat& coefficient, double x, double* val);
-	/** @brief ÇóintĞÍ¾ØÕóµÄÖÚÊı
+	/** @brief æ±‚intå‹çŸ©é˜µçš„ä¼—æ•°
 	
-	@param input                  ÊäÈë¾ØÕó£¨intĞÍ£©
-	@param out                    Êä³ö½á¹û
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param input                  è¾“å…¥çŸ©é˜µï¼ˆintå‹ï¼‰
+	@param out                    è¾“å‡ºç»“æœ
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int get_mode_index(const Mat& input, int* out);
-	/*¼ÆËã¾ØÕóÌİ¶È
-	 ²ÎÊı1 Ô´¾ØÕó
-	 ²ÎÊı2 ĞĞ·½ÏòÌİ¶È£¨·µ»ØÖµ£©
-	 ²ÎÊı3 ÁĞ·½ÏòÌİ¶È£¨·µ»ØÖµ£©
-	 ²ÎÊı4 ÊÇ·ñ²¹ÁãÊ¹µÃÌİ¶È¾ØÕóºÍÔ´¾ØÕó´óĞ¡ÏàÍ¬£¨Ä¬ÈÏ²¹Áã£©
+	/*è®¡ç®—çŸ©é˜µæ¢¯åº¦
+	 å‚æ•°1 æºçŸ©é˜µ
+	 å‚æ•°2 è¡Œæ–¹å‘æ¢¯åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	 å‚æ•°3 åˆ—æ–¹å‘æ¢¯åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	 å‚æ•°4 æ˜¯å¦è¡¥é›¶ä½¿å¾—æ¢¯åº¦çŸ©é˜µå’ŒæºçŸ©é˜µå¤§å°ç›¸åŒï¼ˆé»˜è®¤è¡¥é›¶ï¼‰
 	*/
 	int diff(Mat& Src, Mat& diff_1, Mat& diff_2, bool same = true);
-	/*¼ÆËã¸ÉÉæÏàÎ»
-	 ²ÎÊı1 Ö÷Í¼Ïñ£¨¸´£©
-	 ²ÎÊı2 ¸¨Í¼Ïñ£¨¸´£©
-	 ²ÎÊı3 ¸ÉÉæÏàÎ»£¨·µ»ØÖµ£©
+	/*è®¡ç®—å¹²æ¶‰ç›¸ä½
+	 å‚æ•°1 ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°2 è¾…å›¾åƒï¼ˆå¤ï¼‰
+	 å‚æ•°3 å¹²æ¶‰ç›¸ä½ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int generate_phase(const ComplexMat& Master, const ComplexMat& Slave, Mat& phase);
 
-	/** @brief ×î´óËÆÈ»Ïà¸É¹ÀËãÆ÷
+	/** @brief æœ€å¤§ä¼¼ç„¶ç›¸å¹²ä¼°ç®—å™¨
 	 
-	@param master_image                       Ö÷Í¼Ïñ£¨¸´£©
-	@param slave_image                        ¸¨Í¼Ïñ£¨¸´£©
-	@param coherence                          Ïà¸ÉÏµÊı£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param master_image                       ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	@param slave_image                        è¾…å›¾åƒï¼ˆå¤ï¼‰
+	@param coherence                          ç›¸å¹²ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int real_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence);
-	/** @brief ×î´óËÆÈ»Ïà¸É¹ÀËãÆ÷£¨´ø¹À¼Æ´°¿Ú³ß´ç½Ó¿Ú£©
+	/** @brief æœ€å¤§ä¼¼ç„¶ç›¸å¹²ä¼°ç®—å™¨ï¼ˆå¸¦ä¼°è®¡çª—å£å°ºå¯¸æ¥å£ï¼‰
 	
-	@param master_image                       Ö÷Í¼Ïñ£¨¸´£©
-	@param slave_image                        ¸¨Í¼Ïñ£¨¸´£©
-	@param est_wndsize_rg                     ¹À¼Æ´°¿Ú¾àÀëÏò³ß´ç£¨ÆæÊı£©
-	@param est_wndsize_az                     ¹À¼Æ´°¿Ú·½Î»Ïò³ß´ç£¨ÆæÊı£©
-	@param coherence                          Ïà¸ÉÏµÊı£¨·µ»ØÖµ£©
+	@param master_image                       ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	@param slave_image                        è¾…å›¾åƒï¼ˆå¤ï¼‰
+	@param est_wndsize_rg                     ä¼°è®¡çª—å£è·ç¦»å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param est_wndsize_az                     ä¼°è®¡çª—å£æ–¹ä½å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param coherence                          ç›¸å¹²ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int real_coherence(
 		const ComplexMat& master_image,
@@ -390,22 +390,22 @@ public:
 		int est_wndsize_az,
 		Mat& coherence
 	);
-	/** @brief ÆµÂÊÎŞ¹ØÏà¸É¹ÀËãÆ÷
+	/** @brief é¢‘ç‡æ— å…³ç›¸å¹²ä¼°ç®—å™¨
 	
-	 @param master_image                        Ö÷Í¼Ïñ£¨¸´£©
-	 @param slave_image                         ¸¨Í¼Ïñ£¨¸´£©
-	 @param coherence                           Ïà¸ÉÏµÊı£¨·µ»ØÖµ£©
-	 @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	 @param master_image                        ä¸»å›¾åƒï¼ˆå¤ï¼‰
+	 @param slave_image                         è¾…å›¾åƒï¼ˆå¤ï¼‰
+	 @param coherence                           ç›¸å¹²ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	 @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int complex_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence);
-	/** @brief ÆµÂÊÎŞ¹ØÏà¸É¹ÀËãÆ÷£¨´ø¹À¼Æ´°¿Ú³ß´ç½Ó¿Ú£©
+	/** @brief é¢‘ç‡æ— å…³ç›¸å¹²ä¼°ç®—å™¨ï¼ˆå¸¦ä¼°è®¡çª—å£å°ºå¯¸æ¥å£ï¼‰
 	
-	@param master_image                         Ö÷Í¼Ïñ
-	@param slave_image                          ¸¨Í¼Ïñ
-	@param est_wndsize_rg                       ¹À¼Æ´°¿Ú¾àÀëÏò³ß´ç£¨ÆæÊı£©
-	@param est_wndsize_az                       ¹À¼Æ´°¿Ú·½Î»Ïò³ß´ç£¨ÆæÊı£©
-	@param coherence                            Ïà¹ØÏµÊı£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param master_image                         ä¸»å›¾åƒ
+	@param slave_image                          è¾…å›¾åƒ
+	@param est_wndsize_rg                       ä¼°è®¡çª—å£è·ç¦»å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param est_wndsize_az                       ä¼°è®¡çª—å£æ–¹ä½å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param coherence                            ç›¸å…³ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int complex_coherence(
 		const ComplexMat& master_image,
@@ -414,19 +414,19 @@ public:
 		int est_wndsize_az,
 		Mat& coherence
 	);
-	/** @brief ¸ù¾İ¸ÉÉæÏàÎ»ÇóÏà¹ØÏµÊı
-	@param phase                          ÊäÈëÏàÎ»
-	@param coherence                      Ïà¹ØÏµÊı£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/** @brief æ ¹æ®å¹²æ¶‰ç›¸ä½æ±‚ç›¸å…³ç³»æ•°
+	@param phase                          è¾“å…¥ç›¸ä½
+	@param coherence                      ç›¸å…³ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int phase_coherence(Mat& phase, Mat& coherence);
-	/** @brief ¸ù¾İ¸ÉÉæÏàÎ»ÇóÏà¹ØÏµÊı£¨´ø¹À¼Æ´°¿Ú³ß´ç½Ó¿Ú£©
+	/** @brief æ ¹æ®å¹²æ¶‰ç›¸ä½æ±‚ç›¸å…³ç³»æ•°ï¼ˆå¸¦ä¼°è®¡çª—å£å°ºå¯¸æ¥å£ï¼‰
 	
-	@param phase                          ÊäÈëÏàÎ»
-	@param est_wndsize_rg                 ¹À¼Æ´°¿Ú¾àÀëÏò³ß´ç£¨ÆæÊı£©
-	@param est_wndsize_az                 ¹À¼Æ´°¿Ú·½Î»Ïò³ß´ç£¨ÆæÊı£©
-	@param coherence                      Ïà¹ØÏµÊı£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param phase                          è¾“å…¥ç›¸ä½
+	@param est_wndsize_rg                 ä¼°è®¡çª—å£è·ç¦»å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param est_wndsize_az                 ä¼°è®¡çª—å£æ–¹ä½å‘å°ºå¯¸ï¼ˆå¥‡æ•°ï¼‰
+	@param coherence                      ç›¸å…³ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int phase_coherence(
 		const Mat& phase,
@@ -434,35 +434,35 @@ public:
 		int est_wndsize_az,
 		Mat& coherence
 	);
-	/*Çó½âÏàÎ»µ¼Êı·½²î
-	* ²ÎÊı1 ¸ÉÉæÏàÎ»
-	* ²ÎÊı2 ÏàÎ»µ¼Êı·½²î£¨·µ»ØÖµ£©
-	* ²ÎÊı3 ¼ÆËã´°¿Ú´óĞ¡£¨ÆæÊı£©
+	/*æ±‚è§£ç›¸ä½å¯¼æ•°æ–¹å·®
+	* å‚æ•°1 å¹²æ¶‰ç›¸ä½
+	* å‚æ•°2 ç›¸ä½å¯¼æ•°æ–¹å·®ï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°3 è®¡ç®—çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼‰
 	*/
 	int phase_derivatives_variance(Mat& phase, Mat& phase_derivatives_variance, int wndsize = 3);
 	/*FFTSHIFT
-	 ²ÎÊı1 ´ıfftshiftµÄ¾ØÕó£¨Ô­µØ½øĞĞfftshift²Ù×÷£©
+	 å‚æ•°1 å¾…fftshiftçš„çŸ©é˜µï¼ˆåŸåœ°è¿›è¡Œfftshiftæ“ä½œï¼‰
 	*/
 	int fftshift(Mat& matrix);
-	/*¼ÆËã¸ÉÉæÏàÎ»Í¼µÄ²Ğ²îÖµ£¨µã£©
-	 ²ÎÊı1 ¸ÉÉæÏàÎ»
-	 ²ÎÊı2 ²Ğ²îµã¾ØÕó£¨·µ»ØÖµ£©
+	/*è®¡ç®—å¹²æ¶‰ç›¸ä½å›¾çš„æ®‹å·®å€¼ï¼ˆç‚¹ï¼‰
+	 å‚æ•°1 å¹²æ¶‰ç›¸ä½
+	 å‚æ•°2 æ®‹å·®ç‚¹çŸ©é˜µï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int residue(Mat& phase, Mat& residue);
-	/*¼ÆËãDelaunayÈı½ÇÍøÂçµÄ²Ğ²îÖµ£¨²¢ÇÒ±ê×¢²Ğ²î±ßºÍ²Ğ²î½Úµã,±ãÓÚ½â²øÊ±±Ü¿ª£©
-	* ²ÎÊı1 DelaunayÈı½ÇÍøÈı½ÇĞÎ½á¹¹ÌåÊı×é
-	* ²ÎÊı2 DelaunayÈı½ÇÍøÈı½ÇĞÎÊıÁ¿
-	* ²ÎÊı3 DelaunayÈı½ÇÍø½ÚµãÊı×é
-	* ²ÎÊı4 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	* ²ÎÊı5 DelaunayÈı½ÇÍø±ßÊıÁ¿
+	/*è®¡ç®—Delaunayä¸‰è§’ç½‘ç»œçš„æ®‹å·®å€¼ï¼ˆå¹¶ä¸”æ ‡æ³¨æ®‹å·®è¾¹å’Œæ®‹å·®èŠ‚ç‚¹,ä¾¿äºè§£ç¼ æ—¶é¿å¼€ï¼‰
+	* å‚æ•°1 Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„
+	* å‚æ•°2 Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢æ•°é‡
+	* å‚æ•°3 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	* å‚æ•°4 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	* å‚æ•°5 Delaunayä¸‰è§’ç½‘è¾¹æ•°é‡
 	*/
 	int residue(triangle* tri, int num_triangle, vector<tri_node>& nodes, tri_edge* edges, int num_edges);
-	/** @brief ¼ÆËãDelaunayÈı½ÇÍøÂçµÄ²Ğ²îÖµ£¨²¢ÇÒ±ê×¢²Ğ²î±ßºÍ²Ğ²î½Úµã£©
-	@param triangle                              DelaunayÈı½ÇÍøÈı½ÇĞÎ½á¹¹ÌåÊı×é
-	@param nodes                                 DelaunayÈı½ÇÍø½ÚµãÊı×é
-	@param edges                                 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	@param distance_thresh                       ±ß³¤¶ÈãĞÖµ£¨³¬¹ı´ËãĞÖµ²»²ÎÓë²Ğ²îµã¼ÆËã£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/** @brief è®¡ç®—Delaunayä¸‰è§’ç½‘ç»œçš„æ®‹å·®å€¼ï¼ˆå¹¶ä¸”æ ‡æ³¨æ®‹å·®è¾¹å’Œæ®‹å·®èŠ‚ç‚¹ï¼‰
+	@param triangle                              Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„
+	@param nodes                                 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	@param edges                                 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	@param distance_thresh                       è¾¹é•¿åº¦é˜ˆå€¼ï¼ˆè¶…è¿‡æ­¤é˜ˆå€¼ä¸å‚ä¸æ®‹å·®ç‚¹è®¡ç®—ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int residue(
 		vector<triangle>& triangle,
@@ -470,19 +470,19 @@ public:
 		vector<tri_edge>& edges,
 		double distance_thresh
 	);
-	/*¼ÆËãmask£¨É¸Ñ¡¸ßÖÊÁ¿µã£©
-	* ²ÎÊı1 Ïà¹ØÏµÊı¾ØÕó
-	* ²ÎÊı2 mask¾Ù¾ØÕó£¨·µ»ØÖµ£©
-	* ²ÎÊı3 ´°¿Ú°ë¾¶
-	* ²ÎÊı4 ãĞÖµ
+	/*è®¡ç®—maskï¼ˆç­›é€‰é«˜è´¨é‡ç‚¹ï¼‰
+	* å‚æ•°1 ç›¸å…³ç³»æ•°çŸ©é˜µ
+	* å‚æ•°2 maskä¸¾çŸ©é˜µï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°3 çª—å£åŠå¾„
+	* å‚æ•°4 é˜ˆå€¼
 	*/
 	int gen_mask(Mat& coherence, Mat& mask, int wnd_size, double thresh);
-	/*@brief ¸ù¾İÏàÎ»µ¼Êı·½²îºÍÉè¶¨ãĞÖµ¼ÆËã¸ßÖÊÁ¿ÑÚÄ¤
-	* @param phase_derivatives_variance                   ÏàÎ»µ¼Êı·½²î
-	* @param mask                                         Êä³ö¸ßÖÊÁ¿ÑÚÄ¤
-	* @param wndsize                                      ¼ÆËãÑÚÄ¤´°¿Ú´óĞ¡
-	* @param thresh                                       ãĞÖµ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®ç›¸ä½å¯¼æ•°æ–¹å·®å’Œè®¾å®šé˜ˆå€¼è®¡ç®—é«˜è´¨é‡æ©è†œ
+	* @param phase_derivatives_variance                   ç›¸ä½å¯¼æ•°æ–¹å·®
+	* @param mask                                         è¾“å‡ºé«˜è´¨é‡æ©è†œ
+	* @param wndsize                                      è®¡ç®—æ©è†œçª—å£å¤§å°
+	* @param thresh                                       é˜ˆå€¼
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int gen_mask_pdv(
 		Mat& phase_derivatives_variance,
@@ -490,13 +490,13 @@ public:
 		int wndsize,
 		double thresh
 	);
-	/*¼ÆËãmask£¨É¸Ñ¡¸ßÖÊÁ¿µã£©
-	* ²ÎÊı1 Ïà¹ØÏµÊı¾ØÕó
-	* ²ÎÊı2 ÏàÎ»µ¼Êı·½²î
-	* ²ÎÊı3 mask¾Ù¾ØÕó£¨·µ»ØÖµ£©
-	* ²ÎÊı4 ´°¿Ú°ë¾¶
-	* ²ÎÊı5 Ïà¹ØÏµÊıãĞÖµ
-	* ²ÎÊı6 ÏàÎ»µ¼Êı·½²îãĞÖµ
+	/*è®¡ç®—maskï¼ˆç­›é€‰é«˜è´¨é‡ç‚¹ï¼‰
+	* å‚æ•°1 ç›¸å…³ç³»æ•°çŸ©é˜µ
+	* å‚æ•°2 ç›¸ä½å¯¼æ•°æ–¹å·®
+	* å‚æ•°3 maskä¸¾çŸ©é˜µï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°4 çª—å£åŠå¾„
+	* å‚æ•°5 ç›¸å…³ç³»æ•°é˜ˆå€¼
+	* å‚æ•°6 ç›¸ä½å¯¼æ•°æ–¹å·®é˜ˆå€¼
 	*/
 	int gen_mask(
 		Mat& coherence,
@@ -505,44 +505,44 @@ public:
 		double coh_thresh,
 		double phase_derivative_thresh
 	);
-	/*¸ù¾İÉè¶¨ãĞÖµÉ¸Ñ¡²Ğ²îµã
-	* ²ÎÊı1 Ô­Ê¼²Ğ²îµã¾ØÕó
-	* ²ÎÊı2 É¸Ñ¡ºó²Ğ²îµã¾ØÕó
-	* ²ÎÊı3 É¸Ñ¡ãĞÖµ£¨´óÓÚ0£©
-	* ²ÎÊı4 ²Ğ²îµã¸öÊı
+	/*æ ¹æ®è®¾å®šé˜ˆå€¼ç­›é€‰æ®‹å·®ç‚¹
+	* å‚æ•°1 åŸå§‹æ®‹å·®ç‚¹çŸ©é˜µ
+	* å‚æ•°2 ç­›é€‰åæ®‹å·®ç‚¹çŸ©é˜µ
+	* å‚æ•°3 ç­›é€‰é˜ˆå€¼ï¼ˆå¤§äº0ï¼‰
+	* å‚æ•°4 æ®‹å·®ç‚¹ä¸ªæ•°
 	*/
 	int residue_sift(Mat& residue_src, Mat& residue_dst, double thresh, long* num_residue);
-	/*²øÈÆÏàÎ»ÖÁ£¨-pi,pi£©
-	 ²ÎÊı1 ´ı²øÈÆÏàÎ»
-	 ²ÎÊı2 ²øÈÆºóµÄÏàÎ»£¨·µ»ØÖµ£©
+	/*ç¼ ç»•ç›¸ä½è‡³ï¼ˆ-pi,piï¼‰
+	 å‚æ•°1 å¾…ç¼ ç»•ç›¸ä½
+	 å‚æ•°2 ç¼ ç»•åçš„ç›¸ä½ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int wrap(Mat& Src, Mat& Dst);
 
-	/*°´ĞĞ»òÁĞÀÛ¼Æ»ı·Ö
-	 ²ÎÊı1 ´ı»ı·ÖÊı¾İ
-	 ²ÎÊı2 »ı·Ö·½Ïò(dim = 1,°´ÁĞ¼ÆËã dim = 2,°´ĞĞ¼ÆËã)
+	/*æŒ‰è¡Œæˆ–åˆ—ç´¯è®¡ç§¯åˆ†
+	 å‚æ•°1 å¾…ç§¯åˆ†æ•°æ®
+	 å‚æ•°2 ç§¯åˆ†æ–¹å‘(dim = 1,æŒ‰åˆ—è®¡ç®— dim = 2,æŒ‰è¡Œè®¡ç®—)
 	*/
 	int cumsum(Mat& phase, int dim);
-	/*²æ³ËÔËËã£¨ÈıÎ¬£©
-	* ²ÎÊı1 ÏòÁ¿Ò»(n * 3)
-	* ²ÎÊı2 ÏòÁ¿¶ş(n * 3)
-	* ²ÎÊı3 Êä³ö
+	/*å‰ä¹˜è¿ç®—ï¼ˆä¸‰ç»´ï¼‰
+	* å‚æ•°1 å‘é‡ä¸€(n * 3)
+	* å‚æ•°2 å‘é‡äºŒ(n * 3)
+	* å‚æ•°3 è¾“å‡º
 	*/
 	int cross(Mat& vec1, Mat& vec2, Mat& out);
-	/*Ğ´ÈëDIMACSÎÄ¼ş£¨ÃèÊö×îĞ¡·ÑÓÃÎÊÌâ£©
-	 ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	 ²ÎÊı2 ²Ğ²îµã¾ØÕó
-	 ²ÎÊı3 Ïà¸ÉÏµÊı¾ØÕó
-	 ²ÎÊı4 ²Ğ²îµããĞÖµ(´óÓÚ0)
+	/*å†™å…¥DIMACSæ–‡ä»¶ï¼ˆæè¿°æœ€å°è´¹ç”¨é—®é¢˜ï¼‰
+	 å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	 å‚æ•°2 æ®‹å·®ç‚¹çŸ©é˜µ
+	 å‚æ•°3 ç›¸å¹²ç³»æ•°çŸ©é˜µ
+	 å‚æ•°4 æ®‹å·®ç‚¹é˜ˆå€¼(å¤§äº0)
 	*/
 	int write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& coherence, double thresh);
-	/*@brief Ğ´ÈëDIMACSÎÄ¼ş£¨±íÊö¸Ä½øµÄ×îĞ¡·ÑÓÃÁ÷ÎÊÌâ£©
-	* @param DIMACS_problem_file      Ä¿±êÎÄ¼ş
-	* @param residue                  ²Ğ²îµã¾ØÕó
-	* @param mask                     ¿ÉĞĞÂ·¾¶ÇøÓòÑÚÄ¤(intĞÍ)
-	* @param cost                     Á÷·ÑÓÃ
-	* @param thresh                   ²Ğ²îµããĞÖµ£¨Ä¬ÈÏÎª0.7£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å†™å…¥DIMACSæ–‡ä»¶ï¼ˆè¡¨è¿°æ”¹è¿›çš„æœ€å°è´¹ç”¨æµé—®é¢˜ï¼‰
+	* @param DIMACS_problem_file      ç›®æ ‡æ–‡ä»¶
+	* @param residue                  æ®‹å·®ç‚¹çŸ©é˜µ
+	* @param mask                     å¯è¡Œè·¯å¾„åŒºåŸŸæ©è†œ(intå‹)
+	* @param cost                     æµè´¹ç”¨
+	* @param thresh                   æ®‹å·®ç‚¹é˜ˆå€¼ï¼ˆé»˜è®¤ä¸º0.7ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int write_DIMACS(
 		const char* DIMACS_problem_file,
@@ -551,14 +551,14 @@ public:
 		const Mat& cost,
 		double thresh = 0.7
 	);
-	/*Ğ´ÈëDIMACSÎÄ¼ş£¨ÃèÊö×îĞ¡·ÑÓÃÎÊÌâ£¬²»¹æÔòÈı½ÇÍøÂç£©
-	* ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	* ²ÎÊı2 DelaunayÈı½ÇĞÎ½á¹¹ÌåÊı×é
-	* ²ÎÊı3 DelaunayÈı½ÇĞÎÊıÁ¿
-	* ²ÎÊı4 DelaunayÈı½ÇÍø½ÚµãÊı×é
-	* ²ÎÊı5 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	* ²ÎÊı6 DelaunayÈı½ÇÍø±ßÊıÁ¿
-	* ²ÎÊı7 Ã¿¸ö½ÚµãµÄ·ÑÓÃ
+	/*å†™å…¥DIMACSæ–‡ä»¶ï¼ˆæè¿°æœ€å°è´¹ç”¨é—®é¢˜ï¼Œä¸è§„åˆ™ä¸‰è§’ç½‘ç»œï¼‰
+	* å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	* å‚æ•°2 Delaunayä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„
+	* å‚æ•°3 Delaunayä¸‰è§’å½¢æ•°é‡
+	* å‚æ•°4 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	* å‚æ•°5 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	* å‚æ•°6 Delaunayä¸‰è§’ç½‘è¾¹æ•°é‡
+	* å‚æ•°7 æ¯ä¸ªèŠ‚ç‚¹çš„è´¹ç”¨
 	*/
 	int write_DIMACS(
 		const char* DIMACS_file_problem,
@@ -569,14 +569,14 @@ public:
 		long num_edges,
 		Mat& cost
 	);
-	/** @brief Ğ´ÈëDIMACSÎÄ¼ş£¨ÃèÊö×îĞ¡·ÑÓÃÎÊÌâ£¬DelaunayÈı½ÇÍøÂç£©
+	/** @brief å†™å…¥DIMACSæ–‡ä»¶ï¼ˆæè¿°æœ€å°è´¹ç”¨é—®é¢˜ï¼ŒDelaunayä¸‰è§’ç½‘ç»œï¼‰
 	
-	@param DIMACS_file_problem                         Ä¿±êDIMACSÎÄ¼ş
-	@param triange                                     DelaunayÈı½ÇĞÎ½á¹¹ÌåÊı×é
-	@param nodes                                       DelaunayÈı½ÇÍø½ÚµãÊı×é
-	@param edges                                       DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	@param cost                                        Ã¿¸ö½ÚµãµÄ·ÑÓÃ
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param DIMACS_file_problem                         ç›®æ ‡DIMACSæ–‡ä»¶
+	@param triange                                     Delaunayä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„
+	@param nodes                                       Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	@param edges                                       Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	@param cost                                        æ¯ä¸ªèŠ‚ç‚¹çš„è´¹ç”¨
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int write_DIMACS(
 		const char* DIMACS_file_problem,
@@ -585,21 +585,21 @@ public:
 		vector<tri_edge>& edges,
 		const Mat& cost
 	);
-	/*¶ÁÈ¡DIMACSÎÄ¼ş£¨»ñÈ¡Çó½âÆ÷Çó½â½á¹û£©
-	 ²ÎÊı1 ×îĞ¡·ÑÓÃÁ÷ÎÊÌâ½âÎÄ¼ş
-	 ²ÎÊı2 Ö¦ÇĞÂ·¾¶1
-	 ²ÎÊı3 Ö¦ÇĞÂ·¾¶2
-	 ²ÎÊı4 ¸ÉÉæÏàÎ»Í¼ÏñĞĞÊı
-	 ²ÎÊı5 ¸ÉÉæÏàÎ»Í¼ÏñÁĞÊı
+	/*è¯»å–DIMACSæ–‡ä»¶ï¼ˆè·å–æ±‚è§£å™¨æ±‚è§£ç»“æœï¼‰
+	 å‚æ•°1 æœ€å°è´¹ç”¨æµé—®é¢˜è§£æ–‡ä»¶
+	 å‚æ•°2 æåˆ‡è·¯å¾„1
+	 å‚æ•°3 æåˆ‡è·¯å¾„2
+	 å‚æ•°4 å¹²æ¶‰ç›¸ä½å›¾åƒè¡Œæ•°
+	 å‚æ•°5 å¹²æ¶‰ç›¸ä½å›¾åƒåˆ—æ•°
 	*/
 	int read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int rows, int cols);
-	/*¶ÁÈ¡DIMACSÎÄ¼ş£¨»ñÈ¡Çó½âÆ÷Çó½â½á¹û£©
-	* ²ÎÊı1 ×îĞ¡·ÑÓÃÁ÷ÎÊÌâ½âÎÄ¼ş
-	* ²ÎÊı2 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	* ²ÎÊı3 DelaunayÈı½ÇÍø±ßÊıÁ¿
-	* ²ÎÊı4 DelaunayÈı½ÇÍø½ÚµãÊı×é
-	* ²ÎÊı5 DelaunayÈı½ÇÍøÈı½ÇĞÎÊı×é
-	* ²ÎÊı6 DelaunayÈı½ÇÍøÈı½ÇĞÎÊıÁ¿
+	/*è¯»å–DIMACSæ–‡ä»¶ï¼ˆè·å–æ±‚è§£å™¨æ±‚è§£ç»“æœï¼‰
+	* å‚æ•°1 æœ€å°è´¹ç”¨æµé—®é¢˜è§£æ–‡ä»¶
+	* å‚æ•°2 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	* å‚æ•°3 Delaunayä¸‰è§’ç½‘è¾¹æ•°é‡
+	* å‚æ•°4 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	* å‚æ•°5 Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢æ•°ç»„
+	* å‚æ•°6 Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢æ•°é‡
 	*/
 	int read_DIMACS(
 		const char* DIMACS_file_solution,
@@ -609,13 +609,13 @@ public:
 		triangle* tri,
 		int num_triangle
 	);
-	/** @brief ¶ÁÈ¡DIMACSÎÄ¼ş£¨»ñÈ¡Çó½âÆ÷Çó½â½á¹û£©
+	/** @brief è¯»å–DIMACSæ–‡ä»¶ï¼ˆè·å–æ±‚è§£å™¨æ±‚è§£ç»“æœï¼‰
 	
-	@param DIMACS_file_solution                         ×îĞ¡·ÑÓÃÁ÷ÎÊÌâ½âÎÄ¼ş
-	@param edges                                        DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	@param nodes                                        DelaunayÈı½ÇÍø½ÚµãÊı×é
-	@param triangle                                     DelaunayÈı½ÇÍøÈı½ÇĞÎÊı×é
-	@param return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param DIMACS_file_solution                         æœ€å°è´¹ç”¨æµé—®é¢˜è§£æ–‡ä»¶
+	@param edges                                        Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	@param nodes                                        Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	@param triangle                                     Delaunayä¸‰è§’ç½‘ä¸‰è§’å½¢æ•°ç»„
+	@param return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int read_DIMACS(
 		const char* DIMACS_file_solution,
@@ -623,39 +623,39 @@ public:
 		vector<tri_node>& nodes,
 		vector<triangle>& triangle
 	);
-	/*½«OpenCV MatÊı¾İÒÔ¶ş½øÖÆ·½Ê½Ğ´ÈëÄ¿±êÎÄ¼ş
-	* ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	* ²ÎÊı2 ´ıĞ´ÈëÊı¾İ
+	/*å°†OpenCV Matæ•°æ®ä»¥äºŒè¿›åˆ¶æ–¹å¼å†™å…¥ç›®æ ‡æ–‡ä»¶
+	* å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	* å‚æ•°2 å¾…å†™å…¥æ•°æ®
 	*/
 	int cvmat2bin(const char* Dst_file, Mat& Src);
-	/*´Ó¶ş½øÖÆÎÄ¼şÖĞ¶ÁÊı¾İ£¬²¢½«Êı¾İ×ª»»³ÉOpenCV Mat¸ñÊ½
-	* ²ÎÊı1 ¶ş½øÖÆÎÄ¼ş
-	* ²ÎÊı2 Ä¿±ê¾ØÕó
+	/*ä»äºŒè¿›åˆ¶æ–‡ä»¶ä¸­è¯»æ•°æ®ï¼Œå¹¶å°†æ•°æ®è½¬æ¢æˆOpenCV Matæ ¼å¼
+	* å‚æ•°1 äºŒè¿›åˆ¶æ–‡ä»¶
+	* å‚æ•°2 ç›®æ ‡çŸ©é˜µ
 	*/
 	int bin2cvmat(const char* Src_file, Mat& Dst);
-	/*InSAR¶àÊÓ´¦Àí£¨Åä×¼Ö®ºó½øĞĞ£¬ ¸Ä±äÍ¼Ïñ³ß´ç£©
-	* ²ÎÊı1 Ö÷Í¼Ïñ£¨SLC£©
-	* ²ÎÊı2 ¸¨Í¼Ïñ£¨SLC£©
-	* ²ÎÊı3 ¶àÊÓÏàÎ»
-	* ²ÎÊı4 ¶àÊÓ±¶Êı£¨´óÓÚ1£©
+	/*InSARå¤šè§†å¤„ç†ï¼ˆé…å‡†ä¹‹åè¿›è¡Œï¼Œ æ”¹å˜å›¾åƒå°ºå¯¸ï¼‰
+	* å‚æ•°1 ä¸»å›¾åƒï¼ˆSLCï¼‰
+	* å‚æ•°2 è¾…å›¾åƒï¼ˆSLCï¼‰
+	* å‚æ•°3 å¤šè§†ç›¸ä½
+	* å‚æ•°4 å¤šè§†å€æ•°ï¼ˆå¤§äº1ï¼‰
 	*/
 	int multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times);
-	/** @brief InSAR¶àÊÓ´¦Àí£¨²»¸Ä±äÍ¼Ïñ³ß´ç£©
+	/** @brief InSARå¤šè§†å¤„ç†ï¼ˆä¸æ”¹å˜å›¾åƒå°ºå¯¸ï¼‰
 	
-	@param master_slc                    Ö÷Í¼Ïñ
-	@param slave_slc                     ¸¨Í¼Ïñ
-	@param multilook_rg                  ¾àÀëÏò¶àÊÓ±¶Êı
-	@param multilook_az                  ·½Î»Ïò¶àÊÓ±¶Êı
-	@param multilooked_phase             ¶àÊÓÏàÎ»
+	@param master_slc                    ä¸»å›¾åƒ
+	@param slave_slc                     è¾…å›¾åƒ
+	@param multilook_rg                  è·ç¦»å‘å¤šè§†å€æ•°
+	@param multilook_az                  æ–¹ä½å‘å¤šè§†å€æ•°
+	@param multilooked_phase             å¤šè§†ç›¸ä½
 	*/
 	int multilook(const ComplexMat& master, const ComplexMat& slave, int multilook_rg, int multilook_az, Mat& phase);
-	/*@brief InSAR¶àÊÓ´¦Àí£¨¸Ä±ä´°¿Ú³ß´ç£©
-	* @param master                      Ö÷Í¼Ïñ
-	* @param slave                       ¸´Í¼Ïñ
-	* @param multilook_rg                ¾àÀëÏò¶àÊÓ±¶Êı
-	* @param multilook_az                ·½Î»Ïò¶àÊÓ±¶Êı
-	* @param phase                       ¶àÊÓÏàÎ»
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief InSARå¤šè§†å¤„ç†ï¼ˆæ”¹å˜çª—å£å°ºå¯¸ï¼‰
+	* @param master                      ä¸»å›¾åƒ
+	* @param slave                       å¤å›¾åƒ
+	* @param multilook_rg                è·ç¦»å‘å¤šè§†å€æ•°
+	* @param multilook_az                æ–¹ä½å‘å¤šè§†å€æ•°
+	* @param phase                       å¤šè§†ç›¸ä½
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int Multilook(
 		const ComplexMat& master, 
@@ -664,12 +664,12 @@ public:
 		int multilook_az,
 		Mat& phase
 	);
-	/*@brief ÏàÎ»¶àÊÓ´¦Àí(¸Ä±ä³ß´ç)
-	* @param phase                      ´ı´¦ÀíÏàÎ»
-	* @param outPhase                   ´¦Àí½á¹û
-	* @param multi_rg                   ¾àÀëÏò¶àÊÓ±¶Êı
-	* @param multi_az                   ·½Î»Ïò¶àÊÓ±¶Êı
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç›¸ä½å¤šè§†å¤„ç†(æ”¹å˜å°ºå¯¸)
+	* @param phase                      å¾…å¤„ç†ç›¸ä½
+	* @param outPhase                   å¤„ç†ç»“æœ
+	* @param multi_rg                   è·ç¦»å‘å¤šè§†å€æ•°
+	* @param multi_az                   æ–¹ä½å‘å¤šè§†å€æ•°
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int multilook(
 		const Mat& phase,
@@ -677,12 +677,12 @@ public:
 		int multi_rg,
 		int multi_az
 	);
-	/*@brief SARÍ¼Ïñ¶àÊÓ
-	* @param amplitude                 SARÍ¼Ïñ·ù¶ÈÍ¼
-	* @param outAmplitude              ¶àÊÓSARÍ¼Ïñ
-	* @param multilook_rg              ¾àÀëÏò¶àÊÓ±¶Êı
-	* @param multilook_az              ·½Î»Ïò¶àÊÓ±¶Êı
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief SARå›¾åƒå¤šè§†
+	* @param amplitude                 SARå›¾åƒå¹…åº¦å›¾
+	* @param outAmplitude              å¤šè§†SARå›¾åƒ
+	* @param multilook_rg              è·ç¦»å‘å¤šè§†å€æ•°
+	* @param multilook_az              æ–¹ä½å‘å¤šè§†å€æ•°
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int multilook_SAR(
 		const Mat& amplitude,
@@ -690,101 +690,101 @@ public:
 		int multilook_rg,
 		int multilook_az
 	);
-	/** @brief ½«ÏàÎ»×ª»»³ÉcosºÍsin£¨Êµ²¿ºÍĞé²¿£¬Ö§³ÖdoubleºÍfloat£©
+	/** @brief å°†ç›¸ä½è½¬æ¢æˆcoså’Œsinï¼ˆå®éƒ¨å’Œè™šéƒ¨ï¼Œæ”¯æŒdoubleå’Œfloatï¼‰
 	
-	@param phase                     ÊäÈëÏàÎ»
-	@param cos                       Êµ²¿
-	@param sin                       Ğé²¿
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param phase                     è¾“å…¥ç›¸ä½
+	@param cos                       å®éƒ¨
+	@param sin                       è™šéƒ¨
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int phase2cos(const Mat& phase, Mat& cos, Mat& sin);
-	/*84×ø±êÏµ×ª¾­Î³¸ß×ø±êÏµ
-	* ²ÎÊı1 84×ø±êÏµ×ø±ê
-	* ²ÎÊı2 ¾­Î³¸ß×ø±êÏµ×ø±ê£¨¶È/¶È/Ã×£©
+	/*84åæ ‡ç³»è½¬ç»çº¬é«˜åæ ‡ç³»
+	* å‚æ•°1 84åæ ‡ç³»åæ ‡
+	* å‚æ•°2 ç»çº¬é«˜åæ ‡ç³»åæ ‡ï¼ˆåº¦/åº¦/ç±³ï¼‰
 	*/
 	int xyz2ell(const Mat& xyz, Mat& llh);
-	/*¾­Î³¸ß×ø±êÏµ×ª84×ø±êÏµ
-	* ²ÎÊı1 ¾­Î³¸ß×ø±êÏµ×ø±ê£¨Î³¶È/¾­¶È/¸ß¶È£©
-	* ²ÎÊı2 84×ø±êÏµ×ø±ê
+	/*ç»çº¬é«˜åæ ‡ç³»è½¬84åæ ‡ç³»
+	* å‚æ•°1 ç»çº¬é«˜åæ ‡ç³»åæ ‡ï¼ˆçº¬åº¦/ç»åº¦/é«˜åº¦ï¼‰
+	* å‚æ•°2 84åæ ‡ç³»åæ ‡
 	*/
 	int ell2xyz(const Mat& llh, Mat& xyz);
-	/*@brief ¾­/Î³/¸ß ---> x/y/z
-	* @param lon                 ¾­¶È
-	* @param lat                 Î³¶È
-	* @param elevation           ¸ß¶È
+	/*@brief ç»/çº¬/é«˜ ---> x/y/z
+	* @param lon                 ç»åº¦
+	* @param lat                 çº¬åº¦
+	* @param elevation           é«˜åº¦
 	* @param xyz                 x/y/z
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int ell2xyz(double lon, double lat, double elevation, Position& xyz);
 
 
 
 	/*******************************************************/
-	/*                     Í¼Ïñ´æ´¢¹¤¾ß¼¯                  */
+	/*                     å›¾åƒå­˜å‚¨å·¥å…·é›†                  */
 	/*******************************************************/
 
-	/*Á¿»¯±£´æSLC¹¦ÂÊÍ¼
-	* ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	* ²ÎÊı2 ¹¦ÂÊÁ¿»¯²ÎÊı£¨¿ÉÊÓ·¶Î§dB£©
-	* ²ÎÊı3 µ¥ÊÓ¸´Í¼Ïñ
+	/*é‡åŒ–ä¿å­˜SLCåŠŸç‡å›¾
+	* å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	* å‚æ•°2 åŠŸç‡é‡åŒ–å‚æ•°ï¼ˆå¯è§†èŒƒå›´dBï¼‰
+	* å‚æ•°3 å•è§†å¤å›¾åƒ
 	*/
 	int saveSLC(const char* filename, double db, ComplexMat& SLC);
-	/*@brief SARÍ¼ÏñÁ¿»¯
-	* @param filename       ±£´æÄ¿±êÎÄ¼ş
-	* @param db             Á¿»¯¶¯Ì¬·¶Î§
-	* @param slc            µ¥ÊÓ¸´Í¼Ïñ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief SARå›¾åƒé‡åŒ–
+	* @param filename       ä¿å­˜ç›®æ ‡æ–‡ä»¶
+	* @param db             é‡åŒ–åŠ¨æ€èŒƒå›´
+	* @param slc            å•è§†å¤å›¾åƒ
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SAR_image_quantify(const char* filename, double db, ComplexMat& SLC);
-	/*@brief Á¿»¯±£´æSAR·ù¶ÈÍ¼
-	* @param filename             ±£´æÎÄ¼şÃû
-	* @param amplitude            ·ù¶ÈÊı¾İ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief é‡åŒ–ä¿å­˜SARå¹…åº¦å›¾
+	* @param filename             ä¿å­˜æ–‡ä»¶å
+	* @param amplitude            å¹…åº¦æ•°æ®
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int saveAmplitude(
 		const char* filename,
 		Mat& amplitude
 	);
-	/*±£´æ¸ÉÉæÏàÎ»Í¼
-	* ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	* ²ÎÊı2 ÑÕÉ«Ó³Éä£¨jet/hsv/cool/parulaµÈ£©
-	* ²ÎÊı3 ´ı±£´æÏàÎ»
+	/*ä¿å­˜å¹²æ¶‰ç›¸ä½å›¾
+	* å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	* å‚æ•°2 é¢œè‰²æ˜ å°„ï¼ˆjet/hsv/cool/parulaç­‰ï¼‰
+	* å‚æ•°3 å¾…ä¿å­˜ç›¸ä½
 	*/
 	int savephase(const char* filename, const char* colormap, const Mat& phase);
-	/*±£´æ¸ÉÉæÏàÎ»Í¼
-	* ²ÎÊı1 Ä¿±êÎÄ¼şÃû
-	* ²ÎÊı2 ÑÕÉ«Ó³Éä£¨jet/hsv/cool/parulaµÈ£©
-	* ²ÎÊı3 ´ı±£´æÏàÎ»
+	/*ä¿å­˜å¹²æ¶‰ç›¸ä½å›¾
+	* å‚æ•°1 ç›®æ ‡æ–‡ä»¶å
+	* å‚æ•°2 é¢œè‰²æ˜ å°„ï¼ˆjet/hsv/cool/parulaç­‰ï¼‰
+	* å‚æ•°3 å¾…ä¿å­˜ç›¸ä½
 	*/
 	int save_coherence(const char* filename, const char* colormap, const Mat& coherence);
-	/*@brief ±£´æ¸ÉÉæÏàÎ»Í¼£¨ÑÚÄ¤ÇøÓòÎªºÚÉ«£©
-	* @param filename                            Ä¿±êÎÄ¼şÃû
-	* @param colormap                            ÑÕÉ«Ó³Éä£¨jet/hsv/cool/parulaµÈ£©
-	* @param phase                               ´ı±£´æÏàÎ»
-	* @param mask                                (intĞÍ)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¿å­˜å¹²æ¶‰ç›¸ä½å›¾ï¼ˆæ©è†œåŒºåŸŸä¸ºé»‘è‰²ï¼‰
+	* @param filename                            ç›®æ ‡æ–‡ä»¶å
+	* @param colormap                            é¢œè‰²æ˜ å°„ï¼ˆjet/hsv/cool/parulaç­‰ï¼‰
+	* @param phase                               å¾…ä¿å­˜ç›¸ä½
+	* @param mask                                (intå‹)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int savephase_black(const char* filename, const char* colormap, Mat& phase, Mat& mask);
-	/*@brief ±£´æ¸ÉÉæÏàÎ»Í¼£¨ÑÚÄ¤ÇøÓòÎª°×É«£©
-	* @param filename                            Ä¿±êÎÄ¼şÃû
-	* @param colormap                            ÑÕÉ«Ó³Éä£¨jet/hsv/cool/parulaµÈ£©
-	* @param phase                               ´ı±£´æÏàÎ»
-	* @param mask                                (intĞÍ)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¿å­˜å¹²æ¶‰ç›¸ä½å›¾ï¼ˆæ©è†œåŒºåŸŸä¸ºç™½è‰²ï¼‰
+	* @param filename                            ç›®æ ‡æ–‡ä»¶å
+	* @param colormap                            é¢œè‰²æ˜ å°„ï¼ˆjet/hsv/cool/parulaç­‰ï¼‰
+	* @param phase                               å¾…ä¿å­˜ç›¸ä½
+	* @param mask                                (intå‹)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int savephase_white(const char* filename, const char* colormap, Mat& phase, Mat& mask);
-	/*Í¼ÏñÖØ²ÉÑù
-	* ²ÎÊı1 Ô­Í¼Ïñ
-	* ²ÎÊı2 Ä¿±êÍ¼Ïñ
-	* ²ÎÊı3 Ä¿±êÍ¼Ïñ¸ß¶È
-	* ²ÎÊı4 Ä¿±êÍ¼Ïñ¿í¶È
+	/*å›¾åƒé‡é‡‡æ ·
+	* å‚æ•°1 åŸå›¾åƒ
+	* å‚æ•°2 ç›®æ ‡å›¾åƒ
+	* å‚æ•°3 ç›®æ ‡å›¾åƒé«˜åº¦
+	* å‚æ•°4 ç›®æ ‡å›¾åƒå®½åº¦
 	*/
 	int resampling(const char* Src_file, const char* Dst_file, int dst_height, int dst_width);
-	/*Á¿»¯SARÍ¼ÏñÓë¸ÉÉæÏàÎ»µş¼Ó
-	* ²ÎÊı1 Á¿»¯SARÍ¼Ïñ
-	* ²ÎÊı2 ¸ÉÉæÏàÎ»Í¼
-	* ²ÎÊı3 µş¼ÓÍ¼Ïñ
-	* ²ÎÊı4 SARÍ¼ÏñÕ¼±È
+	/*é‡åŒ–SARå›¾åƒä¸å¹²æ¶‰ç›¸ä½å åŠ 
+	* å‚æ•°1 é‡åŒ–SARå›¾åƒ
+	* å‚æ•°2 å¹²æ¶‰ç›¸ä½å›¾
+	* å‚æ•°3 å åŠ å›¾åƒ
+	* å‚æ•°4 SARå›¾åƒå æ¯”
 	*/
 	int amplitude_phase_blend(
 		const char* amplitude_file,
@@ -796,24 +796,24 @@ public:
 
 
 	/*******************************************************/
-	/*                DelaunayÈı½ÇÍøÏà¹Øº¯Êı¿â             */
+	/*                Delaunayä¸‰è§’ç½‘ç›¸å…³å‡½æ•°åº“             */
 	/*******************************************************/
 
-	/*´Ó.edgeÎÄ¼ş¶ÁÈ¡DelaunayÈı½ÇÍøµÄ±ßĞÅÏ¢
-	* ²ÎÊı1 .edgeÎÄ¼ş
-	* ²ÎÊı2 Ö¸Ïò±ß½á¹¹ÌåµÄÖ¸Õë£¨·µ»ØÖµ£¬ÄÚ´æĞèÒªÊÖ¶¯ÊÍ·Å£©
-	* ²ÎÊı3 Ö¸Ïò±ß¸öÊıµÄÖ¸Õë£¨·µ»ØÖµ£©
-	* ²ÎÊı4 Í³¼ÆÃ¿¸ö½ÚµãµÄÁÚ½Ó±ßÊı£¨·µ»ØÖµ£¬ÄÚ´æĞèÒªÊÖ¶¯ÊÍ·Å£©
-	* ²ÎÊı5 ½ÚµãÊı
+	/*ä».edgeæ–‡ä»¶è¯»å–Delaunayä¸‰è§’ç½‘çš„è¾¹ä¿¡æ¯
+	* å‚æ•°1 .edgeæ–‡ä»¶
+	* å‚æ•°2 æŒ‡å‘è¾¹ç»“æ„ä½“çš„æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼Œå†…å­˜éœ€è¦æ‰‹åŠ¨é‡Šæ”¾ï¼‰
+	* å‚æ•°3 æŒ‡å‘è¾¹ä¸ªæ•°çš„æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°4 ç»Ÿè®¡æ¯ä¸ªèŠ‚ç‚¹çš„é‚»æ¥è¾¹æ•°ï¼ˆè¿”å›å€¼ï¼Œå†…å­˜éœ€è¦æ‰‹åŠ¨é‡Šæ”¾ï¼‰
+	* å‚æ•°5 èŠ‚ç‚¹æ•°
 	*/
 	int read_edges(const char* filename, tri_edge** edges, long* num_edges, int** neighbours, long num_nodes);
-	/** @brief ´Ó.edgeÎÄ¼ş¶ÁÈ¡DelaunayÈı½ÇÍøµÄ±ßĞÅÏ¢
+	/** @brief ä».edgeæ–‡ä»¶è¯»å–Delaunayä¸‰è§’ç½‘çš„è¾¹ä¿¡æ¯
 	
-	@param edge_file               .edgeÎÄ¼ş
-	@param num_nodes               ½ÚµãÊı
-	@param edges                   DelaunayÈı½ÇÍø±ßÊı×é£¨·µ»ØÖµ£©
-	@param node_neighbours         Ã¿¸ö½ÚµãµÄÁÚ½Ó±ßÊı£¨·µ»ØÖµ£©
-	@return  ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
+	@param edge_file               .edgeæ–‡ä»¶
+	@param num_nodes               èŠ‚ç‚¹æ•°
+	@param edges                   Delaunayä¸‰è§’ç½‘è¾¹æ•°ç»„ï¼ˆè¿”å›å€¼ï¼‰
+	@param node_neighbours         æ¯ä¸ªèŠ‚ç‚¹çš„é‚»æ¥è¾¹æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	@return  æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
 	*/
 	int read_edges(
 		const char* edge_file,
@@ -821,14 +821,14 @@ public:
 		vector<int>& node_neighbours,
 		long num_nodes
 	);
-	/*³õÊ¼»¯DelaunayÈı½ÇÍø½Úµã
-	* ²ÎÊı1 ½ÚµãÊı×é£¨·µ»ØÖµ£©
-	* ²ÎÊı2 ÏàÎ»(doubleĞÍ)
-	* ²ÎÊı3 ÏàÎ»mask£¨int ĞÍ£©
-	* ²ÎÊı4 edges½á¹¹ÌåÊı×é
-	* ²ÎÊı5 edges¸öÊı
-	* ²ÎÊı6 Ã¿¸ö½ÚµãµÄÁÚ½Ó±ßĞÅÏ¢
-	* ²ÎÊı7 ½ÚµãÊı
+	/*åˆå§‹åŒ–Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹
+	* å‚æ•°1 èŠ‚ç‚¹æ•°ç»„ï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°2 ç›¸ä½(doubleå‹)
+	* å‚æ•°3 ç›¸ä½maskï¼ˆint å‹ï¼‰
+	* å‚æ•°4 edgesç»“æ„ä½“æ•°ç»„
+	* å‚æ•°5 edgesä¸ªæ•°
+	* å‚æ•°6 æ¯ä¸ªèŠ‚ç‚¹çš„é‚»æ¥è¾¹ä¿¡æ¯
+	* å‚æ•°7 èŠ‚ç‚¹æ•°
 	*/
 	int init_tri_node(
 		vector<tri_node>& node_array,
@@ -839,15 +839,15 @@ public:
 		int* num_neighbour,
 		int num_nodes
 	);
-	/** @brief ³õÊ¼»¯DelaunayÈı½ÇÍø½Úµã
+	/** @brief åˆå§‹åŒ–Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹
 	
-	@param node_array                 ½ÚµãÊı×é£¨·µ»ØÖµ£©
-	@param phase                      ÏàÎ»Öµ
-	@param mask                       ÏàÎ»ÑÚÄ¤
-	@param edges                      DelaunayÈı½ÇÍøÂç±ß½á¹¹ÌåÊı×é
-	@param node_neighbours            Ã¿¸ö½ÚµãµÄÁÚ±ß¸öÊı
-	@param num_nodes                  ½ÚµãÊı
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param node_array                 èŠ‚ç‚¹æ•°ç»„ï¼ˆè¿”å›å€¼ï¼‰
+	@param phase                      ç›¸ä½å€¼
+	@param mask                       ç›¸ä½æ©è†œ
+	@param edges                      Delaunayä¸‰è§’ç½‘ç»œè¾¹ç»“æ„ä½“æ•°ç»„
+	@param node_neighbours            æ¯ä¸ªèŠ‚ç‚¹çš„é‚»è¾¹ä¸ªæ•°
+	@param num_nodes                  èŠ‚ç‚¹æ•°
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int init_tri_node(
 		vector<tri_node>& node_array,
@@ -857,43 +857,43 @@ public:
 		const vector<int>& node_neighbours,
 		int num_nodes
 	);
-	/** @brief ³õÊ¼»¯DelaunayÈı½ÇÍøÂç±ßÏàÎ»²î
+	/** @brief åˆå§‹åŒ–Delaunayä¸‰è§’ç½‘ç»œè¾¹ç›¸ä½å·®
 	
-	@param edges                  DelaunayÈı½ÇÍøÂç±ßÊı×é£¨ÒÑ¾­Ê¹ÓÃread_edgesº¯Êı³õÊ¼»¯¹ıµÄ£©
-	@param node_array             DelaunayÈı½ÇÍøÂç½ÚµãÊı×é£¨ÒÑ¾­Ê¹ÓÃinit_tri_nodeº¯Êı³õÊ¼»¯¹ıµÄ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param edges                  Delaunayä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„ï¼ˆå·²ç»ä½¿ç”¨read_edgeså‡½æ•°åˆå§‹åŒ–è¿‡çš„ï¼‰
+	@param node_array             Delaunayä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„ï¼ˆå·²ç»ä½¿ç”¨init_tri_nodeå‡½æ•°åˆå§‹åŒ–è¿‡çš„ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int init_edge_phase_diff(
 		vector<tri_edge>& edges,
 		const vector<tri_node>& node_array
 	);
-	/*³õÊ¼»¯DelaunayÈı½ÇÍø±ßµÄÏàÎ»ÖÊÁ¿
-	* ²ÎÊı1 ÏàÎ»ÖÊÁ¿Í¼
-	* ²ÎÊı2 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×éÖ¸Õë
-	* ²ÎÊı3 DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é´óĞ¡
-	* ²ÎÊı4 DelaunayÈı½ÇÍø½ÚµãÊı×é
+	/*åˆå§‹åŒ–Delaunayä¸‰è§’ç½‘è¾¹çš„ç›¸ä½è´¨é‡
+	* å‚æ•°1 ç›¸ä½è´¨é‡å›¾
+	* å‚æ•°2 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„æŒ‡é’ˆ
+	* å‚æ•°3 Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„å¤§å°
+	* å‚æ•°4 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
 	*/
 	int init_edges_quality(Mat& quality, tri_edge* edges, int num_edges, vector<tri_node>& nodes);
-	/** @brief ³õÊ¼»¯DelaunayÈı½ÇÍø±ßµÄÏàÎ»ÖÊÁ¿Ö¸Êı
+	/** @brief åˆå§‹åŒ–Delaunayä¸‰è§’ç½‘è¾¹çš„ç›¸ä½è´¨é‡æŒ‡æ•°
 	
-	@param quality_index                  ÏàÎ»ÖÊÁ¿Í¼Ö¸Êı£¨ÓëÏàÎ»ÖÊÁ¿Ïà·´£©
-	@param edges                          DelaunayÈı½ÇÍø±ß½á¹¹ÌåÊı×é
-	@param nodes                          DelaunayÈı½ÇÍø½ÚµãÊı×é
-	@return ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
+	@param quality_index                  ç›¸ä½è´¨é‡å›¾æŒ‡æ•°ï¼ˆä¸ç›¸ä½è´¨é‡ç›¸åï¼‰
+	@param edges                          Delaunayä¸‰è§’ç½‘è¾¹ç»“æ„ä½“æ•°ç»„
+	@param nodes                          Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	@return æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
 	*/
 	int init_edges_quality(
 		const Mat& quality_index,
 		vector<tri_edge>& edges,
 		const vector<tri_node>& nodes
 	);
-	/*´Ó.eleÎÄ¼şºÍ.neighÎÄ¼ş¶ÁÈ¡DelaunayÈı½ÇÍøµÄÈı½ÇĞÎĞÅÏ¢
-	* ²ÎÊı1 .eleÎÄ¼ş
-	* ²ÎÊı2 .neighÎÄ¼ş
-	* ²ÎÊı3 Èı½ÇĞÎ½á¹¹ÌåÊı×éÖ¸Õë£¨·µ»ØÖµ, ÄÚ´æĞèÒªÊÖ¶¯ÊÍ·Å£©
-	* ²ÎÊı4 Èı½ÇĞÎ¸öÊı£¨·µ»ØÖµ£©
-	* ²ÎÊı5 DelaunayÈı½ÇÍø½ÚµãÊı×é
-	* ²ÎÊı6 DelaunayÈı½ÇÍø±ßÊı×é
-	* ²ÎÊı7 DelaunayÈı½ÇÍø±ßÊıÁ¿
+	/*ä».eleæ–‡ä»¶å’Œ.neighæ–‡ä»¶è¯»å–Delaunayä¸‰è§’ç½‘çš„ä¸‰è§’å½¢ä¿¡æ¯
+	* å‚æ•°1 .eleæ–‡ä»¶
+	* å‚æ•°2 .neighæ–‡ä»¶
+	* å‚æ•°3 ä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„æŒ‡é’ˆï¼ˆè¿”å›å€¼, å†…å­˜éœ€è¦æ‰‹åŠ¨é‡Šæ”¾ï¼‰
+	* å‚æ•°4 ä¸‰è§’å½¢ä¸ªæ•°ï¼ˆè¿”å›å€¼ï¼‰
+	* å‚æ•°5 Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	* å‚æ•°6 Delaunayä¸‰è§’ç½‘è¾¹æ•°ç»„
+	* å‚æ•°7 Delaunayä¸‰è§’ç½‘è¾¹æ•°é‡
 	*/
 	int read_triangle(
 		const char* ele_file,
@@ -904,14 +904,14 @@ public:
 		tri_edge* edges,
 		int num_edgs
 	);
-	/** @brief ´Ó.eleÎÄ¼şºÍ.neighÎÄ¼ş¶ÁÈ¡DelaunayÈı½ÇÍøµÄÈı½ÇĞÎĞÅÏ¢
+	/** @brief ä».eleæ–‡ä»¶å’Œ.neighæ–‡ä»¶è¯»å–Delaunayä¸‰è§’ç½‘çš„ä¸‰è§’å½¢ä¿¡æ¯
 	
-	@param ele_file                        .eleÎÄ¼ş
-	@param neigh_file                      .neighÎÄ¼ş
-	@param triangle                        Èı½ÇĞÎ½á¹¹ÌåÊı×é£¨·µ»ØÖµ£©
-	@param nodes                           DelaunayÈı½ÇÍø½ÚµãÊı×é
-	@param edges                           DelaunayÈı½ÇÍø±ßÊı×é
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param ele_file                        .eleæ–‡ä»¶
+	@param neigh_file                      .neighæ–‡ä»¶
+	@param triangle                        ä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„ï¼ˆè¿”å›å€¼ï¼‰
+	@param nodes                           Delaunayä¸‰è§’ç½‘èŠ‚ç‚¹æ•°ç»„
+	@param edges                           Delaunayä¸‰è§’ç½‘è¾¹æ•°ç»„
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int read_triangle(
 		const char* ele_file,
@@ -920,14 +920,14 @@ public:
 		vector<tri_node>& nodes,
 		vector<tri_edge>& edges
 	);
-	/*Éú³ÉDelaunayÈı½ÇÍø
-	* ²ÎÊı1 .nodeÎÄ¼ş
-	* ²ÎÊı2 triangle.exe³ÌĞòÂ·¾¶
+	/*ç”ŸæˆDelaunayä¸‰è§’ç½‘
+	* å‚æ•°1 .nodeæ–‡ä»¶
+	* å‚æ•°2 triangle.exeç¨‹åºè·¯å¾„
 	*/
 	int gen_delaunay(const char* filename, const char* exe_path);
-	/*Ğ´.nodeÎÄ¼ş
-	* ²ÎÊı1 .nodeÎÄ¼ş
-	* ²ÎÊı2 ½ÚµãÊı×é
+	/*å†™.nodeæ–‡ä»¶
+	* å‚æ•°1 .nodeæ–‡ä»¶
+	* å‚æ•°2 èŠ‚ç‚¹æ•°ç»„
 	*/
 	int write_node_file(const char* filename, const Mat& mask);
 
@@ -935,20 +935,20 @@ public:
 
 
 	/*********************************************************/
-    /*                PS-InSAR ³£ÓÃº¯Êı                      */
+    /*                PS-InSAR å¸¸ç”¨å‡½æ•°                      */
     /*********************************************************/
 
-	/*Õñ·ùÀë²îÖ¸Êı·¨É¸Ñ¡PSµã£¨D_A£©
-	* ²ÎÊı1 SAR·ù¶È¾ØÕó×é
-	* ²ÎÊı2 Õñ·ùÀë²îãĞÖµ
-	* ²ÎÊı3 mask£¨Âú×ãÌõ¼şµÄPSµãÎ»ÖÃmaskÎª1£¬ÆäËûÎª0£©
+	/*æŒ¯å¹…ç¦»å·®æŒ‡æ•°æ³•ç­›é€‰PSç‚¹ï¼ˆD_Aï¼‰
+	* å‚æ•°1 SARå¹…åº¦çŸ©é˜µç»„
+	* å‚æ•°2 æŒ¯å¹…ç¦»å·®é˜ˆå€¼
+	* å‚æ•°3 maskï¼ˆæ»¡è¶³æ¡ä»¶çš„PSç‚¹ä½ç½®maskä¸º1ï¼Œå…¶ä»–ä¸º0ï¼‰
 	*/
 	int PS_amp_dispersion(const vector<Mat>& amplitude, double thresh, Mat& mask);
-	/*fifth-order butterworth filter£¨Îå½×°ÍÌØÎÖË¹ÂË²¨Æ÷£©
-	* ²ÎÊı1 grid_size
-	* ²ÎÊı2 n_win
-	* ²ÎÊı3 low_pass_wavelength
-	* ²ÎÊı4 ÂË²¨Æ÷ÏµÊı£¨·µ»ØÖµ£©
+	/*fifth-order butterworth filterï¼ˆäº”é˜¶å·´ç‰¹æ²ƒæ–¯æ»¤æ³¢å™¨ï¼‰
+	* å‚æ•°1 grid_size
+	* å‚æ•°2 n_win
+	* å‚æ•°3 low_pass_wavelength
+	* å‚æ•°4 æ»¤æ³¢å™¨ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int butter_lowpass(int grid_size, int n_win, double low_pass_wavelength, Mat& lowpass);
 	/*circle_shift
@@ -960,32 +960,32 @@ public:
 	/*ifftshift
 	*/
 	int ifftshift(Mat& out);
-	/*¶şÎ¬¸µÀïÒ¶±ä»»
-	* ²ÎÊı1 ÊäÈë¾ØÕó
-	* ²ÎÊı2 Êä³ö½á¹û
+	/*äºŒç»´å‚…é‡Œå¶å˜æ¢
+	* å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	* å‚æ•°2 è¾“å‡ºç»“æœ
 	*/
 	int fft2(Mat& Src, Mat& Dst);
-	/*¸´Êı¶şÎ¬¸µÀïÒ¶±ä»»
-	* ²ÎÊı1 ÊäÈë¾ØÕó
-	* ²ÎÊı2 Êä³ö½á¹û
+	/*å¤æ•°äºŒç»´å‚…é‡Œå¶å˜æ¢
+	* å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	* å‚æ•°2 è¾“å‡ºç»“æœ
 	*/
 	int fft2(ComplexMat& src, ComplexMat& dst);
-	/*Äæ¶şÎ¬¸µÀïÒ¶±ä»»
-	* ²ÎÊı1 ÊäÈë¾ØÕó
-	* ²ÎÊı2 Êä³ö½á¹û
+	/*é€†äºŒç»´å‚…é‡Œå¶å˜æ¢
+	* å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	* å‚æ•°2 è¾“å‡ºç»“æœ
 	*/
 	int ifft2(ComplexMat& src, ComplexMat& dst);
-	/*Çó±ê×¼²î
-	* ²ÎÊı1 ÊäÈë¾ØÕó
-	* ²ÎÊı2 ±ê×¼²î·µ»ØÖµ
+	/*æ±‚æ ‡å‡†å·®
+	* å‚æ•°1 è¾“å…¥çŸ©é˜µ
+	* å‚æ•°2 æ ‡å‡†å·®è¿”å›å€¼
 	*/
 	int std(const Mat& input, double* std);
-	/*²Ã¼ô¸ĞĞËÈ¤µÄSARÍ¼ÏñÇøÓò£¨AOI£©
-	* ²ÎÊı1 SARÍ¼ÏñĞòÁĞÎÄ¼şÃû£¨img¸ñÊ½£©
-	* ²ÎÊı2 ²Ã¼ôºóµÄSARÍ¼ÏñĞòÁĞ±£´æÂ·¾¶
-	* ²ÎÊı2 AOIÖĞĞÄÎ³¶È/¾­¶È/¸ß¶È(1¡Á3)
-	* ²ÎÊı3 AOI¿í£¨ÁĞÊı£©
-	* ²ÎÊı4 AOI¸ß£¨ĞĞÊı£©
+	/*è£å‰ªæ„Ÿå…´è¶£çš„SARå›¾åƒåŒºåŸŸï¼ˆAOIï¼‰
+	* å‚æ•°1 SARå›¾åƒåºåˆ—æ–‡ä»¶åï¼ˆimgæ ¼å¼ï¼‰
+	* å‚æ•°2 è£å‰ªåçš„SARå›¾åƒåºåˆ—ä¿å­˜è·¯å¾„
+	* å‚æ•°2 AOIä¸­å¿ƒçº¬åº¦/ç»åº¦/é«˜åº¦(1Ã—3)
+	* å‚æ•°3 AOIå®½ï¼ˆåˆ—æ•°ï¼‰
+	* å‚æ•°4 AOIé«˜ï¼ˆè¡Œæ•°ï¼‰
 	*/
 	int PS_cut_AOI(
 		vector<string>& SAR_images_files,
@@ -994,14 +994,14 @@ public:
 		int rows,
 		int cols
 	);
-	/** @brief Ê±ĞòSARÍ¼ÏñÁªºÏÅä×¼(ËùÓĞslcÍ¬Ê±ÔØÈëÄÚ´æ)
+	/** @brief æ—¶åºSARå›¾åƒè”åˆé…å‡†(æ‰€æœ‰slcåŒæ—¶è½½å…¥å†…å­˜)
 	
-	@param SAR_images            Ê±ĞòSARÍ¼Ïñ£¨inplace£¬Ô­µØ²Ù×÷£©
-	@param offset                Åä×¼ºó×óÉÏ½ÇÆ«ÒÆÁ¿(³ß´ç£ºn_images ¡Á 2) 
-	@param Master_index          Ö÷Í¼ÏñĞòºÅ(ĞòºÅ´Ó1¿ªÊ¼)
-	@param coh_method            ²ÉÓÃÊµÏà¹Ø»¹ÊÇ¸´Ïà¹Ø£¨0´ú±íÊµÏà¹Ø£¬ 1´ú±í¸´Ïà¹Ø£©
-	@param interp_times          ²åÖµ±¶Êı£¨2µÄn´ÎÃİ£©
-	@param blocksize             ×Ó¿é´óĞ¡£¨2µÄn´ÎÃİ£©
+	@param SAR_images            æ—¶åºSARå›¾åƒï¼ˆinplaceï¼ŒåŸåœ°æ“ä½œï¼‰
+	@param offset                é…å‡†åå·¦ä¸Šè§’åç§»é‡(å°ºå¯¸ï¼šn_images Ã— 2) 
+	@param Master_index          ä¸»å›¾åƒåºå·(åºå·ä»1å¼€å§‹)
+	@param coh_method            é‡‡ç”¨å®ç›¸å…³è¿˜æ˜¯å¤ç›¸å…³ï¼ˆ0ä»£è¡¨å®ç›¸å…³ï¼Œ 1ä»£è¡¨å¤ç›¸å…³ï¼‰
+	@param interp_times          æ’å€¼å€æ•°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
+	@param blocksize             å­å—å¤§å°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
 	*/
 	int stack_coregistration(
 		vector<ComplexMat>& SAR_images,
@@ -1011,14 +1011,14 @@ public:
 		int interp_times,
 		int blocksize
 	);
-	/** @brief Ê±ĞòSARÍ¼ÏñÁªºÏÅä×¼(slc´®ĞĞÔØÈëÄÚ´æ£¬ÒÔ½ÚÊ¡ÄÚ´æ)
+	/** @brief æ—¶åºSARå›¾åƒè”åˆé…å‡†(slcä¸²è¡Œè½½å…¥å†…å­˜ï¼Œä»¥èŠ‚çœå†…å­˜)
 	
-	@param SAR_images            Ê±ĞòSARÍ¼ÏñÎÄ¼ş
-	@param SAR_images_out        Åä×¼½á¹ûÎÄ¼ş
-	@param offset                Åä×¼ºó×óÉÏ½ÇÆ«ÒÆÁ¿(³ß´ç£ºn_images ¡Á 2)
-	@param Master_index          Ö÷Í¼ÏñĞòºÅ(ĞòºÅ´Ó1¿ªÊ¼)
-	@param interp_times          ²åÖµ±¶Êı£¨2µÄn´ÎÃİ£©
-	@param blocksize             ×Ó¿é´óĞ¡£¨2µÄn´ÎÃİ£©
+	@param SAR_images            æ—¶åºSARå›¾åƒæ–‡ä»¶
+	@param SAR_images_out        é…å‡†ç»“æœæ–‡ä»¶
+	@param offset                é…å‡†åå·¦ä¸Šè§’åç§»é‡(å°ºå¯¸ï¼šn_images Ã— 2)
+	@param Master_index          ä¸»å›¾åƒåºå·(åºå·ä»1å¼€å§‹)
+	@param interp_times          æ’å€¼å€æ•°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
+	@param blocksize             å­å—å¤§å°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
 	*/
 	int stack_coregistration(
 		vector<string>& SAR_images,
@@ -1028,14 +1028,14 @@ public:
 		int interp_times,
 		int blocksize
 	);
-	/** @brief Ê±ĞòSARÍ¼ÏñÁªºÏÅä×¼£¨´®ĞĞ¡¢·Ö¿éÅä×¼£¬Ö§³Ö16Î»ÕûĞÍºÍ64Î»¸¡µãĞÍÊäÈë£©
+	/** @brief æ—¶åºSARå›¾åƒè”åˆé…å‡†ï¼ˆä¸²è¡Œã€åˆ†å—é…å‡†ï¼Œæ”¯æŒ16ä½æ•´å‹å’Œ64ä½æµ®ç‚¹å‹è¾“å…¥ï¼‰
 	* 
-	* @param SAR_images                     Ê±ĞòSARÍ¼ÏñÎÄ¼ş
-	* @param SAR_images_out                 Åä×¼½á¹ûÎÄ¼ş
-	* @param Master_index                   Ö÷Í¼ÏñĞòºÅ£¨´Ó1¿ªÊ¼£©
-	* @param interp_times                   ²åÖµ±¶Êı£¨2µÄn´ÎÃİ£©
-	* @param blocksize                      ×Ó¿é´óĞ¡£¨2µÄn´ÎÃİ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @param SAR_images                     æ—¶åºSARå›¾åƒæ–‡ä»¶
+	* @param SAR_images_out                 é…å‡†ç»“æœæ–‡ä»¶
+	* @param Master_index                   ä¸»å›¾åƒåºå·ï¼ˆä»1å¼€å§‹ï¼‰
+	* @param interp_times                   æ’å€¼å€æ•°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
+	* @param blocksize                      å­å—å¤§å°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int stack_coregistration(
 		vector<string>& SAR_images,
@@ -1044,12 +1044,12 @@ public:
 		int interp_times,
 		int blocksize
 	);
-	/*histº¯Êı£¨Í³¼ÆÖ±·½Í¼º¯Êı£©
-	* ²ÎÊı1 ´ıÍ³¼ÆÊı¾İ
-	* ²ÎÊı2 Í³¼Æ±ê×¼ÏÂÏŞÇø¼äÖĞĞÄ
-	* ²ÎÊı3 Í³¼Æ±ê×¼ÉÏÏŞÇø¼äÖĞĞÄ
-	* ²ÎÊı4 Çø¼ä°ë¾¶£¨n * Çø¼ä°ë¾¶ = £¨Í³¼Æ±ê×¼ÉÏÏŞÇø¼äÖĞĞÄ - Í³¼Æ±ê×¼ÏÂÏŞÇø¼äÖĞĞÄ£©£©
-	* ²ÎÊı5 Í³¼ÆÊä³ö
+	/*histå‡½æ•°ï¼ˆç»Ÿè®¡ç›´æ–¹å›¾å‡½æ•°ï¼‰
+	* å‚æ•°1 å¾…ç»Ÿè®¡æ•°æ®
+	* å‚æ•°2 ç»Ÿè®¡æ ‡å‡†ä¸‹é™åŒºé—´ä¸­å¿ƒ
+	* å‚æ•°3 ç»Ÿè®¡æ ‡å‡†ä¸Šé™åŒºé—´ä¸­å¿ƒ
+	* å‚æ•°4 åŒºé—´åŠå¾„ï¼ˆn * åŒºé—´åŠå¾„ = ï¼ˆç»Ÿè®¡æ ‡å‡†ä¸Šé™åŒºé—´ä¸­å¿ƒ - ç»Ÿè®¡æ ‡å‡†ä¸‹é™åŒºé—´ä¸­å¿ƒï¼‰ï¼‰
+	* å‚æ•°5 ç»Ÿè®¡è¾“å‡º
 	*/
 	int hist(
 		Mat& input,
@@ -1058,14 +1058,14 @@ public:
 		double interval,
 		Mat& out
 	);
-	/*@brief Ö±·½Í¼Í³¼Æº¯Êı
-	* @param input                   ÊäÈë´ıÍ³¼ÆÊı¾İ
-	* @param lowerbound              Çø¼äÏÂ½ç
-	* @param upperbound              Çø¼äÉÏ½ç
-	* @param interval                Í³¼ÆÇø¼ä¼ä¸ô
-	* @param out_x                   Êä³ö½á¹û£¨ºá×ø±ê£©
-	* @param out_y                   Êä³ö½á¹û£¨×İ×ø±ê£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç›´æ–¹å›¾ç»Ÿè®¡å‡½æ•°
+	* @param input                   è¾“å…¥å¾…ç»Ÿè®¡æ•°æ®
+	* @param lowerbound              åŒºé—´ä¸‹ç•Œ
+	* @param upperbound              åŒºé—´ä¸Šç•Œ
+	* @param interval                ç»Ÿè®¡åŒºé—´é—´éš”
+	* @param out_x                   è¾“å‡ºç»“æœï¼ˆæ¨ªåæ ‡ï¼‰
+	* @param out_y                   è¾“å‡ºç»“æœï¼ˆçºµåæ ‡ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int hist(
 		Mat& input,
@@ -1075,13 +1075,13 @@ public:
 		Mat& out_x,
 		Mat& out_y
 	);
-	/*@brief ¸ßË¹ÇúÏßÄâºÏ
-	* @param input_x                ÊäÈëºá×ø±ê
-	* @param input_y                ÊäÈë×İ×ø±ê
-	* @param mu                     ¾ùÖµ
-	* @param sigma_square           ·½²î
-	* @param scale                  ·ù¶È
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief é«˜æ–¯æ›²çº¿æ‹Ÿåˆ
+	* @param input_x                è¾“å…¥æ¨ªåæ ‡
+	* @param input_y                è¾“å…¥çºµåæ ‡
+	* @param mu                     å‡å€¼
+	* @param sigma_square           æ–¹å·®
+	* @param scale                  å¹…åº¦
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int gaussian_curve_fit(
 		Mat& input_x,
@@ -1091,22 +1091,22 @@ public:
 		double* scale
 	);
 	/*
-	* ÎÀĞÇ¹ìµÀ²åÖµ
-	* ²ÎÊı1£ºÎÀĞÇ¹ìµÀ²ÎÊı£¨Î´²åÖµ£©
-	* ²ÎÊı2£º²åÖµÊ±¼ä¼ä¸ô£¨s£©
-	* ²ÎÊı3£º²åÖµ½á¹û
+	* å«æ˜Ÿè½¨é“æ’å€¼
+	* å‚æ•°1ï¼šå«æ˜Ÿè½¨é“å‚æ•°ï¼ˆæœªæ’å€¼ï¼‰
+	* å‚æ•°2ï¼šæ’å€¼æ—¶é—´é—´éš”ï¼ˆsï¼‰
+	* å‚æ•°3ï¼šæ’å€¼ç»“æœ
 	*/
 	int stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_interp);
 	/*
-	* ´Óh5£¨SLC£©Í¼ÏñÎÄ¼şÖĞ²Ã¼ôAOI
-	* ²ÎÊı1£ºh5ÎÄ¼ş
-	* ²ÎÊı2£ºAOI×óÉÏ½Ç¾­¶È
-	* ²ÎÊı3£ºAOI×óÉÏ½ÇÎ³¶È
-	* ²ÎÊı4£ºAOIÓÒÏÂ½Ç¾­¶È
-	* ²ÎÊı5£ºAOIÓÒÏÂ½ÇÎ³¶È
-	* ²ÎÊı6£ºÊä³öµ¥ÊÓ¸´Í¼Ïñ
-	* ²ÎÊı7£ºAOI×óÉÏ½ÇĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
-	* ²ÎÊı8£ºAOI×óÉÏ½ÇÁĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
+	* ä»h5ï¼ˆSLCï¼‰å›¾åƒæ–‡ä»¶ä¸­è£å‰ªAOI
+	* å‚æ•°1ï¼šh5æ–‡ä»¶
+	* å‚æ•°2ï¼šAOIå·¦ä¸Šè§’ç»åº¦
+	* å‚æ•°3ï¼šAOIå·¦ä¸Šè§’çº¬åº¦
+	* å‚æ•°4ï¼šAOIå³ä¸‹è§’ç»åº¦
+	* å‚æ•°5ï¼šAOIå³ä¸‹è§’çº¬åº¦
+	* å‚æ•°6ï¼šè¾“å‡ºå•è§†å¤å›¾åƒ
+	* å‚æ•°7ï¼šAOIå·¦ä¸Šè§’è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
+	* å‚æ•°8ï¼šAOIå·¦ä¸Šè§’åˆ—åç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
 	*/
 	int get_AOI_from_h5SLC(
 		const char* h5_file,
@@ -1118,16 +1118,16 @@ public:
 		int* offset_row = NULL,
 		int* offset_col = NULL
 	);
-	/** @brief ´Óh5£¨SLC£©ÎÄ¼şÖĞ²Ã¼ô³öAOIÇøÓò
+	/** @brief ä»h5ï¼ˆSLCï¼‰æ–‡ä»¶ä¸­è£å‰ªå‡ºAOIåŒºåŸŸ
 	
-	@param h5_file h5ÎÄ¼ş
-	@param lon_center AOIÖĞĞÄ¾­¶È
-	@param lat_center AOIÖĞĞÄÎ³¶È
-	@param width AOI¿í¶È£¨m£©
-	@param height AOI¸ß¶È£¨m£©
-	@param slc ²Ã¼ô½á¹ûslc
-	@param offset_row AOI×óÉÏ½ÇÔÚÔ­Í¼ÏñÖĞĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
-	@param offset_col AOI×óÉÏ½ÇÔÚÔ­Í¼ÏñÖĞĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
+	@param h5_file h5æ–‡ä»¶
+	@param lon_center AOIä¸­å¿ƒç»åº¦
+	@param lat_center AOIä¸­å¿ƒçº¬åº¦
+	@param width AOIå®½åº¦ï¼ˆmï¼‰
+	@param height AOIé«˜åº¦ï¼ˆmï¼‰
+	@param slc è£å‰ªç»“æœslc
+	@param offset_row AOIå·¦ä¸Šè§’åœ¨åŸå›¾åƒä¸­è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
+	@param offset_col AOIå·¦ä¸Šè§’åœ¨åŸå›¾åƒä¸­è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
 	*/
 	int get_AOI_from_h5slc(
 		const char* h5_file,
@@ -1139,17 +1139,17 @@ public:
 		int* offset_row = NULL,
 		int* offset_col = NULL
 	);
-	/** @brief ´Óh5£¨SLC£©ÎÄ¼şÖĞ»ñÈ¡²Ã¼ôAOIÇøÓòµÄ³ß´ç
+	/** @brief ä»h5ï¼ˆSLCï¼‰æ–‡ä»¶ä¸­è·å–è£å‰ªAOIåŒºåŸŸçš„å°ºå¯¸
 
-	@param h5_file          h5ÎÄ¼ş
-	@param lon_center       AOIÖĞĞÄ¾­¶È
-	@param lat_center       AOIÖĞĞÄÎ³¶È
-	@param width            AOI¿í¶È£¨m£©
-	@param height           AOI¸ß¶È£¨m£©
-	@param AOI_rows         AOIĞĞÊı
-	@param AOI_cols         AOIÁĞÊı
-	@param offset_row       AOI×óÉÏ½ÇÔÚÔ­Í¼ÏñÖĞĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
-	@param offset_col       AOI×óÉÏ½ÇÔÚÔ­Í¼ÏñÖĞĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£¬0´ú±í²»Æ«ÒÆ£©
+	@param h5_file          h5æ–‡ä»¶
+	@param lon_center       AOIä¸­å¿ƒç»åº¦
+	@param lat_center       AOIä¸­å¿ƒçº¬åº¦
+	@param width            AOIå®½åº¦ï¼ˆmï¼‰
+	@param height           AOIé«˜åº¦ï¼ˆmï¼‰
+	@param AOI_rows         AOIè¡Œæ•°
+	@param AOI_cols         AOIåˆ—æ•°
+	@param offset_row       AOIå·¦ä¸Šè§’åœ¨åŸå›¾åƒä¸­è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
+	@param offset_col       AOIå·¦ä¸Šè§’åœ¨åŸå›¾åƒä¸­è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼Œ0ä»£è¡¨ä¸åç§»ï¼‰
 	*/
 	int get_AOI_size(
 		const char* h5_file,
@@ -1162,12 +1162,12 @@ public:
 		int* offset_row = NULL,
 		int* offset_col = NULL
 	);
-	/** @brief ×ø±ê×ª»»¹¤¾ßº¯Êı
+	/** @brief åæ ‡è½¬æ¢å·¥å…·å‡½æ•°
 	
-	@param coefficient       ×ª»»ÏµÊı¾ØÕó
-	@param coord_in_1        Ô­×ø±ê¾ØÕó1(1ºÍ2µÄË³ĞòºÜÖØÒª£¬¾­¶È/ĞĞ×ø±êÔÚÇ°)
-	@param coord_in_2        Ô­×ø±ê¾ØÕó2
-	@param coord_out         ×ª»»½á¹û¾ØÕó
+	@param coefficient       è½¬æ¢ç³»æ•°çŸ©é˜µ
+	@param coord_in_1        åŸåæ ‡çŸ©é˜µ1(1å’Œ2çš„é¡ºåºå¾ˆé‡è¦ï¼Œç»åº¦/è¡Œåæ ‡åœ¨å‰)
+	@param coord_in_2        åŸåæ ‡çŸ©é˜µ2
+	@param coord_out         è½¬æ¢ç»“æœçŸ©é˜µ
 	*/
 	int coord_conversion(
 		Mat& coefficient,
@@ -1175,22 +1175,22 @@ public:
 		Mat& coord_in_2,
 		Mat& coord_out
 	);
-	/** @brief »ùÏß¹À¼Æ
+	/** @brief åŸºçº¿ä¼°è®¡
 
-	@param stateVec1               Ö÷ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param stateVec2               ¸¨ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param lon_coef                Ö÷ĞÇ×ø±ê×ª»»ÏµÊı£¨Í¼Ïñ×ø±ê-->¾­¶È£©
-	@param lat_coef                Ö÷ĞÇ×ø±ê×ª»»ÏµÊı£¨Í¼Ïñ×ø±ê-->Î³¶È£©
-	@param offset_row              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄĞĞÆ«ÒÆÁ¿
-	@param offset_col              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄÁĞÆ«ÒÆÁ¿
-	@param scene_height            ³¡¾°¸ß¶È(ÏñËØĞĞÊı)
-	@param scene_width             ³¡¾°¿í¶È(ÏñËØÁĞÊı)
-	@param interp_interval1        Ö÷ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param interp_interval2        ¸¨ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param B_effect                ´¹Ö±»ùÏß³¤¶È£¨·µ»ØÖµ£©
-	@param B_parallel              Æ½ĞĞ»ùÏß³¤¶È£¨·µ»ØÖµ£©
-	@param sigma_B_effect          ´¹Ö±»ùÏß¹À¼Æ±ê×¼²î£¨·µ»ØÖµ£©
-	@param sigma_B_parallel        Æ½ĞĞ»ùÏß¹À¼Æ±ê×¼²î£¨·µ»ØÖµ£©
+	@param stateVec1               ä¸»æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param stateVec2               è¾…æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param lon_coef                ä¸»æ˜Ÿåæ ‡è½¬æ¢ç³»æ•°ï¼ˆå›¾åƒåæ ‡-->ç»åº¦ï¼‰
+	@param lat_coef                ä¸»æ˜Ÿåæ ‡è½¬æ¢ç³»æ•°ï¼ˆå›¾åƒåæ ‡-->çº¬åº¦ï¼‰
+	@param offset_row              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„è¡Œåç§»é‡
+	@param offset_col              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„åˆ—åç§»é‡
+	@param scene_height            åœºæ™¯é«˜åº¦(åƒç´ è¡Œæ•°)
+	@param scene_width             åœºæ™¯å®½åº¦(åƒç´ åˆ—æ•°)
+	@param interp_interval1        ä¸»æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param interp_interval2        è¾…æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param B_effect                å‚ç›´åŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param B_parallel              å¹³è¡ŒåŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param sigma_B_effect          å‚ç›´åŸºçº¿ä¼°è®¡æ ‡å‡†å·®ï¼ˆè¿”å›å€¼ï¼‰
+	@param sigma_B_parallel        å¹³è¡ŒåŸºçº¿ä¼°è®¡æ ‡å‡†å·®ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int baseline_estimation(
 		const Mat& stateVec1,
@@ -1208,20 +1208,20 @@ public:
 		double* sigma_B_effect = NULL,
 		double* sigma_B_parallel = NULL
 	);
-	/** @brief »ùÏß¹À¼Æ
+	/** @brief åŸºçº¿ä¼°è®¡
 
-	@param stateVec1               Ö÷ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param stateVec2               ¸¨ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param lon_center              Ö÷Í¼Ïñ³¡¾°ÖĞĞÄ×ø±ê£¨¾­¶È£©
-	@param lat_center              Ö÷Í¼Ïñ³¡¾°ÖĞĞÄ×ø±ê£¨Î¬¶È£©
-	@param offset_row              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄĞĞÆ«ÒÆÁ¿
-	@param offset_col              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄÁĞÆ«ÒÆÁ¿
-	@param scene_height            ³¡¾°¸ß¶È(ÏñËØĞĞÊı)
-	@param scene_width             ³¡¾°¿í¶È(ÏñËØÁĞÊı)
-	@param interp_interval1        Ö÷ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param interp_interval2        ¸¨ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param B_effect                ´¹Ö±»ùÏß³¤¶È£¨·µ»ØÖµ£©
-	@param B_parallel              Æ½ĞĞ»ùÏß³¤¶È£¨·µ»ØÖµ£©
+	@param stateVec1               ä¸»æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param stateVec2               è¾…æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param lon_center              ä¸»å›¾åƒåœºæ™¯ä¸­å¿ƒåæ ‡ï¼ˆç»åº¦ï¼‰
+	@param lat_center              ä¸»å›¾åƒåœºæ™¯ä¸­å¿ƒåæ ‡ï¼ˆç»´åº¦ï¼‰
+	@param offset_row              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„è¡Œåç§»é‡
+	@param offset_col              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„åˆ—åç§»é‡
+	@param scene_height            åœºæ™¯é«˜åº¦(åƒç´ è¡Œæ•°)
+	@param scene_width             åœºæ™¯å®½åº¦(åƒç´ åˆ—æ•°)
+	@param interp_interval1        ä¸»æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param interp_interval2        è¾…æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param B_effect                å‚ç›´åŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param B_parallel              å¹³è¡ŒåŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int baseline_estimation(
 		const Mat& stateVec1,
@@ -1237,21 +1237,21 @@ public:
 		double* B_effect,
 		double* B_parallel
 	);
-	/** @brief »ùÏß¹À¼Æ
+	/** @brief åŸºçº¿ä¼°è®¡
 
-	@param stateVec1               Ö÷ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param stateVec2               ¸¨ĞÇ¹ìµÀ£¨Î´²åÖµ£©
-	@param lon_center              Ö÷Í¼Ïñ³¡¾°ÖĞĞÄ×ø±ê£¨¾­¶È£©
-	@param lat_center              Ö÷Í¼Ïñ³¡¾°ÖĞĞÄ×ø±ê£¨Î¬¶È£©
-	@param dem_center              Ö÷Í¼Ïñ³¡¾°ÖĞĞÄ×ø±ê£¨¸ß¶È£©
-	@param offset_row              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄĞĞÆ«ÒÆÁ¿
-	@param offset_col              Ö÷Í¼Ïñ×óÉÏ½ÇÔÚÔ­Ê¼Í¼ÏñÖĞµÄÁĞÆ«ÒÆÁ¿
-	@param scene_height            ³¡¾°¸ß¶È(ÏñËØĞĞÊı)
-	@param scene_width             ³¡¾°¿í¶È(ÏñËØÁĞÊı)
-	@param interp_interval1        Ö÷ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param interp_interval2        ¸¨ĞÇ¹ìµÀ²åÖµÊ±¼ä¼ä¸ô£¨1/prf£©
-	@param B_effect                ´¹Ö±»ùÏß³¤¶È£¨·µ»ØÖµ£©
-	@param B_parallel              Æ½ĞĞ»ùÏß³¤¶È£¨·µ»ØÖµ£©
+	@param stateVec1               ä¸»æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param stateVec2               è¾…æ˜Ÿè½¨é“ï¼ˆæœªæ’å€¼ï¼‰
+	@param lon_center              ä¸»å›¾åƒåœºæ™¯ä¸­å¿ƒåæ ‡ï¼ˆç»åº¦ï¼‰
+	@param lat_center              ä¸»å›¾åƒåœºæ™¯ä¸­å¿ƒåæ ‡ï¼ˆç»´åº¦ï¼‰
+	@param dem_center              ä¸»å›¾åƒåœºæ™¯ä¸­å¿ƒåæ ‡ï¼ˆé«˜åº¦ï¼‰
+	@param offset_row              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„è¡Œåç§»é‡
+	@param offset_col              ä¸»å›¾åƒå·¦ä¸Šè§’åœ¨åŸå§‹å›¾åƒä¸­çš„åˆ—åç§»é‡
+	@param scene_height            åœºæ™¯é«˜åº¦(åƒç´ è¡Œæ•°)
+	@param scene_width             åœºæ™¯å®½åº¦(åƒç´ åˆ—æ•°)
+	@param interp_interval1        ä¸»æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param interp_interval2        è¾…æ˜Ÿè½¨é“æ’å€¼æ—¶é—´é—´éš”ï¼ˆ1/prfï¼‰
+	@param B_effect                å‚ç›´åŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param B_parallel              å¹³è¡ŒåŸºçº¿é•¿åº¦ï¼ˆè¿”å›å€¼ï¼‰
 	*/
 	int baseline_estimation(
 		const Mat& stateVec1,
@@ -1268,12 +1268,12 @@ public:
 		double* B_effect,
 		double* B_parallel
 	);
-	/*@brief Ïà¹Ø¾ØÕó·¨Í¬ÖÊ¼ìÑé + phase linking
-	* @param slc_stack                           ´ı´¦ÀíSLCÊı¾İ¶ÑÕ»£¨Ö§³Ö32Î»floatĞÍÊı¾İÀàĞÍ£©
-	* @param slc_stack_filtered                  phase-linkingºóµÄ½á¹û£¨·µ»ØÖµ£©
-	* @param test_wndsize                        Í¬ÖÊ¼ìÑéËÑË÷´°¿Ú´óĞ¡£¨ÆæÊı£¬Ä¬ÈÏÎª15£©
-	* @param est_wndsize                         Ïà¹Ø¾ØÕó¹À¼Æ´°¿Ú´óĞ¡£¨ÆæÊı£¬Ä¬ÈÏÎª3£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç›¸å…³çŸ©é˜µæ³•åŒè´¨æ£€éªŒ + phase linking
+	* @param slc_stack                           å¾…å¤„ç†SLCæ•°æ®å †æ ˆï¼ˆæ”¯æŒ32ä½floatå‹æ•°æ®ç±»å‹ï¼‰
+	* @param slc_stack_filtered                  phase-linkingåçš„ç»“æœï¼ˆè¿”å›å€¼ï¼‰
+	* @param test_wndsize                        åŒè´¨æ£€éªŒæœç´¢çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼Œé»˜è®¤ä¸º15ï¼‰
+	* @param est_wndsize                         ç›¸å…³çŸ©é˜µä¼°è®¡çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼Œé»˜è®¤ä¸º3ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int homogeneous_selection_and_phase_linking(
 		vector<ComplexMat>& slc_stack,
@@ -1281,14 +1281,14 @@ public:
 		int test_wndsize = 15,
 		int est_wndsize = 3
 	);
-	/*@brief Sum of Kronecker decomposition£¨SKP·Ö½â£©
-	* @param inputMat                            ´ı·Ö½â¾ØÕó
-	* @param nr1                                 ·Ö½â²ÎÊı1
-	* @param nc1                                 ·Ö½â²ÎÊı2
-	* @param nr2                                 ·Ö½â²ÎÊı3
-	* @param nc2                                 ·Ö½â²ÎÊı4
-	* @param outputMat                           ·Ö½âºó¾ØÕó£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief Sum of Kronecker decompositionï¼ˆSKPåˆ†è§£ï¼‰
+	* @param inputMat                            å¾…åˆ†è§£çŸ©é˜µ
+	* @param nr1                                 åˆ†è§£å‚æ•°1
+	* @param nc1                                 åˆ†è§£å‚æ•°2
+	* @param nr2                                 åˆ†è§£å‚æ•°3
+	* @param nc2                                 åˆ†è§£å‚æ•°4
+	* @param outputMat                           åˆ†è§£åçŸ©é˜µï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SKP_decomposition(
 		ComplexMat& inputMat,
@@ -1299,14 +1299,14 @@ public:
 		vector<ComplexMat>& outputMat1,
 		vector<ComplexMat>& outputMat2
 	);
-	/** @brief Í³¼ÆÍ¬ÖÊ¼ìÑé
+	/** @brief ç»Ÿè®¡åŒè´¨æ£€éªŒ
 	
-	@param pixel1            ´ı¼ìÑéÏñÔª1·ù¶ÈĞòÁĞ(size: n_images¡Á1)
-	@param pixel2            ´ı¼ìÑéÏñÔª2·ù¶ÈĞòÁĞ(size: n_images¡Á1)
-	@param homo_flag         ÊÇ·ñÎªÍ¬ÖÊÏñÔª(·µ»Ø0ÔòÎªÍ¬ÖÊÏñÔª£¬-1ÔòÎª·ÇÍ¬ÖÊÏñÔª)
-	@param alpha             ÏÔÖøĞÔË®Æ½£¨¿ÉÒÔÉè¶¨µÄÖµÎª 0.20,0.15,0.10,0.05,0.025,0.01,0.005,0.001¡£Ä¬ÈÏÎª0.05£©
-	@param method            ¼ìÑé·½·¨£¨"KS":Kolmogorov-Smirnov¼ìÑé£¬"AD":Anderson-Darling¼ìÑé, Ä¬ÈÏÎªKS¼ìÑé£©
-	@return                  Õı³£ÔËĞĞ·µ»Ø0£¬±¨´í·µ»Ø-1
+	@param pixel1            å¾…æ£€éªŒåƒå…ƒ1å¹…åº¦åºåˆ—(size: n_imagesÃ—1)
+	@param pixel2            å¾…æ£€éªŒåƒå…ƒ2å¹…åº¦åºåˆ—(size: n_imagesÃ—1)
+	@param homo_flag         æ˜¯å¦ä¸ºåŒè´¨åƒå…ƒ(è¿”å›0åˆ™ä¸ºåŒè´¨åƒå…ƒï¼Œ-1åˆ™ä¸ºéåŒè´¨åƒå…ƒ)
+	@param alpha             æ˜¾è‘—æ€§æ°´å¹³ï¼ˆå¯ä»¥è®¾å®šçš„å€¼ä¸º 0.20,0.15,0.10,0.05,0.025,0.01,0.005,0.001ã€‚é»˜è®¤ä¸º0.05ï¼‰
+	@param method            æ£€éªŒæ–¹æ³•ï¼ˆ"KS":Kolmogorov-Smirnovæ£€éªŒï¼Œ"AD":Anderson-Darlingæ£€éªŒ, é»˜è®¤ä¸ºKSæ£€éªŒï¼‰
+	@return                  æ­£å¸¸è¿è¡Œè¿”å›0ï¼ŒæŠ¥é”™è¿”å›-1
 	*/
 	int homogeneous_test(
 		const Mat& pixel1,
@@ -1315,15 +1315,15 @@ public:
 		double alpha = 0.05,
 		const char* method = "KS"
 	);
-	/*@brief Í³¼ÆÍ¬ÖÊ¼ìÑé
-	* @param slc_series      ´ı´¦ÀíSLCÊı¾İ¶ÑÕ»
-	* @param windsize_az     ´°¿Ú´óĞ¡£¨·½Î»Ïò£©
-	* @param windsize_rg     ´°¿Ú´óĞ¡£¨¾àÀëÏò£©
-	* @param homo_num        ¸÷µãµÄÍ¬ÖÊµã¸öÊı£¨intĞÍ¾ØÕó£©
-	* @param homo_index      ¸÷µãÍ¬ÖÊµãmask¾ØÕó(uint8ĞÍ¾ØÕó,¾ØÕó´óĞ¡Îª£¨nr¡Ánc£©¡Á£¨windsize_az¡Áwindsize_rg£©)
-	* @param alpha           ÏÔÖøĞÔË®Æ½£¨¿ÉÒÔÉè¶¨µÄÖµÎª 0.20,0.15,0.10,0.05,0.025,0.01,0.005,0.001¡£Ä¬ÈÏÎª0.05£©
-	* @param method          ¼ìÑé·½·¨£¨"KS":Kolmogorov-Smirnov¼ìÑé£¬"AD":Anderson-Darling¼ìÑé, Ä¬ÈÏÎªKS¼ìÑé£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç»Ÿè®¡åŒè´¨æ£€éªŒ
+	* @param slc_series      å¾…å¤„ç†SLCæ•°æ®å †æ ˆ
+	* @param windsize_az     çª—å£å¤§å°ï¼ˆæ–¹ä½å‘ï¼‰
+	* @param windsize_rg     çª—å£å¤§å°ï¼ˆè·ç¦»å‘ï¼‰
+	* @param homo_num        å„ç‚¹çš„åŒè´¨ç‚¹ä¸ªæ•°ï¼ˆintå‹çŸ©é˜µï¼‰
+	* @param homo_index      å„ç‚¹åŒè´¨ç‚¹maskçŸ©é˜µ(uint8å‹çŸ©é˜µ,çŸ©é˜µå¤§å°ä¸ºï¼ˆnrÃ—ncï¼‰Ã—ï¼ˆwindsize_azÃ—windsize_rgï¼‰)
+	* @param alpha           æ˜¾è‘—æ€§æ°´å¹³ï¼ˆå¯ä»¥è®¾å®šçš„å€¼ä¸º 0.20,0.15,0.10,0.05,0.025,0.01,0.005,0.001ã€‚é»˜è®¤ä¸º0.05ï¼‰
+	* @param method          æ£€éªŒæ–¹æ³•ï¼ˆ"KS":Kolmogorov-Smirnovæ£€éªŒï¼Œ"AD":Anderson-Darlingæ£€éªŒ, é»˜è®¤ä¸ºKSæ£€éªŒï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int homogeneous_test(
 		const vector<ComplexMat>& slc_series,
@@ -1334,29 +1334,29 @@ public:
 		double alpha = 0.05,
 		const char* method = "KS"
 	);
-	/** @brief Hermitian¾ØÕóÌØÕ÷Öµ·Ö½â
+	/** @brief HermitiançŸ©é˜µç‰¹å¾å€¼åˆ†è§£
 	
-	@param input               ÊäÈë¸´¾ØÕó£¨n¡Án, doubleĞÍ£©
-	@param eigenvalue          ÌØÕ÷Öµ£¨n¡Á1Êµ¾ØÕó,´Ó´óµ½Ğ¡ÅÅÁĞ£©
-	@param eigenvector         ÌØÕ÷ÏòÁ¿£¨n¡Án¸´¾ØÕó£¬ ÁĞÏòÁ¿ÎªÌØÕ÷ÏòÁ¿£©
-	@return                    ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1              
+	@param input               è¾“å…¥å¤çŸ©é˜µï¼ˆnÃ—n, doubleå‹ï¼‰
+	@param eigenvalue          ç‰¹å¾å€¼ï¼ˆnÃ—1å®çŸ©é˜µ,ä»å¤§åˆ°å°æ’åˆ—ï¼‰
+	@param eigenvector         ç‰¹å¾å‘é‡ï¼ˆnÃ—nå¤çŸ©é˜µï¼Œ åˆ—å‘é‡ä¸ºç‰¹å¾å‘é‡ï¼‰
+	@return                    æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1              
 	*/
 	int HermitianEVD(
 		const ComplexMat& input,
 		Mat& eigenvalue,
 		ComplexMat& eigenvector
 	);
-	/** @brief Ê±ĞòSARÍ¼Ïñ¸´Ïà¹Ø¾ØÕó¹À¼Æ
+	/** @brief æ—¶åºSARå›¾åƒå¤ç›¸å…³çŸ©é˜µä¼°è®¡
 	
-	@param slc_series               slcÊı¾İ¶ÑÕ»
-	@param coherence_matrix         Ïà¹Ø¾ØÕó£¨¸´Êı, ·µ»ØÖµ£©
-	@param est_window_width         ¹À¼Æ´°¿Ú¿í¶È£¨ÆæÊı£©
-	@param est_window_height        ¹À¼Æ´°¿Ú¸ß¶È£¨ÆæÊı£©
-	@param ref_row                  £¨Èô½øĞĞÍ³¼ÆÍ¬ÖÊ¼ìÑé£©²Î¿¼µãĞĞ×ø±ê£¬²»½øĞĞÍ¬ÖÊ¼ìÑéÔò²»ĞèÒª´Ë²ÎÊı
-	@param ref_col                  £¨Èô½øĞĞÍ³¼ÆÍ¬ÖÊ¼ìÑé£©²Î¿¼µãÁĞ×ø±ê£¬²»½øĞĞÍ¬ÖÊ¼ìÑéÔò²»ĞèÒª´Ë²ÎÊı
-	@param b_homogeneous_test       ÊÇ·ñ½øĞĞÍ³¼ÆÍ¬ÖÊ¼ìÑé£¨Í¬ÖÊ¼ìÑé²Î¿¼ÏñËØÄ¬ÈÏÎªÖĞ¼äµãÏñËØ£©
-	@param b_normalize              ¹À¼ÆÏà¹Ø¾ØÕóÊ±slcĞòÁĞÊÇ·ñ¹éÒ»»¯´¦Àí
-	@return                         ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1 
+	@param slc_series               slcæ•°æ®å †æ ˆ
+	@param coherence_matrix         ç›¸å…³çŸ©é˜µï¼ˆå¤æ•°, è¿”å›å€¼ï¼‰
+	@param est_window_width         ä¼°è®¡çª—å£å®½åº¦ï¼ˆå¥‡æ•°ï¼‰
+	@param est_window_height        ä¼°è®¡çª—å£é«˜åº¦ï¼ˆå¥‡æ•°ï¼‰
+	@param ref_row                  ï¼ˆè‹¥è¿›è¡Œç»Ÿè®¡åŒè´¨æ£€éªŒï¼‰å‚è€ƒç‚¹è¡Œåæ ‡ï¼Œä¸è¿›è¡ŒåŒè´¨æ£€éªŒåˆ™ä¸éœ€è¦æ­¤å‚æ•°
+	@param ref_col                  ï¼ˆè‹¥è¿›è¡Œç»Ÿè®¡åŒè´¨æ£€éªŒï¼‰å‚è€ƒç‚¹åˆ—åæ ‡ï¼Œä¸è¿›è¡ŒåŒè´¨æ£€éªŒåˆ™ä¸éœ€è¦æ­¤å‚æ•°
+	@param b_homogeneous_test       æ˜¯å¦è¿›è¡Œç»Ÿè®¡åŒè´¨æ£€éªŒï¼ˆåŒè´¨æ£€éªŒå‚è€ƒåƒç´ é»˜è®¤ä¸ºä¸­é—´ç‚¹åƒç´ ï¼‰
+	@param b_normalize              ä¼°è®¡ç›¸å…³çŸ©é˜µæ—¶slcåºåˆ—æ˜¯å¦å½’ä¸€åŒ–å¤„ç†
+	@return                         æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1 
 	*/
 	int coherence_matrix_estimation(
 		const vector<ComplexMat>& slc_series,
@@ -1368,20 +1368,20 @@ public:
 		bool b_homogeneous_test = true,
 		bool b_normalize = true
 	);
-	/** @brief ¶à»ùÏßÊ±¼äĞòÁĞÏàÎ»¹À¼Æ£¨·Ö¿é¶ÁÈ¡¡¢¼ÆËã¡¢´¢´æ£©
+	/** @brief å¤šåŸºçº¿æ—¶é—´åºåˆ—ç›¸ä½ä¼°è®¡ï¼ˆåˆ†å—è¯»å–ã€è®¡ç®—ã€å‚¨å­˜ï¼‰
 	
-	@param coregis_slc_files              Åä×¼ºóSARÍ¼ÏñÊı¾İ¶ÑÕ»£¨ÎÄ¼ş£©
-	@param phase_files                    Ê±¼äĞòÁĞ¸ÉÉæÏàÎ»£¨ÎÄ¼ş£¬Óëcoregis_slc_filesÊıÁ¿ÏàÍ¬£¬Ö÷Í¼ÏñÏàÎ»Îª0£©
-	@param coherence_files                ¸÷¸¨Í¼ÏñÓëÖ÷Í¼ÏñÖ®¼äµÄÏà¹ØÏµÊıÎÄ¼ş£¨ÊÇ·ñ¹À¼ÆÏà¹ØÏµÊıÈ¡¾öÓÚÊäÈë²ÎÊıb_coh_est£©
-	@param master_indx                    Ö÷Í¼ÏñĞòºÅ£¨´Ó1¿ªÊ¼£©
-	@param blocksize_row                  ×Ó¿é³ß´ç£¨ĞĞ£¬±ØĞë´óÓÚÍ¬ÖÊ¼ìÑéËÑË÷´°¿Ú°ë¾¶£©
-	@param blocksize_col                  ×Ó¿é³ß´ç£¨ÁĞ£¬±ØĞë´óÓÚÍ¬ÖÊ¼ìÑéËÑË÷´°¿Ú°ë¾¶£©
-	@param out_mask                       ÑÚÄ¤Êä³ö£¨±ê¼Ç¾­¹ıEVD·¨¹À¼ÆµÄÏñËØµã£¬Óë²ÎÊıthresh_c1_to_c2ÓĞ¹Ø£©
-	@param b_coh_est                      ÊÇ·ñ¹À¼ÆÏà¹ØÏµÊı£¨Ä¬ÈÏÊÇ£©
-	@param homogeneous_test_wnd           Í¬ÖÊ¼ìÑéËÑË÷´°¿Ú´óĞ¡£¨ÆæÊı£¬homogeneous_test_wnd¡Áhomogeneous_test_wnd£¬ Ä¬ÈÏÎª21¡Á21£©
-	@param thresh_c1_to_c2                Ğ­·½²î¾ØÕóµÚ2ÌØÕ÷ÖµÓëµÚ1ÌØÕ÷Öµ±ÈÖµãĞÖµ£¨0-1Ö®¼ä£¬Ä¬ÈÏÎª0.7£©
-	@param b_flat                         ÊÇ·ñÈ¥Æ½µØÏàÎ»£¨Ä¬ÈÏÊÇ£©
-	@param b_normalize                    Ğ­·½²î¾ØÕóÊÇ·ñ¹éÒ»»¯£¨Ä¬ÈÏÊÇ£©
+	@param coregis_slc_files              é…å‡†åSARå›¾åƒæ•°æ®å †æ ˆï¼ˆæ–‡ä»¶ï¼‰
+	@param phase_files                    æ—¶é—´åºåˆ—å¹²æ¶‰ç›¸ä½ï¼ˆæ–‡ä»¶ï¼Œä¸coregis_slc_filesæ•°é‡ç›¸åŒï¼Œä¸»å›¾åƒç›¸ä½ä¸º0ï¼‰
+	@param coherence_files                å„è¾…å›¾åƒä¸ä¸»å›¾åƒä¹‹é—´çš„ç›¸å…³ç³»æ•°æ–‡ä»¶ï¼ˆæ˜¯å¦ä¼°è®¡ç›¸å…³ç³»æ•°å–å†³äºè¾“å…¥å‚æ•°b_coh_estï¼‰
+	@param master_indx                    ä¸»å›¾åƒåºå·ï¼ˆä»1å¼€å§‹ï¼‰
+	@param blocksize_row                  å­å—å°ºå¯¸ï¼ˆè¡Œï¼Œå¿…é¡»å¤§äºåŒè´¨æ£€éªŒæœç´¢çª—å£åŠå¾„ï¼‰
+	@param blocksize_col                  å­å—å°ºå¯¸ï¼ˆåˆ—ï¼Œå¿…é¡»å¤§äºåŒè´¨æ£€éªŒæœç´¢çª—å£åŠå¾„ï¼‰
+	@param out_mask                       æ©è†œè¾“å‡ºï¼ˆæ ‡è®°ç»è¿‡EVDæ³•ä¼°è®¡çš„åƒç´ ç‚¹ï¼Œä¸å‚æ•°thresh_c1_to_c2æœ‰å…³ï¼‰
+	@param b_coh_est                      æ˜¯å¦ä¼°è®¡ç›¸å…³ç³»æ•°ï¼ˆé»˜è®¤æ˜¯ï¼‰
+	@param homogeneous_test_wnd           åŒè´¨æ£€éªŒæœç´¢çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼Œhomogeneous_test_wndÃ—homogeneous_test_wndï¼Œ é»˜è®¤ä¸º21Ã—21ï¼‰
+	@param thresh_c1_to_c2                åæ–¹å·®çŸ©é˜µç¬¬2ç‰¹å¾å€¼ä¸ç¬¬1ç‰¹å¾å€¼æ¯”å€¼é˜ˆå€¼ï¼ˆ0-1ä¹‹é—´ï¼Œé»˜è®¤ä¸º0.7ï¼‰
+	@param b_flat                         æ˜¯å¦å»å¹³åœ°ç›¸ä½ï¼ˆé»˜è®¤æ˜¯ï¼‰
+	@param b_normalize                    åæ–¹å·®çŸ©é˜µæ˜¯å¦å½’ä¸€åŒ–ï¼ˆé»˜è®¤æ˜¯ï¼‰
 	*/
 	int MB_phase_estimation(
 		vector<string> coregis_slc_files,
@@ -1397,12 +1397,12 @@ public:
 		bool b_flat = true,
 		bool b_normalize = true
 	);
-	/*@brief SARÍ¼Ïñ¶ÑÕ»Ê±¿Õ»ùÏß·Ö²¼¼ÆËã
-	* @param SLCH5Files                SARÍ¼ÏñÊı¾İÎÄ¼ş
-	* @param reference                 ²Î¿¼Í¼ÏñĞòºÅ
-	* @param temporal                  Ê±¼ä»ùÏß£¨·µ»ØÖµ,1¡Án£¬µ¥Î»£ºday£©
-	* @param spatial                   ¿Õ¼ä»ùÏß£¨·µ»ØÖµ,1¡Án£¬µ¥Î»£ºm£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief SARå›¾åƒå †æ ˆæ—¶ç©ºåŸºçº¿åˆ†å¸ƒè®¡ç®—
+	* @param SLCH5Files                SARå›¾åƒæ•°æ®æ–‡ä»¶
+	* @param reference                 å‚è€ƒå›¾åƒåºå·
+	* @param temporal                  æ—¶é—´åŸºçº¿ï¼ˆè¿”å›å€¼,1Ã—nï¼Œå•ä½ï¼šdayï¼‰
+	* @param spatial                   ç©ºé—´åŸºçº¿ï¼ˆè¿”å›å€¼,1Ã—nï¼Œå•ä½ï¼šmï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int spatialTemporalBaselineEstimation(
 		vector<string>& SLCH5Files,
@@ -1410,14 +1410,14 @@ public:
 		Mat& temporal,
 		Mat& spatial
 	);
-	/** @brief ÇøÓòÉú³¤·¨½â²ø£¨delaunayÈı½ÇÍø£©
+	/** @brief åŒºåŸŸç”Ÿé•¿æ³•è§£ç¼ ï¼ˆdelaunayä¸‰è§’ç½‘ï¼‰
 	
-	@param nodes                       DelaunayÈı½ÇÍøÂç½ÚµãÊı×é
-	@param edges                       DelaunayÈı½ÇÍøÂç±ß½á¹¹ÌåÊı×é
-	@param start_edge                  »ı·ÖÆğÊ¼±ßĞòºÅ£¨´Ó1¿ªÊ¼£©
-	@param distance_thresh             ±ß³¤ãĞÖµ£¬³¬¹ı´ËãĞÖµ²»Í¨¹ı´Ë±ß»ı·Ö
-	@param quality_thresh              ÖÊÁ¿ãĞÖµ£¬µÍÓÚ´ËãĞÖµ²»Í¨¹ı´Ë±ß»ı·Ö
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	@param nodes                       Delaunayä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	@param edges                       Delaunayä¸‰è§’ç½‘ç»œè¾¹ç»“æ„ä½“æ•°ç»„
+	@param start_edge                  ç§¯åˆ†èµ·å§‹è¾¹åºå·ï¼ˆä»1å¼€å§‹ï¼‰
+	@param distance_thresh             è¾¹é•¿é˜ˆå€¼ï¼Œè¶…è¿‡æ­¤é˜ˆå€¼ä¸é€šè¿‡æ­¤è¾¹ç§¯åˆ†
+	@param quality_thresh              è´¨é‡é˜ˆå€¼ï¼Œä½äºæ­¤é˜ˆå€¼ä¸é€šè¿‡æ­¤è¾¹ç§¯åˆ†
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int unwrap_region_growing(
 		vector<tri_node>& nodes,
@@ -1426,18 +1426,18 @@ public:
 		double distance_thresh,
 		double quality_thresh
 	);
-	/*@brief ¸ù¾İÍ¼ÏñµÄ´óĞ¡¡¢ĞĞÁĞÆ«ÒÆÒÔ¼°ĞĞÁĞ-->¾­Î³¶ÈµÄ×ª»»ÏµÊı£¬¼ÆËãÍ¼ÏñµÄµØÀí±ß½ç£¨×î´ó×îĞ¡¾­Î³¶È£©
-	* @param lat_coefficient                        µØÀí×ø±ê×ª»»ÏµÊı£¨ĞĞÁĞ-->Î³¶È£©
-	* @param lon_coefficient                        µØÀí×ø±ê×ª»»ÏµÊı£¨ĞĞÁĞ-->¾­¶È£©
-	* @param sceneHeight                            ³¡¾°¸ß¶È
-	* @param sceneWidth                             ³¡¾°¿í¶È
-	* @param offset_row                             ³¡¾°ÔÚÔ­Í¼ÏñÖĞµÄĞĞÆ«ÒÆÁ¿
-	* @param offset_col                             ³¡¾°ÔÚÔ­Í¼ÏñÖĞµÄÁĞÆ«ÒÆÁ¿
-	* @param lonMax                                 ×î´ó¾­¶È£¨·µ»ØÖµ£©
-	* @param latMax                                 ×î´óÎ³¶È£¨·µ»ØÖµ£©
-	* @param lonMin                                 ×îĞ¡¾­¶È£¨·µ»ØÖµ£©
-	* @param latMin                                 ×îĞ¡Î³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å›¾åƒçš„å¤§å°ã€è¡Œåˆ—åç§»ä»¥åŠè¡Œåˆ—-->ç»çº¬åº¦çš„è½¬æ¢ç³»æ•°ï¼Œè®¡ç®—å›¾åƒçš„åœ°ç†è¾¹ç•Œï¼ˆæœ€å¤§æœ€å°ç»çº¬åº¦ï¼‰
+	* @param lat_coefficient                        åœ°ç†åæ ‡è½¬æ¢ç³»æ•°ï¼ˆè¡Œåˆ—-->çº¬åº¦ï¼‰
+	* @param lon_coefficient                        åœ°ç†åæ ‡è½¬æ¢ç³»æ•°ï¼ˆè¡Œåˆ—-->ç»åº¦ï¼‰
+	* @param sceneHeight                            åœºæ™¯é«˜åº¦
+	* @param sceneWidth                             åœºæ™¯å®½åº¦
+	* @param offset_row                             åœºæ™¯åœ¨åŸå›¾åƒä¸­çš„è¡Œåç§»é‡
+	* @param offset_col                             åœºæ™¯åœ¨åŸå›¾åƒä¸­çš„åˆ—åç§»é‡
+	* @param lonMax                                 æœ€å¤§ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param latMax                                 æœ€å¤§çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lonMin                                 æœ€å°ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param latMin                                 æœ€å°çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int computeImageGeoBoundry(
 		Mat& lat_coefficient,
@@ -1451,20 +1451,20 @@ public:
 		double* lonMin,
 		double* latMin
 	);
-	/*@brief ¸ù¾İÍ¼ÏñËÄ½Çµã¾­Î³¶È£¬¼ÆËãÍ¼ÏñµÄµØÀí±ß½ç£¨×î´ó×îĞ¡¾­Î³¶È£©
-	@param topleft_lon                             ×óÉÏ½Ç¾­¶È
-	@param topleft_lat                             ×óÉÏ½ÇÎ³¶È
-	@param topright_lon                            ÓÒÉÏ½Ç¾­¶È
-	@param topright_lat                            ÓÒÉÏ½ÇÎ³¶È
-	@param bottomleft_lon                          ×óÏÂ½Ç¾­¶È
-	@param bottomleft_lat                          ×óÏÂ½ÇÎ³¶È
-	@param bottomright_lon                         ÓÒÏÂ½Ç¾­¶È
-	@param bottomright_lat                         ÓÒÏÂ½ÇÎ³¶È
-	@param lonMax                                  ×î´ó¾­¶È£¨·µ»ØÖµ£©
-	@param latMax                                  ×î´óÎ³¶È£¨·µ»ØÖµ£©
-	@param lonMin                                  ×îĞ¡¾­¶È£¨·µ»ØÖµ£©
-	@param latMin                                  ×îĞ¡Î³¶È£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å›¾åƒå››è§’ç‚¹ç»çº¬åº¦ï¼Œè®¡ç®—å›¾åƒçš„åœ°ç†è¾¹ç•Œï¼ˆæœ€å¤§æœ€å°ç»çº¬åº¦ï¼‰
+	@param topleft_lon                             å·¦ä¸Šè§’ç»åº¦
+	@param topleft_lat                             å·¦ä¸Šè§’çº¬åº¦
+	@param topright_lon                            å³ä¸Šè§’ç»åº¦
+	@param topright_lat                            å³ä¸Šè§’çº¬åº¦
+	@param bottomleft_lon                          å·¦ä¸‹è§’ç»åº¦
+	@param bottomleft_lat                          å·¦ä¸‹è§’çº¬åº¦
+	@param bottomright_lon                         å³ä¸‹è§’ç»åº¦
+	@param bottomright_lat                         å³ä¸‹è§’çº¬åº¦
+	@param lonMax                                  æœ€å¤§ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param latMax                                  æœ€å¤§çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param lonMin                                  æœ€å°ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param latMin                                  æœ€å°çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int computeImageGeoBoundry(
 		double topleft_lon,
@@ -1480,20 +1480,20 @@ public:
 		double* lonMin,
 		double* latMin
 	);
-	/*@brief ¸ù¾İÍ¼ÏñËÄ½Çµã¾­Î³¶È£¬¼ÆËãÍ¼ÏñµÄµØÀí±ß½ç£¨×î´ó×îĞ¡¾­Î³¶È£©,ÎŞÀ©Õ¹
-	@param topleft_lon                             ×óÉÏ½Ç¾­¶È
-	@param topleft_lat                             ×óÉÏ½ÇÎ³¶È
-	@param topright_lon                            ÓÒÉÏ½Ç¾­¶È
-	@param topright_lat                            ÓÒÉÏ½ÇÎ³¶È
-	@param bottomleft_lon                          ×óÏÂ½Ç¾­¶È
-	@param bottomleft_lat                          ×óÏÂ½ÇÎ³¶È
-	@param bottomright_lon                         ÓÒÏÂ½Ç¾­¶È
-	@param bottomright_lat                         ÓÒÏÂ½ÇÎ³¶È
-	@param lonMax                                  ×î´ó¾­¶È£¨·µ»ØÖµ£©
-	@param latMax                                  ×î´óÎ³¶È£¨·µ»ØÖµ£©
-	@param lonMin                                  ×îĞ¡¾­¶È£¨·µ»ØÖµ£©
-	@param latMin                                  ×îĞ¡Î³¶È£¨·µ»ØÖµ£©
-	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å›¾åƒå››è§’ç‚¹ç»çº¬åº¦ï¼Œè®¡ç®—å›¾åƒçš„åœ°ç†è¾¹ç•Œï¼ˆæœ€å¤§æœ€å°ç»çº¬åº¦ï¼‰,æ— æ‰©å±•
+	@param topleft_lon                             å·¦ä¸Šè§’ç»åº¦
+	@param topleft_lat                             å·¦ä¸Šè§’çº¬åº¦
+	@param topright_lon                            å³ä¸Šè§’ç»åº¦
+	@param topright_lat                            å³ä¸Šè§’çº¬åº¦
+	@param bottomleft_lon                          å·¦ä¸‹è§’ç»åº¦
+	@param bottomleft_lat                          å·¦ä¸‹è§’çº¬åº¦
+	@param bottomright_lon                         å³ä¸‹è§’ç»åº¦
+	@param bottomright_lat                         å³ä¸‹è§’çº¬åº¦
+	@param lonMax                                  æœ€å¤§ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param latMax                                  æœ€å¤§çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param lonMin                                  æœ€å°ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@param latMin                                  æœ€å°çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int computeImageGeoBoundry_no_expansion(
 		double topleft_lon,
@@ -1509,16 +1509,16 @@ public:
 		double* lonMin,
 		double* latMin
 	);
-	/*@brief ¸ù¾İµØÀí±ß½çĞÅÏ¢»ñÈ¡SRTM¸ß³Ì
-	* @param filepath                     ÏÂÔØµÄSRTM¸ß³ÌÎÄ¼ş±£´æÂ·¾¶
-	* @param DEM_out                      DEMÊı¾İ£¨·µ»ØÖµ£¬shortĞÍ£©
-	* @param lonUpperLeft                 ×óÉÏ½Ç¾­¶È£¨·µ»ØÖµ£©
-	* @param latUpperLeft                 ×óÉÏ½ÇÎ³¶È£¨·µ»ØÖµ£©
-	* @param lonMin                       ×îĞ¡¾­¶È
-	* @param lonMax                       ×î´ó¾­¶È
-	* @param latMin                       ×îĞ¡Î³¶È
-	* @param latMax                       ×î´óÎ³¶È
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®åœ°ç†è¾¹ç•Œä¿¡æ¯è·å–SRTMé«˜ç¨‹
+	* @param filepath                     ä¸‹è½½çš„SRTMé«˜ç¨‹æ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @param DEM_out                      DEMæ•°æ®ï¼ˆè¿”å›å€¼ï¼Œshortå‹ï¼‰
+	* @param lonUpperLeft                 å·¦ä¸Šè§’ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param latUpperLeft                 å·¦ä¸Šè§’çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lonMin                       æœ€å°ç»åº¦
+	* @param lonMax                       æœ€å¤§ç»åº¦
+	* @param latMin                       æœ€å°çº¬åº¦
+	* @param latMax                       æœ€å¤§çº¬åº¦
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int getSRTMDEM(
 		const char* filepath,
@@ -1530,18 +1530,18 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief ¸ù¾İµØÀí±ß½çĞÅÏ¢»ñÈ¡Copernicus30m¸ß³Ì
-	* @param filepath                     ÏÂÔØµÄCopernicus¸ß³ÌÎÄ¼ş±£´æÂ·¾¶
-	* @param DEM_out                      DEMÊı¾İ£¨·µ»ØÖµ£¬floatĞÍ£©
-	* @param lonUpperLeft                 ×óÉÏ½Ç¾­¶È£¨·µ»ØÖµ£©
-	* @param latUpperLeft                 ×óÉÏ½ÇÎ³¶È£¨·µ»ØÖµ£©
-	* @param lon_spacing                  ¾­¶È²ÉÑù¼ä¸ô£¨·µ»ØÖµ£©
-	* @param lat_spacing                  Î³¶È²ÉÑù¼ä¸ô£¨·µ»ØÖµ£©
-	* @param lonMin                       ×îĞ¡¾­¶È
-	* @param lonMax                       ×î´ó¾­¶È
-	* @param latMin                       ×îĞ¡Î³¶È
-	* @param latMax                       ×î´óÎ³¶È
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®åœ°ç†è¾¹ç•Œä¿¡æ¯è·å–Copernicus30mé«˜ç¨‹
+	* @param filepath                     ä¸‹è½½çš„Copernicusé«˜ç¨‹æ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @param DEM_out                      DEMæ•°æ®ï¼ˆè¿”å›å€¼ï¼Œfloatå‹ï¼‰
+	* @param lonUpperLeft                 å·¦ä¸Šè§’ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param latUpperLeft                 å·¦ä¸Šè§’çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_spacing                  ç»åº¦é‡‡æ ·é—´éš”ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_spacing                  çº¬åº¦é‡‡æ ·é—´éš”ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lonMin                       æœ€å°ç»åº¦
+	* @param lonMax                       æœ€å¤§ç»åº¦
+	* @param latMin                       æœ€å°çº¬åº¦
+	* @param latMax                       æœ€å¤§çº¬åº¦
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int getCopernicusDEM(
 		const char* filepath,
@@ -1555,13 +1555,13 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief ¸ù¾İµØÀí±ß½çĞÅÏ¢¼ÆËãËùĞèÏÂÔØµÄSRTM¸ß³ÌÎÄ¼şÃû
-	* @param lonMin                       ×îĞ¡¾­¶È
-	* @param lonMax                       ×î´ó¾­¶È
-	* @param latMin                       ×îĞ¡Î³¶È
-	* @param latMax                       ×î´óÎ³¶È
-	* @param name                         ÎÄ¼şÃû
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®åœ°ç†è¾¹ç•Œä¿¡æ¯è®¡ç®—æ‰€éœ€ä¸‹è½½çš„SRTMé«˜ç¨‹æ–‡ä»¶å
+	* @param lonMin                       æœ€å°ç»åº¦
+	* @param lonMax                       æœ€å¤§ç»åº¦
+	* @param latMin                       æœ€å°çº¬åº¦
+	* @param latMax                       æœ€å¤§çº¬åº¦
+	* @param name                         æ–‡ä»¶å
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int getSRTMFileName(
 		double lonMin,
@@ -1570,13 +1570,13 @@ public:
 		double latMax,
 		vector<string>& name
 	);
-	/*@brief ¸ù¾İµØÀí±ß½çĞÅÏ¢¼ÆËãËùĞèÏÂÔØµÄCopernicus¸ß³ÌÎÄ¼şÃû
-	* @param lonMin                       ×îĞ¡¾­¶È
-	* @param lonMax                       ×î´ó¾­¶È
-	* @param latMin                       ×îĞ¡Î³¶È
-	* @param latMax                       ×î´óÎ³¶È
-	* @param name                         ÎÄ¼şÃû
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®åœ°ç†è¾¹ç•Œä¿¡æ¯è®¡ç®—æ‰€éœ€ä¸‹è½½çš„Copernicusé«˜ç¨‹æ–‡ä»¶å
+	* @param lonMin                       æœ€å°ç»åº¦
+	* @param lonMax                       æœ€å¤§ç»åº¦
+	* @param latMin                       æœ€å°çº¬åº¦
+	* @param latMax                       æœ€å¤§çº¬åº¦
+	* @param name                         æ–‡ä»¶å
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int getCopernicusDEMFileName(
 		double lonMin,
@@ -1585,42 +1585,42 @@ public:
 		double latMax,
 		vector<string>& name
 	);
-	/*@brief ÏÂÔØSRTM¸ß³ÌÊı¾İ
-	* @param name                         ÎÄ¼şÃû
-	* @param DEMpath                      ÏÂÔØDEMÎÄ¼ş±£´æÂ·¾¶
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¸‹è½½SRTMé«˜ç¨‹æ•°æ®
+	* @param name                         æ–‡ä»¶å
+	* @param DEMpath                      ä¸‹è½½DEMæ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int downloadSRTM(const char* name, const char* DEMpath);
-	/*@brief ÏÂÔØCopernicus¸ß³ÌÊı¾İ
-	* @param name                         ÎÄ¼şÃû
-	* @param DEMpath                      ÏÂÔØDEMÎÄ¼ş±£´æÂ·¾¶
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¸‹è½½Copernicusé«˜ç¨‹æ•°æ®
+	* @param name                         æ–‡ä»¶å
+	* @param DEMpath                      ä¸‹è½½DEMæ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int downloadCopernicusDEM(const char* name, const char* DEMpath);
-	/*@brief ¶ÁÈ¡geotiff¸ß³ÌÊı¾İ
-	* @param geotiffFile                  geotiffÎÄ¼ş
-	* @param outDEM                       ¶Á³öµÄDEMÊı¾İ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è¯»å–geotiffé«˜ç¨‹æ•°æ®
+	* @param geotiffFile                  geotiffæ–‡ä»¶
+	* @param outDEM                       è¯»å‡ºçš„DEMæ•°æ®
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int CopernicusDEM_geotiffread(
 		const char* geotiffFile,
 		Mat& outDEM
 	);
-	/*@brief ¸ù¾İËÄ¸ö½Ç¾­Î³¶È×ø±ê£¬½«Í¼Æ¬µş¼Óµ½Google EarthÉÏ
-	* @param BottomLeft_lon                ×óÏÂ½Ç¾­¶È
-	* @param BottomLeft_lat                ×óÏÂ½ÇÎ³¶È
-	* @param BottomRight_lon               ÓÒÏÂ½Ç¾­¶È
-	* @param BottomRight_lat               ÓÒÏÂ½ÇÎ³¶È
-	* @param TopRight_lon                  ÓÒÉÏ½Ç¾­¶È
-	* @param TopRight_lat                  ÓÒÉÏ½ÇÎ³¶È
-	* @param TopLeft_lon                   ×óÉÏ½Ç¾­¶È
-	* @param TopLeft_lat                   ×óÉÏ½ÇÎ³¶È
-	* @param Reference_lon                 ²Î¿¼µã¾­¶È
-	* @param Reference_lat                 ²Î¿¼µãÎ³¶È
-	* @param image_file                    Í¼ÏñÎÄ¼ş£¨±ØĞëÓë´ıĞ´ÈëµÄKMLÎÄ¼ş´¦ÔÚÍ¬Ò»Ä¿Â¼ÏÂ£©
-	* @param KML_file                      ´ıĞ´ÈëKMLÎÄ¼şÃû
-	* @param Legend_file                   Í¼ÀıÎÄ¼ş£¨±ØĞëÓë´ıĞ´ÈëµÄKMLÎÄ¼ş´¦ÔÚÍ¬Ò»Ä¿Â¼ÏÂ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å››ä¸ªè§’ç»çº¬åº¦åæ ‡ï¼Œå°†å›¾ç‰‡å åŠ åˆ°Google Earthä¸Š
+	* @param BottomLeft_lon                å·¦ä¸‹è§’ç»åº¦
+	* @param BottomLeft_lat                å·¦ä¸‹è§’çº¬åº¦
+	* @param BottomRight_lon               å³ä¸‹è§’ç»åº¦
+	* @param BottomRight_lat               å³ä¸‹è§’çº¬åº¦
+	* @param TopRight_lon                  å³ä¸Šè§’ç»åº¦
+	* @param TopRight_lat                  å³ä¸Šè§’çº¬åº¦
+	* @param TopLeft_lon                   å·¦ä¸Šè§’ç»åº¦
+	* @param TopLeft_lat                   å·¦ä¸Šè§’çº¬åº¦
+	* @param Reference_lon                 å‚è€ƒç‚¹ç»åº¦
+	* @param Reference_lat                 å‚è€ƒç‚¹çº¬åº¦
+	* @param image_file                    å›¾åƒæ–‡ä»¶ï¼ˆå¿…é¡»ä¸å¾…å†™å…¥çš„KMLæ–‡ä»¶å¤„åœ¨åŒä¸€ç›®å½•ä¸‹ï¼‰
+	* @param KML_file                      å¾…å†™å…¥KMLæ–‡ä»¶å
+	* @param Legend_file                   å›¾ä¾‹æ–‡ä»¶ï¼ˆå¿…é¡»ä¸å¾…å†™å…¥çš„KMLæ–‡ä»¶å¤„åœ¨åŒä¸€ç›®å½•ä¸‹ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	static int writeOverlayKML(
 		double BottomLeft_lon,
@@ -1637,12 +1637,12 @@ public:
 		const char* KML_file,
 		const char* Legend_file = NULL
 	);
-	/*@brief Æ´½ÓÉÚ±øÒ»ºÅ3¸ö×Ó´ø¸ÉÉæÏàÎ»
-	* @param IW1_h5file                     ×Ó´ø1¸ÉÉæÏàÎ»h5ÎÄ¼ş
-	* @param IW2_h5file                     ×Ó´ø2¸ÉÉæÏàÎ»h5ÎÄ¼ş
-	* @param IW3_h5file                     ×Ó´ø3¸ÉÉæÏàÎ»h5ÎÄ¼ş
-	* @param merged_phase_h5file            Æ´½Óºó¸ÉÉæÏàÎ»h5ÎÄ¼ş£¨¸²¸ÇĞ´Èë£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ‹¼æ¥å“¨å…µä¸€å·3ä¸ªå­å¸¦å¹²æ¶‰ç›¸ä½
+	* @param IW1_h5file                     å­å¸¦1å¹²æ¶‰ç›¸ä½h5æ–‡ä»¶
+	* @param IW2_h5file                     å­å¸¦2å¹²æ¶‰ç›¸ä½h5æ–‡ä»¶
+	* @param IW3_h5file                     å­å¸¦3å¹²æ¶‰ç›¸ä½h5æ–‡ä»¶
+	* @param merged_phase_h5file            æ‹¼æ¥åå¹²æ¶‰ç›¸ä½h5æ–‡ä»¶ï¼ˆè¦†ç›–å†™å…¥ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int S1_subswath_merge(
 		const char* IW1_h5file,
@@ -1650,12 +1650,12 @@ public:
 		const char* IW3_h5file,
 		const char* merged_phase_h5file
 	);
-	/*@brief Æ´½ÓÉÚ±øÒ»ºÅ3¸ö×Ó´øµ¥ÊÓ¸´Í¼Ïñ
-	* @param IW1_h5file                     ×Ó´ø1µ¥ÊÓ¸´Í¼Ïñh5ÎÄ¼ş
-	* @param IW2_h5file                     ×Ó´ø2µ¥ÊÓ¸´Í¼Ïñh5ÎÄ¼ş
-	* @param IW3_h5file                     ×Ó´ø3µ¥ÊÓ¸´Í¼Ïñh5ÎÄ¼ş
-	* @param merged_slc_h5file            Æ´½Óºóµ¥ÊÓ¸´Í¼Ïñh5ÎÄ¼ş£¨¸²¸ÇĞ´Èë£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ‹¼æ¥å“¨å…µä¸€å·3ä¸ªå­å¸¦å•è§†å¤å›¾åƒ
+	* @param IW1_h5file                     å­å¸¦1å•è§†å¤å›¾åƒh5æ–‡ä»¶
+	* @param IW2_h5file                     å­å¸¦2å•è§†å¤å›¾åƒh5æ–‡ä»¶
+	* @param IW3_h5file                     å­å¸¦3å•è§†å¤å›¾åƒh5æ–‡ä»¶
+	* @param merged_slc_h5file            æ‹¼æ¥åå•è§†å¤å›¾åƒh5æ–‡ä»¶ï¼ˆè¦†ç›–å†™å…¥ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int S1_subswath_merge_slc(
 		const char* IW1_h5file,
@@ -1663,37 +1663,37 @@ public:
 		const char* IW3_h5file,
 		const char* merged_slc_h5file
 	);
-	/*@brief Æ´½ÓÉÚ±øÒ»ºÅÍ¬Ò»¹ìµÀÏàÁÚframeµÄ¸ÉÉæÏàÎ»
-	* @param h5files                        Í¬Ò»×Ó´ø²»Í¬frame¸ÉÉæÏàÎ»h5Êı¾İÎÄ¼ş
-	* @param merged_phase_h5                Æ´½ÓºóµÄ¸ÉÉæÏàÎ»h5ÎÄ¼ş
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ‹¼æ¥å“¨å…µä¸€å·åŒä¸€è½¨é“ç›¸é‚»frameçš„å¹²æ¶‰ç›¸ä½
+	* @param h5files                        åŒä¸€å­å¸¦ä¸åŒframeå¹²æ¶‰ç›¸ä½h5æ•°æ®æ–‡ä»¶
+	* @param merged_phase_h5                æ‹¼æ¥åçš„å¹²æ¶‰ç›¸ä½h5æ–‡ä»¶
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int S1_frame_merge(
 		vector<string>& h5files,
 		const char* merged_phase_h5
 	);
-	/*@brief Æ´½ÓÍ¬Ò»¹ìµÀÏàÁÚframeµÄµ¥ÊÓ¸´Í¼Ïñ
-	* @param frame1_h5                         ´ıÆ´½Óframe1µÄh5ÎÄ¼ş
-	* @param frame2_h5                         ´ıÆ´½Óframe2µÄh5ÎÄ¼ş
-	* @param outframe_h5                       Æ´½ÓframeµÄh5ÎÄ¼ş£¨¸²¸ÇĞ´Èë£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ‹¼æ¥åŒä¸€è½¨é“ç›¸é‚»frameçš„å•è§†å¤å›¾åƒ
+	* @param frame1_h5                         å¾…æ‹¼æ¥frame1çš„h5æ–‡ä»¶
+	* @param frame2_h5                         å¾…æ‹¼æ¥frame2çš„h5æ–‡ä»¶
+	* @param outframe_h5                       æ‹¼æ¥frameçš„h5æ–‡ä»¶ï¼ˆè¦†ç›–å†™å…¥ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int S1_frame_merge(
 		const char* frame1_h5,
 		const char* frame2_h5,
 		const char* outframe_h5
 	);
-	/*@brief ÏàÎ»µØÀí±àÂë£ºSARÍ¼Ïñ×ø±êÏµ--->Ä«¿¨ÍĞ×ø±êÏµ
-	* @param mapped_lon                        ÏàÎ»¶ÔÓ¦µÄ¾­¶È
-	* @param mapped_lat                        ÏàÎ»¶ÔÓ¦µÄÎ³¶È
-	* @param phase                             SARÍ¼Ïñ×ø±êÏàÎ»
-	* @param mapped_phase                      Ä«¿¨ÍĞ×ø±êÏàÎ»£¨·µ»ØÖµ£©
-	* @param interpolation_method              ²åÖµ·½·¨£¨0£º×îÁÙ½ü²åÖµ£¬1£ºË«ÏßĞÔ²åÖµ¡£Ä¬ÈÏÎª×îÁÙ½ü²åÖµ£©
-	* @param lon_east                          ±àÂëÍ¼Ïñ×î¶«±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lon_west                          ±àÂëÍ¼Ïñ×îÎ÷±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lat_north                         ±àÂëÍ¼Ïñ×î±±±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @param lat_south                         ±àÂëÍ¼Ïñ×îÄÏ±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç›¸ä½åœ°ç†ç¼–ç ï¼šSARå›¾åƒåæ ‡ç³»--->å¢¨å¡æ‰˜åæ ‡ç³»
+	* @param mapped_lon                        ç›¸ä½å¯¹åº”çš„ç»åº¦
+	* @param mapped_lat                        ç›¸ä½å¯¹åº”çš„çº¬åº¦
+	* @param phase                             SARå›¾åƒåæ ‡ç›¸ä½
+	* @param mapped_phase                      å¢¨å¡æ‰˜åæ ‡ç›¸ä½ï¼ˆè¿”å›å€¼ï¼‰
+	* @param interpolation_method              æ’å€¼æ–¹æ³•ï¼ˆ0ï¼šæœ€ä¸´è¿‘æ’å€¼ï¼Œ1ï¼šåŒçº¿æ€§æ’å€¼ã€‚é»˜è®¤ä¸ºæœ€ä¸´è¿‘æ’å€¼ï¼‰
+	* @param lon_east                          ç¼–ç å›¾åƒæœ€ä¸œè¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_west                          ç¼–ç å›¾åƒæœ€è¥¿è¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_north                         ç¼–ç å›¾åƒæœ€åŒ—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_south                         ç¼–ç å›¾åƒæœ€å—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SAR2UTM(
 		Mat& mapped_lon,
@@ -1706,18 +1706,18 @@ public:
 		double* lat_north = NULL,
 		double* lat_south = NULL
 	);
-	/*@brief ÏàÎ»µØÀí±àÂë£ºSARÍ¼Ïñ×ø±êÏµ--->Ä«¿¨ÍĞ×ø±êÏµ
-	* @param mapped_lon                        ÏàÎ»¶ÔÓ¦µÄ¾­¶È
-	* @param mapped_lat                        ÏàÎ»¶ÔÓ¦µÄÎ³¶È
-	* @param phase                             SARÍ¼Ïñ×ø±êÏàÎ»
-	* @param mapped_phase                      Ä«¿¨ÍĞ×ø±êÏàÎ»£¨·µ»ØÖµ£©
-	* @param grid_size                         Íø¸ñ¼ä¾à£¨m£©
-	* @param interpolation_method              ²åÖµ·½·¨£¨0£º×îÁÙ½ü²åÖµ£¬1£ºË«ÏßĞÔ²åÖµ¡£Ä¬ÈÏÎª×îÁÙ½ü²åÖµ£©
-	* @param lon_east                          ±àÂëÍ¼Ïñ×î¶«±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lon_west                          ±àÂëÍ¼Ïñ×îÎ÷±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lat_north                         ±àÂëÍ¼Ïñ×î±±±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @param lat_south                         ±àÂëÍ¼Ïñ×îÄÏ±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç›¸ä½åœ°ç†ç¼–ç ï¼šSARå›¾åƒåæ ‡ç³»--->å¢¨å¡æ‰˜åæ ‡ç³»
+	* @param mapped_lon                        ç›¸ä½å¯¹åº”çš„ç»åº¦
+	* @param mapped_lat                        ç›¸ä½å¯¹åº”çš„çº¬åº¦
+	* @param phase                             SARå›¾åƒåæ ‡ç›¸ä½
+	* @param mapped_phase                      å¢¨å¡æ‰˜åæ ‡ç›¸ä½ï¼ˆè¿”å›å€¼ï¼‰
+	* @param grid_size                         ç½‘æ ¼é—´è·ï¼ˆmï¼‰
+	* @param interpolation_method              æ’å€¼æ–¹æ³•ï¼ˆ0ï¼šæœ€ä¸´è¿‘æ’å€¼ï¼Œ1ï¼šåŒçº¿æ€§æ’å€¼ã€‚é»˜è®¤ä¸ºæœ€ä¸´è¿‘æ’å€¼ï¼‰
+	* @param lon_east                          ç¼–ç å›¾åƒæœ€ä¸œè¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_west                          ç¼–ç å›¾åƒæœ€è¥¿è¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_north                         ç¼–ç å›¾åƒæœ€åŒ—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_south                         ç¼–ç å›¾åƒæœ€å—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SAR2UTM(
 		Mat& mapped_lon,
@@ -1731,17 +1731,17 @@ public:
 		double* lat_north = NULL,
 		double* lat_south = NULL
 	);
-	/*@brief SLC¸´Í¼ÏñµØÀí±àÂë£ºSARÍ¼Ïñ×ø±êÏµ--->Ä«¿¨ÍĞ×ø±êÏµ
-	* @param mapped_lon                        SLC¶ÔÓ¦µÄ¾­¶È
-	* @param mapped_lat                        SLC¶ÔÓ¦µÄÎ³¶È
-	* @param slc                               SARÍ¼Ïñ×ø±êSLC
-	* @param mapped_slc                        Ä«¿¨ÍĞ×ø±êSLC£¨·µ»ØÖµ£©
-	* @param interpolation_method              ²åÖµ·½·¨£¨0£º×îÁÙ½ü²åÖµ£¬1£ºË«ÏßĞÔ²åÖµ¡£Ä¬ÈÏÎª×îÁÙ½ü²åÖµ£©
-	* @param lon_east                          ±àÂëÍ¼Ïñ×î¶«±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lon_west                          ±àÂëÍ¼Ïñ×îÎ÷±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lat_north                         ±àÂëÍ¼Ïñ×î±±±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @param lat_south                         ±àÂëÍ¼Ïñ×îÄÏ±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief SLCå¤å›¾åƒåœ°ç†ç¼–ç ï¼šSARå›¾åƒåæ ‡ç³»--->å¢¨å¡æ‰˜åæ ‡ç³»
+	* @param mapped_lon                        SLCå¯¹åº”çš„ç»åº¦
+	* @param mapped_lat                        SLCå¯¹åº”çš„çº¬åº¦
+	* @param slc                               SARå›¾åƒåæ ‡SLC
+	* @param mapped_slc                        å¢¨å¡æ‰˜åæ ‡SLCï¼ˆè¿”å›å€¼ï¼‰
+	* @param interpolation_method              æ’å€¼æ–¹æ³•ï¼ˆ0ï¼šæœ€ä¸´è¿‘æ’å€¼ï¼Œ1ï¼šåŒçº¿æ€§æ’å€¼ã€‚é»˜è®¤ä¸ºæœ€ä¸´è¿‘æ’å€¼ï¼‰
+	* @param lon_east                          ç¼–ç å›¾åƒæœ€ä¸œè¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_west                          ç¼–ç å›¾åƒæœ€è¥¿è¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_north                         ç¼–ç å›¾åƒæœ€åŒ—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_south                         ç¼–ç å›¾åƒæœ€å—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int SAR2UTM(
 		Mat& mapped_lon,
@@ -1755,32 +1755,32 @@ public:
 		double* lat_south = NULL
 	);
 
-	/*@brief ¸ÉÉæ²úÆ·µØÀí±àÂë£ºSARÍ¼Ïñ×ø±êÏµ--->Ä«¿¨ÍĞ×ø±êÏµ
-	* @param DEM84                        84×ø±êÏµDEM£¨shortĞÍ¾ØÕó£©
-	* @param input                        ´ı±àÂë²úÆ·
-	* @param mapped_resolution_x          ±àÂëºó²úÆ·¶«Î÷Ïò·Ö±æÂÊ£¨m£©
-	* @param mapped_resolution_y          ±àÂëºó²úÆ·ÄÏ±±Ïò·Ö±æÂÊ£¨m£©
-	* @param mapped_result                µØÀí±àÂë½á¹û£¨·µ»ØÖµ£©
-	* @param lon_upperleft                84×ø±êÏµDEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                84×ø±êÏµDEM×óÉÏ½ÇÎ³¶È
-	* @param offset_row                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄĞĞÆ«ÒÆÁ¿
-	* @param offset_col                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄÁĞÆ«ÒÆÁ¿
-	* @param sceneHeight                  SARÍ¼Ïñ³¡¾°¸ß¶È
-	* @param sceneWidth                   SARÍ¼Ïñ³¡¾°¿í¶È
-	* @param prf                          SARÎÀĞÇÀ×´ïÂö³åÖØ¸´ÆµÂÊ
-	* @param rangeSpacing                 ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param wavelength                   ²¨³¤
-	* @param nearRangeTime                ×î½üĞ±¾àÊ±¼ä
-	* @param acquisitionStartTime         ·½Î»Ïò²ÉÑù¿ªÊ¼Ê±¼ä
-	* @param acquisitionStopTime          ·½Î»Ïò²ÉÑù½áÊøÊ±¼ä
-	* @param stateVector                  ÎÀĞÇ¹ìµÀÊı¾İ£¨Î´²åÖµ£©
-	* @param lon_spacing                  84×ø±êÏµDEM¾­¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @param lat_spacing                  84×ø±êÏµDEMÎ³¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @param lon_east                     ±àÂëÍ¼Ïñ×î¶«±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lon_west                     ±àÂëÍ¼Ïñ×îÎ÷±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lat_north                    ±àÂëÍ¼Ïñ×î±±±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @param lat_south                    ±àÂëÍ¼Ïñ×îÄÏ±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å¹²æ¶‰äº§å“åœ°ç†ç¼–ç ï¼šSARå›¾åƒåæ ‡ç³»--->å¢¨å¡æ‰˜åæ ‡ç³»
+	* @param DEM84                        84åæ ‡ç³»DEMï¼ˆshortå‹çŸ©é˜µï¼‰
+	* @param input                        å¾…ç¼–ç äº§å“
+	* @param mapped_resolution_x          ç¼–ç åäº§å“ä¸œè¥¿å‘åˆ†è¾¨ç‡ï¼ˆmï¼‰
+	* @param mapped_resolution_y          ç¼–ç åäº§å“å—åŒ—å‘åˆ†è¾¨ç‡ï¼ˆmï¼‰
+	* @param mapped_result                åœ°ç†ç¼–ç ç»“æœï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’çº¬åº¦
+	* @param offset_row                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„è¡Œåç§»é‡
+	* @param offset_col                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„åˆ—åç§»é‡
+	* @param sceneHeight                  SARå›¾åƒåœºæ™¯é«˜åº¦
+	* @param sceneWidth                   SARå›¾åƒåœºæ™¯å®½åº¦
+	* @param prf                          SARå«æ˜Ÿé›·è¾¾è„‰å†²é‡å¤é¢‘ç‡
+	* @param rangeSpacing                 è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param wavelength                   æ³¢é•¿
+	* @param nearRangeTime                æœ€è¿‘æ–œè·æ—¶é—´
+	* @param acquisitionStartTime         æ–¹ä½å‘é‡‡æ ·å¼€å§‹æ—¶é—´
+	* @param acquisitionStopTime          æ–¹ä½å‘é‡‡æ ·ç»“æŸæ—¶é—´
+	* @param stateVector                  å«æ˜Ÿè½¨é“æ•°æ®ï¼ˆæœªæ’å€¼ï¼‰
+	* @param lon_spacing                  84åæ ‡ç³»DEMç»åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @param lat_spacing                  84åæ ‡ç³»DEMçº¬åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @param lon_east                     ç¼–ç å›¾åƒæœ€ä¸œè¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_west                     ç¼–ç å›¾åƒæœ€è¥¿è¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_north                    ç¼–ç å›¾åƒæœ€åŒ—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_south                    ç¼–ç å›¾åƒæœ€å—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int geocode(
 		Mat& DEM84,
@@ -1809,33 +1809,33 @@ public:
 		double* lat_south = NULL
 	);
 
-	/*@brief µ¥ÊÓ¸´Í¼ÏñµØÀí±àÂë£ºSARÍ¼Ïñ×ø±êÏµ--->Ä«¿¨ÍĞ×ø±êÏµ
-	* @param DEM84                        84×ø±êÏµDEM£¨shortĞÍ¾ØÕó£©
-	* @param slc                          ´ı±àÂëµ¥ÊÓ¸´Í¼Ïñ
-	* @param mapped_resolution_x          ±àÂëºó²úÆ·¶«Î÷Ïò·Ö±æÂÊ£¨m£©
-	* @param mapped_resolution_y          ±àÂëºó²úÆ·ÄÏ±±Ïò·Ö±æÂÊ£¨m£©
-	* @param mapped_slc                   µØÀí±àÂë½á¹û£¨·µ»ØÖµ£©
-	* @param lon_upperleft                84×ø±êÏµDEM×óÉÏ½Ç¾­¶È
-	* @param lat_upperleft                84×ø±êÏµDEM×óÉÏ½ÇÎ³¶È
-	* @param offset_row                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄĞĞÆ«ÒÆÁ¿
-	* @param offset_col                   SARÍ¼ÏñÔÚÔ­³¡¾°ÖĞµÄÁĞÆ«ÒÆÁ¿
-	* @param sceneHeight                  SARÍ¼Ïñ³¡¾°¸ß¶È
-	* @param sceneWidth                   SARÍ¼Ïñ³¡¾°¿í¶È
-	* @param prf                          SARÎÀĞÇÀ×´ïÂö³åÖØ¸´ÆµÂÊ
-	* @param rangeSpacing                 ¾àÀëÏò²ÉÑù¼ä¸ô£¨m£©
-	* @param wavelength                   ²¨³¤
-	* @param nearRangeTime                ×î½üĞ±¾àÊ±¼ä
-	* @param acquisitionStartTime         ·½Î»Ïò²ÉÑù¿ªÊ¼Ê±¼ä
-	* @param acquisitionStopTime          ·½Î»Ïò²ÉÑù½áÊøÊ±¼ä
-	* @param stateVector                  ÎÀĞÇ¹ìµÀÊı¾İ£¨Î´²åÖµ£©
-	* @param lon_spacing                  84×ø±êÏµDEM¾­¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @param lat_spacing                  84×ø±êÏµDEMÎ³¶È²ÉÑù¼ä¸ô£¨¡ã£©
-	* @param interp_times                 84×ø±êÏµDEM²åÖµ±¶Êı£¨Ä¬ÈÏÖµÎª10£©
-	* @param lon_east                     ±àÂëÍ¼Ïñ×î¶«±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lon_west                     ±àÂëÍ¼Ïñ×îÎ÷±ßÔµ¾­¶È£¨·µ»ØÖµ£©
-	* @param lat_north                    ±àÂëÍ¼Ïñ×î±±±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @param lat_south                    ±àÂëÍ¼Ïñ×îÄÏ±ßÔµÎ³¶È£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å•è§†å¤å›¾åƒåœ°ç†ç¼–ç ï¼šSARå›¾åƒåæ ‡ç³»--->å¢¨å¡æ‰˜åæ ‡ç³»
+	* @param DEM84                        84åæ ‡ç³»DEMï¼ˆshortå‹çŸ©é˜µï¼‰
+	* @param slc                          å¾…ç¼–ç å•è§†å¤å›¾åƒ
+	* @param mapped_resolution_x          ç¼–ç åäº§å“ä¸œè¥¿å‘åˆ†è¾¨ç‡ï¼ˆmï¼‰
+	* @param mapped_resolution_y          ç¼–ç åäº§å“å—åŒ—å‘åˆ†è¾¨ç‡ï¼ˆmï¼‰
+	* @param mapped_slc                   åœ°ç†ç¼–ç ç»“æœï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upperleft                84åæ ‡ç³»DEMå·¦ä¸Šè§’çº¬åº¦
+	* @param offset_row                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„è¡Œåç§»é‡
+	* @param offset_col                   SARå›¾åƒåœ¨åŸåœºæ™¯ä¸­çš„åˆ—åç§»é‡
+	* @param sceneHeight                  SARå›¾åƒåœºæ™¯é«˜åº¦
+	* @param sceneWidth                   SARå›¾åƒåœºæ™¯å®½åº¦
+	* @param prf                          SARå«æ˜Ÿé›·è¾¾è„‰å†²é‡å¤é¢‘ç‡
+	* @param rangeSpacing                 è·ç¦»å‘é‡‡æ ·é—´éš”ï¼ˆmï¼‰
+	* @param wavelength                   æ³¢é•¿
+	* @param nearRangeTime                æœ€è¿‘æ–œè·æ—¶é—´
+	* @param acquisitionStartTime         æ–¹ä½å‘é‡‡æ ·å¼€å§‹æ—¶é—´
+	* @param acquisitionStopTime          æ–¹ä½å‘é‡‡æ ·ç»“æŸæ—¶é—´
+	* @param stateVector                  å«æ˜Ÿè½¨é“æ•°æ®ï¼ˆæœªæ’å€¼ï¼‰
+	* @param lon_spacing                  84åæ ‡ç³»DEMç»åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @param lat_spacing                  84åæ ‡ç³»DEMçº¬åº¦é‡‡æ ·é—´éš”ï¼ˆÂ°ï¼‰
+	* @param interp_times                 84åæ ‡ç³»DEMæ’å€¼å€æ•°ï¼ˆé»˜è®¤å€¼ä¸º10ï¼‰
+	* @param lon_east                     ç¼–ç å›¾åƒæœ€ä¸œè¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lon_west                     ç¼–ç å›¾åƒæœ€è¥¿è¾¹ç¼˜ç»åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_north                    ç¼–ç å›¾åƒæœ€åŒ—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @param lat_south                    ç¼–ç å›¾åƒæœ€å—è¾¹ç¼˜çº¬åº¦ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int geocode(
 		Mat& DEM84,
@@ -1864,16 +1864,16 @@ public:
 		double* lat_south = NULL
 	);
 	/*
-	* @brief ÀûÓÃµØÀíÅä×¼Íø¸ñÎÄ¼ş£¨TropiSARµÄ.grilleÎÄ¼ş£©½«ºáÏòÄ«¿¨ÍĞÍ¶Ó°µÄDTMºÍDSMÍ¶Ó°ÖÁSAR×ø±êÏµ
-	* @param grille_file                       grilleÍø¸ñÎÄ¼ş
-	* @param DTM                               ´ıÍ¶Ó°µÄDTM»òÕßDSMÊı¾İ
-	* @param xllcorner                         DTM×óÉÏ½ÇUTM_x×ø±ê
-	* @param yllcorner                         DTM×óÉÏ½ÇUTM_y×ø±ê
-	* @param prior_DTM                         SAR×ø±êÏµÏÈÑéDTM
-	* @param mapped_DTM                        Í¶Ó°ÖÁSAR×ø±êÏµµÄDTM
-	* @param SAR_extent_x                      SAR³¡¾°x×ø±ê·¶Î§(0~SAR_extent_x)
-	* @param SAR_extent_y                      SAR³¡¾°y×ø±ê·¶Î§(0~SAR_extent_y)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @brief åˆ©ç”¨åœ°ç†é…å‡†ç½‘æ ¼æ–‡ä»¶ï¼ˆTropiSARçš„.grilleæ–‡ä»¶ï¼‰å°†æ¨ªå‘å¢¨å¡æ‰˜æŠ•å½±çš„DTMå’ŒDSMæŠ•å½±è‡³SARåæ ‡ç³»
+	* @param grille_file                       grilleç½‘æ ¼æ–‡ä»¶
+	* @param DTM                               å¾…æŠ•å½±çš„DTMæˆ–è€…DSMæ•°æ®
+	* @param xllcorner                         DTMå·¦ä¸Šè§’UTM_xåæ ‡
+	* @param yllcorner                         DTMå·¦ä¸Šè§’UTM_yåæ ‡
+	* @param prior_DTM                         SARåæ ‡ç³»å…ˆéªŒDTM
+	* @param mapped_DTM                        æŠ•å½±è‡³SARåæ ‡ç³»çš„DTM
+	* @param SAR_extent_x                      SARåœºæ™¯xåæ ‡èŒƒå›´(0~SAR_extent_x)
+	* @param SAR_extent_y                      SARåœºæ™¯yåæ ‡èŒƒå›´(0~SAR_extent_y)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int geo_transformation(
 		const char* grille_file,
@@ -1886,18 +1886,18 @@ public:
 		int SAR_extent_y
 	);
 	/*
-	* @brief ÀûÓÃµØÀíÅä×¼Íø¸ñÎÄ¼ş£¨TropiSARµÄ.grilleÎÄ¼ş£©½«WGS84×ø±êÏµ£¨¾­Î³¸ß£©µÄDTMºÍDSMÍ¶Ó°ÖÁSAR×ø±êÏµ
-	* @param grille_file                       grilleÍø¸ñÎÄ¼ş
-	* @param DTM                               ´ıÍ¶Ó°µÄDTM»òÕßDSMÊı¾İ
-	* @param lon_upleft                        DTM×óÉÏ½Ç¾­¶È
-	* @param lat_upleft                        DTM×óÉÏ½ÇÎ³¶È
-	* @param lon_interval                      ¾­¶È²ÉÑù¼ä¸ô
-	* @param lat_interval                      Î³¶È²ÉÑù¼ä¸ô
-	* @param prior_DTM                         SAR×ø±êÏµÏÈÑéDTM
-	* @param mapped_DTM                        Í¶Ó°ÖÁSAR×ø±êÏµµÄDTM
-	* @param SAR_extent_x                      SAR³¡¾°x×ø±ê·¶Î§(0~SAR_extent_x)
-	* @param SAR_extent_y                      SAR³¡¾°y×ø±ê·¶Î§(0~SAR_extent_y)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @brief åˆ©ç”¨åœ°ç†é…å‡†ç½‘æ ¼æ–‡ä»¶ï¼ˆTropiSARçš„.grilleæ–‡ä»¶ï¼‰å°†WGS84åæ ‡ç³»ï¼ˆç»çº¬é«˜ï¼‰çš„DTMå’ŒDSMæŠ•å½±è‡³SARåæ ‡ç³»
+	* @param grille_file                       grilleç½‘æ ¼æ–‡ä»¶
+	* @param DTM                               å¾…æŠ•å½±çš„DTMæˆ–è€…DSMæ•°æ®
+	* @param lon_upleft                        DTMå·¦ä¸Šè§’ç»åº¦
+	* @param lat_upleft                        DTMå·¦ä¸Šè§’çº¬åº¦
+	* @param lon_interval                      ç»åº¦é‡‡æ ·é—´éš”
+	* @param lat_interval                      çº¬åº¦é‡‡æ ·é—´éš”
+	* @param prior_DTM                         SARåæ ‡ç³»å…ˆéªŒDTM
+	* @param mapped_DTM                        æŠ•å½±è‡³SARåæ ‡ç³»çš„DTM
+	* @param SAR_extent_x                      SARåœºæ™¯xåæ ‡èŒƒå›´(0~SAR_extent_x)
+	* @param SAR_extent_y                      SARåœºæ™¯yåæ ‡èŒƒå›´(0~SAR_extent_y)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int geo_transformation(
 		const char* grille_file,
@@ -1912,14 +1912,14 @@ public:
 		int SAR_extent_y
 	);
 	/*
-	* @brief ¶ÁÈ¡TropiSARµÄ.grilleÎÄ¼ş
-	* @param grille_file                       ´ı¶ÁÈ¡µÄgrilleÍø¸ñÎÄ¼ş
-	* @param row_matrix                        Ã¿²ãÍø¸ñµÄĞĞĞÅÏ¢
-	* @param col_matrix                        Ã¿²ãÍø¸ñµÄÁĞĞÅÏ¢
-	* @param lon_matrix                        Ã¿²ãÍø¸ñµÄ¾­¶ÈĞÅÏ¢
-	* @param lat_matrix                        Ã¿²ãÍø¸ñµÄÎ³¶ÈĞÅÏ¢
-	* @param height_vector                     Ã¿²ãÍø¸ñµÄ¸ß¶ÈĞÅÏ¢
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @brief è¯»å–TropiSARçš„.grilleæ–‡ä»¶
+	* @param grille_file                       å¾…è¯»å–çš„grilleç½‘æ ¼æ–‡ä»¶
+	* @param row_matrix                        æ¯å±‚ç½‘æ ¼çš„è¡Œä¿¡æ¯
+	* @param col_matrix                        æ¯å±‚ç½‘æ ¼çš„åˆ—ä¿¡æ¯
+	* @param lon_matrix                        æ¯å±‚ç½‘æ ¼çš„ç»åº¦ä¿¡æ¯
+	* @param lat_matrix                        æ¯å±‚ç½‘æ ¼çš„çº¬åº¦ä¿¡æ¯
+	* @param height_vector                     æ¯å±‚ç½‘æ ¼çš„é«˜åº¦ä¿¡æ¯
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int read_grille(
 		const char* grille_file,
@@ -1930,12 +1930,12 @@ public:
 		vector<double>& height_vector
 	);
 	/*
-	* @brief ½«¾­Î³¶È×ø±ê×ª»»ÎªUTM×ø±ê
-	* @param lon                                ¾­¶È
-	* @param lat                                Î³¶È
-	* @param UTM_X                              UTM X×ø±ê
-	* @param UTM_Y                              UTM Y×ø±ê
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @brief å°†ç»çº¬åº¦åæ ‡è½¬æ¢ä¸ºUTMåæ ‡
+	* @param lon                                ç»åº¦
+	* @param lat                                çº¬åº¦
+	* @param UTM_X                              UTM Xåæ ‡
+	* @param UTM_Y                              UTM Yåæ ‡
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int lonlat2utm(
 		Mat lon,
@@ -1944,15 +1944,15 @@ public:
 		Mat& UTM_Y
 	);
 	/*
-	* @brief ´ÓLVIS 2¼¶Êı¾İÖĞ¶ÁÈ¡DTMºÍDSMĞÅÏ¢
-	* @param LVIS2_filelist                     LVIS 2¼¶ÎÄ¼ş
-	* @param DTM                                LVIS DTMĞÅÏ¢(·µ»ØÖµ£¬n¡Á1)
-	* @param DSM                                LVIS DSMĞÅÏ¢(RH100£¬·µ»ØÖµ£¬n¡Á1)
-	* @param RH100                              LVIS RH100ĞÅÏ¢(·µ»ØÖµ£¬n¡Á1)
-	* @param RH95                               LVIS RH100ĞÅÏ¢(·µ»ØÖµ£¬n¡Á1)
-	* @param lat                                LVIS Î³¶ÈĞÅÏ¢(·µ»ØÖµ£¬n¡Á1)
-	* @param lon                                LVIS ¾­¶ÈĞÅÏ¢(·µ»ØÖµ£¬n¡Á1)
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	* @brief ä»LVIS 2çº§æ•°æ®ä¸­è¯»å–DTMå’ŒDSMä¿¡æ¯
+	* @param LVIS2_filelist                     LVIS 2çº§æ–‡ä»¶
+	* @param DTM                                LVIS DTMä¿¡æ¯(è¿”å›å€¼ï¼ŒnÃ—1)
+	* @param DSM                                LVIS DSMä¿¡æ¯(RH100ï¼Œè¿”å›å€¼ï¼ŒnÃ—1)
+	* @param RH100                              LVIS RH100ä¿¡æ¯(è¿”å›å€¼ï¼ŒnÃ—1)
+	* @param RH95                               LVIS RH100ä¿¡æ¯(è¿”å›å€¼ï¼ŒnÃ—1)
+	* @param lat                                LVIS çº¬åº¦ä¿¡æ¯(è¿”å›å€¼ï¼ŒnÃ—1)
+	* @param lon                                LVIS ç»åº¦ä¿¡æ¯(è¿”å›å€¼ï¼ŒnÃ—1)
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int read_LVIS(
 		vector<string>& LVIS2_filelist,
@@ -1964,26 +1964,26 @@ public:
 		Mat& lon
 	);
 	/*
-	* @brief ½«DTM/DSMÊı¾İÍ¶Ó°ÖÁDLR F-SAR×ø±êÏµ
-	* @param east_min                          F-SAR³¡¾°±ßÔµ
-	* @param north_min                         F-SAR³¡¾°±ßÔµ
-	* @param east_max                          F-SAR³¡¾°±ßÔµ
-	* @param north_max                         F-SAR³¡¾°±ßÔµ
-	* @param projection_zone                   UTMÇøºÅ
-	* @param pixel_spacing                     ²Î¿¼DEM²ÉÑù¼ä¸ô£¨Ã×£©
-	* @param sr2geo_az                         ²Î¿¼DEMÔÚSAR×ø±êÏµÖĞµÄ·½Î»Ïò×ø±ê±í
-	* @param sr2geo_rg                         ²Î¿¼DEMÔÚSAR×ø±êÏµÖĞµÄ¾àÀëÏò×ø±ê±í
-	* @param sr2geo_h_ref                      ²Î¿¼DEMµÄ¸ß¶È
-	* @param sr2geo3d_rg_o1                    3DµØÀí±àÂëÏµÊı
-	* @param sr2geo3d_rg_o2                    3DµØÀí±àÂëÏµÊı
-	* @param sr2geo3d_az_o1                    3DµØÀí±àÂëÏµÊı
-	* @param sr2geo3d_az_o2                    3DµØÀí±àÂëÏµÊı
-	* @param DTM/DSM                           ´ıÍ¶Ó°µÄDTM/DSM
-	* @param DTM_lon                           ´ıÍ¶Ó°DTM/DSMµÄ¾­¶È
-	* @param DTM_lat                           ´ıÍ¶Ó°DTM/DSMµÄÎ³¶È
-	* @param mapped_slc_rg                     Í¶Ó°ºóDTM/DSMÔÚSAR×ø±êÏµÖĞµÄ¾àÀëÏò×ø±ê£¨·µ»ØÖµ£©
-	* @param mapped_slc_az                     Í¶Ó°ºóDTM/DSMÔÚSAR×ø±êÏµÖĞµÄ·½Î»Ïò×ø±ê£¨·µ»ØÖµ£©
-	* @param mapped_h0                         ²Î¿¼DEM£¨·µ»ØÖµ£¬Óëmapped_slc_rgºÍmapped_slc_azÍ¬³ß´ç£©
+	* @brief å°†DTM/DSMæ•°æ®æŠ•å½±è‡³DLR F-SARåæ ‡ç³»
+	* @param east_min                          F-SARåœºæ™¯è¾¹ç¼˜
+	* @param north_min                         F-SARåœºæ™¯è¾¹ç¼˜
+	* @param east_max                          F-SARåœºæ™¯è¾¹ç¼˜
+	* @param north_max                         F-SARåœºæ™¯è¾¹ç¼˜
+	* @param projection_zone                   UTMåŒºå·
+	* @param pixel_spacing                     å‚è€ƒDEMé‡‡æ ·é—´éš”ï¼ˆç±³ï¼‰
+	* @param sr2geo_az                         å‚è€ƒDEMåœ¨SARåæ ‡ç³»ä¸­çš„æ–¹ä½å‘åæ ‡è¡¨
+	* @param sr2geo_rg                         å‚è€ƒDEMåœ¨SARåæ ‡ç³»ä¸­çš„è·ç¦»å‘åæ ‡è¡¨
+	* @param sr2geo_h_ref                      å‚è€ƒDEMçš„é«˜åº¦
+	* @param sr2geo3d_rg_o1                    3Dåœ°ç†ç¼–ç ç³»æ•°
+	* @param sr2geo3d_rg_o2                    3Dåœ°ç†ç¼–ç ç³»æ•°
+	* @param sr2geo3d_az_o1                    3Dåœ°ç†ç¼–ç ç³»æ•°
+	* @param sr2geo3d_az_o2                    3Dåœ°ç†ç¼–ç ç³»æ•°
+	* @param DTM/DSM                           å¾…æŠ•å½±çš„DTM/DSM
+	* @param DTM_lon                           å¾…æŠ•å½±DTM/DSMçš„ç»åº¦
+	* @param DTM_lat                           å¾…æŠ•å½±DTM/DSMçš„çº¬åº¦
+	* @param mapped_slc_rg                     æŠ•å½±åDTM/DSMåœ¨SARåæ ‡ç³»ä¸­çš„è·ç¦»å‘åæ ‡ï¼ˆè¿”å›å€¼ï¼‰
+	* @param mapped_slc_az                     æŠ•å½±åDTM/DSMåœ¨SARåæ ‡ç³»ä¸­çš„æ–¹ä½å‘åæ ‡ï¼ˆè¿”å›å€¼ï¼‰
+	* @param mapped_h0                         å‚è€ƒDEMï¼ˆè¿”å›å€¼ï¼Œä¸mapped_slc_rgå’Œmapped_slc_azåŒå°ºå¯¸ï¼‰
 	*/
 	int geo2sar_DLR(
 		double east_min,
@@ -2006,7 +2006,7 @@ public:
 		Mat& mapped_slc_az,
 		Mat& mapped_h0
 	);
-	// ¸ù¾İ¾­Î³¶È»ñÈ¡´óµØË®×¼Ãæ¸ß²î
+	// æ ¹æ®ç»çº¬åº¦è·å–å¤§åœ°æ°´å‡†é¢é«˜å·®
 	static double getGeoidHeight(
 		const std::string& geoidFilePath,
 		double lon, 

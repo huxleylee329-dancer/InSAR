@@ -1,4 +1,4 @@
-// Dem.cpp : ¶¨Òå DLL Ó¦ÓÃ³ÌĞòµÄµ¼³öº¯Êı¡£
+// Dem.cpp : å®šä¹‰ DLL åº”ç”¨ç¨‹åºçš„å¯¼å‡ºå‡½æ•°ã€‚
 //
 #include "stdafx.h"
 #include"..\include\Dem.h"
@@ -214,8 +214,8 @@ int Dem::phase2dem_newton_iter(
 	doppler_frequency = doppler_frequency(Range(0, 1), Range(cols_start_m, cols_end_m));
 	unwrapped_phase = unwrapped_phase + flat_phase;
 	
-	int row = gcps.at<double>(2, 0);
-	int col = gcps.at<double>(2, 1);
+	int row = static_cast<int>(gcps.at<double>(2, 0));
+	int col = static_cast<int>(gcps.at<double>(2, 1));
 	if (row < 1 ||
 		row > S_position_m.rows ||
 		row < 1 ||
@@ -225,7 +225,7 @@ int Dem::phase2dem_newton_iter(
 		return -1;
 	}
 
-	///////////////////////////////Ğ£ÕıÖÁ¾ø¶ÔÏàÎ»///////////////////////////////////
+	///////////////////////////////æ ¡æ­£è‡³ç»å¯¹ç›¸ä½///////////////////////////////////
 	Mat Control_Point_Position = gcps(Range(2, 3), Range(2, 5));
 	Mat tmp = Control_Point_Position - 
 		S_position_m(Range(row - 1, row), Range(0, 3));
@@ -253,8 +253,8 @@ int Dem::phase2dem_newton_iter(
 	unwrapped_phase = unwrapped_phase + K * C;
 
 
-	double R0_m = auxi_m.at<double>(0, 3) * 3e8 / 2;//×î½üĞ±¾à
-	double spc_m = auxi_m.at<double>(0, 1);//¾àÀëÏò²ÉÑù¼ä¸ô
+	double R0_m = auxi_m.at<double>(0, 3) * 3e8 / 2;//æœ€è¿‘æ–œè·
+	double spc_m = auxi_m.at<double>(0, 1);//è·ç¦»å‘é‡‡æ ·é—´éš”
 	Mat Rm = Mat::zeros(1, nc, CV_64F);
 	for (int i = 0; i < nc; i++)
 	{
@@ -264,18 +264,18 @@ int Dem::phase2dem_newton_iter(
 	Mat ones = Mat::ones(unwrapped_phase.rows, 1, CV_64F);
 	Mat R_M = ones * Rm;
 	Mat R_F = ones * Rm * 2.0 - lambda * unwrapped_phase / C;
-	Mat Satellite_M_T_Position = S_position_m;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = S_position_m;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = S_position_s;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = S_position_s;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = S_position_m;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = S_position_m;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = S_position_m;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = S_position_s;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = S_position_m;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = S_position_s;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = S_velocity_m;
 	ones = Mat::ones(unwrapped_phase.rows, unwrapped_phase.cols, CV_64F);
@@ -346,7 +346,7 @@ int Dem::phase2dem_newton_iter(
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-	    //µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+	    //ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, fine_size_cols, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -385,7 +385,7 @@ int Dem::phase2dem_newton_iter(
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -424,7 +424,7 @@ int Dem::phase2dem_newton_iter(
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
@@ -520,7 +520,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	}
 
 	/*
-	* Ğ£ÕıÖÁ¾ø¶ÔÏàÎ»
+	* æ ¡æ­£è‡³ç»å¯¹ç›¸ä½
 	*/
 
 	FormatConversion conversion; Utils util;
@@ -574,7 +574,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	ret = conversion.read_array_from_h5(source_1.c_str(), "carrier_frequency", carrier_frequency);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 
-	//Ñ°ÕÒÍ¼Ïñ·¶Î§ÄÚµÄ¿ØÖÆµãĞÅÏ¢
+	//å¯»æ‰¾å›¾åƒèŒƒå›´å†…çš„æ§åˆ¶ç‚¹ä¿¡æ¯
 
 	int num_gcps = gcps.rows;
 	int row, col, i = 0;
@@ -617,24 +617,24 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	ret = util.stateVec_interp(stateVec1, time_interval1, stateVec1);
 	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
 	ret = util.stateVec_interp(stateVec2, time_interval2, stateVec2);
 	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
 	/*
-	* Ñ°ÕÒÍ¼Ïñ×óÉÏ½Ç³ÉÏñÎÀĞÇÎ»ÖÃ
+	* å¯»æ‰¾å›¾åƒå·¦ä¸Šè§’æˆåƒå«æ˜Ÿä½ç½®
 	*/
 	Mat sate1_xyz, sate2_xyz, sate1_v, sate2_v;
-	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//¸¨ĞÇÎ»ÖÃ
+	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//è¾…æ˜Ÿä½ç½®
 	stateVec1(cv::Range(0, stateVec1.rows), cv::Range(1, 4)).copyTo(sate1_xyz);
 	stateVec1(cv::Range(0, stateVec1.rows), cv::Range(4, 7)).copyTo(sate1_v);
 	stateVec2(cv::Range(0, stateVec2.rows), cv::Range(1, 4)).copyTo(sate2_xyz);
 	stateVec2(cv::Range(0, stateVec2.rows), cv::Range(4, 7)).copyTo(sate2_v);
-	//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+	//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 	Mat xyz, llh_upperleft(1, 3, CV_64F);
 	row_coord.at<double>(0, 0) = offset_row;
 	col_coord.at<double>(0, 0) = offset_col + double(nc) / 2.0;
@@ -663,7 +663,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		sate1_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
 		sate1_v(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
 	}
-	//ÎÀĞÇ2
+	//å«æ˜Ÿ2
 	dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
 	for (int j = 0; j < sate2_xyz.rows; j++)
 	{
@@ -676,7 +676,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		xxxx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
 		sate2_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 	}
-	//¼Ó»ØÆ½µØÏàÎ»
+	//åŠ å›å¹³åœ°ç›¸ä½
 	//Mat coef;
 	//cv::transpose(flat_phase_coefficient, coef);
 #pragma omp parallel for schedule(guided)
@@ -694,19 +694,19 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + sum(temp.mul(flat_phase_coefficient))[0];
 		}
 	}
-	//¿ØÖÆµã¾ø¶ÔÏàÎ»¼ÆËã
+	//æ§åˆ¶ç‚¹ç»å¯¹ç›¸ä½è®¡ç®—
 	double r_main = sqrt(sum((sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
 	double r_slave = sqrt(sum((sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
 	double C = mode == 1 ? 4 * PI : 2 * PI;
 	double lambda = VEL_C / (carrier_frequency.at<double>(0, 0) + 1e-10);
 	double phase_real = (r_slave - r_main) / lambda * C;
 	double K = round((phase_real - unwrapped_phase.at<double>(row, col)) / (2 * PI));
-	unwrapped_phase = unwrapped_phase + K * 2 * PI;//ÏàÎ»Ğ£Õı
+	unwrapped_phase = unwrapped_phase + K * 2 * PI;//ç›¸ä½æ ¡æ­£
 	
 	//util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\unwrapped_phase_abs.bin", unwrapped_phase);
 
 	/*
-	* ·´Ñİ¸ß³Ì
+	* åæ¼”é«˜ç¨‹
 	*/
 
 	Mat R_M(1, nc, CV_64F);
@@ -717,18 +717,18 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	Mat ones = Mat::ones(nr, 1, CV_64F);
 	R_M = ones * R_M;
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
-	Mat Satellite_M_T_Position = sate1;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = sate1;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = sate2;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate2;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = sate1;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate1;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = sate1;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = sate2;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = sate1;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = sate2;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = satev1;
 	ones = Mat::ones(nr, nc, CV_64F);
@@ -797,7 +797,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-		//µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -836,7 +836,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -875,7 +875,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
@@ -970,7 +970,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	}
 
 	/*
-	* Ğ£ÕıÖÁ¾ø¶ÔÏàÎ»
+	* æ ¡æ­£è‡³ç»å¯¹ç›¸ä½
 	*/
 
 	FormatConversion conversion; Utils util;
@@ -1037,7 +1037,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 
 	ret = conversion.read_double_from_h5(source_1.c_str(), "slant_range_first_pixel", &nearRange);
 
-	//Ñ°ÕÒÍ¼Ïñ·¶Î§ÄÚµÄ¿ØÖÆµãĞÅÏ¢
+	//å¯»æ‰¾å›¾åƒèŒƒå›´å†…çš„æ§åˆ¶ç‚¹ä¿¡æ¯
 
 	int num_gcps = gcps.rows;
 	int row, col, i_gcp = 0, count = 0;
@@ -1074,19 +1074,19 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
 	/*
-	* Ñ°ÕÒÍ¼Ïñ×óÉÏ½Ç³ÉÏñÎÀĞÇÎ»ÖÃ
+	* å¯»æ‰¾å›¾åƒå·¦ä¸Šè§’æˆåƒå«æ˜Ÿä½ç½®
 	*/
-	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//¸¨ĞÇÎ»ÖÃ
-	//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//è¾…æ˜Ÿä½ç½®
+	//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 	Position pos;Velocity vel;
 	for (int i = 0; i < nr; i++)
 	{
@@ -1100,7 +1100,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		satev1.at<double>(i, 2) = vel.vz;
 	}
 
-	//ÎÀĞÇ2
+	//å«æ˜Ÿ2
 	Position groundPosition;
 	double latitude, longitude, height, dopplerFrequency = 0.0;
 	latitude = gcps.at<double>(i_gcp, 3);
@@ -1186,7 +1186,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	//¼Ó»ØÆ½µØÏàÎ»
+	//åŠ å›å¹³åœ°ç›¸ä½
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
@@ -1202,7 +1202,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + sum(temp.mul(flat_phase_coefficient))[0];
 		}
 	}
-	//¿ØÖÆµã¾ø¶ÔÏàÎ»¼ÆËã
+	//æ§åˆ¶ç‚¹ç»å¯¹ç›¸ä½è®¡ç®—
 	double lambda = VEL_C / (carrier_frequency.at<double>(0, 0) + 1e-10);
 	double K = 0.0;
 	for (int i = 0; i < valid_row.size(); i++)
@@ -1221,7 +1221,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		K += ((phase_real - unwrapped_phase.at<double>(rrr - 1, ccc - 1)) / (2 * PI));
 	}
 	K /= (double)valid_row.size();
-	unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ÏàÎ»Ğ£Õı
+	unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ç›¸ä½æ ¡æ­£
 	//conversion.creat_new_h5("G:\\tmp\\unwrapped_phase.h5");
 	//conversion.write_array_to_h5("G:\\tmp\\unwrapped_phase.h5", "phase", unwrapped_phase); return 0;
 
@@ -1239,7 +1239,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	//}
 
 	/*
-	* ·´Ñİ¸ß³Ì
+	* åæ¼”é«˜ç¨‹
 	*/
 
 	Mat R_M(1, nc, CV_64F);
@@ -1259,18 +1259,18 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	Mat ones = Mat::ones(nr, 1, CV_64F);
 	R_M = ones * R_M;
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
-	Mat Satellite_M_T_Position = sate1;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = sate1;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = sate2;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate2;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = sate1;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate1;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = sate1;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = sate2;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = sate1;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = sate2;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = satev1;
 	ones = Mat::ones(nr, nc, CV_64F);
@@ -1339,7 +1339,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-		//µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -1378,7 +1378,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -1417,7 +1417,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
@@ -1493,14 +1493,14 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	}
 	//if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
 	//dem = dem + llh.at<double>(0, 2) - dem.at<double>(row - 1, col - 1);
-	Mat error(valid_row.size(), 3, CV_64F);
+	Mat error(static_cast<int>(valid_row.size()), 3, CV_64F);
 
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		//Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		/*error.at<double>(i, 0) = P1.at<double>(r - 1, c - 1) - pos.x;
 		error.at<double>(i, 1) = P2.at<double>(r - 1, c - 1) - pos.y;
 		error.at<double>(i, 2) = P3.at<double>(r - 1, c - 1) - pos.z;*/
@@ -1537,7 +1537,7 @@ int Dem::dem_newton_iter_14(
 	}
 
 	/*
-	* Ğ£ÕıÖÁ¾ø¶ÔÏàÎ»
+	* æ ¡æ­£è‡³ç»å¯¹ç›¸ä½
 	*/
 
 	FormatConversion conversion; Utils util;
@@ -1610,7 +1610,7 @@ int Dem::dem_newton_iter_14(
 	conversion.read_array_from_h5(source_1.c_str(), "slantRange", slantRange_main);
 	conversion.read_array_from_h5(source_2.c_str(), "slantRange", slantRange_slave);
 
-	//Ñ°ÕÒÍ¼Ïñ·¶Î§ÄÚµÄ¿ØÖÆµãĞÅÏ¢
+	//å¯»æ‰¾å›¾åƒèŒƒå›´å†…çš„æ§åˆ¶ç‚¹ä¿¡æ¯
 
 	int num_gcps = gcps.rows;
 	int row, col, i_gcp = 0, count = 0;
@@ -1647,19 +1647,19 @@ int Dem::dem_newton_iter_14(
 
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
 	/*
-	* Ñ°ÕÒÍ¼Ïñ×óÉÏ½Ç³ÉÏñÎÀĞÇÎ»ÖÃ
+	* å¯»æ‰¾å›¾åƒå·¦ä¸Šè§’æˆåƒå«æ˜Ÿä½ç½®
 	*/
-	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//¸¨ĞÇÎ»ÖÃ
-	//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//è¾…æ˜Ÿä½ç½®
+	//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 	Position pos; Velocity vel;
 	for (int i = 0; i < nr; i++)
 	{
@@ -1673,7 +1673,7 @@ int Dem::dem_newton_iter_14(
 		satev1.at<double>(i, 2) = vel.vz;
 	}
 
-	//ÎÀĞÇ2
+	//å«æ˜Ÿ2
 	Position groundPosition;
 	double latitude, longitude, height, dopplerFrequency = 0.0;
 	latitude = gcps.at<double>(i_gcp, 3);
@@ -1759,7 +1759,7 @@ int Dem::dem_newton_iter_14(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	//¼Ó»Ø²Î¿¼ÏàÎ»
+	//åŠ å›å‚è€ƒç›¸ä½
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
@@ -1772,10 +1772,10 @@ int Dem::dem_newton_iter_14(
 			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + phi_ref;
 		}
 	}
-	//¿ØÖÆµã¾ø¶ÔÏàÎ»¼ÆËã
+	//æ§åˆ¶ç‚¹ç»å¯¹ç›¸ä½è®¡ç®—
 	double lambda = wavelength;
 	double K = 0.0;
-	Mat KK = Mat::zeros(1, valid_row.size(), CV_64F);
+	Mat KK = Mat::zeros(1, static_cast<int>(valid_row.size()), CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int rrr = (int)gcps.at<double>(valid_row[i], 0) - offset_row;
@@ -1795,7 +1795,7 @@ int Dem::dem_newton_iter_14(
 	conversion.creat_new_h5("E:\\working_dir\\projects\\software\\InSAR\\bin\\KK2.h5");
 	conversion.write_array_to_h5("E:\\working_dir\\projects\\software\\InSAR\\bin\\KK2.h5", "KK", KK);
 	K /= (double)valid_row.size();
-	unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ÏàÎ»Ğ£Õı
+	unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ç›¸ä½æ ¡æ­£
 	//conversion.creat_new_h5("G:\\tmp\\unwrapped_phase.h5");
 	//conversion.write_array_to_h5("G:\\tmp\\unwrapped_phase.h5", "phase", unwrapped_phase); return 0;
 
@@ -1813,7 +1813,7 @@ int Dem::dem_newton_iter_14(
 	//}
 
 	/*
-	* ·´Ñİ¸ß³Ì
+	* åæ¼”é«˜ç¨‹
 	*/
 
 	Mat R_M(1, nc, CV_64F);
@@ -1833,18 +1833,18 @@ int Dem::dem_newton_iter_14(
 	Mat ones = Mat::ones(nr, 1, CV_64F);
 	R_M = ones * R_M;
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
-	Mat Satellite_M_T_Position = sate1;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = sate1;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = sate2;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate2;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = sate1;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate1;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = sate1;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = sate2;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = sate1;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = sate2;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = satev1;
 	ones = Mat::ones(nr, nc, CV_64F);
@@ -1916,7 +1916,7 @@ int Dem::dem_newton_iter_14(
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-		//µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - dem_x;
 		cv::sqrt(M_T, temp_var1);
@@ -1955,7 +1955,7 @@ int Dem::dem_newton_iter_14(
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - dem_x;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -1994,7 +1994,7 @@ int Dem::dem_newton_iter_14(
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
@@ -2067,14 +2067,14 @@ int Dem::dem_newton_iter_14(
 			lon.at<double>(i, j) = llh.at<double>(0, 1);
 		}
 	}
-	error_llh.create(valid_row.size(), 3, CV_64F);
-	error_xyz.create(valid_row.size(), 3, CV_64F);
+	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
+	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		error_xyz.at<double>(i, 0) = dem_x.at<double>(r - 1, c - 1) - pos.x;
 		error_xyz.at<double>(i, 1) = dem_y.at<double>(r - 1, c - 1) - pos.y;
 		error_xyz.at<double>(i, 2) = dem_z.at<double>(r - 1, c - 1) - pos.z;
@@ -2111,7 +2111,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	}
 
 	/*
-	* Ğ£ÕıÖÁ¾ø¶ÔÏàÎ»
+	* æ ¡æ­£è‡³ç»å¯¹ç›¸ä½
 	*/
 
 	FormatConversion conversion; Utils util;
@@ -2167,7 +2167,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 
 	ret = conversion.read_double_from_h5(source_1.c_str(), "slant_range_first_pixel", &nearRange);
 
-	//Ñ°ÕÒÍ¼Ïñ·¶Î§ÄÚµÄ¿ØÖÆµãĞÅÏ¢
+	//å¯»æ‰¾å›¾åƒèŒƒå›´å†…çš„æ§åˆ¶ç‚¹ä¿¡æ¯
 
 	int num_gcps = gcps.rows;
 	int row, col, i_gcp = 0, count = 0;
@@ -2204,19 +2204,19 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 
 
 	/*
-	* ¹ìµÀ²åÖµ
+	* è½¨é“æ’å€¼
 	*/
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
 	stateVectors1.applyOrbit();
 	orbitStateVectors stateVectors2(stateVec2, acquisitionStartTime2, acquisitionStopTime2);
 	stateVectors2.applyOrbit();
 	/*
-	* Ñ°ÕÒÍ¼Ïñ×óÉÏ½Ç³ÉÏñÎÀĞÇÎ»ÖÃ
+	* å¯»æ‰¾å›¾åƒå·¦ä¸Šè§’æˆåƒå«æ˜Ÿä½ç½®
 	*/
-	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//Ö÷ĞÇÎ»ÖÃ
-	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//¸¨ĞÇÎ»ÖÃ
-	//ÕÒµ½Áã¶àÆÕÀÕÎ»ÖÃ
+	Mat sate1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat satev1 = Mat::zeros(nr, 3, CV_64F);//ä¸»æ˜Ÿä½ç½®
+	Mat sate2 = Mat::zeros(nr, 3, CV_64F);//è¾…æ˜Ÿä½ç½®
+	//æ‰¾åˆ°é›¶å¤šæ™®å‹’ä½ç½®
 	Position pos; Velocity vel;
 	for (int i = 0; i < nr; i++)
 	{
@@ -2230,7 +2230,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		satev1.at<double>(i, 2) = vel.vz;
 	}
 
-	//ÎÀĞÇ2
+	//å«æ˜Ÿ2
 	Position groundPosition;
 	double latitude, longitude, height, dopplerFrequency = 0.0;
 	latitude = gcps.at<double>(i_gcp, 3);
@@ -2316,7 +2316,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-//	//¼Ó»Ø²Î¿¼ÏàÎ»
+//	//åŠ å›å‚è€ƒç›¸ä½
 //#pragma omp parallel for schedule(guided)
 //	for (int i = 0; i < nr; i++)
 //	{
@@ -2329,7 +2329,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 //			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + phi_ref;
 //		}
 //	}
-	//¿ØÖÆµã¾ø¶ÔÏàÎ»¼ÆËã
+	//æ§åˆ¶ç‚¹ç»å¯¹ç›¸ä½è®¡ç®—
 	double lambda = wavelength;
 	//double K = 0.0;
 	//Mat KK = Mat::zeros(1, valid_row.size(), CV_64F);
@@ -2352,7 +2352,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	//conversion.creat_new_h5("E:\\working_dir\\projects\\software\\InSAR\\bin\\KK2.h5");
 	//conversion.write_array_to_h5("E:\\working_dir\\projects\\software\\InSAR\\bin\\KK2.h5", "KK", KK);
 	//K /= (double)valid_row.size();
-	//unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ÏàÎ»Ğ£Õı
+	//unwrapped_phase = unwrapped_phase + round(K) * 2 * PI;//ç›¸ä½æ ¡æ­£
 	//conversion.creat_new_h5("G:\\tmp\\unwrapped_phase.h5");
 	//conversion.write_array_to_h5("G:\\tmp\\unwrapped_phase.h5", "phase", unwrapped_phase); return 0;
 
@@ -2370,7 +2370,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	//}
 
 	/*
-	* ·´Ñİ¸ß³Ì
+	* åæ¼”é«˜ç¨‹
 	*/
 
 	Mat R_M(1, nc, CV_64F);
@@ -2382,18 +2382,18 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	Mat ones = Mat::ones(nr, 1, CV_64F);
 	R_M = ones * R_M;
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
-	Mat Satellite_M_T_Position = sate1;//Ö÷ĞÇ·¢ÉäÎ»ÖÃ
+	Mat Satellite_M_T_Position = sate1;//ä¸»æ˜Ÿå‘å°„ä½ç½®
 	Mat Satellite_S_T_Position;
 	if (mode == 1)
 	{
-		Satellite_S_T_Position = sate2;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate2;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
 	else
 	{
-		Satellite_S_T_Position = sate1;//¸¨ĞÇ·¢ÉäÎ»ÖÃ
+		Satellite_S_T_Position = sate1;//è¾…æ˜Ÿå‘å°„ä½ç½®
 	}
-	Mat Satellite_M_R_Position = sate1;//Ö÷ĞÇ½ÓÊÕÎ»ÖÃ
-	Mat Satellite_S_R_Position = sate2;//¸¨ĞÇ½ÓÊÕÎ»ÖÃ
+	Mat Satellite_M_R_Position = sate1;//ä¸»æ˜Ÿæ¥æ”¶ä½ç½®
+	Mat Satellite_S_R_Position = sate2;//è¾…æ˜Ÿæ¥æ”¶ä½ç½®
 	Mat Satellite_M = (Satellite_M_R_Position + Satellite_M_T_Position) / 2;
 	Mat Vs = satev1;
 	ones = Mat::ones(nr, nc, CV_64F);
@@ -2465,7 +2465,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		f3 = f3 + temp_var.mul(temp_var1);
 
 		//Dff
-		//µÚÒ»ĞĞ£ºf(1)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸€è¡Œï¼šf(1)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - dem_x;
 		cv::sqrt(M_T, temp_var1);
@@ -2504,7 +2504,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		Df13 = Df13 + temp_var.mul(temp_var1);
 
 
-		//µÚ¶şĞĞ£ºf(2)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬äºŒè¡Œï¼šf(2)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - dem_x;
 		cv::sqrt(S_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
@@ -2543,7 +2543,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		temp_var1 = -temp_var1;
 		Df23 = Df23 + temp_var.mul(temp_var1);
 
-		//µÚÈıĞĞ£ºf(3)µÄx£¬y£¬zµÄµ¼Êı
+		//ç¬¬ä¸‰è¡Œï¼šf(3)çš„xï¼Œyï¼Œzçš„å¯¼æ•°
 		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
 		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
 		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
@@ -2616,14 +2616,14 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 			lon.at<double>(i, j) = llh.at<double>(0, 1);
 		}
 	}
-	error_llh.create(valid_row.size(), 3, CV_64F);
-	error_xyz.create(valid_row.size(), 3, CV_64F);
+	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
+	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
 	{
 		int r, c;
 		Utils::ell2xyz(gcps.at<double>(valid_row[i], 2), gcps.at<double>(valid_row[i], 3), gcps.at<double>(valid_row[i], 4), pos);
-		r = gcps.at<double>(valid_row[i], 0) - offset_row;
-		c = gcps.at<double>(valid_row[i], 1) - offset_col;
+		r = static_cast<int>(gcps.at<double>(valid_row[i], 0)) - offset_row;
+		c = static_cast<int>(gcps.at<double>(valid_row[i], 1)) - offset_col;
 		error_xyz.at<double>(i, 0) = dem_x.at<double>(r - 1, c - 1) - pos.x;
 		error_xyz.at<double>(i, 1) = dem_y.at<double>(r - 1, c - 1) - pos.y;
 		error_xyz.at<double>(i, 2) = dem_z.at<double>(r - 1, c - 1) - pos.z;
