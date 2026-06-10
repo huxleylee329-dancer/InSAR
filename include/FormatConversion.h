@@ -1,4 +1,4 @@
-ï»¿#pragma once
+#pragma once
 #ifndef __FORMATCONVERSION__H__
 #define __FORMATCONVERSION__H__
 #include<string>
@@ -12,7 +12,7 @@
 
 
 /*********************************************************/
-/***************   XMLæ–‡ä»¶å‚æ•°è¯»å†™ç±»åº“    ****************/
+/***************   XMLÎÄ¼ş²ÎÊı¶ÁĞ´Àà¿â    ****************/
 /*********************************************************/
 
 class InSAR_API XMLFile
@@ -21,23 +21,23 @@ public:
 	XMLFile();
 	~XMLFile();
 
-	/** @brief åˆ›å»ºæ–°çš„å·¥ç¨‹æ–‡ä»¶
-
-	@param project_path       å·¥ç¨‹è·¯å¾„
-	@param project_name       å·¥ç¨‹å
-	@param project_version    å·¥ç¨‹æ–‡ä»¶ç‰ˆæœ¬
+	/** @brief ´´½¨ĞÂµÄ¹¤³ÌÎÄ¼ş
+	
+	@param project_path       ¹¤³ÌÂ·¾¶
+	@param project_name       ¹¤³ÌÃû
+	@param project_version    ¹¤³ÌÎÄ¼ş°æ±¾
 	*/
 	int XMLFile_creat_new_project(
 		const char* project_path,
 		const char* project_name,
 		const char* project_version
 	);
-	/** @brief æ·»åŠ å¯¼å…¥åŸå§‹æ•°æ®èŠ‚ç‚¹
+	/** @brief Ìí¼Óµ¼ÈëÔ­Ê¼Êı¾İ½Úµã
 
-	@param datanode_node  èŠ‚ç‚¹å
-	@param node_name      å›¾åƒå
-	@param node_path      å›¾åƒè·¯å¾„
-	@param sensor         å«æ˜Ÿ
+	@param datanode_node  ½ÚµãÃû
+	@param node_name      Í¼ÏñÃû
+	@param node_path      Í¼ÏñÂ·¾¶
+	@param sensor         ÎÀĞÇ
 	*/
 	int XMLFile_add_origin(
 		const char* datanode_node,
@@ -45,12 +45,12 @@ public:
 		const char* node_path,
 		const char* sensor = "unknown"
 	);
-	/*@brief æ·»åŠ å¯¼å…¥åŸå§‹æ•°æ®èŠ‚ç‚¹(14_project)
-	* @param datanode_node  èŠ‚ç‚¹å
-	* @param node_name      å›¾åƒå
-	* @param node_path      å›¾åƒè·¯å¾„
-	* @param mode           æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“ï¼‰
-	* @param sensor         å«æ˜Ÿ
+	/*@brief Ìí¼Óµ¼ÈëÔ­Ê¼Êı¾İ½Úµã(14_project)
+	* @param datanode_node  ½ÚµãÃû
+	* @param node_name      Í¼ÏñÃû
+	* @param node_path      Í¼ÏñÂ·¾¶
+	* @param mode           ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒ£¬4£ºË«ÆµÆ¹ÅÒ£©
+	* @param sensor         ÎÀĞÇ
 	*/
 	int XMLFile_add_origin_14(
 		const char* datanode_node,
@@ -59,19 +59,19 @@ public:
 		int mode = 1,
 		const char* sensor = "unknown"
 	);
-	/** @brief æ·»åŠ è£å‰ªå›¾åƒèŠ‚ç‚¹
+	/** @brief Ìí¼Ó²Ã¼ôÍ¼Ïñ½Úµã
 
-	@param datanode_node  è£å‰ªå›¾åƒèŠ‚ç‚¹å
-	@param master_index   è£å‰ªèŠ‚ç‚¹ä¸»å›¾åºå·ï¼ˆ1-basedï¼‰
-	@param node_name      è£å‰ªå›¾åƒå
-	@param node_path      è£å‰ªå›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param lon            ä¸­å¿ƒç»åº¦
-	@param lat            ä¸­å¿ƒçº¬åº¦
-	@param width          è£å‰ªå®½åº¦
-	@param height         è£å‰ªé«˜åº¦
-	@param data_rank      æ•°æ®ç­‰çº§
+	@param datanode_node  ²Ã¼ôÍ¼Ïñ½ÚµãÃû
+	@param master_index   ²Ã¼ô½ÚµãÖ÷Í¼ĞòºÅ£¨1-based£©
+	@param node_name      ²Ã¼ôÍ¼ÏñÃû
+	@param node_path      ²Ã¼ôÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param lon            ÖĞĞÄ¾­¶È
+	@param lat            ÖĞĞÄÎ³¶È
+	@param width          ²Ã¼ô¿í¶È
+	@param height         ²Ã¼ô¸ß¶È
+	@param data_rank      Êı¾İµÈ¼¶
 	*/
 	int XMLFile_add_cut(
 		const char* datenode_name,
@@ -85,18 +85,18 @@ public:
 		const char* data_rank
 	);
 
-	/** @brief æ·»åŠ è£å‰ªå›¾åƒèŠ‚ç‚¹
-	@param datanode_node  è£å‰ªå›¾åƒèŠ‚ç‚¹å
-	@param master_index   è£å‰ªèŠ‚ç‚¹ä¸»å›¾åºå·ï¼ˆ1-basedï¼‰
-	@param node_name      è£å‰ªå›¾åƒå
-	@param node_path      è£å‰ªå›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param lon            ä¸­å¿ƒç»åº¦
-	@param lat            ä¸­å¿ƒçº¬åº¦
-	@param width          è£å‰ªå®½åº¦
-	@param height         è£å‰ªé«˜åº¦
-	@param data_rank      æ•°æ®ç­‰çº§
+	/** @brief Ìí¼Ó²Ã¼ôÍ¼Ïñ½Úµã
+	@param datanode_node  ²Ã¼ôÍ¼Ïñ½ÚµãÃû
+	@param master_index   ²Ã¼ô½ÚµãÖ÷Í¼ĞòºÅ£¨1-based£©
+	@param node_name      ²Ã¼ôÍ¼ÏñÃû
+	@param node_path      ²Ã¼ôÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param lon            ÖĞĞÄ¾­¶È
+	@param lat            ÖĞĞÄÎ³¶È
+	@param width          ²Ã¼ô¿í¶È
+	@param height         ²Ã¼ô¸ß¶È
+	@param data_rank      Êı¾İµÈ¼¶
 	*/
 	int XMLFile_add_cut_14(
 		const char* datanode_name,
@@ -110,19 +110,19 @@ public:
 		const char* data_rank
 	);
 
-	/** @brief æ·»åŠ é…å‡†å›¾åƒèŠ‚ç‚¹
+	/** @brief Ìí¼ÓÅä×¼Í¼Ïñ½Úµã
 
-	@param datanode_node  é…å‡†å›¾åƒèŠ‚ç‚¹å
-	@param node_name      é…å‡†å›¾åƒå
-	@param node_path      é…å‡†å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param master_index   ä¸»å›¾åƒåºå·
-	@param interp_times   æ’å€¼å€æ•°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
-	@param block_size     å­å—å°ºå¯¸ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
-	@param temporal_baseline æ—¶é—´åŸºçº¿ä¼°è®¡
-	@param B_effect       å‚ç›´åŸºçº¿ä¼°è®¡
-	@param B_parallel     æ°´å¹³åŸºçº¿ä¼°è®¡
+	@param datanode_node  Åä×¼Í¼Ïñ½ÚµãÃû
+	@param node_name      Åä×¼Í¼ÏñÃû
+	@param node_path      Åä×¼Í¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param master_index   Ö÷Í¼ÏñĞòºÅ
+	@param interp_times   ²åÖµ±¶Êı£¨2µÄn´ÎÃİ£©
+	@param block_size     ×Ó¿é³ß´ç£¨2µÄn´ÎÃİ£©
+	@param temporal_baseline Ê±¼ä»ùÏß¹À¼Æ
+	@param B_effect       ´¹Ö±»ùÏß¹À¼Æ
+	@param B_parallel     Ë®Æ½»ùÏß¹À¼Æ
 	*/
 	int XMLFile_add_regis(
 		const char* datanode_name,
@@ -134,19 +134,19 @@ public:
 		const char* temporal_baseline, const char* B_effect, const char* B_parallel
 	);
 
-	/** @brief æ·»åŠ é…å‡†å›¾åƒèŠ‚ç‚¹
-	@param mode           æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“ï¼‰
-	@param datanode_node  é…å‡†å›¾åƒèŠ‚ç‚¹å
-	@param node_name      é…å‡†å›¾åƒå
-	@param node_path      é…å‡†å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param master_index   ä¸»å›¾åƒåºå·
-	@param interp_times   æ’å€¼å€æ•°ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
-	@param block_size     å­å—å°ºå¯¸ï¼ˆ2çš„næ¬¡å¹‚ï¼‰
-	@param temporal_baseline æ—¶é—´åŸºçº¿ä¼°è®¡
-	@param B_effect       å‚ç›´åŸºçº¿ä¼°è®¡
-	@param B_parallel     æ°´å¹³åŸºçº¿ä¼°è®¡
+	/** @brief Ìí¼ÓÅä×¼Í¼Ïñ½Úµã
+	@param mode           ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒ£¬4£ºË«ÆµÆ¹ÅÒ£©
+	@param datanode_node  Åä×¼Í¼Ïñ½ÚµãÃû
+	@param node_name      Åä×¼Í¼ÏñÃû
+	@param node_path      Åä×¼Í¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param master_index   Ö÷Í¼ÏñĞòºÅ
+	@param interp_times   ²åÖµ±¶Êı£¨2µÄn´ÎÃİ£©
+	@param block_size     ×Ó¿é³ß´ç£¨2µÄn´ÎÃİ£©
+	@param temporal_baseline Ê±¼ä»ùÏß¹À¼Æ
+	@param B_effect       ´¹Ö±»ùÏß¹À¼Æ
+	@param B_parallel     Ë®Æ½»ùÏß¹À¼Æ
 	*/
 	int XMLFile_add_regis14(
 		int mode,
@@ -159,12 +159,12 @@ public:
 		const char* temporal_baseline, const char* B_effect, const char* B_parallel
 	);
 
-	/*@brief æ·»åŠ åå‘åœ°ç†ç¼–ç é…å‡†èŠ‚ç‚¹
-	* @param dataNode            é…å‡†å›¾åƒæ•°æ®èŠ‚ç‚¹å
-	* @param dataName            é…å‡†å›¾åƒæ•°æ®å
-	* @param dataPath            é…å‡†å›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @param masterIndex         ä¸»å›¾åƒåºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼ÓºóÏòµØÀí±àÂëÅä×¼½Úµã
+	* @param dataNode            Åä×¼Í¼ÏñÊı¾İ½ÚµãÃû
+	* @param dataName            Åä×¼Í¼ÏñÊı¾İÃû
+	* @param dataPath            Åä×¼Í¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @param masterIndex         Ö÷Í¼ÏñĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_backgeocoding(
 		const char* dataNode,
@@ -172,12 +172,12 @@ public:
 		const char* dataPath,
 		int masterIndex
 	);
-	/*@brief æ·»åŠ å•è§†å¤å›¾åƒå»å‚è€ƒç›¸ä½èŠ‚ç‚¹
-	* @param dataNode            é…å‡†å›¾åƒæ•°æ®èŠ‚ç‚¹å
-	* @param dataName            é…å‡†å›¾åƒæ•°æ®å
-	* @param dataPath            é…å‡†å›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @param masterIndex         ä¸»å›¾åƒåºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼Óµ¥ÊÓ¸´Í¼ÏñÈ¥²Î¿¼ÏàÎ»½Úµã
+	* @param dataNode            Åä×¼Í¼ÏñÊı¾İ½ÚµãÃû
+	* @param dataName            Åä×¼Í¼ÏñÊı¾İÃû
+	* @param dataPath            Åä×¼Í¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @param masterIndex         Ö÷Í¼ÏñĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_SLC_deramp(
 		const char* dataNode,
@@ -186,13 +186,13 @@ public:
 		int masterIndex
 	);
 
-	/*@brief æ·»åŠ å•è§†å¤å›¾åƒå»å‚è€ƒç›¸ä½èŠ‚ç‚¹
-	* @param mode                æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“æ¨¡å¼ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“æ¨¡å¼ï¼‰
-	* @param dataNode            é…å‡†å›¾åƒæ•°æ®èŠ‚ç‚¹å
-	* @param dataName            é…å‡†å›¾åƒæ•°æ®å
-	* @param dataPath            é…å‡†å›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @param masterIndex         ä¸»å›¾åƒåºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼Óµ¥ÊÓ¸´Í¼ÏñÈ¥²Î¿¼ÏàÎ»½Úµã
+	* @param mode                ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒÄ£Ê½£¬4£ºË«ÆµÆ¹ÅÒÄ£Ê½£©
+	* @param dataNode            Åä×¼Í¼ÏñÊı¾İ½ÚµãÃû
+	* @param dataName            Åä×¼Í¼ÏñÊı¾İÃû
+	* @param dataPath            Åä×¼Í¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @param masterIndex         Ö÷Í¼ÏñĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_SLC_deramp_14(
 		int mode,
@@ -202,34 +202,34 @@ public:
 		int masterIndex
 	);
 
-	/*@brief æ·»åŠ å°åŸºçº¿é›†æ—¶é—´åºåˆ—åˆ†æèŠ‚ç‚¹
-	* @param dataNode            SBASæ—¶é—´åºåˆ—åˆ†ææ•°æ®èŠ‚ç‚¹å
-	* @param dataName            SBASæ—¶é—´åºåˆ—åˆ†ææ•°æ®å
-	* @param dataPath            SBASæ—¶é—´åºåˆ—åˆ†æå›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼ÓĞ¡»ùÏß¼¯Ê±¼äĞòÁĞ·ÖÎö½Úµã
+	* @param dataNode            SBASÊ±¼äĞòÁĞ·ÖÎöÊı¾İ½ÚµãÃû
+	* @param dataName            SBASÊ±¼äĞòÁĞ·ÖÎöÊı¾İÃû
+	* @param dataPath            SBASÊ±¼äĞòÁĞ·ÖÎöÍ¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_SBAS(
 		const char* dataNode,
 		const char* dataName,
 		const char* dataPath
 	);
-	/*@brief æ·»åŠ å“¨å…µä¸€å·burstæ‹¼æ¥èŠ‚ç‚¹
-	* @param dataNode            deburstå›¾åƒæ•°æ®èŠ‚ç‚¹å
-	* @param dataName            deburstå›¾åƒæ•°æ®å
-	* @param dataPath            deburstå›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼ÓÉÚ±øÒ»ºÅburstÆ´½Ó½Úµã
+	* @param dataNode            deburstÍ¼ÏñÊı¾İ½ÚµãÃû
+	* @param dataName            deburstÍ¼ÏñÊı¾İÃû
+	* @param dataPath            deburstÍ¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_S1_Deburst(
 		const char* dataNode,
 		const char* dataName,
 		const char* dataPath
 	);
-	/*@brief æ·»åŠ åœ°ç†ç¼–ç èŠ‚ç‚¹
-	* @param dataNode            åœ°ç†ç¼–ç å›¾åƒæ•°æ®èŠ‚ç‚¹å
-	* @param dataName            åœ°ç†ç¼–ç å›¾åƒæ•°æ®å
-	* @param dataPath            åœ°ç†ç¼–ç å›¾åƒæ•°æ®å‚¨å­˜è·¯å¾„ï¼ˆç›¸å¯¹è·¯å¾„ï¼‰
-	* @param level               æ•°æ®ç­‰çº§
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼ÓµØÀí±àÂë½Úµã
+	* @param dataNode            µØÀí±àÂëÍ¼ÏñÊı¾İ½ÚµãÃû
+	* @param dataName            µØÀí±àÂëÍ¼ÏñÊı¾İÃû
+	* @param dataPath            µØÀí±àÂëÍ¼ÏñÊı¾İ´¢´æÂ·¾¶£¨Ïà¶ÔÂ·¾¶£©
+	* @param level               Êı¾İµÈ¼¶
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_geocoding(
 		const char* dataNode,
@@ -238,17 +238,17 @@ public:
 		const char* level
 	);
 
-	/*@brief æ·»åŠ å¹²æ¶‰ç›¸ä½ç”ŸæˆèŠ‚ç‚¹
-	* @param datanode_node                 å¹²æ¶‰ç›¸ä½å›¾åƒèŠ‚ç‚¹å
-	* @param node_name                     å¹²æ¶‰ç›¸ä½å›¾åƒå
-	* @param node_path                     å¹²æ¶‰ç›¸ä½å›¾åƒè·¯å¾„
-	* @param master_name                   å¹²æ¶‰ç›¸ä½ä¸»å›¾åƒ
-	* @param rank                          èŠ‚ç‚¹ç­‰çº§
-	* @param offset_row                    ä¸»å›¾åƒè¡Œåç§»é‡
-	* @param offset_col                    ä¸»å›¾åƒåˆ—åç§»é‡
-	* @param multilook_rg                  å¤šè§†å€æ•°ï¼ˆè·ç¦»å‘ï¼‰
-	* @param multilook_az                  å¤šè§†å€æ•°ï¼ˆæ–¹ä½å‘ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ìí¼Ó¸ÉÉæÏàÎ»Éú³É½Úµã
+	* @param datanode_node                 ¸ÉÉæÏàÎ»Í¼Ïñ½ÚµãÃû
+	* @param node_name                     ¸ÉÉæÏàÎ»Í¼ÏñÃû
+	* @param node_path                     ¸ÉÉæÏàÎ»Í¼ÏñÂ·¾¶
+	* @param master_name                   ¸ÉÉæÏàÎ»Ö÷Í¼Ïñ
+	* @param rank                          ½ÚµãµÈ¼¶
+	* @param offset_row                    Ö÷Í¼ÏñĞĞÆ«ÒÆÁ¿
+	* @param offset_col                    Ö÷Í¼ÏñÁĞÆ«ÒÆÁ¿
+	* @param multilook_rg                  ¶àÊÓ±¶Êı£¨¾àÀëÏò£©
+	* @param multilook_az                  ¶àÊÓ±¶Êı£¨·½Î»Ïò£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int XMLFile_add_interferometric_phase_14(
 		const char* datanode_name,
@@ -262,22 +262,22 @@ public:
 		int multilook_az
 	);
 
-	/** @brief æ·»åŠ å¹²æ¶‰ç›¸ä½ç”ŸæˆèŠ‚ç‚¹
+	/** @brief Ìí¼Ó¸ÉÉæÏàÎ»Éú³É½Úµã
 
-	@param datanode_node  å¹²æ¶‰ç›¸ä½å›¾åƒèŠ‚ç‚¹å
-	@param node_name      å¹²æ¶‰ç›¸ä½å›¾åƒå
-	@param node_path      å¹²æ¶‰ç›¸ä½å›¾åƒè·¯å¾„
-	@param master_name    å¹²æ¶‰ç›¸ä½ä¸»å›¾åƒ
-	@param rank			  èŠ‚ç‚¹ç­‰çº§
-	@param offset_row     ä¸»å›¾åƒè¡Œåç§»é‡
-	@param offset_col     ä¸»å›¾åƒåˆ—åç§»é‡
-	@param isdeflat       æ˜¯å¦å»å¹³åœ°
-	@param istopo_removal æ˜¯å¦å»åœ°å½¢
-	@param iscoherence    æ˜¯å¦ä¼°è®¡ç›¸å¹²ç³»æ•°
-	@param win_w          ç›¸å¹²ç³»æ•°ä¼°è®¡çª—å£å®½åº¦
-	@param win_h          ç›¸å¹²ç³»æ•°ä¼°è®¡çª—å£é«˜åº¦
-	@param multilook_rg   å¤šè§†å€æ•°ï¼ˆè·ç¦»å‘ï¼‰
-	@param multilook_az   å¤šè§†å€æ•°ï¼ˆæ–¹ä½å‘ï¼‰
+	@param datanode_node  ¸ÉÉæÏàÎ»Í¼Ïñ½ÚµãÃû
+	@param node_name      ¸ÉÉæÏàÎ»Í¼ÏñÃû
+	@param node_path      ¸ÉÉæÏàÎ»Í¼ÏñÂ·¾¶
+	@param master_name    ¸ÉÉæÏàÎ»Ö÷Í¼Ïñ
+	@param rank			  ½ÚµãµÈ¼¶
+	@param offset_row     Ö÷Í¼ÏñĞĞÆ«ÒÆÁ¿
+	@param offset_col     Ö÷Í¼ÏñÁĞÆ«ÒÆÁ¿
+	@param isdeflat       ÊÇ·ñÈ¥Æ½µØ
+	@param istopo_removal ÊÇ·ñÈ¥µØĞÎ
+	@param iscoherence    ÊÇ·ñ¹À¼ÆÏà¸ÉÏµÊı
+	@param win_w          Ïà¸ÉÏµÊı¹À¼Æ´°¿Ú¿í¶È
+	@param win_h          Ïà¸ÉÏµÊı¹À¼Æ´°¿Ú¸ß¶È
+	@param multilook_rg   ¶àÊÓ±¶Êı£¨¾àÀëÏò£©
+	@param multilook_az   ¶àÊÓ±¶Êı£¨·½Î»Ïò£©
 	*/
 	int XMLFile_add_interferometric_phase(
 		const char* datanode_name,
@@ -290,22 +290,22 @@ public:
 		int win_w, int win_h, int multilook_rg, int multilook_az
 	);
 
-	/** @brief æ·»åŠ æ»¤æ³¢å›¾åƒèŠ‚ç‚¹
-	@param mode           æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“æ¨¡å¼ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“æ¨¡å¼ï¼‰
-	@param datanode_node  æ»¤æ³¢å›¾åƒèŠ‚ç‚¹å
-	@param node_name      æ»¤æ³¢å›¾åƒå
-	@param node_path      æ»¤æ³¢å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param Slop_win		  æ–œå¡è‡ªé€‚åº”çª—å£å°ºå¯¸
-	@param Pre_win		  é¢„çª—å£å°ºå¯¸
-	@param Goldstein_win  Goldsteinæ»¤æ³¢FFTçª—å£å°ºå¯¸
-	@param Goldstein_filled_win		Goldsteinæ»¤æ³¢è¡¥é›¶çª—å£å°ºå¯¸
-	@param alpha		  Goldsteinæ»¤æ³¢é˜ˆå€¼
-	@param filter_dl_path			æ·±åº¦å­¦ä¹ æ»¤æ³¢å¯æ‰§è¡Œç¨‹åºè·¯å¾„
-	@param dl_model_file			æ·±åº¦å­¦ä¹ æ»¤æ³¢æ¨¡å‹è·¯å¾„
-	@param tmp_path        æ·±åº¦å­¦ä¹ æ»¤æ³¢ä¸­é—´æ–‡ä»¶è·¯å¾„
+	/** @brief Ìí¼ÓÂË²¨Í¼Ïñ½Úµã
+	@param mode           ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒÄ£Ê½£¬4£ºË«ÆµÆ¹ÅÒÄ£Ê½£©
+	@param datanode_node  ÂË²¨Í¼Ïñ½ÚµãÃû
+	@param node_name      ÂË²¨Í¼ÏñÃû
+	@param node_path      ÂË²¨Í¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param Slop_win		  Ğ±ÆÂ×ÔÊÊÓ¦´°¿Ú³ß´ç
+	@param Pre_win		  Ô¤´°¿Ú³ß´ç
+	@param Goldstein_win  GoldsteinÂË²¨FFT´°¿Ú³ß´ç
+	@param Goldstein_filled_win		GoldsteinÂË²¨²¹Áã´°¿Ú³ß´ç
+	@param alpha		  GoldsteinÂË²¨ãĞÖµ
+	@param filter_dl_path			Éî¶ÈÑ§Ï°ÂË²¨¿ÉÖ´ĞĞ³ÌĞòÂ·¾¶
+	@param dl_model_file			Éî¶ÈÑ§Ï°ÂË²¨Ä£ĞÍÂ·¾¶
+	@param tmp_path        Éî¶ÈÑ§Ï°ÂË²¨ÖĞ¼äÎÄ¼şÂ·¾¶
 	*/
 	int XMLFile_add_denoise_14(
 		int mode,
@@ -320,22 +320,22 @@ public:
 		const char* filter_dl_path, const char* dl_model_file, const char* tmp_path
 	);
 
-	/** @brief æ·»åŠ æ»¤æ³¢å›¾åƒèŠ‚ç‚¹
+	/** @brief Ìí¼ÓÂË²¨Í¼Ïñ½Úµã
 
-	@param datanode_node  æ»¤æ³¢å›¾åƒèŠ‚ç‚¹å
-	@param node_name      æ»¤æ³¢å›¾åƒå
-	@param node_path      æ»¤æ³¢å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param Slop_win		  æ–œå¡è‡ªé€‚åº”çª—å£å°ºå¯¸
-	@param Pre_win		  é¢„çª—å£å°ºå¯¸
-	@param Goldstein_win  Goldsteinæ»¤æ³¢FFTçª—å£å°ºå¯¸
-	@param Goldstein_filled_win		Goldsteinæ»¤æ³¢è¡¥é›¶çª—å£å°ºå¯¸
-	@param alpha		  Goldsteinæ»¤æ³¢é˜ˆå€¼
-	@param filter_dl_path			æ·±åº¦å­¦ä¹ æ»¤æ³¢å¯æ‰§è¡Œç¨‹åºè·¯å¾„
-	@param dl_model_file			æ·±åº¦å­¦ä¹ æ»¤æ³¢æ¨¡å‹è·¯å¾„
-	@param tmp_path        æ·±åº¦å­¦ä¹ æ»¤æ³¢ä¸­é—´æ–‡ä»¶è·¯å¾„
+	@param datanode_node  ÂË²¨Í¼Ïñ½ÚµãÃû
+	@param node_name      ÂË²¨Í¼ÏñÃû
+	@param node_path      ÂË²¨Í¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param Slop_win		  Ğ±ÆÂ×ÔÊÊÓ¦´°¿Ú³ß´ç
+	@param Pre_win		  Ô¤´°¿Ú³ß´ç
+	@param Goldstein_win  GoldsteinÂË²¨FFT´°¿Ú³ß´ç
+	@param Goldstein_filled_win		GoldsteinÂË²¨²¹Áã´°¿Ú³ß´ç
+	@param alpha		  GoldsteinÂË²¨ãĞÖµ
+	@param filter_dl_path			Éî¶ÈÑ§Ï°ÂË²¨¿ÉÖ´ĞĞ³ÌĞòÂ·¾¶
+	@param dl_model_file			Éî¶ÈÑ§Ï°ÂË²¨Ä£ĞÍÂ·¾¶
+	@param tmp_path        Éî¶ÈÑ§Ï°ÂË²¨ÖĞ¼äÎÄ¼şÂ·¾¶
 	*/
 	int XMLFile_add_denoise(
 		const char* datanode_name,
@@ -348,15 +348,15 @@ public:
 		int Goldstein_win, int Goldstein_filled_win, double alpha,
 		const char* filter_dl_path, const char* dl_model_file, const char* tmp_path
 	);
-	/** @brief æ·»åŠ è§£ç¼ å›¾åƒèŠ‚ç‚¹
+	/** @brief Ìí¼Ó½â²øÍ¼Ïñ½Úµã
 
-	@param datanode_node  è§£ç¼ å›¾åƒèŠ‚ç‚¹å
-	@param node_name      è§£ç¼ å›¾åƒå
-	@param node_path      è§£ç¼ å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param threshold	  ç»¼åˆæ³•é˜ˆå€¼
+	@param datanode_node  ½â²øÍ¼Ïñ½ÚµãÃû
+	@param node_name      ½â²øÍ¼ÏñÃû
+	@param node_path      ½â²øÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param threshold	  ×ÛºÏ·¨ãĞÖµ
 	*/
 	int XMLFile_add_unwrap(
 		const char* datanode_name,
@@ -368,15 +368,15 @@ public:
 		double threshold
 	);
 
-	/** @brief æ·»åŠ è§£ç¼ å›¾åƒèŠ‚ç‚¹
-	@param mode           æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“æ¨¡å¼ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“æ¨¡å¼ï¼‰
-	@param datanode_node  è§£ç¼ å›¾åƒèŠ‚ç‚¹å
-	@param node_name      è§£ç¼ å›¾åƒå
-	@param node_path      è§£ç¼ å›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param threshold	  ç»¼åˆæ³•é˜ˆå€¼
+	/** @brief Ìí¼Ó½â²øÍ¼Ïñ½Úµã
+	@param mode           ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒÄ£Ê½£¬4£ºË«ÆµÆ¹ÅÒÄ£Ê½£©
+	@param datanode_node  ½â²øÍ¼Ïñ½ÚµãÃû
+	@param node_name      ½â²øÍ¼ÏñÃû
+	@param node_path      ½â²øÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param threshold	  ×ÛºÏ·¨ãĞÖµ
 	*/
 	int XMLFile_add_unwrap_14(
 		int mode,
@@ -389,15 +389,15 @@ public:
 		double threshold
 	);
 
-	/** @brief æ·»åŠ Demå›¾åƒèŠ‚ç‚¹
+	/** @brief Ìí¼ÓDemÍ¼Ïñ½Úµã
 
-	@param datanode_node  Demå›¾åƒèŠ‚ç‚¹å
-	@param node_name      Demå›¾åƒå
-	@param node_path      Demå›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param threshold	  è¿­ä»£æ¬¡æ•°
+	@param datanode_node  DemÍ¼Ïñ½ÚµãÃû
+	@param node_name      DemÍ¼ÏñÃû
+	@param node_path      DemÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param threshold	  µü´ú´ÎÊı
 	*/
 	int XMLFile_add_dem(
 		const char* datanode_name,
@@ -409,15 +409,15 @@ public:
 		int times
 	);
 
-	/** @brief æ·»åŠ Demå›¾åƒèŠ‚ç‚¹
-	@param mode           æ”¶å‘æ¨¡å¼ï¼ˆ1ï¼šå•å‘å•æ”¶ï¼Œ2ï¼šå•å‘åŒæ”¶ï¼Œ3ï¼šä¹’ä¹“æ¨¡å¼ï¼Œ4ï¼šåŒé¢‘ä¹’ä¹“æ¨¡å¼ï¼‰
-	@param datanode_node  Demå›¾åƒèŠ‚ç‚¹å
-	@param node_name      Demå›¾åƒå
-	@param node_path      Demå›¾åƒè·¯å¾„
-	@param Row_offset     è¡Œåç§»é‡
-	@param Col_offset     åˆ—åç§»é‡
-	@param method		  æ–¹æ³•åç§°
-	@param threshold	  è¿­ä»£æ¬¡æ•°
+	/** @brief Ìí¼ÓDemÍ¼Ïñ½Úµã
+	@param mode           ÊÕ·¢Ä£Ê½£¨1£ºµ¥·¢µ¥ÊÕ£¬2£ºµ¥·¢Ë«ÊÕ£¬3£ºÆ¹ÅÒÄ£Ê½£¬4£ºË«ÆµÆ¹ÅÒÄ£Ê½£©
+	@param datanode_node  DemÍ¼Ïñ½ÚµãÃû
+	@param node_name      DemÍ¼ÏñÃû
+	@param node_path      DemÍ¼ÏñÂ·¾¶
+	@param Row_offset     ĞĞÆ«ÒÆÁ¿
+	@param Col_offset     ÁĞÆ«ÒÆÁ¿
+	@param method		  ·½·¨Ãû³Æ
+	@param threshold	  µü´ú´ÎÊı
 	*/
 	int XMLFile_add_dem_14(
 		int mode,
@@ -430,10 +430,10 @@ public:
 		int times
 	);
 
-	/** @brief åˆ é™¤å›¾åƒèŠ‚ç‚¹
-	@param datanode_node  å¾…åˆ é™¤å›¾åƒèŠ‚ç‚¹å
-	@param node_name      å¾…åˆ é™¤å›¾åƒå
-	@param node_path      å¾…åˆ é™¤å›¾åƒè·¯å¾„
+	/** @brief É¾³ıÍ¼Ïñ½Úµã
+	@param datanode_node  ´ıÉ¾³ıÍ¼Ïñ½ÚµãÃû
+	@param node_name      ´ıÉ¾³ıÍ¼ÏñÃû
+	@param node_path      ´ıÉ¾³ıÍ¼ÏñÂ·¾¶
 	*/
 	int XMLFile_remove_node(
 		const char* datanode_name,
@@ -441,19 +441,19 @@ public:
 		const char* node_path
 	);
 
-	/** @brief è¿”å›å­—ç¬¦ä¸²
+	/** @brief ·µ»Ø×Ö·û´®
 
-	@param n			è¾“å…¥æ•´æ•°å€¼
+	@param n			ÊäÈëÕûÊıÖµ
 	*/
 	string int2str(int n);
-	/** @brief è¿”å›æ•´å‹
+	/** @brief ·µ»ØÕûĞÍ
 
-	@param s			è¾“å…¥å­—ç¬¦ä¸²
+	@param s			ÊäÈë×Ö·û´®
 	*/
 	int str2int(const string& s);
-	/** @brief ä¿å­˜XML
+	/** @brief ±£´æXML
 
-	@param save_path    ä¿å­˜è·¯å¾„
+	@param save_path    ±£´æÂ·¾¶
 	*/
 	int XMLFile_save(
 		const char* save_path
@@ -462,41 +462,41 @@ public:
 
 
 
-	/*XMLæ–‡ä»¶åŠ è½½
-	* å‚æ•°1ï¼šå¾…åŠ è½½æ–‡ä»¶å
+	/*XMLÎÄ¼ş¼ÓÔØ
+	* ²ÎÊı1£º´ı¼ÓÔØÎÄ¼şÃû
 	*/
 	int XMLFile_load(const char* xmlFileName);
 	/*
-	* æŒ‰åç§°æŸ¥æ‰¾èŠ‚ç‚¹
-	* å‚æ•°1ï¼šæ ¹èŠ‚ç‚¹ï¼ˆè¿”å›å€¼ï¼‰
+	* °´Ãû³Æ²éÕÒ½Úµã
+	* ²ÎÊı1£º¸ù½Úµã£¨·µ»ØÖµ£©
 	*/
 	int get_root(TiXmlElement*& root);
 	/*
-	* æŒ‰èŠ‚ç‚¹æŸ¥è¯¢å­èŠ‚ç‚¹ä¸ªæ•°
-	* å‚æ•°1ï¼šèŠ‚ç‚¹å
-	* å‚æ•°2ï¼šå­èŠ‚ç‚¹æ•°é‡ï¼ˆè¿”å›å€¼ï¼‰
+	* °´½Úµã²éÑ¯×Ó½Úµã¸öÊı
+	* ²ÎÊı1£º½ÚµãÃû
+	* ²ÎÊı2£º×Ó½ÚµãÊıÁ¿£¨·µ»ØÖµ£©
 	*/
 	int get_children_count(TiXmlElement* pRoot, int* count);
 	/*
-	* æŒ‰åç§°æŸ¥æ‰¾èŠ‚ç‚¹
-	* å‚æ•°1ï¼šèŠ‚ç‚¹å
-	* å‚æ•°2ï¼šèŠ‚ç‚¹å
-	* å‚æ•°3ï¼šèŠ‚ç‚¹æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
+	* °´Ãû³Æ²éÕÒ½Úµã
+	* ²ÎÊı1£º½ÚµãÃû
+	* ²ÎÊı2£º½ÚµãÃû
+	* ²ÎÊı3£º½ÚµãÖ¸Õë£¨·µ»ØÖµ£©
 	*/
 	int _find_node(TiXmlElement* pRoot, const char* node_name, TiXmlElement*& pnode);
 	/*
-	* æŒ‰åç§°æŸ¥æ‰¾èŠ‚ç‚¹
-	* å‚æ•°1ï¼šèŠ‚ç‚¹å
-	* å‚æ•°2ï¼šèŠ‚ç‚¹æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
+	* °´Ãû³Æ²éÕÒ½Úµã
+	* ²ÎÊı1£º½ÚµãÃû
+	* ²ÎÊı2£º½ÚµãÖ¸Õë£¨·µ»ØÖµ£©
 	*/
 	int find_node(const char* node_name, TiXmlElement*& pnode);
 	/*
-	* æŒ‰åç§°åŠå±æ€§å€¼æŸ¥æ‰¾èŠ‚ç‚¹
-	* å‚æ•°1ï¼šæ ¹èŠ‚ç‚¹ï¼ˆéå†ç”¨ï¼Œéæ–‡ä»¶æ ¹èŠ‚ç‚¹ï¼‰
-	* å‚æ•°2ï¼šèŠ‚ç‚¹å
-	* å‚æ•°3ï¼šèŠ‚ç‚¹å±æ€§åï¼ˆå…³é”®å±æ€§ï¼‰
-	* å‚æ•°4ï¼šèŠ‚ç‚¹å±æ€§å€¼
-	* å‚æ•°5ï¼šèŠ‚ç‚¹æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
+	* °´Ãû³Æ¼°ÊôĞÔÖµ²éÕÒ½Úµã
+	* ²ÎÊı1£º¸ù½Úµã£¨±éÀúÓÃ£¬·ÇÎÄ¼ş¸ù½Úµã£©
+	* ²ÎÊı2£º½ÚµãÃû
+	* ²ÎÊı3£º½ÚµãÊôĞÔÃû£¨¹Ø¼üÊôĞÔ£©
+	* ²ÎÊı4£º½ÚµãÊôĞÔÖµ
+	* ²ÎÊı5£º½ÚµãÖ¸Õë£¨·µ»ØÖµ£©
 	*/
 	int find_node_with_attribute(
 		TiXmlElement* pRoot,
@@ -506,12 +506,12 @@ public:
 		TiXmlElement*& pnode);
 
 	/*
-	* æŒ‰åç§°åŠå±æ€§å€¼æŸ¥æ‰¾èŠ‚ç‚¹
-	* @param             èŠ‚ç‚¹å
-	* @param             èŠ‚ç‚¹å±æ€§å
-	* @param             èŠ‚ç‚¹å±æ€§å€¼
-	* @param             èŠ‚ç‚¹æŒ‡é’ˆï¼ˆè¿”å›å€¼ï¼‰
-	* @return æˆåŠŸæ‰¾åˆ°è¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
+	* °´Ãû³Æ¼°ÊôĞÔÖµ²éÕÒ½Úµã
+	* @param             ½ÚµãÃû
+	* @param             ½ÚµãÊôĞÔÃû
+	* @param             ½ÚµãÊôĞÔÖµ
+	* @param             ½ÚµãÖ¸Õë£¨·µ»ØÖµ£©
+	* @return ³É¹¦ÕÒµ½·µ»Ø0£¬ ·ñÔò·µ»Ø-1
 	*/
 	int find_node_with_attribute(
 		const char* node_name,
@@ -521,35 +521,35 @@ public:
 	);
 
 	/*
-	* ä»XMLæ–‡ä»¶ä¸­è¯»å‡ºå­—ç¬¦ä¸²å‚æ•°
-	* å‚æ•°1ï¼šå‚æ•°åï¼ˆèŠ‚ç‚¹åï¼‰
-	* å‚æ•°2ï¼šå‚æ•°å€¼ï¼ˆè¾“å‡ºï¼‰
+	* ´ÓXMLÎÄ¼şÖĞ¶Á³ö×Ö·û´®²ÎÊı
+	* ²ÎÊı1£º²ÎÊıÃû£¨½ÚµãÃû£©
+	* ²ÎÊı2£º²ÎÊıÖµ£¨Êä³ö£©
 	*/
 	int get_str_para(const char* node_name, string& value);
 	/*
-	* ä»XMLæ–‡ä»¶ä¸­è¯»å‡ºdoubleç±»å‹å‚æ•°
-	* å‚æ•°1ï¼šå‚æ•°åï¼ˆèŠ‚ç‚¹åï¼‰
-	* å‚æ•°2ï¼šå‚æ•°å€¼ï¼ˆè¾“å‡ºï¼‰
+	* ´ÓXMLÎÄ¼şÖĞ¶Á³ödoubleÀàĞÍ²ÎÊı
+	* ²ÎÊı1£º²ÎÊıÃû£¨½ÚµãÃû£©
+	* ²ÎÊı2£º²ÎÊıÖµ£¨Êä³ö£©
 	*/
 	int get_double_para(const char* node_name, double* value);
-	/* ä»xmlæ–‡ä»¶ä¸­è¯»å‡ºdoubleæ•°ç»„
-	* @param node_name                   æ•°æ®èŠ‚ç‚¹å
-	* @param Array                       æ•°ç»„
-	* @param rootNode                    æ ¹èŠ‚ç‚¹ï¼ˆé»˜è®¤ä¸ºNULLï¼Œè‹¥æä¾›æ ¹èŠ‚ç‚¹ï¼Œåˆ™åœ¨æ ¹èŠ‚ç‚¹ä¸‹é¢æœç´¢ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* ´ÓxmlÎÄ¼şÖĞ¶Á³ödoubleÊı×é
+	* @param node_name                   Êı¾İ½ÚµãÃû
+	* @param Array                       Êı×é
+	* @param rootNode                    ¸ù½Úµã£¨Ä¬ÈÏÎªNULL£¬ÈôÌá¹©¸ù½Úµã£¬ÔòÔÚ¸ù½ÚµãÏÂÃæËÑË÷£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getDoubleArray(const char* node_name, Mat& Array, TiXmlElement* rootNode = NULL);
 	/*
-	* ä»XMLæ–‡ä»¶ä¸­è¯»å‡ºæ•´å‹å‚æ•°
-	* å‚æ•°1ï¼šå‚æ•°åï¼ˆèŠ‚ç‚¹åï¼‰
-	* å‚æ•°2ï¼šå‚æ•°å€¼ï¼ˆè¾“å‡ºï¼‰
+	* ´ÓXMLÎÄ¼şÖĞ¶Á³öÕûĞÍ²ÎÊı
+	* ²ÎÊı1£º²ÎÊıÃû£¨½ÚµãÃû£©
+	* ²ÎÊı2£º²ÎÊıÖµ£¨Êä³ö£©
 	*/
 	int get_int_para(const char* node_name, int* value);
-	/* ä»xmlæ–‡ä»¶ä¸­è¯»å‡ºintæ•°ç»„
-	* @param node_name                   æ•°æ®èŠ‚ç‚¹å
-	* @param Array                       æ•°ç»„
-	* @param rootNode                    æ ¹èŠ‚ç‚¹ï¼ˆé»˜è®¤ä¸ºNULLï¼Œè‹¥æä¾›æ ¹èŠ‚ç‚¹ï¼Œåˆ™åœ¨æ ¹èŠ‚ç‚¹ä¸‹é¢æœç´¢ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* ´ÓxmlÎÄ¼şÖĞ¶Á³öintÊı×é
+	* @param node_name                   Êı¾İ½ÚµãÃû
+	* @param Array                       Êı×é
+	* @param rootNode                    ¸ù½Úµã£¨Ä¬ÈÏÎªNULL£¬ÈôÌá¹©¸ù½Úµã£¬ÔòÔÚ¸ù½ÚµãÏÂÃæËÑË÷£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getIntArray(const char* node_name, Mat& Array, TiXmlElement* rootNode = NULL);
 
@@ -561,35 +561,35 @@ public:
 
 
 	/*
-	* ä»TerraSAR-X GEOREF.xmlæ–‡ä»¶ä¸­è¯»å‡ºæ§åˆ¶ç‚¹å‚æ•°
-	* å‚æ•°1ï¼šæ§åˆ¶ç‚¹å‚æ•°ï¼ˆè¾“å‡ºå€¼ï¼ŒNÃ—6çŸ©é˜µï¼Œæ¯åˆ—åˆ†åˆ«ä¸ºï¼šç»ï¼Œçº¬ï¼Œé«˜ï¼Œè¡Œï¼Œåˆ—ï¼Œä¸‹è§†è§’ï¼‰
+	* ´ÓTerraSAR-X GEOREF.xmlÎÄ¼şÖĞ¶Á³ö¿ØÖÆµã²ÎÊı
+	* ²ÎÊı1£º¿ØÖÆµã²ÎÊı£¨Êä³öÖµ£¬N¡Á6¾ØÕó£¬Ã¿ÁĞ·Ö±ğÎª£º¾­£¬Î³£¬¸ß£¬ĞĞ£¬ÁĞ£¬ÏÂÊÓ½Ç£©
 	*/
 	int get_gcps_from_TSX(Mat& gcps);
 	/*
-	* ä»TerraSAR-Xçš„ä¸»XMLæ–‡ä»¶ä¸­è¯»å‡ºè½¨é“æ•°æ®
-	* å‚æ•°1ï¼šè½¨é“å‚æ•°ï¼ˆè¾“å‡ºå€¼ï¼ŒNÃ—7çŸ©é˜µï¼Œæ¯åˆ—åˆ†åˆ«æ˜¯ï¼šGPSæ—¶é—´ï¼Œä½ç½®ï¼Œé€Ÿåº¦ï¼‰
+	* ´ÓTerraSAR-XµÄÖ÷XMLÎÄ¼şÖĞ¶Á³ö¹ìµÀÊı¾İ
+	* ²ÎÊı1£º¹ìµÀ²ÎÊı£¨Êä³öÖµ£¬N¡Á7¾ØÕó£¬Ã¿ÁĞ·Ö±ğÊÇ£ºGPSÊ±¼ä£¬Î»ÖÃ£¬ËÙ¶È£©
 	*/
 	int get_stateVec_from_TSX(Mat& stateVec);
 	/*
-	* ä»TerraSAR-Xä¸»xmlæ–‡ä»¶ä¸­è¯»å‡ºå¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡å‚æ•°ä¼°è®¡ç³»æ•°
-	* å‚æ•°1ï¼šå¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ï¼ˆè¾“å‡ºå€¼ï¼Œ NÃ—(N_order+2)çŸ©é˜µï¼ŒNä¸ºå¤šæ™®å‹’ä¸­å¿ƒä¼°è®¡æ•°ï¼ŒN_orderä¸ºæ–œè·å‘å¤šæ™®å‹’ä¸­å¿ƒæ‹Ÿåˆé˜¶æ•°, å¦å¤–ä¸¤ä¸ªæ˜¯é›¶é˜¶ç³»æ•°å’Œå‚è€ƒç‚¹è·ç¦»å‘æ—¶é—´ï¼‰
+	* ´ÓTerraSAR-XÖ÷xmlÎÄ¼şÖĞ¶Á³ö¶àÆÕÀÕÖĞĞÄÆµÂÊ²ÎÊı¹À¼ÆÏµÊı
+	* ²ÎÊı1£º¶àÆÕÀÕÖĞĞÄÆµÂÊ£¨Êä³öÖµ£¬ N¡Á(N_order+2)¾ØÕó£¬NÎª¶àÆÕÀÕÖĞĞÄ¹À¼ÆÊı£¬N_orderÎªĞ±¾àÏò¶àÆÕÀÕÖĞĞÄÄâºÏ½×Êı, ÁíÍâÁ½¸öÊÇÁã½×ÏµÊıºÍ²Î¿¼µã¾àÀëÏòÊ±¼ä£©
 	*/
 	int get_dopplerCentroid_from_TSX(Mat& doppler);
 
 
 	/*
-	* ä»sentinel1å«æ˜Ÿæ•°æ®xmlæ–‡ä»¶ä¸­è¯»å‡ºåœ°é¢æ§åˆ¶ç‚¹æ•°æ®
-	* å‚æ•°1ï¼šæ§åˆ¶ç‚¹æ•°æ®ï¼ˆè¾“å‡ºå€¼ï¼ŒNÃ—6çŸ©é˜µï¼Œæ¯åˆ—åˆ†åˆ«ä¸ºï¼šç»ï¼Œçº¬ï¼Œé«˜ï¼Œè¡Œï¼Œåˆ—ï¼Œä¸‹è§†è§’ï¼‰
+	* ´Ósentinel1ÎÀĞÇÊı¾İxmlÎÄ¼şÖĞ¶Á³öµØÃæ¿ØÖÆµãÊı¾İ
+	* ²ÎÊı1£º¿ØÖÆµãÊı¾İ£¨Êä³öÖµ£¬N¡Á6¾ØÕó£¬Ã¿ÁĞ·Ö±ğÎª£º¾­£¬Î³£¬¸ß£¬ĞĞ£¬ÁĞ£¬ÏÂÊÓ½Ç£©
 	*/
 	int get_gcps_from_sentinel(Mat& gcps);
 	/*
-	* ä»sentinel1å«æ˜Ÿæ•°æ®xmlæ–‡ä»¶ä¸­è¯»å‡ºå¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡å‚æ•°
-	* å‚æ•°1ï¼šå¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ï¼ˆè¾“å‡ºå€¼ï¼Œ NÃ—(N_order+2)çŸ©é˜µï¼ŒNä¸ºå¤šæ™®å‹’ä¸­å¿ƒä¼°è®¡æ•°ï¼ŒN_orderä¸ºæ–œè·å‘å¤šæ™®å‹’ä¸­å¿ƒæ‹Ÿåˆé˜¶æ•°, å¦å¤–ä¸¤ä¸ªæ˜¯é›¶é˜¶ç³»æ•°å’Œå‚è€ƒç‚¹è·ç¦»å‘æ—¶é—´ï¼‰
+	* ´Ósentinel1ÎÀĞÇÊı¾İxmlÎÄ¼şÖĞ¶Á³ö¶àÆÕÀÕÖĞĞÄÆµÂÊ²ÎÊı
+	* ²ÎÊı1£º¶àÆÕÀÕÖĞĞÄÆµÂÊ£¨Êä³öÖµ£¬ N¡Á(N_order+2)¾ØÕó£¬NÎª¶àÆÕÀÕÖĞĞÄ¹À¼ÆÊı£¬N_orderÎªĞ±¾àÏò¶àÆÕÀÕÖĞĞÄÄâºÏ½×Êı, ÁíÍâÁ½¸öÊÇÁã½×ÏµÊıºÍ²Î¿¼µã¾àÀëÏòÊ±¼ä£©
 	*/
 	int get_dopplerCentroid_from_sentinel(Mat& doppler);
 	/*
-	* ä»sentinel1å«æ˜Ÿæ•°æ®xmlæ–‡ä»¶ä¸­è¯»å‡ºè½¨é“å‚æ•°
-	* å‚æ•°1ï¼šè½¨é“å‚æ•°ï¼ˆè¾“å‡ºå€¼ï¼ŒNÃ—7çŸ©é˜µï¼Œæ¯åˆ—åˆ†åˆ«æ˜¯ï¼šGPSæ—¶é—´ï¼Œä½ç½®ï¼Œé€Ÿåº¦ï¼‰
+	* ´Ósentinel1ÎÀĞÇÊı¾İxmlÎÄ¼şÖĞ¶Á³ö¹ìµÀ²ÎÊı
+	* ²ÎÊı1£º¹ìµÀ²ÎÊı£¨Êä³öÖµ£¬N¡Á7¾ØÕó£¬Ã¿ÁĞ·Ö±ğÊÇ£ºGPSÊ±¼ä£¬Î»ÖÃ£¬ËÙ¶È£©
 	*/
 	int get_stateVec_from_sentinel(Mat& stateVec);
 
@@ -601,13 +601,13 @@ private:
 	char error_head[256];
 
 
-
+	
 };
 
 
 
 /**************************************************/
-/*********           æ ¼å¼è½¬æ¢ç±»åº“        **********/
+/*********           ¸ñÊ½×ª»»Àà¿â        **********/
 /**************************************************/
 
 class InSAR_API FormatConversion
@@ -617,48 +617,48 @@ public:
 	~FormatConversion();
 
 	/*
-	* åŠŸèƒ½ï¼šå°†å­—ç¬¦ä¸²æ ¼å¼çš„UTCæ—¶é—´è½¬æ¢ä¸ºGPSæ—¶é—´
-	* å‚æ•°1ï¼šUTCæ—¶é—´
-	* å‚æ•°2ï¼šGPSæ—¶é—´
+	* ¹¦ÄÜ£º½«×Ö·û´®¸ñÊ½µÄUTCÊ±¼ä×ª»»ÎªGPSÊ±¼ä
+	* ²ÎÊı1£ºUTCÊ±¼ä
+	* ²ÎÊı2£ºGPSÊ±¼ä
 	*/
 	int utc2gps(const char* utc_time, double* gps_time);
-	/** @brief åˆ›å»ºæ–°çš„h5æ–‡ä»¶ï¼ˆè‹¥æ–‡ä»¶å·²å­˜åœ¨åˆ™è¦†ç›–ï¼‰
+	/** @brief ´´½¨ĞÂµÄh5ÎÄ¼ş£¨ÈôÎÄ¼şÒÑ´æÔÚÔò¸²¸Ç£©
 
-	@param filename     æ–‡ä»¶å
+	@param filename     ÎÄ¼şÃû
 	*/
 	int creat_new_h5(const char* filename);
-	/*@brief åŠŸèƒ½ï¼šå‘h5æ–‡ä»¶ä¸­å†™å…¥é›¶çŸ©é˜µ
-	* @param filename                æ–‡ä»¶å
-	* @param dataset_name            datasetå
-	* @param type                    æ•°æ®ç±»å‹ï¼ˆCV_8U/CV_16S/CV_32S/CV_32F/CV_64Fï¼‰
-	* @param rows                    datasetè¡Œæ•°
-	* @param cols                    datasetåˆ—æ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¹¦ÄÜ£ºÏòh5ÎÄ¼şÖĞĞ´ÈëÁã¾ØÕó
+	* @param filename                ÎÄ¼şÃû
+	* @param dataset_name            datasetÃû
+	* @param type                    Êı¾İÀàĞÍ£¨CV_8U/CV_16S/CV_32S/CV_32F/CV_64F£©
+	* @param rows                    datasetĞĞÊı
+	* @param cols                    datasetÁĞÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_zero_array_to_h5(const char* filename, const char* dataset_name, int type, int rows, int cols);
 	/*
-	* åŠŸèƒ½ï¼šå‘h5æ–‡ä»¶ä¸­å†™å…¥å®æ•°çŸ©é˜µï¼ˆå¹²æ¶‰ç›¸ä½ï¼Œç›¸å¹²ç³»æ•°ç­‰ï¼‰,input_arrayå¯ä»¥æ˜¯16ä½æ•´å‹æˆ–è€…double/floatå‹
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šdatasetå
-	* å‚æ•°3 å¾…å†™å…¥çŸ©é˜µ
+	* ¹¦ÄÜ£ºÏòh5ÎÄ¼şÖĞĞ´ÈëÊµÊı¾ØÕó£¨¸ÉÉæÏàÎ»£¬Ïà¸ÉÏµÊıµÈ£©,input_array¿ÉÒÔÊÇ16Î»ÕûĞÍ»òÕßdouble/floatĞÍ
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£ºdatasetÃû
+	* ²ÎÊı3 ´ıĞ´Èë¾ØÕó
 	*/
 	int write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array);
-	/*@brief å‘h5æ–‡ä»¶ä¸­å†™å…¥doubleç±»å‹æ•°
-	* @param h5File                     h5æ–‡ä»¶
-	* @param datasetName                æ•°æ®å
-	* @param data                       doubleå‹æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ïòh5ÎÄ¼şÖĞĞ´ÈëdoubleÀàĞÍÊı
+	* @param h5File                     h5ÎÄ¼ş
+	* @param datasetName                Êı¾İÃû
+	* @param data                       doubleĞÍÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_double_to_h5(
 		const char* h5File,
 		const char* datasetName,
 		double data
 	);
-	/*@brief å‘h5æ–‡ä»¶ä¸­å†™å…¥intç±»å‹æ•°
-	* @param h5File                     h5æ–‡ä»¶
-	* @param datasetName                æ•°æ®å
-	* @param data                       doubleå‹æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ïòh5ÎÄ¼şÖĞĞ´ÈëintÀàĞÍÊı
+	* @param h5File                     h5ÎÄ¼ş
+	* @param datasetName                Êı¾İÃû
+	* @param data                       doubleĞÍÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_int_to_h5(
 		const char* h5File,
@@ -666,28 +666,28 @@ public:
 		int data
 	);
 	/*
-	* åŠŸèƒ½ï¼šä»h5æ–‡ä»¶ä¸­è¯»å‡ºå®æ•°çŸ©é˜µ(è¯»å‡ºç±»å‹ä¸ºdoubleå‹ã€16ä½æ•´å‹æˆ–è€…32ä½æ•´å‹)
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šdatasetå
-	* å‚æ•°3ï¼šè¾“å‡ºçŸ©é˜µ
+	* ¹¦ÄÜ£º´Óh5ÎÄ¼şÖĞ¶Á³öÊµÊı¾ØÕó(¶Á³öÀàĞÍÎªdoubleĞÍ¡¢16Î»ÕûĞÍ»òÕß32Î»ÕûĞÍ)
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£ºdatasetÃû
+	* ²ÎÊı3£ºÊä³ö¾ØÕó
 	*/
 	int read_array_from_h5(const char* filename, const char* dataset_name, Mat& out_array);
-	/*@brief ä»h5æ–‡ä»¶ä¸­è¯»å‡ºdoubleæ•°æ®
-	* @param h5File                      h5æ–‡ä»¶
-	* @param datasetName                 æ•°æ®å
-	* @param data                        æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´Óh5ÎÄ¼şÖĞ¶Á³ödoubleÊı¾İ
+	* @param h5File                      h5ÎÄ¼ş
+	* @param datasetName                 Êı¾İÃû
+	* @param data                        Êı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_double_from_h5(
 		const char* h5File,
 		const char* datasetName,
 		double* data
 	);
-	/*@brief ä»h5æ–‡ä»¶ä¸­è¯»å‡ºintæ•°æ®
-	* @param h5File                      h5æ–‡ä»¶
-	* @param datasetName                 æ•°æ®å
-	* @param data                        æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´Óh5ÎÄ¼şÖĞ¶Á³öintÊı¾İ
+	* @param h5File                      h5ÎÄ¼ş
+	* @param datasetName                 Êı¾İÃû
+	* @param data                        Êı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_int_from_h5(
 		const char* h5File,
@@ -695,14 +695,14 @@ public:
 		int* data
 	);
 	/*
-	* åŠŸèƒ½ï¼šä»h5æ–‡ä»¶ä¸­è¯»å–çŸ©é˜µæ•°æ®å­é›†
-	* å‚æ•°1ï¼šh5æ–‡ä»¶å
-	* å‚æ•°2ï¼šdatasetå
-	* å‚æ•°3ï¼šè¡Œåç§»é‡(ä»0å¼€å§‹)
-	* å‚æ•°4ï¼šåˆ—åç§»é‡ï¼ˆä»0å¼€å§‹ï¼‰
-	* å‚æ•°5ï¼šå­é›†è¡Œæ•°
-	* å‚æ•°6ï¼šå­é›†åˆ—æ•°
-	* å‚æ•°7ï¼šè¾“å‡ºå­é›†çŸ©é˜µ
+	* ¹¦ÄÜ£º´Óh5ÎÄ¼şÖĞ¶ÁÈ¡¾ØÕóÊı¾İ×Ó¼¯
+	* ²ÎÊı1£ºh5ÎÄ¼şÃû
+	* ²ÎÊı2£ºdatasetÃû
+	* ²ÎÊı3£ºĞĞÆ«ÒÆÁ¿(´Ó0¿ªÊ¼)
+	* ²ÎÊı4£ºÁĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£©
+	* ²ÎÊı5£º×Ó¼¯ĞĞÊı
+	* ²ÎÊı6£º×Ó¼¯ÁĞÊı
+	* ²ÎÊı7£ºÊä³ö×Ó¼¯¾ØÕó
 	*/
 	int read_subarray_from_h5(
 		const char* filename,
@@ -713,16 +713,16 @@ public:
 		int cols_subarray,
 		Mat& out_array
 	);
-	/** @brief å‘å·²æœ‰çš„H5æ–‡ä»¶æŒ‡å®šæ•°æ®é›†çŸ©é˜µä¸­çš„æŒ‡å®šä½ç½®å†™å…¥å­çŸ©é˜µ
+	/** @brief ÏòÒÑÓĞµÄH5ÎÄ¼şÖ¸¶¨Êı¾İ¼¯¾ØÕóÖĞµÄÖ¸¶¨Î»ÖÃĞ´Èë×Ó¾ØÕó
 
-	@param h5_filename                   h5æ–‡ä»¶å
-	@param dataset_name                  æ•°æ®é›†åç§°
-	@param subarray                      å­çŸ©é˜µæ•°æ®
-	@param offset_row                    è¡Œåç§»é‡ï¼ˆä»0å¼€å§‹ï¼‰
-	@param offset_col                    åˆ—åç§»é‡ï¼ˆä»0å¼€å§‹ï¼‰
-	@param rows_subarray                 å­é›†ï¼ˆçŸ©é˜µï¼‰è¡Œæ•°
-	@param cols_subarray                 å­é›†ï¼ˆçŸ©é˜µï¼‰åˆ—æ•°
-	@return æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
+	@param h5_filename                   h5ÎÄ¼şÃû
+	@param dataset_name                  Êı¾İ¼¯Ãû³Æ
+	@param subarray                      ×Ó¾ØÕóÊı¾İ
+	@param offset_row                    ĞĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£©
+	@param offset_col                    ÁĞÆ«ÒÆÁ¿£¨´Ó0¿ªÊ¼£©
+	@param rows_subarray                 ×Ó¼¯£¨¾ØÕó£©ĞĞÊı
+	@param cols_subarray                 ×Ó¼¯£¨¾ØÕó£©ÁĞÊı
+	@return ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
 	*/
 	int write_subarray_to_h5(
 		const char* h5_filename,
@@ -734,50 +734,50 @@ public:
 		int cols_subarray
 	);
 	/*
-	* åŠŸèƒ½ï¼šå‘h5æ–‡ä»¶å†™å…¥å­—ç¬¦ä¸²å‚æ•°
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šdatasetå
-	* å‚æ•°3ï¼šå¾…å†™å…¥å­—ç¬¦ä¸²å‚æ•°
+	* ¹¦ÄÜ£ºÏòh5ÎÄ¼şĞ´Èë×Ö·û´®²ÎÊı
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£ºdatasetÃû
+	* ²ÎÊı3£º´ıĞ´Èë×Ö·û´®²ÎÊı
 	*/
 	int write_str_to_h5(const char* filename, const char* dataset_name, const char* str);
 	/*
-	* åŠŸèƒ½ï¼šä»h5æ–‡ä»¶ä¸­è¯»å‡ºå­—ç¬¦ä¸²å‚æ•°
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šdatasetå
-	* å‚æ•°3ï¼šè¾“å‡ºå­—ç¬¦ä¸²å‚æ•°
+	* ¹¦ÄÜ£º´Óh5ÎÄ¼şÖĞ¶Á³ö×Ö·û´®²ÎÊı
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£ºdatasetÃû
+	* ²ÎÊı3£ºÊä³ö×Ö·û´®²ÎÊı
 	*/
 	int read_str_from_h5(const char* filename, const char* dataset_name, string& string);
 	/*
-	* åŠŸèƒ½ï¼šå‘h5æ–‡ä»¶å†™å…¥å¤å›¾åƒæ•°æ®ï¼ˆSLCï¼‰ï¼Œå¦‚æœå·²ç»å­˜åœ¨åˆ™ä¸å†™å…¥ã€‚
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šå¤æ•°æ®
+	* ¹¦ÄÜ£ºÏòh5ÎÄ¼şĞ´Èë¸´Í¼ÏñÊı¾İ£¨SLC£©£¬Èç¹ûÒÑ¾­´æÔÚÔò²»Ğ´Èë¡£
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£º¸´Êı¾İ
 	*/
 	int write_slc_to_h5(const char* filename, const ComplexMat& slc);
 	/*
-	* åŠŸèƒ½ï¼šä»h5æ–‡ä»¶ä¸­è¯»å‡ºslcæ•°æ®
-	* å‚æ•°1ï¼šæ–‡ä»¶å
-	* å‚æ•°2ï¼šè¾“å‡ºslc
+	* ¹¦ÄÜ£º´Óh5ÎÄ¼şÖĞ¶Á³öslcÊı¾İ
+	* ²ÎÊı1£ºÎÄ¼şÃû
+	* ²ÎÊı2£ºÊä³öslc
 	*/
 	int read_slc_from_h5(const char* filename, ComplexMat& slc);
 
 
 	/*------------------------------------------------*/
-	/*            TerraSAR-Xäº§å“æ•°æ®å¯¼å…¥å·¥å…·          */
+	/*            TerraSAR-X²úÆ·Êı¾İµ¼Èë¹¤¾ß          */
 	/*------------------------------------------------*/
 
 	/*
-	* ä»TerraSAR-Xå«æ˜Ÿçš„.cosæ•°æ®ä¸­è¯»å‡ºslcæ•°æ®(ä¸æ”¹å˜ç±»å‹ï¼Œä»ç„¶æ˜¯16ä½æ•´å‹)
-	* å‚æ•°1ï¼š.cosæ–‡ä»¶å
-	* å‚æ•°2ï¼šå¤æ•°æ®çŸ©é˜µï¼ˆè¾“å‡ºå€¼ï¼‰
+	* ´ÓTerraSAR-XÎÀĞÇµÄ.cosÊı¾İÖĞ¶Á³öslcÊı¾İ(²»¸Ä±äÀàĞÍ£¬ÈÔÈ»ÊÇ16Î»ÕûĞÍ)
+	* ²ÎÊı1£º.cosÎÄ¼şÃû
+	* ²ÎÊı2£º¸´Êı¾İ¾ØÕó£¨Êä³öÖµ£©
 	*/
 	int read_slc_from_TSXcos(const char* filename, ComplexMat& slc);
-	/** @brief å°†TerraSAR-Xå«æ˜Ÿæ•°æ®æ ¼å¼è½¬æ¢ä¸ºè‡ªå®šä¹‰çš„h5æ ¼å¼
+	/** @brief ½«TerraSAR-XÎÀĞÇÊı¾İ¸ñÊ½×ª»»Îª×Ô¶¨ÒåµÄh5¸ñÊ½
 
-	@param cosar_filename                     TerraSAR-X .cosæ–‡ä»¶å
-	@param xml_filename                       TerraSAR-X ä¸»xmlæ–‡ä»¶å
-	@param GEOREF_filename                    TerraSAR-X GEOREF.xmlæ–‡ä»¶å
-	@param dst_h5_filename                    ç›®æ ‡h5æ–‡ä»¶ï¼ˆè‹¥æ–‡ä»¶å·²ç»å­˜åœ¨åˆ™è¦†ç›–ï¼‰
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	@param cosar_filename                     TerraSAR-X .cosÎÄ¼şÃû
+	@param xml_filename                       TerraSAR-X Ö÷xmlÎÄ¼şÃû
+	@param GEOREF_filename                    TerraSAR-X GEOREF.xmlÎÄ¼şÃû
+	@param dst_h5_filename                    Ä¿±êh5ÎÄ¼ş£¨ÈôÎÄ¼şÒÑ¾­´æÔÚÔò¸²¸Ç£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int TSX2h5(
 		const char* cosar_filename,
@@ -785,27 +785,27 @@ public:
 		const char* GEOREF_filename,
 		const char* dst_h5_filename
 	);
-	/** @brief å°†TerraSAR-Xå«æ˜Ÿæ•°æ®æ ¼å¼è½¬æ¢ä¸ºè‡ªå®šä¹‰çš„h5æ ¼å¼
+	/** @brief ½«TerraSAR-XÎÀĞÇÊı¾İ¸ñÊ½×ª»»Îª×Ô¶¨ÒåµÄh5¸ñÊ½
 
-	@param xml_filename                       TerraSAR-X ä¸»xmlæ–‡ä»¶å
-	@param dst_h5_filename                    ç›®æ ‡h5æ–‡ä»¶
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	@param xml_filename                       TerraSAR-X Ö÷xmlÎÄ¼şÃû
+	@param dst_h5_filename                    Ä¿±êh5ÎÄ¼ş
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename
 	);
-	/** @brief å°†TerraSAR-Xå«æ˜Ÿæ•°æ®æ ¼å¼è½¬æ¢ä¸ºè‡ªå®šä¹‰çš„h5æ ¼å¼(å¸¦æåŒ–é€‰é¡¹)
+	/** @brief ½«TerraSAR-XÎÀĞÇÊı¾İ¸ñÊ½×ª»»Îª×Ô¶¨ÒåµÄh5¸ñÊ½(´ø¼«»¯Ñ¡Ïî)
 
-	@param xml_filename                       TerraSAR-X ä¸»xmlæ–‡ä»¶å
-	@param dst_h5_filename                    ç›®æ ‡h5æ–‡ä»¶
-	@param polarization                       æåŒ–æ–¹å¼(é»˜è®¤ä¸ºHHæåŒ–)
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	@param xml_filename                       TerraSAR-X Ö÷xmlÎÄ¼şÃû
+	@param dst_h5_filename                    Ä¿±êh5ÎÄ¼ş
+	@param polarization                       ¼«»¯·½Ê½(Ä¬ÈÏÎªHH¼«»¯)
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename,
-		const char* polarization
+		const char* polarization ="HH"
 	);
 
 
@@ -813,39 +813,39 @@ public:
 
 
 	/*------------------------------------------------*/
-	/*            Sentinel1äº§å“æ•°æ®å¯¼å…¥å·¥å…·           */
+	/*            Sentinel1²úÆ·Êı¾İµ¼Èë¹¤¾ß           */
 	/*------------------------------------------------*/
 
 	/*
-	* ä»sentinel1å«æ˜Ÿç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶ä¸­è¯»å‡ºç²¾å¯†è½¨é“æ•°æ®
-	* å‚æ•°1ï¼šç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶
-	* å‚æ•°2ï¼šç²—è½¨é“æ•°æ®èµ·å§‹æ—¶é—´
-	* å‚æ•°3ï¼šç²—è½¨é“æ•°æ®ç»“æŸæ—¶é—´
-	* å‚æ•°4ï¼šç›®æ ‡h5æ–‡ä»¶
+	* ´Ósentinel1ÎÀĞÇ¾«ÃÜ¹ìµÀÊı¾İÎÄ¼şÖĞ¶Á³ö¾«ÃÜ¹ìµÀÊı¾İ
+	* ²ÎÊı1£º¾«ÃÜ¹ìµÀÊı¾İÎÄ¼ş
+	* ²ÎÊı2£º´Ö¹ìµÀÊı¾İÆğÊ¼Ê±¼ä
+	* ²ÎÊı3£º´Ö¹ìµÀÊı¾İ½áÊøÊ±¼ä
+	* ²ÎÊı4£ºÄ¿±êh5ÎÄ¼ş
 	*/
 	int read_POD(const char* POD_filename, double start_time, double stop_time, const char* dst_h5_filename);
-	/** @brief ä»sentinel1å«æ˜Ÿæ•°æ®ä¸­è¯»å‡ºslcæ•°æ®ï¼ˆè¯»å‡ºæ•°æ®ç±»å‹ä¸º16ä½æ•´å‹ï¼‰
-	*
-	* @param filename                    sentinel1å«æ˜Ÿæ•°æ®æ–‡ä»¶å
-	* @param xml_filename                xmlå‚æ•°æ–‡ä»¶
-	* @param slc                         å¤çŸ©é˜µï¼ˆè¯»å‡ºçš„slcæ•°æ®ï¼‰
-	* @param gcps_line                   deburstä¹‹åæ§åˆ¶ç‚¹è¡Œåæ ‡ï¼ˆintå‹ï¼Œ1Ã—nï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/** @brief ´Ósentinel1ÎÀĞÇÊı¾İÖĞ¶Á³öslcÊı¾İ£¨¶Á³öÊı¾İÀàĞÍÎª16Î»ÕûĞÍ£©
+	* 
+	* @param filename                    sentinel1ÎÀĞÇÊı¾İÎÄ¼şÃû
+	* @param xml_filename                xml²ÎÊıÎÄ¼ş
+	* @param slc                         ¸´¾ØÕó£¨¶Á³öµÄslcÊı¾İ£©
+	* @param gcps_line                   deburstÖ®ºó¿ØÖÆµãĞĞ×ø±ê£¨intĞÍ£¬1¡Án£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_slc_from_Sentinel(const char* filename, const char* xml_filename, ComplexMat& slc, Mat& gcps_line);
 	/*
-	* åŠŸèƒ½ï¼šsentinel1æ•°æ®deburst(æ•°æ®ç±»å‹ä¸º16ä½æ•´å‹)
-	* å‚æ•°1ï¼šç”¨äºdeburstçš„xmlå‚æ•°æ–‡ä»¶
-	* å‚æ•°2ï¼šå¾…å¤„ç†slcæ•°æ®ï¼ˆåŸåœ°æ“ä½œï¼‰
-	* å‚æ•°3ï¼šæ— æ•ˆè¡Œç§¯ç´¯æ ‡å¿—æ•°æ®(CV_32Så‹)
+	* ¹¦ÄÜ£ºsentinel1Êı¾İdeburst(Êı¾İÀàĞÍÎª16Î»ÕûĞÍ)
+	* ²ÎÊı1£ºÓÃÓÚdeburstµÄxml²ÎÊıÎÄ¼ş
+	* ²ÎÊı2£º´ı´¦ÀíslcÊı¾İ£¨Ô­µØ²Ù×÷£©
+	* ²ÎÊı3£ºÎŞĞ§ĞĞ»ıÀÛ±êÖ¾Êı¾İ(CV_32SĞÍ)
 	*/
 	int sentinel_deburst(const char* xml_filename, ComplexMat& slc, Mat& sentinel);
 	/*
-	* å°†sentinel1å«æ˜Ÿæ•°æ®æ ¼å¼è½¬æ¢ä¸ºè‡ªå®šä¹‰çš„h5æ ¼å¼
-	* å‚æ•°1ï¼štiffæ ¼å¼æ–‡ä»¶åï¼ˆå‚¨å­˜SLCå›¾åƒï¼‰
-	* å‚æ•°2ï¼šxmlæ–‡ä»¶å
-	* å‚æ•°3ï¼šç›®æ ‡h5æ–‡ä»¶å
-	* å‚æ•°4ï¼šç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶
+	* ½«sentinel1ÎÀĞÇÊı¾İ¸ñÊ½×ª»»Îª×Ô¶¨ÒåµÄh5¸ñÊ½
+	* ²ÎÊı1£ºtiff¸ñÊ½ÎÄ¼şÃû£¨´¢´æSLCÍ¼Ïñ£©
+	* ²ÎÊı2£ºxmlÎÄ¼şÃû
+	* ²ÎÊı3£ºÄ¿±êh5ÎÄ¼şÃû
+	* ²ÎÊı4£º¾«ÃÜ¹ìµÀÊı¾İÎÄ¼ş
 	*/
 	int sentinel2h5(
 		const char* tiff_filename,
@@ -853,13 +853,13 @@ public:
 		const char* dst_h5_filename,
 		const char* POD_file = NULL
 	);
-	/** å¯¼å…¥sentinelå«æ˜Ÿæ•°æ®è‡³h5æ–‡ä»¶ä¸­
-	* @param manifest                            sentinelå«æ˜Ÿæ•°æ®manifestæ–‡ä»¶
-	* @param subswath_name                       sentinelå«æ˜ŸIWæ¨¡å¼ä¸­ä¸ºï¼ˆiw1/iw2/iw3ï¼‰
-	* @param polarization                        æåŒ–æ–¹å¼ï¼ˆvv/vhï¼‰
-	* @param dest_h5_file                        ç›®æ ‡h5æ–‡ä»¶
-	* @param PODFile                             ç²¾è½¨æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/** µ¼ÈësentinelÎÀĞÇÊı¾İÖÁh5ÎÄ¼şÖĞ
+	* @param manifest                            sentinelÎÀĞÇÊı¾İmanifestÎÄ¼ş
+	* @param subswath_name                       sentinelÎÀĞÇIWÄ£Ê½ÖĞÎª£¨iw1/iw2/iw3£©
+	* @param polarization                        ¼«»¯·½Ê½£¨vv/vh£©
+	* @param dest_h5_file                        Ä¿±êh5ÎÄ¼ş
+	* @param PODFile                             ¾«¹ìÊı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int import_sentinel(
 		const char* manifest,
@@ -868,15 +868,15 @@ public:
 		const char* dest_h5_file,
 		const char* PODFile = NULL
 	);
-	/** @brief è¯»å‡ºä¸€ä¸ªburstæ•°æ®
-	*
-	* @param pnode                         burstèŠ‚ç‚¹ä¿¡æ¯
-	* @param xmldoc                        xmlç»“æ„ä½“
-	* @param fp                            å›¾åƒæ–‡ä»¶æŒ‡é’ˆ
-	* @param linesPerBurst                 æ¯ä¸ªburstæ•°æ®è¡Œæ•°
-	* @param samplesPerBurst               æ¯è¡Œæ•°æ®ç‚¹æ•°
-	* @param burst                         è¯»å‡ºçš„burstæ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1ï¼ˆè¿”å›-1ä¼šè‡ªåŠ¨å…³é—­æ–‡ä»¶æŒ‡é’ˆï¼‰
+	/** @brief ¶Á³öÒ»¸öburstÊı¾İ
+	* 
+	* @param pnode                         burst½ÚµãĞÅÏ¢
+	* @param xmldoc                        xml½á¹¹Ìå
+	* @param fp                            Í¼ÏñÎÄ¼şÖ¸Õë
+	* @param linesPerBurst                 Ã¿¸öburstÊı¾İĞĞÊı
+	* @param samplesPerBurst               Ã¿ĞĞÊı¾İµãÊı
+	* @param burst                         ¶Á³öµÄburstÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1£¨·µ»Ø-1»á×Ô¶¯¹Ø±ÕÎÄ¼şÖ¸Õë£©
 	*/
 	int get_a_burst(
 		TiXmlElement* pnode,
@@ -886,13 +886,13 @@ public:
 		int samplesPerBurst,
 		ComplexMat& burst
 	);
-	/** @brief è¯»å‡ºä¸€ä¸ªburstæ•°æ®ï¼ˆå¹¶è®¡ç®—ä¸ä¸‹ä¸€ä¸ªburstä¹‹é—´çš„é‡å åŒºåŸŸå¤§å°ï¼‰
+	/** @brief ¶Á³öÒ»¸öburstÊı¾İ£¨²¢¼ÆËãÓëÏÂÒ»¸öburstÖ®¼äµÄÖØµşÇøÓò´óĞ¡£©
 	*
-	* @param burst_num                         burståºå·
-	* @param xml_file                          xmlæ–‡ä»¶
-	* @param tiff_file                         tiffæ•°æ®æ–‡ä»¶
-	* @param burst                             burstæ•°æ®
-	* @param overlapSize                       é‡å åŒºåŸŸå°ºå¯¸ï¼ˆæ–¹ä½å‘ï¼‰
+	* @param burst_num                         burstĞòºÅ
+	* @param xml_file                          xmlÎÄ¼ş
+	* @param tiff_file                         tiffÊı¾İÎÄ¼ş
+	* @param burst                             burstÊı¾İ
+	* @param overlapSize                       ÖØµşÇøÓò³ß´ç£¨·½Î»Ïò£©
 	*/
 	int get_burst_sentinel(
 		int burst_num,
@@ -901,25 +901,25 @@ public:
 		ComplexMat& burst,
 		int* overlapSize
 	);
-	/** @brief è®¡ç®—burstä¹‹é—´çš„é‡å åŒºåŸŸå°ºå¯¸
-	*
-	* @param last_burst                      ä¸Šä¸€ä¸ªburst
-	* @param this_burst                      å¾…è®¡ç®—é‡å åŒºåŸŸå°ºå¯¸çš„burst
-	* @param overlapSize                     é‡å åŒºåŸŸå°ºå¯¸
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/** @brief ¼ÆËãburstÖ®¼äµÄÖØµşÇøÓò³ß´ç
+	* 
+	* @param last_burst                      ÉÏÒ»¸öburst
+	* @param this_burst                      ´ı¼ÆËãÖØµşÇøÓò³ß´çµÄburst
+	* @param overlapSize                     ÖØµşÇøÓò³ß´ç
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int deburst_overlapSize(
 		ComplexMat& last_burst,
 		ComplexMat& this_burst,
 		int* overlapSize
 	);
-	/** @brief burstä¹‹é—´è¿›è¡Œæ‹¼æ¥ï¼ˆå°†src_burstæ‹¼æ¥åˆ°dst_burstä¸Šï¼‰
-	*
-	* @param src_burst                 è¢«æ‹¼æ¥burst
-	* @param dst_burst                 æ‹¼æ¥burst
-	* @param stitch_type               ç¼åˆæ–¹å¼ï¼ˆlow/mid/highï¼‰
-	* @param overlapSize               é‡å åŒºåŸŸå°ºå¯¸
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/** @brief burstÖ®¼ä½øĞĞÆ´½Ó£¨½«src_burstÆ´½Óµ½dst_burstÉÏ£©
+	* 
+	* @param src_burst                 ±»Æ´½Óburst
+	* @param dst_burst                 Æ´½Óburst
+	* @param stitch_type               ·ìºÏ·½Ê½£¨low/mid/high£©
+	* @param overlapSize               ÖØµşÇøÓò³ß´ç
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int burst_stitch(
 		ComplexMat& src_burst,
@@ -931,28 +931,28 @@ public:
 
 
 	/*------------------------------------------------*/
-	/*            ALOS1/2äº§å“æ•°æ®å¯¼å…¥å·¥å…·             */
+	/*            ALOS1/2²úÆ·Êı¾İµ¼Èë¹¤¾ß             */
 	/*------------------------------------------------*/
 
 	/*
-	* ä»ALOS1/2 CEOSæ ¼å¼Level-1.1äº§å“ä¸­è¯»å–slcæ•°æ®(floatå‹)
-	* å‚æ•°1ï¼šå›¾åƒæ–‡ä»¶
-	* å‚æ•°2ï¼šslcæ•°æ®
+	* ´ÓALOS1/2 CEOS¸ñÊ½Level-1.1²úÆ·ÖĞ¶ÁÈ¡slcÊı¾İ(floatĞÍ)
+	* ²ÎÊı1£ºÍ¼ÏñÎÄ¼ş
+	* ²ÎÊı2£ºslcÊı¾İ
 	*/
 	int read_slc_from_ALOS(const char* img_file, ComplexMat& slc);
 	/*
-	* ä»ALOS1/2 CEOSæ ¼å¼Level-1.1äº§å“ä¸­è¯»å–å«æ˜Ÿè½¨é“æ•°æ®
-	* å‚æ•°1ï¼šALOS LEDæ–‡ä»¶
-	* å‚æ•°2ï¼šè½¨é“æ•°æ®
+	* ´ÓALOS1/2 CEOS¸ñÊ½Level-1.1²úÆ·ÖĞ¶ÁÈ¡ÎÀĞÇ¹ìµÀÊı¾İ
+	* ²ÎÊı1£ºALOS LEDÎÄ¼ş
+	* ²ÎÊı2£º¹ìµÀÊı¾İ
 	*/
 	int read_stateVec_from_ALOS(const char* LED_file, Mat& stateVec);
 	/*
-	* ä»ALOS1/2 CEOSæ ¼å¼Level-1.1äº§å“ä¸­è¯»å–ç»çº¬åæ ‡ä¸å›¾åƒåæ ‡ä¹‹é—´çš„è½¬æ¢å…³ç³»ç³»æ•°
-	* å‚æ•°1ï¼šALOS LEDæ–‡ä»¶
-	* å‚æ•°2ï¼šå›¾åƒåæ ‡ï¼ˆè¡Œã€åˆ—ï¼‰ä¸ç»åº¦ä¹‹é—´çš„è½¬æ¢å…³ç³»ï¼ˆè¡Œåˆ—-->ç»åº¦ï¼‰
-	* å‚æ•°3ï¼šå›¾åƒåæ ‡ï¼ˆè¡Œã€åˆ—ï¼‰ä¸çº¬åº¦ä¹‹é—´çš„è½¬æ¢å…³ç³»ï¼ˆè¡Œåˆ—-->çº¬åº¦ï¼‰
-	* å‚æ•°4ï¼šç»çº¬åº¦ä¸è¡Œåæ ‡ä¹‹é—´çš„è½¬æ¢å…³ç³»ï¼ˆç»çº¬åº¦-->è¡Œæ•°ï¼‰
-	* å‚æ•°5ï¼šç»çº¬åº¦ä¸åˆ—åæ ‡ä¹‹é—´çš„è½¬æ¢å…³ç³»ï¼ˆç»çº¬åº¦-->åˆ—æ•°ï¼‰
+	* ´ÓALOS1/2 CEOS¸ñÊ½Level-1.1²úÆ·ÖĞ¶ÁÈ¡¾­Î³×ø±êÓëÍ¼Ïñ×ø±êÖ®¼äµÄ×ª»»¹ØÏµÏµÊı
+	* ²ÎÊı1£ºALOS LEDÎÄ¼ş
+	* ²ÎÊı2£ºÍ¼Ïñ×ø±ê£¨ĞĞ¡¢ÁĞ£©Óë¾­¶ÈÖ®¼äµÄ×ª»»¹ØÏµ£¨ĞĞÁĞ-->¾­¶È£©
+	* ²ÎÊı3£ºÍ¼Ïñ×ø±ê£¨ĞĞ¡¢ÁĞ£©ÓëÎ³¶ÈÖ®¼äµÄ×ª»»¹ØÏµ£¨ĞĞÁĞ-->Î³¶È£©
+	* ²ÎÊı4£º¾­Î³¶ÈÓëĞĞ×ø±êÖ®¼äµÄ×ª»»¹ØÏµ£¨¾­Î³¶È-->ĞĞÊı£©
+	* ²ÎÊı5£º¾­Î³¶ÈÓëÁĞ×ø±êÖ®¼äµÄ×ª»»¹ØÏµ£¨¾­Î³¶È-->ÁĞÊı£©
 	*/
 	int read_conversion_coefficient_from_ALOS(
 		const char* LED_file,
@@ -962,67 +962,89 @@ public:
 		Mat& col_coefficient
 	);
 	/*
-	* å°†ALOS1/2 CEOSæ ¼å¼Level-1.1äº§å“æ•°æ®è¯»å‡ºåˆ°è‡ªå®šä¹‰çš„hdf5æ–‡ä»¶ä¸­
-	* å‚æ•°1ï¼šALOS IMGæ–‡ä»¶
-	* å‚æ•°2ï¼šALOS LEDæ–‡ä»¶
-	* å‚æ•°3ï¼šè‡ªå®šä¹‰h5æ–‡ä»¶
+	* ½«ALOS1/2 CEOS¸ñÊ½Level-1.1²úÆ·Êı¾İ¶Á³öµ½×Ô¶¨ÒåµÄhdf5ÎÄ¼şÖĞ
+	* ²ÎÊı1£ºALOS IMGÎÄ¼ş
+	* ²ÎÊı2£ºALOS LEDÎÄ¼ş
+	* ²ÎÊı3£º×Ô¶¨Òåh5ÎÄ¼ş
 	*/
 	int ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5);
-	/** @brief å°†åŸh5æ–‡ä»¶ä¸­çš„å‚æ•°ä¿¡æ¯æ‹·è´åˆ°å¦ä¸€ä¸ªh5ä¸­
-
-	@param Input_file        åŸå§‹h5æ–‡ä»¶
-	@param Output_file       è¾“å‡ºh5æ–‡ä»¶
+	/** @brief ½«Ô­h5ÎÄ¼şÖĞµÄ²ÎÊıĞÅÏ¢¿½±´µ½ÁíÒ»¸öh5ÖĞ
+	
+    @param Input_file        Ô­Ê¼h5ÎÄ¼ş
+	@param Output_file       Êä³öh5ÎÄ¼ş
 	*/
 	int Copy_para_from_h5_2_h5(const char* Input_file, const char* Output_file);
 
 	/*------------------------------------------------*/
-	/*               GEDIäº§å“æ•°æ®å¯¼å…¥å·¥å…·             */
+	/*               GEDI²úÆ·Êı¾İµ¼Èë¹¤¾ß             */
 	/*------------------------------------------------*/
 
-	/** @brief ä»GEDI L2Bçº§äº§å“ä¸­è¯»å–DSMã€DTMä»¥åŠåœ°ç†åæ ‡ç­‰ä¿¡æ¯
-	* @param gedi_h5_file                        GEDI L2Bçº§äº§å“æ–‡ä»¶ï¼ˆHDF5æ ¼å¼ï¼‰
-	* @param rh100                               rh100å‚æ•°
-	* @param elev_lowestmode                     æ—ä¸‹åœ°å½¢å‚æ•°ï¼ˆDTMï¼‰
-	* @param elev_highestreturn                  å† å±‚é«˜åº¦ä¿¡æ¯ï¼ˆDSMï¼‰
-	* @param lon                                 ç»åº¦ä¿¡æ¯
-	* @param lat                                 çº¬åº¦ä¿¡æ¯
-	* @param dem                                 TanDEM-X 90m é«˜ç¨‹ä¿¡æ¯
-	* @param quality_index                       è´¨é‡ä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/** @brief ´ÓGEDI L2B¼¶²úÆ·ÖĞ¶ÁÈ¡DSM¡¢DTMÒÔ¼°µØÀí×ø±êµÈĞÅÏ¢
+	* @param gedi_h5_file                        GEDI L2B¼¶²úÆ·ÎÄ¼ş£¨HDF5¸ñÊ½£©
+	* @param rh100                               rh100²ÎÊı
+	* @param elev_lowestmode                     ÁÖÏÂµØĞÎ²ÎÊı£¨DTM£©
+	* @param elev_highestreturn                  ¹Ú²ã¸ß¶ÈĞÅÏ¢£¨DSM£©
+	* @param lon                                 ¾­¶ÈĞÅÏ¢
+	* @param lat                                 Î³¶ÈĞÅÏ¢
+	* @param dem                                 TanDEM-X 90m ¸ß³ÌĞÅÏ¢
+	* @param quality_index                       ÖÊÁ¿ĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_height_metric_from_GEDI_L2B(const char* gedi_h5_file, Mat& rh100, Mat& elev_lowestmode, Mat& elev_highestreturn, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index);
 
+	/** @brief ´ÓGEDI L2A¼¶²úÆ·ÖĞ¶ÁÈ¡Ê÷¸ß¼°µØÀí×ø±êµÈĞÅÏ¢
+	* @param gedi_h5_file                        GEDI L2A¼¶²úÆ·ÎÄ¼ş£¨HDF5¸ñÊ½£©
+	* @param rh                                  rh²ÎÊı
+	* @param lon                                 ¾­¶ÈĞÅÏ¢
+	* @param lat                                 Î³¶ÈĞÅÏ¢
+	* @param dem                                 TanDEM-X 90m ¸ß³ÌĞÅÏ¢
+	* @param quality_index                       ÖÊÁ¿ĞÅÏ¢
+	* @param rh_percentile                       Ê÷¸ßÌáÈ¡²ÎÊı£¨rh_percentile = 1~100£¬Ä¬ÈÏÎª100£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int read_height_metric_from_GEDI_L2A(const char* gedi_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 100);
+	/** @brief ´ÓICESat-2 L3A¼¶²úÆ·ÖĞ¶ÁÈ¡Ê÷¸ß¼°µØÀí×ø±êµÈĞÅÏ¢
+	* @param gedi_h5_file                        ICESat-2 L3A¼¶²úÆ·ÎÄ¼ş£¨HDF5¸ñÊ½£©
+	* @param rh                                  rh²ÎÊı
+	* @param lon                                 ¾­¶ÈĞÅÏ¢
+	* @param lat                                 Î³¶ÈĞÅÏ¢
+	* @param dem                                 ¸ß³ÌĞÅÏ¢
+	* @param quality_index                       ÖÊÁ¿ĞÅÏ¢([80,100]ÔòÎªÖÊÁ¿ºÏ¸ñÊı¾İ£¬127ÎªÎŞĞ§Öµ)
+	* @param rh_percentile                       Ê÷¸ßÌáÈ¡²ÎÊı£¨rh_percentile = 10(1), 15(2), 20(3), 25(4), 30(...),..., 80(15), 85(16), 90(17), 95(18)£¬Ä¬ÈÏÎª95(18)£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 18);
 
 
 
-	/*@brief ç»/çº¬/é«˜ ---> x/y/z
-	* @param lon                 ç»åº¦
-	* @param lat                 çº¬åº¦
-	* @param elevation           é«˜åº¦
+	/*@brief ¾­/Î³/¸ß ---> x/y/z
+	* @param lon                 ¾­¶È
+	* @param lat                 Î³¶È
+	* @param elevation           ¸ß¶È
 	* @param xyz                 x/y/z
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	static int ell2xyz(double lon, double lat, double elevation, Position& xyz);
-	/** @brief å°†ç›¸ä½è½¬æ¢æˆcoså’Œsinï¼ˆå®éƒ¨å’Œè™šéƒ¨ï¼Œæ”¯æŒdoubleå’Œfloatï¼‰
+	/** @brief ½«ÏàÎ»×ª»»³ÉcosºÍsin£¨Êµ²¿ºÍĞé²¿£¬Ö§³ÖdoubleºÍfloat£©
 
-	@param phase                     è¾“å…¥ç›¸ä½
-	@param cos                       å®éƒ¨
-	@param sin                       è™šéƒ¨
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	@param phase                     ÊäÈëÏàÎ»
+	@param cos                       Êµ²¿
+	@param sin                       Ğé²¿
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int phase2cos(const Mat& phase, Mat& cos, Mat& sin);
-	/*@brief ç”ŸæˆèŒƒå¾·è’™çŸ©é˜µ
-	* @param inArray                           è‡ªå˜é‡åºåˆ—
-	* @param vandermondeMatrix                 èŒƒå¾·è’™çŸ©é˜µ
-	* @param degree                            é˜¶æ•°
-	* @return æˆåŠŸè¿”å›-1ï¼Œå¦åˆ™è¿”å›0
+	/*@brief Éú³É·¶µÂÃÉ¾ØÕó
+	* @param inArray                           ×Ô±äÁ¿ĞòÁĞ
+	* @param vandermondeMatrix                 ·¶µÂÃÉ¾ØÕó
+	* @param degree                            ½×Êı
+	* @return ³É¹¦·µ»Ø-1£¬·ñÔò·µ»Ø0
 	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
 		Mat& vandermondeMatrix,
 		int degree
 	);
-	/*@brief å¤šé¡¹å¼æ‹Ÿåˆï¼ˆAx=bï¼‰
+	/*@brief ¶àÏîÊ½ÄâºÏ£¨Ax=b£©
 	* @param A
 	* @param b
 	* @param x
@@ -1038,18 +1060,18 @@ public:
 	* @param val
 	*/
 	static int polyVal(Mat& coefficient, double x, double* val);
-	/*æ±‚å–ä¸¤å¹…è¾…å›¾åƒçš„å®ç›¸å…³å‡½æ•°
-	 å‚æ•°1 ä¸»å›¾åƒï¼ˆå¤ï¼‰
-	 å‚æ•°2 è¾…å›¾åƒï¼ˆå¤ï¼‰
-	 å‚æ•°3 è¡Œåç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
-	 å‚æ•°4 åˆ—åç§»é‡ï¼ˆè¿”å›å€¼ï¼‰
+	/*ÇóÈ¡Á½·ù¸¨Í¼ÏñµÄÊµÏà¹Øº¯Êı
+	 ²ÎÊı1 Ö÷Í¼Ïñ£¨¸´£©
+	 ²ÎÊı2 ¸¨Í¼Ïñ£¨¸´£©
+	 ²ÎÊı3 ĞĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
+	 ²ÎÊı4 ÁĞÆ«ÒÆÁ¿£¨·µ»ØÖµ£©
 	*/
 	int real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col);
-	/*2D FFTSHIFT(åŸåœ°æ“ä½œ)*/
+	/*2D FFTSHIFT(Ô­µØ²Ù×÷)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT
-	 å‚æ•°1 è¾“å…¥çŸ©é˜µ
-	 å‚æ•°2 è¾“å‡ºçŸ©é˜µ
+	 ²ÎÊı1 ÊäÈë¾ØÕó
+	 ²ÎÊı2 Êä³ö¾ØÕó
 	*/
 	int fft2(Mat& Src, Mat& Dst);
 
@@ -1065,13 +1087,13 @@ struct BurstIndices
 	int secondBurstIndex;
 	bool inUpperPartOfFirstBurst;
 	bool inUpperPartOfSecondBurst;
-	/*é»˜è®¤æ„é€ å‡½æ•°*/
+	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
 	BurstIndices()
 	{
 		firstBurstIndex = secondBurstIndex = -1;
 		inUpperPartOfFirstBurst = inUpperPartOfSecondBurst = false;
 	}
-	/*æ‹·è´æ„é€ å‡½æ•°*/
+	/*¿½±´¹¹Ôìº¯Êı*/
 	BurstIndices(const BurstIndices& cp)
 	{
 		this->firstBurstIndex = cp.firstBurstIndex;
@@ -1079,7 +1101,7 @@ struct BurstIndices
 		this->inUpperPartOfSecondBurst = cp.inUpperPartOfSecondBurst;
 		this->secondBurstIndex = cp.secondBurstIndex;
 	}
-	/*èµ‹å€¼å‡½æ•°*/
+	/*¸³Öµº¯Êı*/
 	BurstIndices operator=(const BurstIndices& cp)
 	{
 		this->firstBurstIndex = cp.firstBurstIndex;
@@ -1091,20 +1113,20 @@ struct BurstIndices
 };
 
 /*---------------------------------------*/
-/*              æ•°å­—é«˜ç¨‹æ¨¡å‹             */
+/*              Êı×Ö¸ß³ÌÄ£ĞÍ             */
 /*---------------------------------------*/
 class InSAR_API DigitalElevationModel
 {
 public:
 	DigitalElevationModel();
 	~DigitalElevationModel();
-	/*@brief è®¡ç®—SRTMé«˜ç¨‹æ–‡ä»¶å
-	* @param lonMin                       æœ€å°ç»åº¦
-	* @param lonMax                       æœ€å¤§ç»åº¦
-	* @param latMin                       æœ€å°çº¬åº¦
-	* @param latMax                       æœ€å¤§çº¬åº¦
-	* @param name                         æ–‡ä»¶å
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãSRTM¸ß³ÌÎÄ¼şÃû
+	* @param lonMin                       ×îĞ¡¾­¶È
+	* @param lonMax                       ×î´ó¾­¶È
+	* @param latMin                       ×îĞ¡Î³¶È
+	* @param latMax                       ×î´óÎ³¶È
+	* @param name                         ÎÄ¼şÃû
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getSRTMFileName(
 		double lonMin,
@@ -1113,18 +1135,18 @@ public:
 		double latMax,
 		vector<string>& name
 	);
-	/*@brief ä¸‹è½½SRTMé«˜ç¨‹æ•°æ®
-	* @param name                         æ–‡ä»¶å
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ÏÂÔØSRTM¸ß³ÌÊı¾İ
+	* @param name                         ÎÄ¼şÃû
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int downloadSRTM(const char* name);
-	/*@brief è·å–æ•°å­—é«˜ç¨‹æ¨¡å‹
-	* @param filepath                     æ–‡ä»¶è·¯å¾„
-	* @param lonMin                       æœ€å°ç»åº¦
-	* @param lonMax                       æœ€å¤§ç»åº¦
-	* @param latMin                       æœ€å°çº¬åº¦
-	* @param latMax                       æœ€å¤§çº¬åº¦
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Êı×Ö¸ß³ÌÄ£ĞÍ
+	* @param filepath                     ÎÄ¼şÂ·¾¶
+	* @param lonMin                       ×îĞ¡¾­¶È
+	* @param lonMax                       ×î´ó¾­¶È
+	* @param latMin                       ×îĞ¡Î³¶È
+	* @param latMax                       ×î´óÎ³¶È
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getRawDEM(
 		const char* filepath,
@@ -1133,55 +1155,55 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief æ ¹æ®ç»çº¬åº¦è·å–é«˜ç¨‹(å¹³å‡æ’å€¼æ³•)
-	* @param lon                          ç»åº¦
-	* @param lat                          çº¬åº¦
-	* @param elevation                    é«˜åº¦
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸ù¾İ¾­Î³¶È»ñÈ¡¸ß³Ì(Æ½¾ù²åÖµ·¨)
+	* @param lon                          ¾­¶È
+	* @param lat                          Î³¶È
+	* @param elevation                    ¸ß¶È
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getElevation(
 		double lon,
 		double lat,
 		double* elevation
 	);
-	/*@brief è¯»å–SRTMä¸­çš„geotiffé«˜ç¨‹æ•°æ®
-	* @param geotiffFile                  geotiffæ–‡ä»¶
-	* @param outDEM                       è¯»å‡ºçš„DEMæ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¶ÁÈ¡SRTMÖĞµÄgeotiff¸ß³ÌÊı¾İ
+	* @param geotiffFile                  geotiffÎÄ¼ş
+	* @param outDEM                       ¶Á³öµÄDEMÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	static int geotiffread(
 		const char* geotiffFile,
 		Mat& outDEM
 	);
-	/*@brief è§£å‹æ–‡ä»¶åˆ°æŒ‡å®šæ–‡ä»¶å¤¹
-	* @param srcFile                      å¾…è§£å‹å‹ç¼©æ–‡ä»¶
-	* @param dstPath                      ç›®æ ‡æ–‡ä»¶å¤¹
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ½âÑ¹ÎÄ¼şµ½Ö¸¶¨ÎÄ¼ş¼Ğ
+	* @param srcFile                      ´ı½âÑ¹Ñ¹ËõÎÄ¼ş
+	* @param dstPath                      Ä¿±êÎÄ¼ş¼Ğ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	static int unzip(const char* srcFile, const char* dstPath);
 
 public:
-	/*DEMæ•°æ®ï¼ˆé«˜ç¨‹ä¸ºshortå‹æ•°æ®ï¼‰*/
+	/*DEMÊı¾İ£¨¸ß³ÌÎªshortĞÍÊı¾İ£©*/
 	Mat rawDEM;
-	/*DEMæ•°æ®è¡Œæ•°*/
+	/*DEMÊı¾İĞĞÊı*/
 	int rows;
-	/*DEMæ•°æ®åˆ—æ•°*/
+	/*DEMÊı¾İÁĞÊı*/
 	int cols;
-	/*å·¦ä¸Šè§’ç»åº¦*/
+	/*×óÉÏ½Ç¾­¶È*/
 	double lonUpperLeft;
-	/*å·¦ä¸Šè§’çº¬åº¦*/
+	/*×óÉÏ½ÇÎ³¶È*/
 	double latUpperLeft;
-	/*å³ä¸‹è§’ç»åº¦*/
+	/*ÓÒÏÂ½Ç¾­¶È*/
 	double lonLowerRight;
-	/*å³ä¸‹è§’çº¬åº¦*/
+	/*ÓÒÏÂ½ÇÎ³¶È*/
 	double latLowerRight;
-	/*DEMç»åº¦é‡‡æ ·é—´éš”*/
+	/*DEM¾­¶È²ÉÑù¼ä¸ô*/
 	double lonSpacing;
-	/*DEMçº¬åº¦é‡‡æ ·é—´éš”*/
+	/*DEMÎ³¶È²ÉÑù¼ä¸ô*/
 	double latSpacing;
-	/*DEMè·¯å¾„*/
+	/*DEMÂ·¾¶*/
 	string DEMPath;
-	/*SRTMå…¨çƒé«˜ç¨‹url*/
+	/*SRTMÈ«Çò¸ß³Ìurl*/
 	string SRTMURL = "http://srtm.csi.cgiar.org/wp-content/uploads/files/srtm_5x5/TIFF/";
 
 	char error_head[512];
@@ -1191,7 +1213,7 @@ public:
 
 
 /*--------------------------------------*/
-/*              å«æ˜Ÿè½¨é“æ•°æ®            */
+/*              ÎÀĞÇ¹ìµÀÊı¾İ            */
 /*--------------------------------------*/
 class InSAR_API orbitStateVectors
 {
@@ -1199,40 +1221,40 @@ public:
 	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime);
 	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime, double delta_time);
 	~orbitStateVectors();
-	/*@brief è®¾ç½®åœºæ™¯æ‹æ‘„èµ·å§‹ç»ˆæ­¢æ—¶é—´
+	/*@brief ÉèÖÃ³¡¾°ÅÄÉãÆğÊ¼ÖÕÖ¹Ê±¼ä
 	* @param startTime
 	* @param stopTime
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int setSceneStartStopTime(double startTime, double stopTime);
-	/*@brief è·å–æ‹æ‘„èµ·å§‹æ—¶åˆ»
-	* @return è¿”å›æ‹æ‘„èµ·å§‹æ—¶åˆ»
+	/*@brief »ñÈ¡ÅÄÉãÆğÊ¼Ê±¿Ì
+	* @return ·µ»ØÅÄÉãÆğÊ¼Ê±¿Ì
 	*/
 	double get_start_time();
-	/*@brief è·å–æ‹æ‘„ç»“æŸæ—¶åˆ»
-	* @return è¿”å›æ‹æ‘„ç»“æŸæ—¶åˆ»
+	/*@brief »ñÈ¡ÅÄÉã½áÊøÊ±¿Ì
+	* @return ·µ»ØÅÄÉã½áÊøÊ±¿Ì
 	*/
 	double get_stop_time();
-	/*@brief è·å–å«æ˜Ÿä¸‰ç»´ä½ç½®ä¿¡æ¯ï¼ˆæ‹‰æ ¼æœ—æ—¥æ’å€¼ï¼‰
-	* @param azimuthTime                   æ–¹ä½å‘æ—¶é—´
-	* @param position                      å«æ˜Ÿä¸‰ç»´ä½ç½®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡ÎÀĞÇÈıÎ¬Î»ÖÃĞÅÏ¢£¨À­¸ñÀÊÈÕ²åÖµ£©
+	* @param azimuthTime                   ·½Î»ÏòÊ±¼ä
+	* @param position                      ÎÀĞÇÈıÎ¬Î»ÖÃ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getPosition(double azimuthTime, Position& position);
-	/*@brief è·å–å«æ˜Ÿä¸‰ç»´é€Ÿåº¦ä¿¡æ¯ï¼ˆæ‹‰æ ¼æœ—æ—¥æ’å€¼ï¼‰
-	* @param azimuthTime                   æ–¹ä½å‘æ—¶é—´
-	* @param velocity                      å«æ˜Ÿä¸‰ç»´é€Ÿåº¦
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡ÎÀĞÇÈıÎ¬ËÙ¶ÈĞÅÏ¢£¨À­¸ñÀÊÈÕ²åÖµ£©
+	* @param azimuthTime                   ·½Î»ÏòÊ±¼ä
+	* @param velocity                      ÎÀĞÇÈıÎ¬ËÙ¶È
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getVelocity(double azimuthTime, Velocity& velocity);
-	/*@brief æ ¹æ®æ–¹ä½å‘æ—¶é—´è·å–statevectorï¼ˆå¤šé¡¹å¼æ’å€¼ï¼‰
-	* @param time                          æ–¹ä½å‘æ—¶é—´
-	* @param osv                           è½¨é“ä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸ù¾İ·½Î»ÏòÊ±¼ä»ñÈ¡statevector£¨¶àÏîÊ½²åÖµ£©
+	* @param time                          ·½Î»ÏòÊ±¼ä
+	* @param osv                           ¹ìµÀĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getOrbitData(double time, OSV* osv);
-	/*@brief æ›´æ–°è½¨é“ä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸üĞÂ¹ìµÀĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int applyOrbit();
 
@@ -1240,34 +1262,34 @@ public:
 	Mat stateVectors;
 	Mat newStateVectors;
 private:
-
+	
 	int nv = 10;
 	double dt;
 	int polyDegree = 3;
 	double startTime;
 	double stopTime;
-	/*è½¨é“ä¿¡æ¯æ˜¯å¦å·²æ›´æ–°*/
+	/*¹ìµÀĞÅÏ¢ÊÇ·ñÒÑ¸üĞÂ*/
 	bool isOrbitUpdated;
 };
 
 
 /*------------------------------------------------*/
-/*             COSMO-SkyMedæ•°æ®è¯»å–å·¥å…·           */
+/*             COSMO-SkyMedÊı¾İ¶ÁÈ¡¹¤¾ß           */
 /*------------------------------------------------*/
 class InSAR_API CSK_reader
 {
 public:
 	CSK_reader(const char* csk_data_file);
 	~CSK_reader();
-	/*@brief åˆå§‹åŒ–
-	* @param csk_data_file                    COSMO-SkyMedæºhdf5æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯
+	* @param csk_data_file                    COSMO-SkyMedÔ´hdf5Êı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init();
-
-	/*@brief å°†æ•°æ®å†™å…¥åˆ°æŒ‡å®šh5æ–‡ä»¶
-	* @param dst_h5                          æŒ‡å®šhdf5æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_to_h5(
 		const char* dst_h5
@@ -1275,39 +1297,39 @@ public:
 
 private:
 
-	/*@brief ä»COSMO-SkyMedæºhdf5æ•°æ®L1Aäº§å“ä¸­è¯»å–æ•°æ®
-	* @param CSK_data_file                    COSMO-SkyMedæºhdf5æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓCOSMO-SkyMedÔ´hdf5Êı¾İL1A²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	* @param CSK_data_file                    COSMO-SkyMedÔ´hdf5Êı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_data(
 		const char* CSK_data_file
 	);
-	/*@brief ä»COSMO-SkyMedæºhdf5æ•°æ®L1Aäº§å“ä¸­è¯»å–å•è§†å¤å›¾åƒ
-	* @param CSK_data_file                    COSMO-SkyMedæºhdf5æ•°æ®æ–‡ä»¶
-	* @param slc                              è¯»å‡ºçš„å•è§†å¤æ•°æ®çŸ©é˜µ
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓCOSMO-SkyMedÔ´hdf5Êı¾İL1A²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param CSK_data_file                    COSMO-SkyMedÔ´hdf5Êı¾İÎÄ¼ş
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 
 	int read_slc(
 		const char* CSK_data_file,
 		ComplexMat& slc
 	);
-	/*@brief ä»hdf5æ–‡ä»¶è¯»å–stringç±»å‹å±æ€§
-	* @param object_id                       ç›¸åº”çš„object
-	* @param attribute_name                  stringå±æ€§å
-	* @param attribute_value                 stringå±æ€§å€¼ï¼ˆè¿”å›å€¼ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´Óhdf5ÎÄ¼ş¶ÁÈ¡stringÀàĞÍÊôĞÔ
+	* @param object_id                       ÏàÓ¦µÄobject
+	* @param attribute_name                  stringÊôĞÔÃû
+	* @param attribute_value                 stringÊôĞÔÖµ£¨·µ»ØÖµ£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int get_str_attribute(
 		hid_t object_id,
 		const char* attribute_name,
 		string& attribute_value
 	);
-	/*@brief ä»hdf5æ–‡ä»¶è¯»å–æ•°ç»„ç±»å‹å±æ€§
-	* @param object_id                       ç›¸åº”çš„object
-	* @param attribute_name                  å±æ€§å
-	* @param attribute_value                 å±æ€§å€¼ï¼ˆè¿”å›å€¼ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´Óhdf5ÎÄ¼ş¶ÁÈ¡Êı×éÀàĞÍÊôĞÔ
+	* @param object_id                       ÏàÓ¦µÄobject
+	* @param attribute_name                  ÊôĞÔÃû
+	* @param attribute_value                 ÊôĞÔÖµ£¨·µ»ØÖµ£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int get_array_attribute(
 		hid_t object_id,
@@ -1338,21 +1360,21 @@ private:
 };
 
 /*------------------------------------------------*/
-/*               èˆªå¤©å®å›¾æ•°æ®è¯»å–å·¥å…·             */
+/*               º½ÌìºêÍ¼Êı¾İ¶ÁÈ¡¹¤¾ß             */
 /*------------------------------------------------*/
 class InSAR_API HTHT_reader
 {
 public:
-	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0ä¸ºå•æ˜Ÿæ¨¡å¼,mode=1ä¸ºå¤šæ˜Ÿå¹²æ¶‰æ¨¡å¼
+	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0Îªµ¥ĞÇÄ£Ê½,mode=1Îª¶àĞÇ¸ÉÉæÄ£Ê½
 	~HTHT_reader();
-	/*@brief åˆå§‹åŒ–
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init();
 
-	/*@brief å°†æ•°æ®å†™å…¥åˆ°æŒ‡å®šh5æ–‡ä»¶
-	* @param dst_h5                          æŒ‡å®šhdf5æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_to_h5(
 		const char* dst_h5
@@ -1360,19 +1382,19 @@ public:
 
 private:
 
-	/*@brief ä»å®å›¾L1äº§å“ä¸­è¯»å–æ•°æ®
-	@param xml_file                    å®å›¾xmlæ•°æ®æ–‡ä»¶ï¼ˆ.xmlï¼‰
-	@param data_file                   å®å›¾xmlæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓºêÍ¼L1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	@param xml_file                    ºêÍ¼xmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param data_file                   ºêÍ¼xmlÊı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief ä»å®å›¾æ•°æ®L1äº§å“ä¸­è¯»å–å•è§†å¤å›¾åƒ
-	* @param data_file                        å®å›¾å›¾åƒæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	* @param slc                              è¯»å‡ºçš„å•è§†å¤æ•°æ®çŸ©é˜µ
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓºêÍ¼Êı¾İL1²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param data_file                        ºêÍ¼Í¼ÏñÊı¾İÎÄ¼ş£¨.tiff£©
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 
 	int read_slc(
@@ -1403,21 +1425,21 @@ private:
 };
 
 /*------------------------------------------------*/
-/*               é™†æ¢1å·æ•°æ®è¯»å–å·¥å…·              */
+/*            ÖĞ¿ÆÎÀĞÇKu-SARÊı¾İ¶ÁÈ¡¹¤¾ß          */
 /*------------------------------------------------*/
-class InSAR_API LUTAN_reader
+class InSAR_API AIRSAT_reader
 {
 public:
-	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1ä¸ºå•æ˜Ÿæ¨¡å¼,mode=2ä¸ºåŒæ˜Ÿå¹²æ¶‰æ¨¡å¼
-	~LUTAN_reader();
-	/*@brief åˆå§‹åŒ–
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	AIRSAT_reader(const char* data_file, const char* xml_file);
+	~AIRSAT_reader();
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init();
 
-	/*@brief å°†æ•°æ®å†™å…¥åˆ°æŒ‡å®šh5æ–‡ä»¶
-	* @param dst_h5                          æŒ‡å®šhdf5æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_to_h5(
 		const char* dst_h5
@@ -1425,19 +1447,168 @@ public:
 
 private:
 
-	/*@brief ä»é™†æ¢ä¸€å·L1äº§å“ä¸­è¯»å–æ•°æ®
-	@param xml_file                    é™†æ¢ä¸€å·xmlæ•°æ®æ–‡ä»¶ï¼ˆ.xmlï¼‰
-	@param data_file                   é™†æ¢ä¸€å·xmlæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief Ê±¼ä´Á×ª»»£¨UTC2GPS£©
+	* @param utc_time                  UTCÊ±¼ä´Á  
+	* @param gps_time                  GPSÊ±¼ä
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int UTC2GPS(const char* utc_time, double* gps_time);
+
+	/*@brief ´ÓL1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	@param xml_file                    xmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param data_file                   xmlÊı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief ä»é™†æ¢ä¸€å·L1äº§å“ä¸­è¯»å–å•è§†å¤å›¾åƒ
-	* @param data_file                        é™†æ¢ä¸€å·å›¾åƒæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	* @param slc                              è¯»å‡ºçš„å•è§†å¤æ•°æ®çŸ©é˜µ
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓL1²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param data_file                        Í¼ÏñÊı¾İÎÄ¼ş£¨.tiff£©
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+
+	int read_slc(
+		const char* data_file,
+		ComplexMat& slc
+	);
+private:
+	string AIRSAT_data_file, AIRSAT_xml_file;
+	bool b_initialized;
+	string acquisition_start_time;
+	string acquisition_stop_time;
+	double azimuth_resolution;
+	double azimuth_spacing;
+	double carrier_frequency;
+	double inc_center;
+	double prf;
+	double range_resolution;
+	double range_spacing;
+	double slant_range_first_pixel;
+	double slant_range_last_pixel;
+	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
+		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
+	Mat state_vec;
+	string sensor;
+	ComplexMat slc;
+};
+
+
+/*------------------------------------------------*/
+/*                Biomass L1A reader              */
+/*------------------------------------------------*/
+class InSAR_API Biomass1A_reader
+{
+public:
+	Biomass1A_reader(const char* amp_file, const char* phase_file, const char* xml_file, const char* orbit_file, const char* polarization);
+	~Biomass1A_reader();
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int init();
+
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int write_to_h5(
+		const char* dst_h5
+	);
+
+private:
+
+	/*@brief Ê±¼ä´Á×ª»»£¨UTC2GPS£©
+	* @param utc_time                  UTCÊ±¼ä´Á
+	* @param gps_time                  GPSÊ±¼ä
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int UTC2GPS(const char* utc_time, double* gps_time);
+
+	/*@brief ´ÓL1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	@param xml_file                    xmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param amp_file                    ·ù¶ÈÊı¾İÎÄ¼ş£¨.tiff£©
+	@param orbit_file                  ¹ìµÀÊı¾İÎÄ¼ş£¨.tiff£©
+	@param phase_file                  ÏàÎ»Êı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int read_data(
+		const char* xml_file,
+		const char* amp_file,
+		const char* orbit_file,
+		const char* phase_file
+	);
+	/*@brief ´ÓL1²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param amp_file                         ·ù¶ÈÊı¾İÎÄ¼ş£¨.tiff£©
+	* @param phase_file                       ÏàÎ»Êı¾İÎÄ¼ş£¨.tiff£©
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+
+	int read_slc(
+		const char* amp_file,
+		const char* phase_file,
+		ComplexMat& slc
+	);
+private:
+	string Biomass1A_reader_amp_file, Biomass1A_reader_phase_file, Biomass1A_reader_orbit_file, Biomass1A_reader_xml_file;
+	bool b_initialized;
+	string acquisition_start_time;
+	string acquisition_stop_time;
+	double azimuth_resolution;
+	double azimuth_spacing;
+	double carrier_frequency;
+	double inc_center;
+	double prf;
+	double range_resolution;
+	double range_spacing;
+	double slant_range_first_pixel;
+	double slant_range_last_pixel;
+	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
+		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
+	Mat state_vec;
+	string sensor;
+	ComplexMat slc;
+	string polarization;
+};
+
+
+/*------------------------------------------------*/
+/*               Â½Ì½1ºÅÊı¾İ¶ÁÈ¡¹¤¾ß              */
+/*------------------------------------------------*/
+class InSAR_API LUTAN_reader
+{
+public:
+	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1Îªµ¥ĞÇÄ£Ê½,mode=2ÎªË«ĞÇ¸ÉÉæÄ£Ê½
+	~LUTAN_reader();
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int init();
+
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int write_to_h5(
+		const char* dst_h5
+	);
+
+private:
+
+	/*@brief ´ÓÂ½Ì½Ò»ºÅL1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	@param xml_file                    Â½Ì½Ò»ºÅxmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param data_file                   Â½Ì½Ò»ºÅxmlÊı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int read_data(
+		const char* xml_file,
+		const char* data_file
+	);
+	/*@brief ´ÓÂ½Ì½Ò»ºÅL1²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param data_file                        Â½Ì½Ò»ºÅÍ¼ÏñÊı¾İÎÄ¼ş£¨.tiff£©
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 
 	int read_slc(
@@ -1470,25 +1641,25 @@ private:
 
 
 /*------------------------------------------------*/
-/*             å¤©ä»ªæ¶ªåŸä¸€å·æ•°æ®è¯»å–å·¥å…·           */
+/*             ÌìÒÇ¸¢³ÇÒ»ºÅÊı¾İ¶ÁÈ¡¹¤¾ß           */
 /*------------------------------------------------*/
 class InSAR_API Spacety_reader
 {
 public:
 	Spacety_reader(const char* data_file, const char* xml_file);
 	~Spacety_reader();
-	/*@brief åˆå§‹åŒ–
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init();
-	/*@brief åˆå§‹åŒ–ï¼ˆèšæŸæ¨¡å¼æ•°æ®æµ‹è¯•ç”¨ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯£¨¾ÛÊøÄ£Ê½Êı¾İ²âÊÔÓÃ£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init_test();
 
-	/*@brief å°†æ•°æ®å†™å…¥åˆ°æŒ‡å®šh5æ–‡ä»¶
-	* @param dst_h5                          æŒ‡å®šhdf5æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ½«Êı¾İĞ´Èëµ½Ö¸¶¨h5ÎÄ¼ş
+	* @param dst_h5                          Ö¸¶¨hdf5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int write_to_h5(
 		const char* dst_h5
@@ -1496,28 +1667,28 @@ public:
 
 private:
 
-	/*@brief ä»å¤©ä»ªL1äº§å“ä¸­è¯»å–æ•°æ®
-	@param xml_file                    å¤©ä»ªxmlæ•°æ®æ–‡ä»¶ï¼ˆ.xmlï¼‰
-	@param data_file                   å¤©ä»ªxmlæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓÌìÒÇL1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ
+	@param xml_file                    ÌìÒÇxmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param data_file                   ÌìÒÇxmlÊı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief ä»å¤©ä»ªL1äº§å“ä¸­è¯»å–æ•°æ®ï¼ˆèšæŸæ¨¡å¼æ•°æ®æµ‹è¯•ç”¨ï¼‰
-	@param xml_file                    å¤©ä»ªxmlæ•°æ®æ–‡ä»¶ï¼ˆ.xmlï¼‰
-	@param data_file                   å¤©ä»ªxmlæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	@return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓÌìÒÇL1²úÆ·ÖĞ¶ÁÈ¡Êı¾İ£¨¾ÛÊøÄ£Ê½Êı¾İ²âÊÔÓÃ£©
+	@param xml_file                    ÌìÒÇxmlÊı¾İÎÄ¼ş£¨.xml£©
+	@param data_file                   ÌìÒÇxmlÊı¾İÎÄ¼ş£¨.tiff£©
+	@return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int read_data_test(
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief ä»å¤©ä»ªæ•°æ®L1äº§å“ä¸­è¯»å–å•è§†å¤å›¾åƒ
-	* @param data_file                        å¤©ä»ªå›¾åƒæ•°æ®æ–‡ä»¶ï¼ˆ.tiffï¼‰
-	* @param slc                              è¯»å‡ºçš„å•è§†å¤æ•°æ®çŸ©é˜µ
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓÌìÒÇÊı¾İL1²úÆ·ÖĞ¶ÁÈ¡µ¥ÊÓ¸´Í¼Ïñ
+	* @param data_file                        ÌìÒÇÍ¼ÏñÊı¾İÎÄ¼ş£¨.tiff£©
+	* @param slc                              ¶Á³öµÄµ¥ÊÓ¸´Êı¾İ¾ØÕó
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 
 	int read_slc(
@@ -1547,7 +1718,7 @@ private:
 };
 
 /*------------------------------------------------*/
-/*               å“¨å…µä¸€å·æ•°æ®è¯»å–å·¥å…·             */
+/*               ÉÚ±øÒ»ºÅÊı¾İ¶ÁÈ¡¹¤¾ß             */
 /*------------------------------------------------*/
 class InSAR_API Sentinel1Reader
 {
@@ -1555,95 +1726,95 @@ public:
 	Sentinel1Reader();
 	Sentinel1Reader(const char* xmlfile, const char* tiffFile, const char* PODFile = NULL);
 	~Sentinel1Reader();
-	/* åŠ è½½xmlæ–‡ä»¶
-	* @param xmlfile            xmlæ–‡ä»¶
-	* @param tiffFile           tiffæ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* ¼ÓÔØxmlÎÄ¼ş
+	* @param xmlfile            xmlÎÄ¼ş
+	* @param tiffFile           tiffÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int load(const char* xmlfile, const char* tiffFile);
-	/* è·å–å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ä¼°è®¡æ•°æ®
-	* @param dcEstimateList               å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ä¼°è®¡æ•°æ®ï¼ˆcountÃ—5ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* »ñÈ¡¶àÆÕÀÕÖĞĞÄÆµÂÊ¹À¼ÆÊı¾İ
+	* @param dcEstimateList               ¶àÆÕÀÕÖĞĞÄÆµÂÊ¹À¼ÆÊı¾İ£¨count¡Á5£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getDcEstimateList();
-	/* è·å–å¤šæ™®å‹’è°ƒé¢‘ç‡æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* »ñÈ¡¶àÆÕÀÕµ÷ÆµÂÊÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getAzimuthFmRateList();
-	/* è·å–antennaPatternæ•°æ®
+	/* »ñÈ¡antennaPatternÊı¾İ
 	* @param antennaPattern_slantRangeTime
 	* @param antennaPattern_elevationAngle
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getAntennaPattern();
-	/* @brief è·å–burstä¸ªæ•°
-	* @param burstCount                 burstä¸ªæ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/* @brief »ñÈ¡burst¸öÊı
+	* @param burstCount                 burst¸öÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getBurstCount(int* burstCount);
-	/*@brief è·å–æ¯ä¸ªburstç¬¬ä¸€è¡Œæ–¹ä½å‘æ—¶é—´
-	* @return æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Ã¿¸öburstµÚÒ»ĞĞ·½Î»ÏòÊ±¼ä
+	* @return ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
 	*/
 	int getBurstAzimuthTime();
-	/*@brief è·å–æ¯ä¸ªburstæ¯è¡Œç¬¬ä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Ã¿¸öburstÃ¿ĞĞµÚÒ»¸öÓĞĞ§ÏñËØÁĞÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getFirstValidSample();
-	/*@brief è·å–æ¯ä¸ªburstæ¯è¡Œæœ€åä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°
-	* @param firstValidSample                        æ¯ä¸ªburstæ¯è¡Œæœ€åä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°(burstCountÃ—1)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Ã¿¸öburstÃ¿ĞĞ×îºóÒ»¸öÓĞĞ§ÏñËØÁĞÊı
+	* @param firstValidSample                        Ã¿¸öburstÃ¿ĞĞ×îºóÒ»¸öÓĞĞ§ÏñËØÁĞÊı(burstCount¡Á1)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getLastValidSample();
-	/*@brief è·å–æ¯ä¸ªburstç¬¬ä¸€è¡Œæœ‰æ•ˆåƒç´ è¡Œæ•°
-	* @param firstValidLine                          æ¯ä¸ªburstç¬¬ä¸€è¡Œæœ‰æ•ˆåƒç´ è¡Œæ•°(burstCountÃ—1)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Ã¿¸öburstµÚÒ»ĞĞÓĞĞ§ÏñËØĞĞÊı
+	* @param firstValidLine                          Ã¿¸öburstµÚÒ»ĞĞÓĞĞ§ÏñËØĞĞÊı(burstCount¡Á1)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getFirstValidLine();
-	/*@brief è·å–æ¯ä¸ªburstæœ€åä¸€è¡Œæœ‰æ•ˆåƒç´ è¡Œæ•°
-	* @param lastValidLine                           æ¯ä¸ªburstæœ€åä¸€è¡Œæœ‰æ•ˆåƒç´ è¡Œæ•°(burstCountÃ—1)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡Ã¿¸öburst×îºóÒ»ĞĞÓĞĞ§ÏñËØĞĞÊı
+	* @param lastValidLine                           Ã¿¸öburst×îºóÒ»ĞĞÓĞĞ§ÏñËØĞĞÊı(burstCount¡Á1)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getLastValidLine();
-	/*@brief è·å–åœ°é¢æ§åˆ¶ç‚¹ä¿¡æ¯
-	* @param geolocationGridPoint                    åœ°é¢æ§åˆ¶ç‚¹(nÃ—6ï¼Œç»/çº¬/é«˜/è¡Œ/åˆ—/ä¸‹è§†è§’)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡µØÃæ¿ØÖÆµãĞÅÏ¢
+	* @param geolocationGridPoint                    µØÃæ¿ØÖÆµã(n¡Á6£¬¾­/Î³/¸ß/ĞĞ/ÁĞ/ÏÂÊÓ½Ç)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getGeolocationGridPoint();
-	/*@brief æ›´æ–°æ§åˆ¶ç‚¹ä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸üĞÂ¿ØÖÆµãĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int updateGeolocationGridPoint();
-	/*@brief æ ¹æ®æ§åˆ¶ç‚¹æ•°æ®æ‹Ÿåˆç»çº¬åº¦ã€ä¸‹è§†è§’ä¸åƒç´ åæ ‡ï¼ˆè¡Œã€åˆ—ï¼‰ä¹‹é—´çš„å¤šé¡¹å¼å…³ç³»
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸ù¾İ¿ØÖÆµãÊı¾İÄâºÏ¾­Î³¶È¡¢ÏÂÊÓ½ÇÓëÏñËØ×ø±ê£¨ĞĞ¡¢ÁĞ£©Ö®¼äµÄ¶àÏîÊ½¹ØÏµ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int fitCoordinateConversionCoefficient();
-	/*@brief è·å–è½¨é“ä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡¹ìµÀĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getOrbitList();
-	/*@brief è·å–ç²¾å¯†è½¨é“æ•°æ®
-	* @param POD_file                                ç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡¾«ÃÜ¹ìµÀÊı¾İ
+	* @param POD_file                                ¾«ÃÜ¹ìµÀÊı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getPOD(const char* POD_file);
-	/*@brief è·å–å…¶ä»–å‚æ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡ÆäËû²ÎÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getOtherParameters();
 
-	/*@brief å‡†å¤‡æ•°æ®
-	* @param PODFile                                  ç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ×¼±¸Êı¾İ
+	* @param PODFile                                  ¾«ÃÜ¹ìµÀÊı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int prepareData(const char* PODFile = NULL);
-	/*@brief ä»TIFFæ–‡ä»¶ä¸­è¯»å‡ºå¤å›¾åƒæ•°æ®
-	* @param slc                                     å¤å›¾åƒæ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´ÓTIFFÎÄ¼şÖĞ¶Á³ö¸´Í¼ÏñÊı¾İ
+	* @param slc                                     ¸´Í¼ÏñÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getSLC(ComplexMat& slc);
-	/*@brief å°†æ•°æ®å†™å…¥h5æ–‡ä»¶
-	* @param h5File                                  ç›®æ ‡h5æ–‡ä»¶(é»˜è®¤ä¸ºNULL)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ½«Êı¾İĞ´Èëh5ÎÄ¼ş
+	* @param h5File                                  Ä¿±êh5ÎÄ¼ş(Ä¬ÈÏÎªNULL)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int writeToh5(
 		const char* h5File
@@ -1651,90 +1822,90 @@ public:
 
 private:
 
-	/*æ–¹ä½å‘æ—¶é—´é—´éš”*/
+	/*·½Î»ÏòÊ±¼ä¼ä¸ô*/
 	double azimuthTimeInterval;
-	/*æ–¹ä½å‘é‡‡æ ·é—´éš”*/
+	/*·½Î»Ïò²ÉÑù¼ä¸ô*/
 	double azimuthPixelSpacing;
-	/*è·ç¦»å‘é‡‡æ ·ç‡*/
+	/*¾àÀëÏò²ÉÑùÂÊ*/
 	double rangeSamplingRate;
-	/*è·ç¦»å‘é‡‡æ ·é—´éš”*/
+	/*¾àÀëÏò²ÉÑù¼ä¸ô*/
 	double rangePixelSpacing;
-	/*é›·è¾¾è½½é¢‘*/
+	/*À×´ïÔØÆµ*/
 	double radarFrequency;
-	/*æ–¹ä½å‘æ‰«é¢‘ç‡*/
+	/*·½Î»ÏòÉ¨ÆµÂÊ*/
 	double azimuthSteeringRate;
-	/*æœ€è¿‘æ–œè·æ—¶é—´*/
+	/*×î½üĞ±¾àÊ±¼ä*/
 	double slantRangeTime;
 	/*Heading*/
 	double headingAngle;
-	/*ä¸­å¿ƒä¸‹è§†è§’*/
+	/*ÖĞĞÄÏÂÊÓ½Ç*/
 	double incidence_center;
-	/*æ•°æ®è¡Œæ•°*/
+	/*Êı¾İĞĞÊı*/
 	int numberOfLines;
-	/*æ•°æ®åˆ—æ•°*/
+	/*Êı¾İÁĞÊı*/
 	int numberOfSamples;
-	/*æ¯ä¸ªburstè¡Œæ•°*/
+	/*Ã¿¸öburstĞĞÊı*/
 	int linesPerBurst;
-	/*burstä¸ªæ•°*/
+	/*burst¸öÊı*/
 	int burstCount;
 
-	/*å«æ˜Ÿï¼ˆé›·è¾¾ï¼‰åç§°*/
+	/*ÎÀĞÇ£¨À×´ï£©Ãû³Æ*/
 	string sensor;
-	/*æåŒ–æ–¹å¼*/
+	/*¼«»¯·½Ê½*/
 	string polarization;
-	/*å­å¸¦åç§°*/
+	/*×Ó´øÃû³Æ*/
 	string swath;
-	/*å‡é™è½¨*/
+	/*Éı½µ¹ì*/
 	string pass;
-	/*æ‹æ‘„èµ·å§‹UTCæ—¶é—´*/
+	/*ÅÄÉãÆğÊ¼UTCÊ±¼ä*/
 	string startTime;
-	/*æ‹æ‘„ç»“æŸUTCæ—¶é—´*/
+	/*ÅÄÉã½áÊøUTCÊ±¼ä*/
 	string stopTime;
+	
 
 
 
-
-	/*æ–¹ä½å‘è°ƒé¢‘ç‡ä¼°è®¡æ•°æ®*/
+	/*·½Î»Ïòµ÷ÆµÂÊ¹À¼ÆÊı¾İ*/
 	Mat AzimuthFmRateList;
-	/*å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ä¼°è®¡æ•°æ®*/
+	/*¶àÆÕÀÕÖĞĞÄÆµÂÊ¹À¼ÆÊı¾İ*/
 	Mat DcEstimateList;
-	/*æ¯ä¸ªburstç¬¬ä¸€è¡Œæ–¹ä½å‘æ—¶é—´*/
+	/*Ã¿¸öburstµÚÒ»ĞĞ·½Î»ÏòÊ±¼ä*/
 	Mat burstAzimuthTime;
-	/*æ¯ä¸ªburstæ¯è¡Œç¬¬ä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°*/
+	/*Ã¿¸öburstÃ¿ĞĞµÚÒ»¸öÓĞĞ§ÏñËØÁĞÊı*/
 	Mat firstValidSample;
-	/*æ¯ä¸ªburstæ¯è¡Œæœ€åä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°*/
+	/*Ã¿¸öburstÃ¿ĞĞ×îºóÒ»¸öÓĞĞ§ÏñËØÁĞÊı*/
 	Mat lastValidSample;
-	/*æ¯ä¸ªburstç¬¬ä¸€è¡Œæœ‰æ•ˆæ•°æ®è¡Œæ•°*/
+	/*Ã¿¸öburstµÚÒ»ĞĞÓĞĞ§Êı¾İĞĞÊı*/
 	Mat firstValidLine;
-	/*æ¯ä¸ªburstæœ€åä¸€è¡Œæœ‰æ•ˆæ•°æ®è¡Œæ•°*/
+	/*Ã¿¸öburst×îºóÒ»ĞĞÓĞĞ§Êı¾İĞĞÊı*/
 	Mat lastValidLine;
-	/*è½¨é“åŸå§‹æ•°æ®*/
+	/*¹ìµÀÔ­Ê¼Êı¾İ*/
 	Mat orbitList;
-	/*ç²¾å¯†åŸå§‹è½¨é“æ•°æ®*/
+	/*¾«ÃÜÔ­Ê¼¹ìµÀÊı¾İ*/
 	Mat preciseOrbitList;
 	/*antennaPattern_slantRangeTime*/
 	Mat antennaPattern_slantRangeTime;
 	/*antennaPattern_elevationAngle*/
 	Mat antennaPattern_elevationAngle;
-	/*åœ°é¢æ§åˆ¶ç‚¹*/
+	/*µØÃæ¿ØÖÆµã*/
 	Mat geolocationGridPoint;
 
 
-	/*ç»åº¦æ‹Ÿåˆç³»æ•°*/
+	/*¾­¶ÈÄâºÏÏµÊı*/
 	Mat lon_coefficient;
-	/*çº¬åº¦æ‹Ÿåˆç³»æ•°*/
+	/*Î³¶ÈÄâºÏÏµÊı*/
 	Mat lat_coefficient;
-	/*è¡Œåæ ‡æ‹Ÿåˆç³»æ•°*/
+	/*ĞĞ×ø±êÄâºÏÏµÊı*/
 	Mat row_coefficient;
-	/*åˆ—åæ ‡æ‹Ÿåˆç³»æ•°*/
+	/*ÁĞ×ø±êÄâºÏÏµÊı*/
 	Mat col_coefficient;
-	/*ä¸‹è§†è§’æ‹Ÿåˆç³»æ•°*/
+	/*ÏÂÊÓ½ÇÄâºÏÏµÊı*/
 	Mat inc_coefficient;
 
 
-	/*tiffæ–‡ä»¶*/
+	/*tiffÎÄ¼ş*/
 	string tiffFile;
-	/*ç²¾å¯†è½¨é“æ•°æ®æ–‡ä»¶*/
+	/*¾«ÃÜ¹ìµÀÊı¾İÎÄ¼ş*/
 	string PODFile;
 	bool isDataAvailable;
 	XMLFile xmldoc;
@@ -1747,48 +1918,48 @@ private:
 
 
 /*------------------------------------------------*/
-/*                å“¨å…µä¸€å·è®¡ç®—å·¥å…·                */
+/*                ÉÚ±øÒ»ºÅ¼ÆËã¹¤¾ß                */
 /*------------------------------------------------*/
 class InSAR_API Sentinel1Utils
 {
 public:
-	/*@brief é»˜è®¤æ„é€ å‡½æ•°
+	/*@brief Ä¬ÈÏ¹¹Ôìº¯Êı
 	*/
 	Sentinel1Utils(const char* h5File);
 	~Sentinel1Utils();
-	/*@brief åˆå§‹åŒ–
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init();
-	/*@brief è®¡ç®—æ¯ä¸ªburstçš„æ–¹ä½å‘å‚è€ƒæ—¶é—´
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãÃ¿¸öburstµÄ·½Î»Ïò²Î¿¼Ê±¼ä
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeReferenceTime();
-	/*@brief è®¡ç®—æ¯ä¸ªburstçš„æ–¹ä½å‘å¤šæ™®å‹’è°ƒé¢‘ç‡
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãÃ¿¸öburstµÄ·½Î»Ïò¶àÆÕÀÕµ÷ÆµÂÊ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeRangeDependDopplerRate();
-	/*@brief è®¡ç®—æ¯ä¸ªburstçš„æ–¹ä½å‘å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãÃ¿¸öburstµÄ·½Î»Ïò¶àÆÕÀÕÖĞĞÄÆµÂÊ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeDopplerCentroid();
-	/*@brief è®¡ç®—æ¯ä¸ªburstçš„æ€»å¤šæ™®å‹’ç‡ï¼ˆè°ƒé¢‘ç‡åŠ æ‰«é¢‘ç‡ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãÃ¿¸öburstµÄ×Ü¶àÆÕÀÕÂÊ£¨µ÷ÆµÂÊ¼ÓÉ¨ÆµÂÊ£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeDopplerRate();
-	/*@brief è®¡ç®—burstæ•°æ®çš„å»æ–œç›¸ä½å’Œå»æ¨¡ç›¸ä½
-	* @param burstIndex                           burståºå·
-	* @param derampDemodPhase                     å»æ–œå»æ¨¡ç›¸ä½
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãburstÊı¾İµÄÈ¥Ğ±ÏàÎ»ºÍÈ¥Ä£ÏàÎ»
+	* @param burstIndex                           burstĞòºÅ
+	* @param derampDemodPhase                     È¥Ğ±È¥Ä£ÏàÎ»
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeDerampDemodPhase(
 		int burstIndex,
 		Mat& derampDemodPhase
 	);
-	/*@brief ä»h5æ–‡ä»¶ä¸­è¯»å‡ºä¸€ä¸ªburstçš„æ•°æ®
-	* @param burstIndex                          burståºå·
-	* @param burstSLC                            ä¸€ä¸ªburstçš„å¤æ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ´Óh5ÎÄ¼şÖĞ¶Á³öÒ»¸öburstµÄÊı¾İ
+	* @param burstIndex                          burstĞòºÅ
+	* @param burstSLC                            Ò»¸öburstµÄ¸´Êı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getBurst(
 		int burstIndex,
@@ -1797,12 +1968,12 @@ public:
 
 
 
-	/*@brief è®¡ç®—å¤šæ™®å‹’é¢‘ç‡
-	* @param groundPosition                       åœ°é¢ç‚¹ä½ç½®
-	* @param satellitePosition                    å«æ˜Ÿä½ç½®
-	* @param satelliteVelocity                    å«æ˜Ÿé€Ÿåº¦
-	* @param dopplerFrequency                     å¤šæ™®å‹’é¢‘ç‡ï¼ˆè¿”å›å€¼ï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËã¶àÆÕÀÕÆµÂÊ
+	* @param groundPosition                       µØÃæµãÎ»ÖÃ
+	* @param satellitePosition                    ÎÀĞÇÎ»ÖÃ
+	* @param satelliteVelocity                    ÎÀĞÇËÙ¶È
+	* @param dopplerFrequency                     ¶àÆÕÀÕÆµÂÊ£¨·µ»ØÖµ£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getDopplerFrequency(
 		Position groundPosition,
@@ -1810,23 +1981,23 @@ public:
 		Velocity satelliteVelocity,
 		double* dopplerFrequency
 	);
-	/*@brief è®¡ç®—åœ°é¢ç‚¹å¯¹åº”çš„é›¶å¤šæ™®å‹’æ–¹ä½å‘æ—¶åˆ»
-	* @param groundPosition                       åœ°é¢ç‚¹ä½ç½®
-	* @param zeroDopplerTime                      é›¶å¤šæ™®å‹’æ–¹ä½å‘æ—¶åˆ»
-	* @param dopplerFrequency                     å¤šæ™®å‹’é¢‘ç‡(é»˜è®¤ä¸º0)
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãµØÃæµã¶ÔÓ¦µÄÁã¶àÆÕÀÕ·½Î»ÏòÊ±¿Ì
+	* @param groundPosition                       µØÃæµãÎ»ÖÃ
+	* @param zeroDopplerTime                      Áã¶àÆÕÀÕ·½Î»ÏòÊ±¿Ì
+	* @param dopplerFrequency                     ¶àÆÕÀÕÆµÂÊ(Ä¬ÈÏÎª0)
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getZeroDopplerTime(
 		Position groundPosition,
 		double* zeroDopplerTime,
 		double dopplerFrequency = 0.0
 	);
-	/*@brief è®¡ç®—åœ°é¢ç‚¹æŠ•å½±åˆ°SARå›¾åƒåæ ‡ç³»ä¸‹çš„è·ç¦»å‘å’Œæ–¹ä½å‘åæ ‡
-	* @param burstIndex                           burståºå·
-	* @param groundPosition                       åœ°é¢ç‚¹ä½ç½®
-	* @param rangeIndex                           è·ç¦»å‘åæ ‡
-	* @param azimuthIndex                         æ–¹ä½å‘åæ ‡
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãµØÃæµãÍ¶Ó°µ½SARÍ¼Ïñ×ø±êÏµÏÂµÄ¾àÀëÏòºÍ·½Î»Ïò×ø±ê
+	* @param burstIndex                           burstĞòºÅ
+	* @param groundPosition                       µØÃæµãÎ»ÖÃ
+	* @param rangeIndex                           ¾àÀëÏò×ø±ê
+	* @param azimuthIndex                         ·½Î»Ïò×ø±ê
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getRgAzPosition(
 		int burstIndex,
@@ -1834,32 +2005,32 @@ public:
 		double* rangeIndex,
 		double* azimuthIndex
 	);
-	/*@brief è®¡ç®—ç»™å®šå«æ˜Ÿæ–¹ä½å‘æ—¶é—´å’Œåœ°é¢ç‚¹ä½ç½®æ—¶çš„æ–œè·
-	* @param azimuthTime                         æ–¹ä½å‘æ—¶é—´
-	* @param groundPosition                      åœ°é¢ç‚¹ä½ç½®
-	* @param slantRange                          æ–œè·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËã¸ø¶¨ÎÀĞÇ·½Î»ÏòÊ±¼äºÍµØÃæµãÎ»ÖÃÊ±µÄĞ±¾à
+	* @param azimuthTime                         ·½Î»ÏòÊ±¼ä
+	* @param groundPosition                      µØÃæµãÎ»ÖÃ
+	* @param slantRange                          Ğ±¾à
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getSlantRange(
 		double azimuthTime,
 		Position groundPosition,
 		double* slantRange
 	);
-	/*@brief è·å–åœ°é¢ç‚¹ç›®æ ‡æ‰€åœ¨burstä¿¡æ¯
-	* @param groundPosition                      åœ°é¢ç‚¹ç›®æ ‡
-	* @param burstIndice                         burstä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief »ñÈ¡µØÃæµãÄ¿±êËùÔÚburstĞÅÏ¢
+	* @param groundPosition                      µØÃæµãÄ¿±ê
+	* @param burstIndice                         burstĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int getBurstIndice(
 		Position groundPosition,
 		BurstIndices& burstIndice
 	);
-	/*@brief è®¡ç®—åœºæ™¯åœ°ç†ä½ç½®ï¼ˆç»çº¬åº¦ï¼‰è¾¹ç•Œ
-	* @param lonMin                           æœ€å°ç»åº¦
-	* @param lonMax                           æœ€å¤§ç»åº¦
-	* @param latMin                           æœ€å°çº¬åº¦
-	* @param latMax                           æœ€å¤§çº¬åº¦
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËã³¡¾°µØÀíÎ»ÖÃ£¨¾­Î³¶È£©±ß½ç
+	* @param lonMin                           ×îĞ¡¾­¶È
+	* @param lonMax                           ×î´ó¾­¶È
+	* @param latMin                           ×îĞ¡Î³¶È
+	* @param latMax                           ×î´óÎ³¶È
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeImageGeoBoundry(
 		double* lonMin,
@@ -1867,13 +2038,13 @@ public:
 		double* latMin,
 		double* latMax
 	);
-	/*@brief è®¡ç®—åœºæ™¯åœ°ç†ä½ç½®ï¼ˆç»çº¬åº¦ï¼‰è¾¹ç•Œ
-	* @param lonMin                           æœ€å°ç»åº¦
-	* @param lonMax                           æœ€å¤§ç»åº¦
-	* @param latMin                           æœ€å°çº¬åº¦
-	* @param latMax                           æœ€å¤§çº¬åº¦
-	* @param burstIndex                       burståºå·ï¼ˆ1-basedï¼‰
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËã³¡¾°µØÀíÎ»ÖÃ£¨¾­Î³¶È£©±ß½ç
+	* @param lonMin                           ×îĞ¡¾­¶È
+	* @param lonMax                           ×î´ó¾­¶È
+	* @param latMin                           ×îĞ¡Î³¶È
+	* @param latMax                           ×î´óÎ³¶È
+	* @param burstIndex                       burstĞòºÅ£¨1-based£©
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeImageGeoBoundry(
 		double* lonMin,
@@ -1882,96 +2053,96 @@ public:
 		double* latMax,
 		int burstIndex
 	);
-	/*@brief burstæ‹¼æ¥
-	* @param outFile                          deburstè¾“å‡ºh5æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief burstÆ´½Ó
+	* @param outFile                          deburstÊä³öh5ÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int deburst(const char* outFile);
 public:
 
-	/*æ–¹ä½å‘æ—¶é—´é—´éš”*/
+	/*·½Î»ÏòÊ±¼ä¼ä¸ô*/
 	double azimuthTimeInterval;
-	/*æ–¹ä½å‘é‡‡æ ·é—´éš”*/
+	/*·½Î»Ïò²ÉÑù¼ä¸ô*/
 	double azimuthPixelSpacing;
-	/*è·ç¦»å‘é‡‡æ ·ç‡*/
+	/*¾àÀëÏò²ÉÑùÂÊ*/
 	double rangeSamplingRate;
-	/*è·ç¦»å‘é‡‡æ ·é—´éš”*/
+	/*¾àÀëÏò²ÉÑù¼ä¸ô*/
 	double rangePixelSpacing;
-	/*é›·è¾¾è½½é¢‘*/
+	/*À×´ïÔØÆµ*/
 	double radarFrequency;
-	/*æ–¹ä½å‘æ‰«é¢‘ç‡*/
+	/*·½Î»ÏòÉ¨ÆµÂÊ*/
 	double azimuthSteeringRate;
-	/*æœ€è¿‘æ–œè·æ—¶é—´*/
+	/*×î½üĞ±¾àÊ±¼ä*/
 	double slantRangeTime;
-	/*æ•°æ®è¡Œæ•°*/
+	/*Êı¾İĞĞÊı*/
 	int numberOfLines;
-	/*æ•°æ®åˆ—æ•°*/
+	/*Êı¾İÁĞÊı*/
 	int numberOfSamples;
-	/*æ¯ä¸ªburstè¡Œæ•°*/
+	/*Ã¿¸öburstĞĞÊı*/
 	int linesPerBurst;
-	/*æ¯è¡Œæ•°æ®ä¸ªæ•°*/
+	/*Ã¿ĞĞÊı¾İ¸öÊı*/
 	int samplesPerBurst;
-	/*burstä¸ªæ•°*/
+	/*burst¸öÊı*/
 	int burstCount;
 
-	/*å«æ˜Ÿï¼ˆé›·è¾¾ï¼‰åç§°*/
+	/*ÎÀĞÇ£¨À×´ï£©Ãû³Æ*/
 	string sensor;
-	/*æåŒ–æ–¹å¼*/
+	/*¼«»¯·½Ê½*/
 	string polarization;
-	/*å­å¸¦åç§°*/
+	/*×Ó´øÃû³Æ*/
 	string swath;
-	/*å‡é™è½¨*/
+	/*Éı½µ¹ì*/
 	string pass;
 	/*Heading*/
 	double headingAngle;
 
 
 
-	/*æ¯ä¸ªburstæ–¹ä½å‘å‚è€ƒæ—¶é—´ï¼ˆrange_dependentï¼‰*/
+	/*Ã¿¸öburst·½Î»Ïò²Î¿¼Ê±¼ä£¨range_dependent£©*/
 	Mat referenceTime;
 	bool isReferenceTimeAvailable;
-	/*æ¯ä¸ªburstå¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ï¼ˆrange_dependentï¼‰*/
+	/*Ã¿¸öburst¶àÆÕÀÕÖĞĞÄÆµÂÊ£¨range_dependent£©*/
 	Mat dopplerCentroid;
 	bool isDopplerCentroidAvailable;
-	/*æ¯ä¸ªburstå¤šæ™®å‹’è°ƒé¢‘ç‡ï¼ˆrange_dependentï¼‰*/
+	/*Ã¿¸öburst¶àÆÕÀÕµ÷ÆµÂÊ£¨range_dependent£©*/
 	Mat rangeDependDopplerRate;
 	bool isRangeDependDopplerRateAvailiable;
-	/*æ–¹ä½å‘è°ƒé¢‘ç‡ä¼°è®¡æ•°æ®*/
+	/*·½Î»Ïòµ÷ÆµÂÊ¹À¼ÆÊı¾İ*/
 	Mat AzimuthFmRateList;
-	/*å¤šæ™®å‹’ä¸­å¿ƒé¢‘ç‡ä¼°è®¡æ•°æ®*/
+	/*¶àÆÕÀÕÖĞĞÄÆµÂÊ¹À¼ÆÊı¾İ*/
 	Mat DcEstimateList;
-	/*æ¯ä¸ªburstç¬¬ä¸€è¡Œæ–¹ä½å‘æ—¶é—´*/
+	/*Ã¿¸öburstµÚÒ»ĞĞ·½Î»ÏòÊ±¼ä*/
 	Mat burstAzimuthTime;
-	/*æ¯ä¸ªburstæ¯è¡Œç¬¬ä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°*/
+	/*Ã¿¸öburstÃ¿ĞĞµÚÒ»¸öÓĞĞ§ÏñËØÁĞÊı*/
 	Mat firstValidSample;
-	/*æ¯ä¸ªburstæ¯è¡Œæœ€åä¸€ä¸ªæœ‰æ•ˆåƒç´ åˆ—æ•°*/
+	/*Ã¿¸öburstÃ¿ĞĞ×îºóÒ»¸öÓĞĞ§ÏñËØÁĞÊı*/
 	Mat lastValidSample;
-	/*æ¯ä¸ªburstç¬¬ä¸€è¡Œæœ‰æ•ˆæ•°æ®è¡Œæ•°*/
+	/*Ã¿¸öburstµÚÒ»ĞĞÓĞĞ§Êı¾İĞĞÊı*/
 	Mat firstValidLine;
-	/*æ¯ä¸ªburstæœ€åä¸€è¡Œæœ‰æ•ˆæ•°æ®è¡Œæ•°*/
+	/*Ã¿¸öburst×îºóÒ»ĞĞÓĞĞ§Êı¾İĞĞÊı*/
 	Mat lastValidLine;
 	/*antennaPattern_slantRangeTime*/
 	Mat antennaPattern_slantRangeTime;
 	/*antennaPattern_elevationAngle*/
 	Mat antennaPattern_elevationAngle;
-	/*åœ°é¢æ§åˆ¶ç‚¹*/
+	/*µØÃæ¿ØÖÆµã*/
 	Mat geolocationGridPoint;
-	/*æ¯ä¸ªburstçš„æ€»å¤šæ™®å‹’ç‡ï¼ˆè°ƒé¢‘ç‡åŠ æ‰«é¢‘ç‡ï¼‰*/
+	/*Ã¿¸öburstµÄ×Ü¶àÆÕÀÕÂÊ£¨µ÷ÆµÂÊ¼ÓÉ¨ÆµÂÊ£©*/
 	Mat dopplerRate;
 	bool isDopplerRateAvailable;
-	/*è½¨é“åŸå§‹æ•°æ®*/
+	/*¹ìµÀÔ­Ê¼Êı¾İ*/
 	Mat orbitList;
-	/*ç²¾å¯†åŸå§‹è½¨é“æ•°æ®*/
+	/*¾«ÃÜÔ­Ê¼¹ìµÀÊı¾İ*/
 	Mat preciseOrbitList;
 
 
-	/*è½¨é“æ•°æ®*/
+	/*¹ìµÀÊı¾İ*/
 	orbitStateVectors* stateVectors;
-	/*h5æ–‡ä»¶*/
+	/*h5ÎÄ¼ş*/
 	string h5File;
 
 
-	/*burståç§»é‡*/
+	/*burstÆ«ÒÆÁ¿*/
 	int burstOffset;
 
 	bool bInitialized;
@@ -1980,19 +2151,19 @@ public:
 };
 
 /*--------------------------------------------------*/
-/*              å“¨å…µä¸€å·åå‘åœ°ç†ç¼–ç é…å‡†            */
+/*              ÉÚ±øÒ»ºÅºóÏòµØÀí±àÂëÅä×¼            */
 /*--------------------------------------------------*/
 class InSAR_API Sentinel1BackGeocoding
 {
 public:
 	Sentinel1BackGeocoding();
 	~Sentinel1BackGeocoding();
-	/*@brief åˆå§‹åŒ–åå‘åœ°ç†ç¼–ç é…å‡†
-	* @param h5Files                       å“¨å…µä¸€å·åŸå§‹æ•°æ®æ–‡ä»¶
-	* @param outFiles                      å¤„ç†ç»“æœä¿å­˜æ–‡ä»¶
-	* @param DEMPath                       DEMæ–‡ä»¶è·¯å¾„
-	* @param masterIndex                   ä¸»å½±åƒåºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ³õÊ¼»¯ºóÏòµØÀí±àÂëÅä×¼
+	* @param h5Files                       ÉÚ±øÒ»ºÅÔ­Ê¼Êı¾İÎÄ¼ş
+	* @param outFiles                      ´¦Àí½á¹û±£´æÎÄ¼ş
+	* @param DEMPath                       DEMÎÄ¼şÂ·¾¶
+	* @param masterIndex                   Ö÷Ó°ÏñĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int init(
 		vector<string>& h5Files,
@@ -2000,23 +2171,23 @@ public:
 		const char* DEMPath,
 		int masterIndex
 	);
-	/*@brief åŠ è½½å“¨å…µä¸€å·æ•°æ®
-	* @param h5Files                       å“¨å…µä¸€å·åŸå§‹æ•°æ®æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÓÔØÉÚ±øÒ»ºÅÊı¾İ
+	* @param h5Files                       ÉÚ±øÒ»ºÅÔ­Ê¼Êı¾İÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int loadData(vector<string>& h5Files);
-	/*@brief è®¾ç½®DEMæ–‡ä»¶è·¯å¾„
-	* @param DEMPath                       DEMæ–‡ä»¶è·¯å¾„
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ÉèÖÃDEMÎÄ¼şÂ·¾¶
+	* @param DEMPath                       DEMÎÄ¼şÂ·¾¶
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int setDEMPath(const char* DEMPath);
-	/*@brief åŠ è½½æ•°å­—é«˜ç¨‹æ¨¡å‹
-	* @param filepath                      æ–‡ä»¶è·¯å¾„
-	* @param lonMin                        æœ€å°ç»åº¦
-	* @param lonMax                        æœ€å¤§ç»åº¦
-	* @param latMin                        æœ€å°çº¬åº¦
-	* @param latMax                        æœ€å¤§çº¬åº¦
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÓÔØÊı×Ö¸ß³ÌÄ£ĞÍ
+	* @param filepath                      DEMÎÄ¼şÂ·¾¶
+	* @param lonMin                        ×îĞ¡¾­¶È
+	* @param lonMax                        ×î´ó¾­¶È
+	* @param latMin                        ×îĞ¡Î³¶È
+	* @param latMax                        ×î´óÎ³¶È
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int loadDEM(
 		const char* filepath,
@@ -2025,57 +2196,57 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief åŠ è½½å¤„ç†ç»“æœä¿å­˜æ–‡ä»¶
-	* @param outFiles                     å¤„ç†ç»“æœä¿å­˜æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÓÔØ´¦Àí½á¹û±£´æÎÄ¼ş
+	* @param outFiles                     ´¦Àí½á¹û±£´æÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int loadOutFiles(vector<string>& outFiles);
-	/*@brief å‡†å¤‡ç»“æœä¿å­˜æ–‡ä»¶
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ×¼±¸½á¹û±£´æÎÄ¼ş
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int prepareOutFiles();
-	/*@brief è®¾ç½®ä¸»å½±åƒ
-	* @param masterIndex                  ä¸»å½±åƒåºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ÉèÖÃÖ÷Ó°Ïñ
+	* @param masterIndex                  Ö÷Ó°ÏñĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int setMasterIndex(int masterIndex);
 
 
 
-	/*@brief è®¡ç®—ä¸»è¾…å›¾åƒä¹‹é—´çš„burståç§»é‡
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãÖ÷¸¨Í¼ÏñÖ®¼äµÄburstÆ«ÒÆÁ¿
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeBurstOffset();
-	/*@brief å»æ–œå»æ¨¡æ“ä½œ
-	* @param derampDemodPhase                 æ–œæ¨¡ç›¸ä½
-	* @param slc                              å¤å›¾åƒæ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief È¥Ğ±È¥Ä£²Ù×÷
+	* @param derampDemodPhase                 Ğ±Ä£ÏàÎ»
+	* @param slc                              ¸´Í¼ÏñÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int performDerampDemod(
 		Mat& derampDemodPhase,
 		ComplexMat& slc
 	);
-	/*@brief è®¡ç®—DEMç‚¹æŠ•å½±åœ¨SARè¾…å›¾åƒä¸­çš„ä½ç½®
-	* @param slaveImageIndex                       è¾…å›¾åƒåºå·
-	* @param mBurstIndex                           ä¸»å›¾åƒburståºå·
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãDEMµãÍ¶Ó°ÔÚSAR¸¨Í¼ÏñÖĞµÄÎ»ÖÃ
+	* @param slaveImageIndex                       ¸¨Í¼ÏñĞòºÅ
+	* @param mBurstIndex                           Ö÷Í¼ÏñburstĞòºÅ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeSlavePosition(
 		int slaveImagesIndex,
 		int mBurstIndex
 	);
-	/*@brief è®¡ç®—è¾…å›¾åƒåç§»
-	* @param slaveAzimuthOffset                    è¾…å›¾åƒæ–¹ä½å‘åç§»
-	* @param slaveRangeOffset                      è¾…å›¾åƒè·ç¦»å‘åç§»
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËã¸¨Í¼ÏñÆ«ÒÆ
+	* @param slaveAzimuthOffset                    ¸¨Í¼Ïñ·½Î»ÏòÆ«ÒÆ
+	* @param slaveRangeOffset                      ¸¨Í¼Ïñ¾àÀëÏòÆ«ÒÆ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& slaveRangeOffset);
-	/*@brief æ‹Ÿåˆè¾…å›¾åƒåç§»ï¼ˆ1é˜¶æ‹Ÿåˆï¼Œoffset = a0 + a1 * x + a2 * yï¼‰
-	* @param slaveOffset                           åç§»é‡
-	* @param a0                                    æ‹Ÿåˆç³»æ•°
-	* @param a1                                    æ‹Ÿåˆç³»æ•°
-	* @param a2                                    æ‹Ÿåˆç³»æ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ÄâºÏ¸¨Í¼ÏñÆ«ÒÆ£¨1½×ÄâºÏ£¬offset = a0 + a1 * x + a2 * y£©
+	* @param slaveOffset                           Æ«ÒÆÁ¿
+	* @param a0                                    ÄâºÏÏµÊı
+	* @param a1                                    ÄâºÏÏµÊı
+	* @param a2                                    ÄâºÏÏµÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int fitSlaveOffset(
 		Mat& slaveOffset,
@@ -2083,17 +2254,17 @@ public:
 		double* a1,
 		double* a2
 	);
-	/*@brief å¤å›¾åƒåŒçº¿æ€§æ’å€¼é‡é‡‡æ ·ï¼ˆinplaceï¼ŒåŸåœ°æ“ä½œï¼‰
-	* @param slc                                   å¾…é‡é‡‡æ ·å›¾åƒï¼ˆåŸåœ°æ“ä½œï¼‰
-	* @param dstHeight                             é‡é‡‡æ ·å›¾åƒé«˜åº¦
-	* @param dstWidth                              é‡é‡‡æ ·å›¾åƒå®½åº¦
-	* @param a0Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @param a1Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @param a2Rg                                  è·ç¦»å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @param a0Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @param a1Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @param a2Az                                  æ–¹ä½å‘åç§»æ‹Ÿåˆç³»æ•°
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸´Í¼ÏñË«ÏßĞÔ²åÖµÖØ²ÉÑù£¨inplace£¬Ô­µØ²Ù×÷£©
+	* @param slc                                   ´ıÖØ²ÉÑùÍ¼Ïñ£¨Ô­µØ²Ù×÷£©
+	* @param dstHeight                             ÖØ²ÉÑùÍ¼Ïñ¸ß¶È
+	* @param dstWidth                              ÖØ²ÉÑùÍ¼Ïñ¿í¶È
+	* @param a0Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a1Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a2Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a0Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a1Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a2Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int performBilinearResampling(
 		ComplexMat& slc,
@@ -2102,66 +2273,107 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az
 	);
-	/*@brief è¾…å›¾åƒåŒçº¿æ€§æ’å€¼é‡é‡‡æ ·
-	* @param mBurstIndex                           ä¸»å›¾åƒburståºå·
-	* @param slaveImageIndex                       è¾…å›¾åƒåºå·
-	* @param slaveSLC                              é‡é‡‡æ ·åçš„è¾…å›¾åƒæ•°æ®
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¸´Í¼Ïñsinc²åÖµÖØ²ÉÑù£¨inplace£¬Ô­µØ²Ù×÷£©
+	* @param slc                                   ´ıÖØ²ÉÑùÍ¼Ïñ£¨Ô­µØ²Ù×÷£©
+	* @param dstHeight                             ÖØ²ÉÑùÍ¼Ïñ¸ß¶È
+	* @param dstWidth                              ÖØ²ÉÑùÍ¼Ïñ¿í¶È
+	* @param a0Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a1Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a2Rg                                  ¾àÀëÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a0Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a1Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @param a2Az                                  ·½Î»ÏòÆ«ÒÆÄâºÏÏµÊı
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	*/
+	int performSincResampling(
+		ComplexMat& slc,
+		int dstHeight,
+		int dstWidth,
+		double a0Rg, double a1Rg, double a2Rg,
+		double a0Az, double a1Az, double a2Az
+	);
+	/*@brief ¸¨Í¼ÏñË«ÏßĞÔ²åÖµÖØ²ÉÑù
+	* @param mBurstIndex                           Ö÷Í¼ÏñburstĞòºÅ
+	* @param slaveImageIndex                       ¸¨Í¼ÏñĞòºÅ
+	* @param slaveSLC                              ÖØ²ÉÑùºóµÄ¸¨Í¼ÏñÊı¾İ
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int slaveBilinearInterpolation(
 		int mBurstIndex,
 		int slaveImageIndex,
 		ComplexMat& slaveSLC
 	);
-	/*@brief è®¡ç®—deburstä¿¡æ¯
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ¼ÆËãdeburstĞÅÏ¢
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int deBurstConfig();
-	/*@brief åå‘åœ°ç†ç¼–ç é…å‡†
-	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
+	/*@brief ºóÏòµØÀí±àÂëÅä×¼
+	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
 	*/
 	int backGeoCodingCoregistration();
 
 public:
 
-	/*å½±åƒæ•°é‡*/
+	/*Ó°ÏñÊıÁ¿*/
 	int numOfImages;
-	/*ä¸»å½±åƒåºå·*/
+	/*Ö÷Ó°ÏñĞòºÅ*/
 	int masterIndex;
-	/*å“¨å…µä¸€å·æ•°æ®*/
+	/*ÉÚ±øÒ»ºÅÊı¾İ*/
 	vector<Sentinel1Utils*> su;
-	/*å¤„ç†ç»“æœä¿å­˜æ–‡ä»¶*/
+	/*´¦Àí½á¹û±£´æÎÄ¼ş*/
 	vector<string> outFiles;
-	/*æ•°å­—é«˜ç¨‹æ¨¡å‹*/
+	/*Êı×Ö¸ß³ÌÄ£ĞÍ*/
 	DigitalElevationModel* dem;
-	/*æ•°å­—é«˜ç¨‹æ¨¡å‹è·¯å¾„*/
+	/*Êı×Ö¸ß³ÌÄ£ĞÍÂ·¾¶*/
 	string DEMPath;
-	/*DEMæŠ•å½±åˆ°ä¸»å›¾åƒçš„æ–¹ä½å‘åæ ‡*/
+	/*DEMÍ¶Ó°µ½Ö÷Í¼ÏñµÄ·½Î»Ïò×ø±ê*/
 	Mat masterAzimuth;
-	/*DEMæŠ•å½±åˆ°ä¸»å›¾åƒçš„è·ç¦»å‘åæ ‡*/
+	/*DEMÍ¶Ó°µ½Ö÷Í¼ÏñµÄ¾àÀëÏò×ø±ê*/
 	Mat masterRange;
-	/*DEMæŠ•å½±åˆ°è¾…å›¾åƒçš„æ–¹ä½å‘åæ ‡*/
+	/*DEMÍ¶Ó°µ½¸¨Í¼ÏñµÄ·½Î»Ïò×ø±ê*/
 	Mat slaveAzimuth;
-	/*DEMæŠ•å½±åˆ°è¾…å›¾åƒçš„è·ç¦»å‘åæ ‡*/
+	/*DEMÍ¶Ó°µ½¸¨Í¼ÏñµÄ¾àÀëÏò×ø±ê*/
 	Mat slaveRange;
-	/*DEMç‚¹æŠ•å½±åˆ°ä¸»å›¾åƒçš„åæ ‡æ˜¯å¦è®¡ç®—å®Œæˆ*/
+	/*DEMµãÍ¶Ó°µ½Ö÷Í¼ÏñµÄ×ø±êÊÇ·ñ¼ÆËãÍê³É*/
 	bool isMasterRgAzComputed;
 
-	/*deburstå‚æ•°*/
+	/*deburst²ÎÊı*/
 	Mat start;
-	/*deburstå‚æ•°*/
+	/*deburst²ÎÊı*/
 	Mat end;
-	/*deburstå‚æ•°*/
+	/*deburst²ÎÊı*/
 	int deburstLines;
-	/*bursté…ç½®ä¿¡æ¯æ˜¯å¦è®¡ç®—å®Œæˆ*/
+	/*burstÅäÖÃĞÅÏ¢ÊÇ·ñ¼ÆËãÍê³É*/
 	bool isdeBurstConfig;
 
-	/*æ— æ•ˆåæ ‡ï¼ˆ-1.0ï¼‰*/
+	/*ÎŞĞ§×ø±ê£¨-1.0£©*/
 	double invalidRgAzIndex = -1.0;
-	/*æ— æ•ˆåç§»é‡ï¼ˆ-9999.0ï¼‰*/
+	/*ÎŞĞ§Æ«ÒÆÁ¿£¨-9999.0£©*/
 	double invalidOffset = -9999.0;
 	bool burstOffsetComputed;
 	char error_head[256];
 
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #endif // !__FORMATCONVERSION__H__
+
+

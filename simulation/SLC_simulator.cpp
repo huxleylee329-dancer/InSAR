@@ -271,6 +271,8 @@ int SLC_simulator::generateSLC(
 	Mat& dem, 
 	double lon_upperleft,
 	double lat_upperleft,
+	double lon_space,
+	double lat_space,
 	int sceneHeight,
 	int sceneWidth,
 	double nearRange,
@@ -311,11 +313,16 @@ int SLC_simulator::generateSLC(
 	slc.re = 0.0; slc.im = 0.0;
 	//分块计算，确定DEM划分大小与方式
 
-	int interp_times_row = 90.0 / azimuthSpacing;
-	int interp_times_col = 90.0 / rangeSpacing;
-	int interp_cell = 2;
-	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
-	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
+	int interp_times_row = 30.0 / azimuthSpacing;
+	int interp_times_col = 30.0 / rangeSpacing;
+	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
+	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
+	int interp_cell = 1;
+	double lon_spacing_old = lon_space / (double)interp_times_col;
+	double lat_spacing_old = lat_space / (double)interp_times_row;
+	//考虑DEM像素中心与边缘差值
+	lat_upperleft = lat_upperleft + lat_space / 2.0 - lat_space / (double)interp_times_row * 0.5;
+	lon_upperleft = lon_upperleft - lon_space / 2.0 + lon_space / (double)interp_times_col * 0.5;
 	double lon_spacing = lon_spacing_old / (double)interp_cell;
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
@@ -344,8 +351,8 @@ int SLC_simulator::generateSLC(
 	{
 		for (int j = 0; j < num_block_col; j++)
 		{
-			bool flag = (i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0;
-			if (!flag) continue;
+			//bool flag = (i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0;
+			//if (!flag) continue;
 			seed++;
 			int row_start = i * block_rows - 1;
 			row_start = row_start < 0 ? 0 : row_start;
@@ -466,6 +473,30 @@ int SLC_simulator::generateSLC(
 					slant_range.at<double>(ii, jj) = distance;
 				}
 			}
+
+			for (int ii = 0; ii < DEM_rows; ii++)
+			{
+				for (int jj = 0; jj < DEM_cols; jj++)
+				{
+					double real, imaginary, theta;
+					double zeroDopplerTime = imaging_time.at<double>(ii, jj);
+					double distance = slant_range.at<double>(ii, jj);
+					int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
+					int rangeIndex = floor((distance - nearRange) / rangeSpacing);
+					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
+					{
+
+					}
+					else
+					{
+						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
+						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
+						imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
+						slc.re.at<float>(azimuthIndex, rangeIndex) += real;
+						slc.im.at<float>(azimuthIndex, rangeIndex) += imaginary;
+					}
+				}
+			}
 			//控制点信息
 			if ((i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0)
 			{
@@ -524,7 +555,6 @@ int SLC_simulator::generateSLC(
 				}
 			}
 			
-
 			printf("\rprocess %lf", (double)(i * num_block_col + j + 1) / (double)(num_block_row * num_block_col) * 100.0);
 			fflush(stdout);
 		}
@@ -546,6 +576,765 @@ int SLC_simulator::generateSLC(
 			GCP.at<double>(i, 6) = GCPs[i * 7 + 6];
 		}
 	}
+	return 0;
+}
+
+int SLC_simulator::generateSLC_spacety(
+	Mat& stateVec,
+	Mat& dem,
+	double lon_upperleft,
+	double lat_upperleft,
+	double lon_space,
+	double lat_space,
+	int sceneHeight,
+	int sceneWidth,
+	double nearRange,
+	double prf,
+	double wavelength,
+	double rangeSpacing,
+	double azimuthSpacing,
+	double acquisitionStartTime,
+	double acquisitionStopTime,
+	double SNR,
+	ComplexMat& slc
+)
+{
+	if (stateVec.cols != 7 ||
+		stateVec.rows < 7 ||
+		stateVec.type() != CV_64F ||
+		dem.type() != CV_16S ||
+		dem.empty() ||
+		fabs(lon_upperleft) > 180.0 ||
+		fabs(lat_upperleft) > 90.0 ||
+		sceneHeight < 1 ||
+		sceneWidth < 1 ||
+		nearRange <= 0.0 ||
+		prf <= 0.0 ||
+		wavelength <= 0.0 ||
+		rangeSpacing <= 0.0 ||
+		azimuthSpacing <= 0.0 ||
+		acquisitionStartTime <= 0.0 ||
+		acquisitionStartTime >= acquisitionStopTime
+		)
+	{
+		fprintf(stderr, "generateSLC(): input check failed!\n");
+		return -1;
+	}
+	slc.re.create(sceneHeight, sceneWidth, CV_32F);
+	slc.im.create(sceneHeight, sceneWidth, CV_32F);
+	slc.re = 0.0; slc.im = 0.0;
+	//分块计算，确定DEM划分大小与方式
+
+	int interp_times_row = 30.0 / azimuthSpacing / 2.0;
+	int interp_times_col = 30.0 / rangeSpacing / 4.0;
+	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
+	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
+	int interp_cell = 1;
+	double lon_spacing_old = lon_space / (double)interp_times_col;
+	double lat_spacing_old = lat_space / (double)interp_times_row;
+	//考虑DEM像素中心与边缘差值
+	lat_upperleft = lat_upperleft + lat_space / 2.0 - lat_space / (double)interp_times_row * 0.5;
+	lon_upperleft = lon_upperleft - lon_space / 2.0 + lon_space / (double)interp_times_col * 0.5;
+	double lon_spacing = lon_spacing_old / (double)interp_cell;
+	double lat_spacing = lat_spacing_old / (double)interp_cell;
+	int rows = dem.rows * interp_times_row;
+	int cols = dem.cols * interp_times_col;
+	int block_rows = 1000;//分块大小
+	int block_cols = 1000;
+	Mat dem_interp, dem_temp;
+	dem.convertTo(dem_interp, CV_32F);
+	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
+	int num_block_row = rows / block_rows;
+	int num_block_col = cols / block_cols;
+	block_rows = rows / num_block_row;
+	block_cols = cols / num_block_col;
+	Utils util;
+	num_block_row = num_block_row;
+	num_block_col = num_block_col;
+	vector<double> GCPs;//控制点信息
+	//初始化轨道类
+	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
+	stateVectors.applyOrbit();
+	int ret;
+	double time_interval = 1.0 / prf;
+	double dopplerFrequency = 0.0;
+	uint64 seed = 0;
+	for (int i = 0; i < num_block_row; i++)
+	{
+		for (int j = 0; j < num_block_col; j++)
+		{
+			//bool flag = (i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0;
+			//if (!flag) continue;
+			seed++;
+			int row_start = i * block_rows - 1;
+			row_start = row_start < 0 ? 0 : row_start;
+			int row_end = (i + 1) * block_rows;
+			row_end = row_end > rows ? rows : row_end;
+			int col_start = j * block_cols - 1;
+			col_start = col_start < 0 ? 0 : col_start;
+			int col_end = (j + 1) * block_cols;
+			col_end = col_end > cols ? cols : col_end;
+			Mat dem_temp2;
+			dem_interp(cv::Range(row_start, row_end), cv::Range(col_start, col_end)).copyTo(dem_temp);
+			cv::resize(dem_temp, dem_temp2, cv::Size(dem_temp.cols * interp_cell, dem_temp.rows * interp_cell),
+				0, 0, cv::INTER_CUBIC);
+
+			double upper_left_lon = lon_upperleft + col_start * lon_spacing_old;
+			upper_left_lon = upper_left_lon > 180.0 ? upper_left_lon - 360.0 : upper_left_lon;
+			double upper_left_lat = lat_upperleft - row_start * lat_spacing_old;
+
+			//生成随机相位
+			Mat randomAngle(dem_temp2.rows, dem_temp2.cols, CV_32F);
+			cv::RNG rng(seed);
+			rng.fill(randomAngle, cv::RNG::UNIFORM, 0.0, 2.0 * PI);
+
+			//加入热噪声项
+			Mat noise_real(dem_temp2.rows, dem_temp2.cols, CV_32F), noise_imaginary(dem_temp2.rows, dem_temp2.cols, CV_32F);
+			double noise_sigma = sqrt(pow(10.0, -SNR / 10.0) / 2.0);
+			cv::RNG rng2(seed + 10000);
+			rng2.fill(noise_real, cv::RNG::NORMAL, 0, noise_sigma);
+			cv::RNG rng3(seed + 10001);
+			rng3.fill(noise_imaginary, cv::RNG::NORMAL, 0, noise_sigma);
+
+			//计算DEM点的成像卫星位置
+			Mat imaging_time(dem_temp2.rows, dem_temp2.cols, CV_64F), slant_range(dem_temp2.rows, dem_temp2.cols, CV_64F);
+			int DEM_rows = dem_temp2.rows;
+			int DEM_cols = dem_temp2.cols;
+#pragma omp parallel for schedule(guided)
+			for (int ii = 0; ii < DEM_rows; ii++)
+			{
+				for (int jj = 0; jj < DEM_cols; jj++)
+				{
+					Position groundPosition;
+					double lat, lon, height;
+					lat = upper_left_lat - (double)ii * lat_spacing;
+					lon = upper_left_lon + (double)jj * lon_spacing;
+					lon = lon > 180.0 ? (lon - 360.0) : lon;
+					height = dem_temp2.at<float>(ii, jj);
+					Utils::ell2xyz(lon, lat, height, groundPosition);
+					int numOrbitVec = stateVectors.newStateVectors.rows;
+					double firstVecTime = 0.0;
+					double secondVecTime = 0.0;
+					double firstVecFreq = 0.0;
+					double secondVecFreq = 0.0;
+					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
+					for (int iii = 0; iii < numOrbitVec; iii++) {
+						Position orb_pos(stateVectors.newStateVectors.at<double>(iii, 1), stateVectors.newStateVectors.at<double>(iii, 2),
+							stateVectors.newStateVectors.at<double>(iii, 3));
+						Velocity orb_vel(stateVectors.newStateVectors.at<double>(iii, 4), stateVectors.newStateVectors.at<double>(iii, 5),
+							stateVectors.newStateVectors.at<double>(iii, 6));
+						currentFreq = 0;
+						xdiff = groundPosition.x - orb_pos.x;
+						ydiff = groundPosition.y - orb_pos.y;
+						zdiff = groundPosition.z - orb_pos.z;
+						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
+						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
+							firstVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
+							firstVecFreq = currentFreq;
+						}
+						else {
+							secondVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
+							secondVecFreq = currentFreq;
+							break;
+						}
+					}
+
+					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+						continue;
+					}
+
+					double lowerBoundTime = firstVecTime;
+					double upperBoundTime = secondVecTime;
+					double lowerBoundFreq = firstVecFreq;
+					double upperBoundFreq = secondVecFreq;
+					double midTime, midFreq;
+					double diffTime = fabs(upperBoundTime - lowerBoundTime);
+					double absLineTimeInterval = time_interval;
+
+					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
+					int numIterations = 0; Position pos; Velocity vel;
+					while (diffTime > absLineTimeInterval * 0.01 && numIterations <= totalIterations) {
+
+						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
+						stateVectors.getPosition(midTime, pos);
+						stateVectors.getVelocity(midTime, vel);
+						xdiff = groundPosition.x - pos.x;
+						ydiff = groundPosition.y - pos.y;
+						zdiff = groundPosition.z - pos.z;
+						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
+						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
+							lowerBoundTime = midTime;
+							lowerBoundFreq = midFreq;
+						}
+						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
+							upperBoundTime = midTime;
+							upperBoundFreq = midFreq;
+						}
+						else if (fabs(midFreq - dopplerFrequency) < 0.0001) {
+							zeroDopplerTime = midTime;
+							break;
+						}
+
+						diffTime = fabs(upperBoundTime - lowerBoundTime);
+						numIterations++;
+					}
+					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
+					// 用最终 zeroDopplerTime 重新计算卫星位置和斜距
+					stateVectors.getPosition(zeroDopplerTime, pos);
+					stateVectors.getVelocity(zeroDopplerTime, vel);
+
+					xdiff = groundPosition.x - pos.x;
+					ydiff = groundPosition.y - pos.y;
+					zdiff = groundPosition.z - pos.z;
+
+					distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+					imaging_time.at<double>(ii, jj) = zeroDopplerTime;
+					slant_range.at<double>(ii, jj) = distance;
+				}
+			}
+
+			for (int ii = 0; ii < DEM_rows; ii++)
+			{
+				for (int jj = 0; jj < DEM_cols; jj++)
+				{
+					double real, imaginary, theta;
+					double zeroDopplerTime = imaging_time.at<double>(ii, jj);
+					double distance = slant_range.at<double>(ii, jj);
+					int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
+					int rangeIndex = floor((distance - nearRange) / rangeSpacing);
+					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
+					{
+
+					}
+					else
+					{
+						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
+						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
+						imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
+						slc.re.at<float>(azimuthIndex, rangeIndex) += real;
+						slc.im.at<float>(azimuthIndex, rangeIndex) += imaginary;
+					}
+				}
+			}
+
+			printf("\rprocess %lf", (double)(i * num_block_col + j + 1) / (double)(num_block_row * num_block_col) * 100.0);
+			fflush(stdout);
+		}
+	}
+	return 0;
+}
+
+int SLC_simulator::generateSLC_optimized(
+	Mat& stateVec,
+	Mat& dem,
+	double lon_upperleft,
+	double lat_upperleft,
+	double lon_space,
+	double lat_space,
+	int sceneHeight,
+	int sceneWidth,
+	double nearRange,
+	double prf,
+	double wavelength,
+	double rangeSpacing,
+	double azimuthSpacing,
+	double acquisitionStartTime,
+	double acquisitionStopTime,
+	double SNR,
+	ComplexMat& slc,
+	Mat& GCP
+)
+{
+	if (stateVec.cols != 7 ||
+		stateVec.rows < 7 ||
+		stateVec.type() != CV_64F ||
+		dem.type() != CV_16S ||
+		dem.empty() ||
+		fabs(lon_upperleft) > 180.0 ||
+		fabs(lat_upperleft) > 90.0 ||
+		sceneHeight < 1 ||
+		sceneWidth < 1 ||
+		nearRange <= 0.0 ||
+		prf <= 0.0 ||
+		wavelength <= 0.0 ||
+		rangeSpacing <= 0.0 ||
+		azimuthSpacing <= 0.0 ||
+		acquisitionStartTime <= 0.0 ||
+		acquisitionStartTime >= acquisitionStopTime)
+	{
+		fprintf(stderr, "generateSLC(): input check failed!\n");
+		return -1;
+	}
+
+	// -----------------------------
+	// 输出初始化
+	// -----------------------------
+	slc.re.create(sceneHeight, sceneWidth, CV_32F);
+	slc.im.create(sceneHeight, sceneWidth, CV_32F);
+	slc.re.setTo(0.0f);
+	slc.im.setTo(0.0f);
+
+	// -----------------------------
+	// 基本参数
+	// -----------------------------
+	auto ceil_div = [](int a, int b) -> int {
+		return (a + b - 1) / b;
+	};
+
+	const double PI_ = 3.14159265358979323846;
+	const double dopplerFrequency = 0.0;
+	const double time_interval = 1.0 / prf;
+	const double noise_sigma = sqrt(pow(10.0, -SNR / 10.0) / 2.0);
+	const double NaN = std::numeric_limits<double>::quiet_NaN();
+
+	// 至少为1，避免 spacing > 30 时变成 0
+	int interp_times_row = std::max(1, (int)std::lround(30.0 / azimuthSpacing));
+	int interp_times_col = std::max(1, (int)std::lround(30.0 / rangeSpacing));
+	const int interp_cell = 1;
+
+	const int up_row_factor = interp_times_row * interp_cell;
+	const int up_col_factor = interp_times_col * interp_cell;
+
+	// 最终仿真 DEM 的采样间隔
+	const double lon_spacing = lon_space / (double)up_col_factor;
+	const double lat_spacing = lat_space / (double)up_row_factor;
+
+	// 这里把输入的 DEM 左上角理解为“原始 DEM 像素中心”
+	// 调整为最终高分辨率网格第一个像素中心
+	const double lon_upperleft_fine =
+		lon_upperleft - lon_space * 0.5 + lon_spacing * 0.5;
+	const double lat_upperleft_fine =
+		lat_upperleft + lat_space * 0.5 - lat_spacing * 0.5;
+
+	// -----------------------------
+	// 轨道初始化
+	// -----------------------------
+	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
+	stateVectors.applyOrbit();
+
+	const int numOrbitVec = stateVectors.newStateVectors.rows;
+	if (numOrbitVec < 2)
+	{
+		fprintf(stderr, "generateSLC(): insufficient orbit vectors!\n");
+		return -1;
+	}
+
+	// 预提取轨道状态，减少 Mat::at 开销
+	std::vector<double> orb_t(numOrbitVec), orb_x(numOrbitVec), orb_y(numOrbitVec), orb_z(numOrbitVec);
+	std::vector<double> orb_vx(numOrbitVec), orb_vy(numOrbitVec), orb_vz(numOrbitVec);
+	for (int k = 0; k < numOrbitVec; ++k)
+	{
+		orb_t[k] = stateVectors.newStateVectors.at<double>(k, 0);
+		orb_x[k] = stateVectors.newStateVectors.at<double>(k, 1);
+		orb_y[k] = stateVectors.newStateVectors.at<double>(k, 2);
+		orb_z[k] = stateVectors.newStateVectors.at<double>(k, 3);
+		orb_vx[k] = stateVectors.newStateVectors.at<double>(k, 4);
+		orb_vy[k] = stateVectors.newStateVectors.at<double>(k, 5);
+		orb_vz[k] = stateVectors.newStateVectors.at<double>(k, 6);
+	}
+
+	// -----------------------------
+	// WGS84 椭球坐标转 ECEF
+	// 比 Utils::ell2xyz 更适合在内层循环里展开
+	// -----------------------------
+	auto ell2xyz_fast = [](double lon_deg, double lat_deg, double h,
+		double& x, double& y, double& z)
+	{
+		const double a = 6378137.0;
+		const double f = 1.0 / 298.257223563;
+		const double e2 = f * (2.0 - f);
+
+		double lon = lon_deg * 3.14159265358979323846 / 180.0;
+		double lat = lat_deg * 3.14159265358979323846 / 180.0;
+
+		double sinLat = sin(lat);
+		double cosLat = cos(lat);
+		double sinLon = sin(lon);
+		double cosLon = cos(lon);
+
+		double N = a / sqrt(1.0 - e2 * sinLat * sinLat);
+
+		x = (N + h) * cosLat * cosLon;
+		y = (N + h) * cosLat * sinLon;
+		z = (N * (1.0 - e2) + h) * sinLat;
+	};
+
+	auto doppler_from_orbit_idx =
+		[&](double gx, double gy, double gz, int idx, double* distance_out = nullptr) -> double
+	{
+		double dx = gx - orb_x[idx];
+		double dy = gy - orb_y[idx];
+		double dz = gz - orb_z[idx];
+		double dist = sqrt(dx * dx + dy * dy + dz * dz);
+		if (distance_out) *distance_out = dist;
+		return 2.0 * (dx * orb_vx[idx] + dy * orb_vy[idx] + dz * orb_vz[idx]) / (wavelength * dist);
+	};
+
+	auto doppler_from_time =
+		[&](double gx, double gy, double gz, double t, double* distance_out = nullptr) -> double
+	{
+		Position pos;
+		Velocity vel;
+		stateVectors.getPosition(t, pos);
+		stateVectors.getVelocity(t, vel);
+
+		double dx = gx - pos.x;
+		double dy = gy - pos.y;
+		double dz = gz - pos.z;
+		double dist = sqrt(dx * dx + dy * dy + dz * dz);
+		if (distance_out) *distance_out = dist;
+
+		return 2.0 * (dx * vel.vx + dy * vel.vy + dz * vel.vz) / (wavelength * dist);
+	};
+
+	auto find_bracket_local =
+		[&](double gx, double gy, double gz, int guessIdx, int& idx1, int& idx2) -> bool
+	{
+		// 先在邻域搜索，利用相邻像素连续性
+		const int half_window = 16;
+		int L = std::max(0, guessIdx - half_window);
+		int R = std::min(numOrbitVec - 1, guessIdx + half_window);
+
+		double f_prev = doppler_from_orbit_idx(gx, gy, gz, L);
+		for (int k = L + 1; k <= R; ++k)
+		{
+			double f_cur = doppler_from_orbit_idx(gx, gy, gz, k);
+			if ((f_prev - dopplerFrequency) * (f_cur - dopplerFrequency) <= 0.0)
+			{
+				idx1 = k - 1;
+				idx2 = k;
+				return true;
+			}
+			f_prev = f_cur;
+		}
+		return false;
+	};
+
+	auto find_bracket_global =
+		[&](double gx, double gy, double gz, int& idx1, int& idx2) -> bool
+	{
+		double f_prev = doppler_from_orbit_idx(gx, gy, gz, 0);
+		for (int k = 1; k < numOrbitVec; ++k)
+		{
+			double f_cur = doppler_from_orbit_idx(gx, gy, gz, k);
+			if ((f_prev - dopplerFrequency) * (f_cur - dopplerFrequency) <= 0.0)
+			{
+				idx1 = k - 1;
+				idx2 = k;
+				return true;
+			}
+			f_prev = f_cur;
+		}
+		return false;
+	};
+
+	// -----------------------------
+	// 不再整景插值。改为原始 DEM 分块 + 每块一次插值到最终分辨率
+	// 目标是让“最终块尺寸”大致在 ~1000 左右
+	// -----------------------------
+	int target_block_rows_final = 1000;
+	int target_block_cols_final = 1000;
+
+	int block_rows_dem = std::max(1, target_block_rows_final / up_row_factor);
+	int block_cols_dem = std::max(1, target_block_cols_final / up_col_factor);
+
+	int num_block_row = ceil_div(dem.rows, block_rows_dem);
+	int num_block_col = ceil_div(dem.cols, block_cols_dem);
+
+	// 转成 float 一次即可
+	Mat dem_f32;
+	dem.convertTo(dem_f32, CV_32F);
+
+	std::vector<double> GCPs;
+	GCPs.reserve((num_block_row * num_block_col / 9 + 10) * 7);
+
+	uint64 seed = 0;
+
+	for (int bi = 0; bi < num_block_row; ++bi)
+	{
+		for (int bj = 0; bj < num_block_col; ++bj)
+		{
+			seed++;
+
+			// 原始 DEM block，加 1 像素 padding，减少边界插值伪影
+			int r0_dem = std::max(0, bi * block_rows_dem - 1);
+			int r1_dem = std::min(dem.rows, (bi + 1) * block_rows_dem + 1);
+			int c0_dem = std::max(0, bj * block_cols_dem - 1);
+			int c1_dem = std::min(dem.cols, (bj + 1) * block_cols_dem + 1);
+
+			Mat dem_src = dem_f32(cv::Range(r0_dem, r1_dem), cv::Range(c0_dem, c1_dem));
+
+			// 一次性插到最终分辨率
+			Mat dem_temp2;
+			cv::resize(
+				dem_src,
+				dem_temp2,
+				cv::Size(dem_src.cols * up_col_factor, dem_src.rows * up_row_factor),
+				0, 0,
+				cv::INTER_CUBIC);
+
+			const int DEM_rows = dem_temp2.rows;
+			const int DEM_cols = dem_temp2.cols;
+
+			// 本 block 对应的最终高分辨率网格左上角像素中心坐标
+			double upper_left_lon = lon_upperleft_fine + c0_dem * lon_space;
+			double upper_left_lat = lat_upperleft_fine - r0_dem * lat_space;
+
+			if (upper_left_lon > 180.0) upper_left_lon -= 360.0;
+
+			// 预计算行列坐标
+			std::vector<double> lat_vec(DEM_rows), lon_vec(DEM_cols);
+			for (int ii = 0; ii < DEM_rows; ++ii)
+				lat_vec[ii] = upper_left_lat - ii * lat_spacing;
+			for (int jj = 0; jj < DEM_cols; ++jj)
+			{
+				double lon = upper_left_lon + jj * lon_spacing;
+				if (lon > 180.0) lon -= 360.0;
+				lon_vec[jj] = lon;
+			}
+
+			// 随机相位 + 热噪声
+			Mat randomAngle(DEM_rows, DEM_cols, CV_32F);
+			Mat noise_real(DEM_rows, DEM_cols, CV_32F);
+			Mat noise_imag(DEM_rows, DEM_cols, CV_32F);
+
+			{
+				cv::RNG rng1(seed);
+				cv::RNG rng2(seed + 10000);
+				cv::RNG rng3(seed + 10001);
+
+				rng1.fill(randomAngle, cv::RNG::UNIFORM, 0.0, 2.0 * PI_);
+				rng2.fill(noise_real, cv::RNG::NORMAL, 0.0, noise_sigma);
+				rng3.fill(noise_imag, cv::RNG::NORMAL, 0.0, noise_sigma);
+			}
+
+			// 暂存零多普勒时刻和斜距
+			Mat imaging_time(DEM_rows, DEM_cols, CV_64F, cv::Scalar(NaN));
+			Mat slant_range(DEM_rows, DEM_cols, CV_64F, cv::Scalar(NaN));
+
+			// -----------------------------------------
+			// 核心：零多普勒时间求解
+			// 利用每行中相邻像素的连续性
+			// -----------------------------------------
+#pragma omp parallel for schedule(static)
+			for (int ii = 0; ii < DEM_rows; ++ii)
+			{
+				const float* dem_ptr = dem_temp2.ptr<float>(ii);
+				double* t_ptr = imaging_time.ptr<double>(ii);
+				double* r_ptr = slant_range.ptr<double>(ii);
+
+				int lastGuessIdx = numOrbitVec / 2;
+
+				for (int jj = 0; jj < DEM_cols; ++jj)
+				{
+					double gx, gy, gz;
+					double lat = lat_vec[ii];
+					double lon = lon_vec[jj];
+					double h = (double)dem_ptr[jj];
+
+					ell2xyz_fast(lon, lat, h, gx, gy, gz);
+
+					int idx1 = -1, idx2 = -1;
+					bool ok = find_bracket_local(gx, gy, gz, lastGuessIdx, idx1, idx2);
+					if (!ok)
+						ok = find_bracket_global(gx, gy, gz, idx1, idx2);
+
+					if (!ok)
+					{
+						t_ptr[jj] = NaN;
+						r_ptr[jj] = NaN;
+						continue;
+					}
+
+					double t_low = orb_t[idx1];
+					double t_up = orb_t[idx2];
+					double f_low = doppler_from_orbit_idx(gx, gy, gz, idx1);
+					double f_up = doppler_from_orbit_idx(gx, gy, gz, idx2);
+
+					double t_mid = 0.5 * (t_low + t_up);
+					double f_mid = 0.0;
+					double dist_mid = 0.0;
+
+					// 二分 / 线性插值求零点
+					int iter = 0;
+					const int max_iter = 50;
+					while ((t_up - t_low) > time_interval * 0.01 && iter < max_iter)
+					{
+						t_mid = 0.5 * (t_low + t_up);
+						f_mid = doppler_from_time(gx, gy, gz, t_mid, &dist_mid);
+
+						if (fabs(f_mid - dopplerFrequency) < 1e-4)
+							break;
+
+						if ((f_mid - dopplerFrequency) * (f_low - dopplerFrequency) > 0.0)
+						{
+							t_low = t_mid;
+							f_low = f_mid;
+						}
+						else
+						{
+							t_up = t_mid;
+							f_up = f_mid;
+						}
+						++iter;
+					}
+
+					double t_zero;
+					if (fabs(f_up - f_low) > 1e-12)
+						t_zero = t_low - f_low * (t_up - t_low) / (f_up - f_low);
+					else
+						t_zero = 0.5 * (t_low + t_up);
+
+					// 用最终 t_zero 再算一次真正斜距
+					double dist_zero = 0.0;
+					(void)doppler_from_time(gx, gy, gz, t_zero, &dist_zero);
+
+					t_ptr[jj] = t_zero;
+					r_ptr[jj] = dist_zero;
+
+					// 更新下一个像素的局部搜索初值
+					lastGuessIdx = (fabs(t_zero - orb_t[idx1]) < fabs(t_zero - orb_t[idx2])) ? idx1 : idx2;
+				}
+			}
+
+			// -----------------------------------------
+			// 写入 SLC
+			// 这一步保留串行，避免同一像素累加时写冲突
+			// -----------------------------------------
+			for (int ii = 0; ii < DEM_rows; ++ii)
+			{
+				const float* dem_ptr = dem_temp2.ptr<float>(ii);
+				const float* ang_ptr = randomAngle.ptr<float>(ii);
+				const float* nr_ptr = noise_real.ptr<float>(ii);
+				const float* ni_ptr = noise_imag.ptr<float>(ii);
+				const double* t_ptr = imaging_time.ptr<double>(ii);
+				const double* r_ptr = slant_range.ptr<double>(ii);
+
+				for (int jj = 0; jj < DEM_cols; ++jj)
+				{
+					double t_zero = t_ptr[jj];
+					double dist = r_ptr[jj];
+
+					if (!std::isfinite(t_zero) || !std::isfinite(dist))
+						continue;
+
+					int azimuthIndex = (int)floor((t_zero - acquisitionStartTime) / time_interval);
+					int rangeIndex = (int)floor((dist - nearRange) / rangeSpacing);
+
+					if (azimuthIndex < 0 || azimuthIndex >= sceneHeight ||
+						rangeIndex < 0 || rangeIndex >= sceneWidth)
+					{
+						continue;
+					}
+
+					double theta = -4.0 * PI_ * dist / wavelength + ang_ptr[jj];
+					float real_part = (float)(cos(theta) + nr_ptr[jj]);
+					float imag_part = (float)(sin(theta) + ni_ptr[jj]);
+
+					slc.re.at<float>(azimuthIndex, rangeIndex) += real_part;
+					slc.im.at<float>(azimuthIndex, rangeIndex) += imag_part;
+				}
+			}
+
+			// -----------------------------------------
+			// GCP
+			// 保留你的原始逻辑
+			// -----------------------------------------
+			if ((bi % 3 == 0) && (bj % 3 == 0) && bi != 0 && bj != 0)
+			{
+				int gcp_row = DEM_rows / 2;
+				int gcp_col = DEM_cols / 2;
+
+				double zeroDopplerTime = imaging_time.at<double>(gcp_row, gcp_col);
+				double distance = slant_range.at<double>(gcp_row, gcp_col);
+
+				if (std::isfinite(zeroDopplerTime) && std::isfinite(distance))
+				{
+					int azimuthIndex = (int)floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
+					int rangeIndex = (int)floor((distance - nearRange) / rangeSpacing);
+
+					if (azimuthIndex >= 0 && azimuthIndex < sceneHeight &&
+						rangeIndex >= 0 && rangeIndex < sceneWidth)
+					{
+						double lat_total = 0.0, lon_total = 0.0, height_total = 0.0, distance_total = 0.0;
+						int pixel_count = 0;
+
+						for (int ii = 0; ii < DEM_rows; ++ii)
+						{
+							const float* dem_ptr = dem_temp2.ptr<float>(ii);
+							const double* t_ptr = imaging_time.ptr<double>(ii);
+							const double* r_ptr = slant_range.ptr<double>(ii);
+
+							for (int jj = 0; jj < DEM_cols; ++jj)
+							{
+								double t_tmp = t_ptr[jj];
+								double d_tmp = r_ptr[jj];
+								if (!std::isfinite(t_tmp) || !std::isfinite(d_tmp))
+									continue;
+
+								int azimuthIndex_tmp = (int)floor((t_tmp - acquisitionStartTime) / time_interval);
+								int rangeIndex_tmp = (int)floor((d_tmp - nearRange) / rangeSpacing);
+
+								if (azimuthIndex_tmp == azimuthIndex && rangeIndex_tmp == (rangeIndex - 50))
+								{
+									double lat = lat_vec[ii];
+									double lon = lon_vec[jj];
+									double h = (double)dem_ptr[jj];
+
+									++pixel_count;
+									lon_total += lon;
+									lat_total += lat;
+									height_total += h;
+									distance_total += d_tmp;
+								}
+							}
+						}
+
+						if (pixel_count > 0)
+						{
+							lon_total /= (double)pixel_count;
+							lat_total /= (double)pixel_count;
+							height_total /= (double)pixel_count;
+							distance_total /= (double)pixel_count;
+
+							GCPs.push_back((double)(azimuthIndex + 1));
+							GCPs.push_back((double)(rangeIndex - 50 + 1));
+							GCPs.push_back(lon_total);
+							GCPs.push_back(lat_total);
+							GCPs.push_back(height_total);
+							GCPs.push_back(distance_total);
+							GCPs.push_back(distance_total);
+						}
+					}
+				}
+			}
+
+			printf("\rprocess %.2lf%%",
+				(double)(bi * num_block_col + bj + 1) / (double)(num_block_row * num_block_col) * 100.0);
+			fflush(stdout);
+		}
+	}
+
+	// -----------------------------
+	// 输出 GCP
+	// -----------------------------
+	int total_rows = (int)GCPs.size() / 7;
+	if (total_rows > 0)
+	{
+		GCP.create(total_rows, 7, CV_64F);
+		for (int i = 0; i < total_rows; ++i)
+		{
+			for (int j = 0; j < 7; ++j)
+				GCP.at<double>(i, j) = GCPs[i * 7 + j];
+		}
+	}
+	else
+	{
+		GCP.release();
+	}
+
 	return 0;
 }
 
@@ -616,9 +1405,14 @@ int SLC_simulator::generateSLC(
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
+	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
+	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
 	int interp_cell = 4;
 	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
 	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
+	//考虑DEM像素中心与边缘差值
+	lat_upperleft = lat_upperleft + 5.0 / 6000.0 / 2.0 - 5.0 / 6000.0 / (double)interp_times_row * 0.5;
+	lon_upperleft = lon_upperleft - 5.0 / 6000.0 / 2.0 + 5.0 / 6000.0 / (double)interp_times_col * 0.5;
 	double lon_spacing = lon_spacing_old / (double)interp_cell;
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
@@ -1193,9 +1987,14 @@ int SLC_simulator::generateSLC(
 
 	int interp_times_row = 90.0 / azimuthSpacing;
 	int interp_times_col = 90.0 / rangeSpacing;
+	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
+	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
 	int interp_cell = 4;
 	double lon_spacing_old = 5.0 / 6000.0 / (double)interp_times_col;
 	double lat_spacing_old = 5.0 / 6000.0 / (double)interp_times_row;
+	//考虑DEM像素中心与边缘差值
+	lat_upperleft = lat_upperleft + 5.0 / 6000.0 / 2.0 - 5.0 / 6000.0 / (double)interp_times_row * 0.5;
+	lon_upperleft = lon_upperleft - 5.0 / 6000.0 / 2.0 + 5.0 / 6000.0 / (double)interp_times_col * 0.5;
 	double lon_spacing = lon_spacing_old / (double)interp_cell;
 	double lat_spacing = lat_spacing_old / (double)interp_cell;
 	int rows = dem.rows * interp_times_row;
