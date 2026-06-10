@@ -37,11 +37,6 @@
 - [x] **`operator=` 返回值应为引用** — `ComplexMat.h:50`, `ComplexMat.cpp:342-347`
   - 当前签名为 `ComplexMat operator=(const ComplexMat&)`，应改为 `ComplexMat& operator=(const ComplexMat&)`
   - 禁止链式赋值 `a = b = c`，且产生不必要的临时对象
-- [x] **头文件中 `using namespace std` 污染全局命名空间** — `ComplexMat.h:11`
-  - 所有包含此头文件的翻译单元都被迫引入 `std` 命名空间
-  - 应改为显式使用 `std::complex` 等
-- [x] **头文件中 `using cv::Mat` 在全局作用域** — `ComplexMat.h:10`
-  - 同上，应改为在类内部或函数参数中使用完整限定名 `cv::Mat`
 - [x] **`countNonzero()` 硬编码 `double` 类型** — `ComplexMat.cpp:480-504`
   - 矩阵类型不是 CV_64F 时会读取错误数据，应根据 `type()` 分支处理
 - [x] **`sum()` 硬编码 `double` 类型** — `ComplexMat.cpp:349-400`
@@ -163,9 +158,6 @@
 - [x] **`GET_NEXT_LINE` 宏缩进误导** — `Utils.cpp:27-39`
   - `else` 分支缩进对齐错误，建议改为内联函数
   - 修复：统一 `else` 缩进为 4 空格，与 `if` 对齐
-- [x] **`using namespace std` 在 Utils.cpp 中** — `Utils.cpp:25`
-  - 虽在 .cpp 中影响较小，但仍不推荐
-  - 跳过：实际检查发现 Utils.cpp 中不存在 `using namespace std;`，仅有 `using namespace cv;`，原始记录有误
 
 ---
 
@@ -429,8 +421,9 @@
 - [ ] **`read_slc_from_TSXcos` 中 `malloc` 分配大块内存** — `FormatConversion.cpp:913`
   - 对大图像可能分配数百 MB，且逐像素处理效率低
   - 建议使用 GDAL RasterIO 直接读取到目标 Mat
-- [ ] **`GDALAllRegister`/`GDALDestroyDriverManager` 调用不当** — `FormatConversion.cpp:888,944`
+- [x] **`GDALAllRegister`/`GDALDestroyDriverManager` 调用不当** — `FormatConversion.cpp:888,944`
   - 每次调用都注册和销毁驱动管理器，应只调用一次
+  - 修复：在 FormatConversion.cpp 中引入 std::call_once 进行线程安全懒加载注册，并彻底移除了所有的 GDALDestroyDriverManager() 销毁调用。
 - [ ] **`BurstIndices::operator=` 返回值应为引用** — `FormatConversion.h:1129`
   - 且应检查自赋值
 

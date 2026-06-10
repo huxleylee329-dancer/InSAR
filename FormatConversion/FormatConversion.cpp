@@ -8,6 +8,14 @@
 static std::recursive_mutex g_h5_mutex;
 #define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex);
 
+static std::once_flag g_gdal_init_flag;
+static void InitializeGDALOnce()
+{
+	std::call_once(g_gdal_init_flag, [](){
+		GDALAllRegister();
+	});
+}
+
 //#include<atlconv.h>
 //#include<tchar.h>
 #include<urlmon.h>
@@ -1029,12 +1037,11 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		fprintf(stderr, "read_slc_from_TSXcos(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//注册已知驱动
+	InitializeGDALOnce();	//注册已知驱动
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//打开cos文件
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): failed to open %s!\n", filename);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
@@ -1049,7 +1056,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		{
 			fprintf(stderr, "read_slc_from_TSXcos(): band rows and cols error!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -1059,7 +1065,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		{
 			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -1085,13 +1090,11 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 			pbuf = NULL;
 		}
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 	}
 	else
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): number of Bands != 1\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	
@@ -10962,12 +10965,11 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 {
 	if (!filename) return -1;
-	GDALAllRegister();	//注册已知驱动
+	InitializeGDALOnce();	//注册已知驱动
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//打开geotiff文件
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "geotiffread(): failed to open %s!\n", filename);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int nBand = poDataset->GetRasterCount();	//获取波段数（geotiff应为1）
@@ -10982,7 +10984,6 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 		{
 			fprintf(stderr, "geotiffread(): band rows and cols error!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，geotiff应为16位整型
@@ -10992,7 +10993,6 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 		{
 			fprintf(stderr, "geotiffread(): out of memory!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -11005,13 +11005,11 @@ int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
 			pbuf = NULL;
 		}
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 	}
 	else
 	{
 		fprintf(stderr, "geotiffread(): number of Bands != 1\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int rows = outDEM.rows;
@@ -12591,12 +12589,11 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//注册已知驱动
+	InitializeGDALOnce();	//注册已知驱动
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
@@ -12610,7 +12607,6 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): band rows and cols error!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -12620,7 +12616,6 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -12642,7 +12637,6 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): band rows and cols error!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -12660,7 +12654,6 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		pbuf = NULL;
 	}
 	GDALClose(poDataset);
-	GDALDestroyDriverManager();
 
 	return 0;
 }
@@ -12865,12 +12858,11 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//注册已知驱动
+	InitializeGDALOnce();	//注册已知驱动
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
@@ -12884,7 +12876,6 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): band rows and cols error!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -12894,7 +12885,6 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -12916,7 +12906,6 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 	{
 		fprintf(stderr, "read_slc(): band rows and cols error!\n");
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -12934,7 +12923,6 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		pbuf = NULL;
 	}
 	GDALClose(poDataset);
-	GDALDestroyDriverManager();
 
 	return 0;
 }
@@ -13178,12 +13166,11 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	GDALAllRegister();	//注册已知驱动
+	InitializeGDALOnce();	//注册已知驱动
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
 	if (poDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
@@ -13199,7 +13186,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		{
 			fprintf(stderr, "read_slc(): band rows and cols error!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -13209,7 +13195,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		{
 			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -13228,7 +13213,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			pbuf = NULL;
 		}
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 	}
 	else
 	{
@@ -13242,7 +13226,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		{
 			fprintf(stderr, "read_slc(): band rows and cols error!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -13252,7 +13235,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		{
 			fprintf(stderr, "read_slc(): out of memory!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
@@ -13266,7 +13248,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 				slc.re.ptr<short>(i)[j] = pbuf[offset];
 				offset++;
 			}
-		//获取指向波段2的指针
+		//获取指向波段2 of 指针
 		poBand = poDataset->GetRasterBand(2);
 		xsize = poBand->GetXSize();		//cols
 		ysize = poBand->GetYSize();		//rows
@@ -13274,7 +13256,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		{
 			fprintf(stderr, "read_slc(): band rows and cols error!\n");
 			GDALClose(poDataset);
-			GDALDestroyDriverManager();
 			return -1;
 		}
 		dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
@@ -13292,7 +13273,6 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 			pbuf = NULL;
 		}
 		GDALClose(poDataset);
-		GDALDestroyDriverManager();
 	}
 	
 

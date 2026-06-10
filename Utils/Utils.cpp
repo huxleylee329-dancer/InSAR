@@ -1,5 +1,6 @@
 #include<complex.h>
 #include <atomic>
+#include <mutex>
 #include <omp.h>
 #include "stdafx.h"
 #include"..\include\Utils.h"
@@ -88,6 +89,15 @@ static void setupProjSearchPaths()
 	else {
 		fprintf(stderr, "警告: PROJ_DATA/PROJ_LIB 环境变量未设置，使用PROJ默认搜索路径\n");
 	}
+}
+
+static std::once_flag g_gdal_proj_init_flag;
+static void InitializeGDALAndProjOnce()
+{
+	std::call_once(g_gdal_proj_init_flag, [](){
+		GDALAllRegister();
+		setupProjSearchPaths();
+	});
 }
 
 Utils::Utils()
@@ -12940,7 +12950,7 @@ int Utils::geo_transformation(
 	DTM_mapped_Y = -1;
 	std::atomic<int> count(0);
 	//Mat mask = Mat::zeros(DTM_rows, DTM_cols, CV_8UC1);
-	setupProjSearchPaths();
+	InitializeGDALAndProjOnce();
 	OGRSpatialReference monUtm;
 	monUtm.SetWellKnownGeogCS("WGS84");
 	monUtm.SetUTM(22, 1);
@@ -13187,7 +13197,7 @@ int Utils::lonlat2utm(Mat lon, Mat lat, Mat& UTM_X, Mat& UTM_Y)
 		fprintf(stderr, "lonlat2utm(): input check failed!\n");
 		return -1;
 	}
-	setupProjSearchPaths();
+	InitializeGDALAndProjOnce();
 	OGRSpatialReference monUtm;
 	monUtm.SetWellKnownGeogCS("WGS84");
 	monUtm.SetUTM(22, true);
@@ -13337,7 +13347,7 @@ int Utils::geo2sar_DLR(
 	Mat lon, lat;
 	lon.create(4, 1, CV_64F); lon = 0.0; lon.copyTo(lat);
 	// removed unused: utm_x, utm_y (UTM coordinates computed inline via x/y variables)
-	setupProjSearchPaths();
+	InitializeGDALAndProjOnce();
 	OGRSpatialReference monUtm;
 	monUtm.SetWellKnownGeogCS("WGS84");
 	monUtm.SetUTM(abs(projection_zone), projection_zone>0);
@@ -13485,8 +13495,8 @@ int Utils::geo2sar_DLR(
 
 // 根据经纬度获取大地水准面高差
 double Utils::getGeoidHeight(const std::string& geoidFilePath, double lon, double lat) {
-	// 注册 GDAL 驱动
-	GDALAllRegister();
+	// 注册 GDAL/PROJ 驱动与路径
+	InitializeGDALAndProjOnce();
 
 	// 打开 Geoid 文件
 	GDALDataset* poDataset = (GDALDataset*)GDALOpen(geoidFilePath.c_str(), GA_ReadOnly);
