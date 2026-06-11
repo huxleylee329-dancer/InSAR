@@ -87,8 +87,8 @@ ComplexMat ComplexMat::operator*(const ComplexMat& b) const
 		this->GetCols() < 1 ||
 		b.GetRows() < 1 ||
 		b.GetCols() < 1 ||
-		(this->GetCols() != b.GetCols()) && b.GetCols() != 1 ||
-		(this->GetRows() != b.GetRows()) && b.GetRows() != 1 ||
+		((this->GetCols() != b.GetCols()) && (b.GetCols() != 1)) ||
+		((this->GetRows() != b.GetRows()) && (b.GetRows() != 1)) ||
 		this->type() != b.type())
 	{
 		fprintf(stderr, "ComplexMat::Mul(): input check failed!\n\n");
@@ -208,7 +208,22 @@ Mat ComplexMat::GetMod() const
 	return tmp;
 }
 
-Mat ComplexMat::GetPhase()
+namespace {
+template <typename T>
+void computePhase(int nr, int nc, const cv::Mat& re, const cv::Mat& im, cv::Mat& phase)
+{
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < nr; i++)
+	{
+		for (int j = 0; j < nc; j++)
+		{
+			phase.at<double>(i, j) = atan2(static_cast<double>(im.at<T>(i, j)), static_cast<double>(re.at<T>(i, j)));
+		}
+	}
+}
+}
+
+Mat ComplexMat::GetPhase() const
 {
 	int nr = this->GetRows();
 	int nc = this->GetCols();
@@ -219,47 +234,24 @@ Mat ComplexMat::GetPhase()
 	Mat phase(nr, nc, CV_64F);
 	if (this->type() == CV_64F)
 	{
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < nr; i++)
-		{
-			for (int j = 0; j < nc; j++)
-			{
-				phase.at <double>(i, j) = atan2(this->im.at<double>(i, j), this->re.at<double>(i, j));
-			}
-		}
+		computePhase<double>(nr, nc, this->re, this->im, phase);
 	}
 	else if (this->type() == CV_32F)
 	{
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < nr; i++)
-		{
-			for (int j = 0; j < nc; j++)
-			{
-				phase.at <double>(i, j) = atan2(this->im.at<float>(i, j), this->re.at<float>(i, j));
-			}
-		}
+		computePhase<float>(nr, nc, this->re, this->im, phase);
 	}
 	else if (this->type() == CV_32S)
 	{
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < nr; i++)
-		{
-			for (int j = 0; j < nc; j++)
-			{
-				phase.at <double>(i, j) = atan2((double)this->im.at<int>(i, j), (double)this->re.at<int>(i, j));
-			}
-		}
+		computePhase<int>(nr, nc, this->re, this->im, phase);
 	}
 	else if (this->type() == CV_16S)
 	{
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < nr; i++)
-		{
-			for (int j = 0; j < nc; j++)
-			{
-				phase.at <double>(i, j) = atan2((double)this->im.at<short>(i, j), (double)this->re.at<short>(i, j));
-			}
-		}
+		computePhase<short>(nr, nc, this->re, this->im, phase);
+	}
+	else
+	{
+		fprintf(stderr, "ComplexMat::GetPhase(): unsupported type %d\n", this->type());
+		return Mat();
 	}
 
 	return phase;
@@ -321,7 +313,7 @@ int ComplexMat::GetRows() const
 ComplexMat ComplexMat::operator+(const ComplexMat& b) const
 {
 	if (this->GetCols() != b.GetCols() ||
-		b.GetRows() != b.GetRows() ||
+		this->GetRows() != b.GetRows() ||
 		this->type() != b.type()||
 		this->GetCols() < 1||
 		this->GetRows() < 1
@@ -339,7 +331,7 @@ ComplexMat ComplexMat::operator+(const ComplexMat& b) const
 	return out;
 }
 
-ComplexMat ComplexMat::operator=(const ComplexMat& b)
+ComplexMat& ComplexMat::operator=(const ComplexMat& b)
 {
 	b.re.copyTo(this->re);
 	b.im.copyTo(this->im);
@@ -364,12 +356,29 @@ ComplexMat ComplexMat::sum(int dim) const
 #pragma omp parallel for schedule(guided)
 		for (int i = 0; i < nr; i++)
 		{
-			double tmp_re, tmp_im;
-			tmp_re = 0.0; tmp_im = 0.0;
+			double tmp_re = 0.0, tmp_im = 0.0;
 			for (int j = 0; j < nc; j++)
 			{
-				tmp_re += this->re.at<double>(i, j);
-				tmp_im += this->im.at<double>(i, j);
+				if (this->type() == CV_64F)
+				{
+					tmp_re += this->re.at<double>(i, j);
+					tmp_im += this->im.at<double>(i, j);
+				}
+				else if (this->type() == CV_32F)
+				{
+					tmp_re += this->re.at<float>(i, j);
+					tmp_im += this->im.at<float>(i, j);
+				}
+				else if (this->type() == CV_32S)
+				{
+					tmp_re += this->re.at<int>(i, j);
+					tmp_im += this->im.at<int>(i, j);
+				}
+				else if (this->type() == CV_16S)
+				{
+					tmp_re += this->re.at<short>(i, j);
+					tmp_im += this->im.at<short>(i, j);
+				}
 			}
 			re.at<double>(i, 0) = tmp_re;
 			im.at<double>(i, 0) = tmp_im;
@@ -383,12 +392,29 @@ ComplexMat ComplexMat::sum(int dim) const
 #pragma omp parallel for schedule(guided)
 		for (int j = 0; j < nc; j++)
 		{
-			double tmp_re, tmp_im;
-			tmp_re = 0.0; tmp_im = 0.0;
+			double tmp_re = 0.0, tmp_im = 0.0;
 			for (int i = 0; i < nr; i++)
 			{
-				tmp_re += this->re.at<double>(i, j);
-				tmp_im += this->im.at<double>(i, j);
+				if (this->type() == CV_64F)
+				{
+					tmp_re += this->re.at<double>(i, j);
+					tmp_im += this->im.at<double>(i, j);
+				}
+				else if (this->type() == CV_32F)
+				{
+					tmp_re += this->re.at<float>(i, j);
+					tmp_im += this->im.at<float>(i, j);
+				}
+				else if (this->type() == CV_32S)
+				{
+					tmp_re += this->re.at<int>(i, j);
+					tmp_im += this->im.at<int>(i, j);
+				}
+				else if (this->type() == CV_16S)
+				{
+					tmp_re += this->re.at<short>(i, j);
+					tmp_im += this->im.at<short>(i, j);
+				}
 			}
 			re.at<double>(0, j) = tmp_re;
 			im.at<double>(0, j) = tmp_im;
@@ -437,12 +463,8 @@ complex<double> ComplexMat::determinant() const
 ComplexMat ComplexMat::conj() const
 {
 	ComplexMat out;
-	Mat im, re;
-	this->re.copyTo(re);
-	this->im.copyTo(im);
-	im = -im;
-	out.SetRe(re);
-	out.SetIm(im);
+	out.re = this->re;
+	out.im = -this->im;
 	return out;
 }
 
@@ -490,15 +512,33 @@ int ComplexMat::countNonzero() const
 	int count = 0;
 	int nr = GetRows();
 	int nc = GetCols();
-	for (int i = 0; i < nr; i++)
+	if (this->type() == CV_64F)
 	{
-		for (int j = 0; j < nc; j++)
-		{
-			if (fabs(this->re.at<double>(i, j)) > DBL_EPSILON || fabs(this->im.at<double>(i, j)) > DBL_EPSILON)
-			{
-				count++;
-			}
-		}
+		for (int i = 0; i < nr; i++)
+			for (int j = 0; j < nc; j++)
+				if (fabs(this->re.at<double>(i, j)) > DBL_EPSILON || fabs(this->im.at<double>(i, j)) > DBL_EPSILON)
+					count++;
+	}
+	else if (this->type() == CV_32F)
+	{
+		for (int i = 0; i < nr; i++)
+			for (int j = 0; j < nc; j++)
+				if (fabs(this->re.at<float>(i, j)) > FLT_EPSILON || fabs(this->im.at<float>(i, j)) > FLT_EPSILON)
+					count++;
+	}
+	else if (this->type() == CV_32S)
+	{
+		for (int i = 0; i < nr; i++)
+			for (int j = 0; j < nc; j++)
+				if (this->re.at<int>(i, j) != 0 || this->im.at<int>(i, j) != 0)
+					count++;
+	}
+	else if (this->type() == CV_16S)
+	{
+		for (int i = 0; i < nr; i++)
+			for (int j = 0; j < nc; j++)
+				if (this->re.at<short>(i, j) != 0 || this->im.at<short>(i, j) != 0)
+					count++;
 	}
 	return count;
 }

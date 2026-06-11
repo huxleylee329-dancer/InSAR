@@ -323,7 +323,7 @@ public:
 	* @param inArray                           自变量序列
 	* @param vandermondeMatrix                 范德蒙矩阵
 	* @param degree                            阶数
-	* @return 成功返回-1，否则返回0
+	* @return 成功返回0，否则返回-1
 	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
@@ -334,6 +334,7 @@ public:
 	* @param A
 	* @param b
 	* @param x
+	* @return 成功返回0，否则返回-1
 	*/
 	static int ployFit(
 		Mat& A,

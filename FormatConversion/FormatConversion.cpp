@@ -8,13 +8,139 @@
 //#include<tchar.h>                                                                          
 #include<urlmon.h>                                                                           
 #pragma comment(lib,"URlmon")   
-                                              
-static std::once_flag g_gdal_init_flag;                                                      
+
+static std::recursive_mutex g_h5_mutex;
+#define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex);
+
+static std::once_flag g_gdal_init_flag;
 static void InitializeGDALOnce()                                                             
 {                                                                                            
 	std::call_once(g_gdal_init_flag, [](){
 		GDALAllRegister();
 	});
+}
+
+/**
+ * @brief 生成5阶范德蒙矩阵（用于TerraSAR-X和Sentinel-1坐标转换）
+ * 矩阵结构：[1, x, x², x³, x⁴, y, xy, x²y, x³y, x⁴y, y², xy², x²y², x³y², y³, xy³, x²y³, y⁴, xy⁴, y⁵]
+ * @param row               行坐标序列（已归一化）
+ * @param col               列坐标序列（已归一化）
+ * @param vandermondeMatrix 输出的范德蒙矩阵（N×25）
+ * @return 成功返回0，失败返回-1
+ */
+static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermondeMatrix)
+{
+	if (row.empty() || col.empty() || row.rows != col.rows)
+	{
+		fprintf(stderr, "createVandermondeMatrix(): input check failed!\n");
+		return -1;
+	}
+
+	int n = row.rows;
+	vandermondeMatrix = Mat::ones(n, 25, CV_64F);
+	Mat temp;
+
+	// 列索引与原始双四次多项式项对应如下：
+	// 0=1, 1=x, 2=x², 3=x³, 4=x⁴
+	// 5=y, 6=yx, 7=yx², 8=yx³, 9=yx⁴
+	// 10=y², 11=y²x, 12=y²x², 13=y²x³, 14=y²x⁴
+	// 15=y³, 16=y³x, 17=y³x², 18=y³x³, 19=y³x⁴
+	// 20=y⁴, 21=y⁴x, 22=y⁴x², 23=y⁴x³, 24=y⁴x⁴
+
+	// x 的幂次：x, x², x³, x⁴(第 1 到 4)
+	row.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(1, 2)));
+	temp = row.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(2, 3)));
+	temp = temp.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(3, 4)));
+	temp = temp.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(4, 5)));
+
+	// y * x^j (j=0..4) (第 5 到 9)
+	col.copyTo(temp);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5, 6)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5 + j, 6 + j)));
+	}
+
+	// y² * x^j (j=0..4) (第 10 到 14)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10, 11)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10 + j, 11 + j)));
+	}
+
+	// y³ * x^j (j=0..4) (第 15 到 19)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15, 16)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15 + j, 16 + j)));
+	}
+
+	// y⁴ * x^j (j=0..4) (第 20 到 24)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20, 21)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20 + j, 21 + j)));
+	}
+
+	return 0;
+}
+
+/**
+ * @brief 多项式拟合（最小二乘法）
+ * @param A           范德蒙矩阵
+ * @param b           目标值向量
+ * @param coefficient 输出的系数向量
+ * @param rms         输出的RMS误差（可选，传nullptr则不计算）
+ * @return 成功返回0，失败返回-1
+ */
+static int polyFit(const Mat& A, const Mat& b, Mat& coefficient, double* rms = nullptr)
+{
+	if (A.empty() || b.empty() || A.rows != b.rows)
+	{
+		fprintf(stderr, "polyFit(): input check failed!\n");
+		return -1;
+	}
+
+	Mat At, AtA, Atb;
+	cv::transpose(A, At);
+	AtA = At * A;
+	Atb = At * b;
+
+	if (!cv::solve(AtA, Atb, coefficient, cv::DECOMP_NORMAL))
+	{
+		fprintf(stderr, "polyFit(): solve failed!\n");
+		return -1;
+	}
+
+	// 计算 RMS
+	if (rms != nullptr)
+	{
+		Mat error, a, a_t, b_t;
+		A.copyTo(a);
+		cv::transpose(a, a_t);
+
+		*rms = -1.0;
+		if (cv::invert(AtA, error, cv::DECOMP_LU) > 0)
+		{
+			cv::transpose(b, b_t);
+			error = b_t * b - (b_t * a) * error * (a_t * b);
+			*rms = sqrt(error.at<double>(0, 0) / double(b.rows));
+		}
+	}
+
+	return 0;
 }
 
 #ifdef _DEBUG
@@ -242,6 +368,7 @@ int FormatConversion::utc2gps(const char* utc_time, double* gps_time)
 
 int FormatConversion::creat_new_h5(const char* filename)
 {
+	H5_LOCK;
 	if (filename == NULL)
 	{
 		fprintf(stderr, "creat_new_h5(): invalid filename!\n");
@@ -264,6 +391,7 @@ int FormatConversion::creat_new_h5(const char* filename)
 
 int FormatConversion::write_zero_array_to_h5(const char* filename, const char* dataset_name, int type, int rows, int cols)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		(type != CV_64F && type != CV_16S && type != CV_32S && type != CV_32F && type != CV_8U)
@@ -337,6 +465,7 @@ int FormatConversion::write_zero_array_to_h5(const char* filename, const char* d
 
 int FormatConversion::write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		input_array.empty() ||
@@ -435,6 +564,7 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 
 int FormatConversion::write_double_to_h5(const char* h5File, const char* datasetName, double data)
 {
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "write_double_to_h5(): input check failed!\n");
@@ -449,6 +579,7 @@ int FormatConversion::write_double_to_h5(const char* h5File, const char* dataset
 
 int FormatConversion::write_int_to_h5(const char* h5File, const char* datasetName, int data)
 {
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "write_double_to_h5(): input check failed!\n");
@@ -463,6 +594,7 @@ int FormatConversion::write_int_to_h5(const char* h5File, const char* datasetNam
 
 int FormatConversion::read_array_from_h5(const char* filename, const char* dataset_name, Mat& out_array)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL
 		)
@@ -535,6 +667,7 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 
 int FormatConversion::read_double_from_h5(const char* h5File, const char* datasetName, double* data)
 {
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "read_double_from_h5(): input check failed!\n");
@@ -550,6 +683,7 @@ int FormatConversion::read_double_from_h5(const char* h5File, const char* datase
 
 int FormatConversion::read_int_from_h5(const char* h5File, const char* datasetName, int* data)
 {
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "read_int_from_h5(): input check failed!\n");
@@ -565,6 +699,7 @@ int FormatConversion::read_int_from_h5(const char* h5File, const char* datasetNa
 
 int FormatConversion::read_subarray_from_h5(const char* filename, const char* dataset_name, int offset_row, int offset_col, int rows_subarray, int cols_subarray, Mat& out_array)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		offset_row < 0 ||
@@ -670,6 +805,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 	{
 
 	}
+	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
 	H5Sclose(dataspace_id);
@@ -679,6 +815,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 
 int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* dataset_name, Mat& subarray, int offset_row, int offset_col, int rows_subarray, int cols_subarray)
 {
+	H5_LOCK;
 	if (h5_filename == NULL ||
 		dataset_name == NULL ||
 		offset_row < 0 ||
@@ -827,6 +964,7 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 	{
 
 	}
+	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
 	H5Sclose(dataspace_id);
@@ -836,6 +974,7 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 
 int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_name, const char* Str)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL||
 		Str == NULL
@@ -906,6 +1045,7 @@ int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_
 
 int FormatConversion::read_str_from_h5(const char* filename, const char* dataset_name, string& Str)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL
 		)
@@ -963,6 +1103,7 @@ int FormatConversion::read_str_from_h5(const char* filename, const char* dataset
 
 int FormatConversion::write_slc_to_h5(const char* filename, const ComplexMat& slc)
 {
+	H5_LOCK;
 	if (filename == NULL ||
 		slc.isempty()/*||
 		slc.type() != CV_64F*/
@@ -981,6 +1122,7 @@ int FormatConversion::write_slc_to_h5(const char* filename, const ComplexMat& sl
 
 int FormatConversion::read_slc_from_h5(const char* filename, ComplexMat& slc)
 {
+	H5_LOCK;
 	if (filename == NULL)
 	{
 		fprintf(stderr, "read_slc_from_h5(): input check failed!\n");
@@ -1002,13 +1144,12 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		return -1;
 	}
 
-	GDALAllRegister();   /* 注册驱动 */
+	InitializeGDALOnce();   /* 注册驱动 */
 
 	GDALDatasetH hDataset = GDALOpen(filename, GA_ReadOnly);
 	if (hDataset == NULL)
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): failed to open %s!\n", filename);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1017,7 +1158,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): number of Bands != 1\n");
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1027,7 +1167,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): failed to get band 1\n");
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1038,7 +1177,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): band rows and cols error!\n");
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1047,7 +1185,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): unexpected data type\n");
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1057,7 +1194,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1075,7 +1211,6 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		fprintf(stderr, "read_slc_from_TSXcos(): RasterIO failed\n");
 		free(pbuf);
 		GDALClose(hDataset);
-		GDALDestroyDriverManager();
 		return -1;
 	}
 
@@ -1101,18 +1236,19 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	pbuf = NULL;
 
 	GDALClose(hDataset);
-	GDALDestroyDriverManager();
 
 	return 0;
 }
 
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename)
 {
+	H5_LOCK;
 	return TSX2h5(cosar_filename, xml_filename, GEOREF_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (cosar_filename == NULL ||
 		xml_filename == NULL ||
 		GEOREF_filename == NULL ||
@@ -1189,197 +1325,44 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
 	report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数");
-	//拟合经度
-
-	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
+	// 生成5阶范德蒙矩阵
+	Mat A, temp, coefficient;
 	double rms;
-	//eye = Mat::zeros(lon.rows, lon.rows, CV_64F);
-	//for (int i = 0; i < lon.rows; i++)
-	//{
-	//	eye.at<double>(i, i) = 1.0;
-	//}
-	lon.copyTo(b);
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
+	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
+	// 拟合经度
+	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lon;
+	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
+	temp.at<double>(0, 2) = double(rows) * 0.5;
+	temp.at<double>(0, 3) = double(rows) + 1e-10;
+	temp.at<double>(0, 4) = double(cols) * 0.5;
+	temp.at<double>(0, 5) = double(cols) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		/*error = b_t * (eye - a * error * a_t) * b;*/
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lon;
-		temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
-		temp.at<double>(0, 2) = double(rows) * 0.5;
-		temp.at<double>(0, 3) = double(rows) + 1e-10;
-		temp.at<double>(0, 4) = double(cols) * 0.5;
-		temp.at<double>(0, 5) = double(cols) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
-		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	}
-
-	//拟合纬度
-
-	lat.copyTo(b);
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
-
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lat;
-		temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
-		temp.at<double>(0, 2) = double(rows) * 0.5;
-		temp.at<double>(0, 3) = double(rows) + 1e-10;
-		temp.at<double>(0, 4) = double(cols) * 0.5;
-		temp.at<double>(0, 5) = double(cols) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
-		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	}
+	// 拟合纬度
+	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lat;
+	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
+	temp.at<double>(0, 2) = double(rows) * 0.5;
+	temp.at<double>(0, 3) = double(rows) + 1e-10;
+	temp.at<double>(0, 4) = double(cols) * 0.5;
+	temp.at<double>(0, 5) = double(cols) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	//拟合下视角
 
+	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
 	col.copyTo(A(cv::Range(0, inc.rows), cv::Range(1, 2)));
@@ -1800,11 +1783,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename)
 {
+	H5_LOCK;
 	return TSX2h5(xml_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
 	{
@@ -1845,11 +1830,13 @@ int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filena
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization)
 {
+	H5_LOCK;
 	return TSX2h5(xml_filename, dst_h5_filename, polarization, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
 	{
@@ -2282,11 +2269,13 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 
 int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file)
 {
+	H5_LOCK;
 	return sentinel2h5(tiff_filename, xml_filename, dst_h5_filename, POD_file, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (tiff_filename == NULL ||
 		xml_filename == NULL ||
 		dst_h5_filename == NULL
@@ -2374,198 +2363,44 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinel行列起点为0，+1统一为1.
 	col = (col + 1 - double(cols) * 0.5) / (double(cols) + 1e-10);
 	
-	//拟合经度
-
-	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
+	// 生成5阶范德蒙矩阵
+	Mat A, temp, coefficient;
 	double rms;
-	/*eye = Mat::zeros(lon.rows, lon.rows, CV_64F);
-	for (int i = 0; i < lon.rows; i++)
-	{
-		eye.at<double>(i, i) = 1.0;
-	}*/
-	lon.copyTo(b);
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
+	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
+	// 拟合经度
+	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lon;
+	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
+	temp.at<double>(0, 2) = double(rows) * 0.5;
+	temp.at<double>(0, 3) = double(rows) + 1e-10;
+	temp.at<double>(0, 4) = double(cols) * 0.5;
+	temp.at<double>(0, 5) = double(cols) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lon;
-		temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
-		temp.at<double>(0, 2) = double(rows) * 0.5;
-		temp.at<double>(0, 3) = double(rows) + 1e-10;
-		temp.at<double>(0, 4) = double(cols) * 0.5;
-		temp.at<double>(0, 5) = double(cols) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
-		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	}
-
-	//拟合纬度
-
-	lat.copyTo(b);
-
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
-
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lat;
-		temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
-		temp.at<double>(0, 2) = double(rows) * 0.5;
-		temp.at<double>(0, 3) = double(rows) + 1e-10;
-		temp.at<double>(0, 4) = double(cols) * 0.5;
-		temp.at<double>(0, 5) = double(cols) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
-		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	}
+	// 拟合纬度
+	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lat;
+	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
+	temp.at<double>(0, 2) = double(rows) * 0.5;
+	temp.at<double>(0, 3) = double(rows) + 1e-10;
+	temp.at<double>(0, 4) = double(cols) * 0.5;
+	temp.at<double>(0, 5) = double(cols) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	//拟合下视角
 
+	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
 	col.copyTo(A(cv::Range(0, inc.rows), cv::Range(1, 2)));
@@ -2964,6 +2799,7 @@ int FormatConversion::import_sentinel(
 	const char* PODFile
 )
 {
+	H5_LOCK;
 	return import_sentinel(manifest, subswath_name, polarization, dest_h5_file, PODFile, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
@@ -2977,6 +2813,7 @@ int FormatConversion::import_sentinel(
 	void* userData
 )
 {
+	H5_LOCK;
 	if (manifest == NULL ||
 		subswath_name == NULL ||
 		polarization == NULL ||
@@ -3835,11 +3672,13 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 
 int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5)
 {
+	H5_LOCK;
 	return ALOS2h5(IMG_file, LED_file, dst_h5, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (IMG_file == NULL ||
 		LED_file == NULL ||
 		dst_h5 == NULL)
@@ -8075,6 +7914,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 
 int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char* Output_file)
 {
+	H5_LOCK;
 	if (Input_file == NULL ||
 		Output_file == NULL)
 	{
@@ -8189,28 +8029,28 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 	///*列偏移量*/
 	//if (!read_array_from_h5(Input_file, "offset_col", tmp_mat))
 	//	write_array_to_h5(Output_file, "offset_col", tmp_mat);
-	/*最近斜距*/
+	/*左上角经度*/
 	if (!read_array_from_h5(Input_file, "topLeftLon", tmp_mat))
 		write_array_to_h5(Output_file, "topLeftLon", tmp_mat);
-	/*最近斜距*/
+	/*左上角纬度*/
 	if (!read_array_from_h5(Input_file, "topLeftLat", tmp_mat))
 		write_array_to_h5(Output_file, "topLeftLat", tmp_mat);
-	/*最近斜距*/
+	/*右上角经度*/
 	if (!read_array_from_h5(Input_file, "topRightLon", tmp_mat))
 		write_array_to_h5(Output_file, "topRightLon", tmp_mat);
-	/*最近斜距*/
+	/*右上角纬度*/
 	if (!read_array_from_h5(Input_file, "topRightLat", tmp_mat))
 		write_array_to_h5(Output_file, "topRightLat", tmp_mat);
-	/*最近斜距*/
+	/*左下角经度*/
 	if (!read_array_from_h5(Input_file, "bottomLeftLon", tmp_mat))
 		write_array_to_h5(Output_file, "bottomLeftLon", tmp_mat);
-	/*最近斜距*/
+	/*左下角纬度*/
 	if (!read_array_from_h5(Input_file, "bottomLeftLat", tmp_mat))
 		write_array_to_h5(Output_file, "bottomLeftLat", tmp_mat);
-	/*最近斜距*/
+	/*右下角经度*/
 	if (!read_array_from_h5(Input_file, "bottomRightLon", tmp_mat))
 		write_array_to_h5(Output_file, "bottomRightLon", tmp_mat);
-	/*最近斜距*/
+	/*右下角纬度*/
 	if (!read_array_from_h5(Input_file, "bottomRightLat", tmp_mat))
 		write_array_to_h5(Output_file, "bottomRightLat", tmp_mat);
 	/*收发模式*/
@@ -8231,6 +8071,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 	Mat& quality_index
 )
 {
+	H5_LOCK;
 	if (!gedi_h5_file)
 	{
 		fprintf(stderr, "read_height_metric_from_GEDI_L2B(): input check failed!\n");
@@ -8307,7 +8148,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		zg_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zg_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zg_tmp.data);
 		if (status < 0)
@@ -8339,7 +8180,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		zt_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zt_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zt_tmp.data);
 		if (status < 0)
@@ -8371,7 +8212,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
@@ -8403,7 +8244,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
@@ -8435,7 +8276,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
@@ -8467,7 +8308,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
@@ -8514,6 +8355,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 
 int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile)
 {
+	H5_LOCK;
 	if (!gedi_h5_file || rh_percentile < 1 || rh_percentile > 100)
 	{
 		fprintf(stderr, "read_height_metric_from_GEDI_L2A(): input check failed!\n");
@@ -8590,7 +8432,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
@@ -8622,7 +8464,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
@@ -8654,7 +8496,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
@@ -8686,7 +8528,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
@@ -8728,6 +8570,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 
 int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile)
 {
+	H5_LOCK;
 	if (!ICESat_2_h5_file || rh_percentile < 1 || rh_percentile > 18)
 	{
 		fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): input check failed!\n");
@@ -8802,7 +8645,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
@@ -8834,7 +8677,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
@@ -8866,7 +8709,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
@@ -8898,7 +8741,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
@@ -9627,191 +9470,42 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinel行列起点为0，+1统一为1.
 	col = (col + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);
 
-	//拟合经度
-
-	Mat A, B, b, temp, coefficient, error, eye, b_t, a, a_t;
+	// 生成5阶范德蒙矩阵
+	Mat A, temp, coefficient;
 	double rms;
-	lon.copyTo(b);
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
+	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
+	// 拟合经度
+	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lon;
+	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
+	temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
+	temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
+	temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	temp.copyTo(lon_coefficient);
 
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lon;
-		temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
-		temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
-		temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
-		temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
-		temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		temp.copyTo(lon_coefficient);
-	}
-
-	//拟合纬度
-
-	lat.copyTo(b);
-
-	A = Mat::ones(lon.rows, 25, CV_64F);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(4, 5)));
-
-	col.copyTo(temp);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(5, 6)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(6, 7)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(7, 8)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(8, 9)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(9, 10)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(10, 11)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(11, 12)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(12, 13)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(13, 14)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(14, 15)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(15, 16)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(16, 17)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(17, 18)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(18, 19)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(19, 20)));
-
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(20, 21)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(21, 22)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(22, 23)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(23, 24)));
-	temp = temp.mul(row);
-	temp.copyTo(A(cv::Range(0, lon.rows), cv::Range(24, 25)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = mean_lat;
-		temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
-		temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
-		temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
-		temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
-		temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
-		temp.at<double>(0, 31) = rms;
-		cv::transpose(coefficient, coefficient);
-		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		temp.copyTo(lat_coefficient);
-	}
+	// 拟合纬度
+	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	temp.create(1, 32, CV_64F);
+	temp.at<double>(0, 0) = mean_lat;
+	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
+	temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
+	temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
+	temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 31) = rms;
+	cv::transpose(coefficient, coefficient);
+	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
+	temp.copyTo(lat_coefficient);
 
 	//拟合下视角
 
+	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
 	col.copyTo(A(cv::Range(0, inc.rows), cv::Range(1, 2)));
@@ -10280,6 +9974,7 @@ int Sentinel1Reader::getSLC(ComplexMat& slc)
 
 int Sentinel1Reader::writeToh5(const char* h5File)
 {
+	H5_LOCK;
 	int ret;
 	if (!h5File || !bXmlLoad)
 	{
@@ -13013,6 +12708,7 @@ CSK_reader::~CSK_reader()
 
 int CSK_reader::init()
 {
+	H5_LOCK;
 	if (b_initialized) return 0;
 	if (csk_data_file.empty())
 	{
@@ -13031,6 +12727,7 @@ int CSK_reader::init()
 
 int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 {
+	H5_LOCK;
 	if (CSK_data_file == NULL
 		)
 	{
@@ -13109,6 +12806,7 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 
 int CSK_reader::read_data(const char* CSK_data_file)
 {
+	H5_LOCK;
 	if (!CSK_data_file)
 	{
 		fprintf(stderr, "read_data(): input check failed!\n");
@@ -13392,6 +13090,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 
 int CSK_reader::write_to_h5(const char* dst_h5)
 {
+	H5_LOCK;
 	if (!dst_h5)
 	{
 		fprintf(stderr, "write_meta_data(): input check failed!\n");
@@ -13444,6 +13143,7 @@ int CSK_reader::write_to_h5(const char* dst_h5)
 
 int CSK_reader::get_str_attribute(hid_t object_id, const char* attribute_name, string& attribute_value)
 {
+	H5_LOCK;
 	if (!attribute_name)
 	{
 		fprintf(stderr, "get_str_attribute(): input check failed!\n");
@@ -13479,6 +13179,7 @@ int CSK_reader::get_str_attribute(hid_t object_id, const char* attribute_name, s
 
 int CSK_reader::get_array_attribute(hid_t object_id, const char* attribute_name, Mat& out_array)
 {
+	H5_LOCK;
 	if (!attribute_name)
 	{
 		fprintf(stderr, "get_str_attribute(): input check failed!\n");
@@ -13571,7 +13272,7 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		return -1;
 	}
 
-	GDALAllRegister();
+	InitializeGDALOnce();
 
 	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -13910,7 +13611,7 @@ int AIRSAT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		return -1;
 	}
 
-	GDALAllRegister();
+	InitializeGDALOnce();
 
 	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -14291,7 +13992,7 @@ int Biomass1A_reader::read_slc(
 	else if (this->polarization == "HV") ix = 2;
 	else if (this->polarization == "VH") ix = 3;
 	else  ix = 4;
-	GDALAllRegister();
+	InitializeGDALOnce();
 
 	/* ===================== 读取幅度 ===================== */
 	GDALDatasetH hDS_amp = GDALOpen(amp_file, GA_ReadOnly);
@@ -14628,7 +14329,7 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		return -1;
 	}
 
-	GDALAllRegister();
+	InitializeGDALOnce();
 
 	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -15165,7 +14866,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		return -1;
 	}
 
-	GDALAllRegister();
+	InitializeGDALOnce();
 
 	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
 	if (hDataset == NULL)

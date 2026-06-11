@@ -48,7 +48,7 @@ public:
 		const char* node_path,
 		const char* sensor = "unknown"
 	);
-	/*@brief 添加导入原始数据节点(14_project)
+	/** @brief 添加导入原始数据节点(14_project)
 	* @param datanode_node  节点名
 	* @param node_name      图像名
 	* @param node_path      图像路径
@@ -162,7 +162,7 @@ public:
 		const char* temporal_baseline, const char* B_effect, const char* B_parallel
 	);
 
-	/*@brief 添加后向地理编码配准节点
+	/** @brief 添加后向地理编码配准节点
 	* @param dataNode            配准图像数据节点名
 	* @param dataName            配准图像数据名
 	* @param dataPath            配准图像数据储存路径（相对路径）
@@ -175,7 +175,7 @@ public:
 		const char* dataPath,
 		int masterIndex
 	);
-	/*@brief 添加单视复图像去参考相位节点
+	/** @brief 添加单视复图像去参考相位节点
 	* @param dataNode            配准图像数据节点名
 	* @param dataName            配准图像数据名
 	* @param dataPath            配准图像数据储存路径（相对路径）
@@ -189,7 +189,7 @@ public:
 		int masterIndex
 	);
 
-	/*@brief 添加单视复图像去参考相位节点
+	/** @brief 添加单视复图像去参考相位节点
 	* @param mode                收发模式（1：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
 	* @param dataNode            配准图像数据节点名
 	* @param dataName            配准图像数据名
@@ -205,7 +205,7 @@ public:
 		int masterIndex
 	);
 
-	/*@brief 添加小基线集时间序列分析节点
+	/** @brief 添加小基线集时间序列分析节点
 	* @param dataNode            SBAS时间序列分析数据节点名
 	* @param dataName            SBAS时间序列分析数据名
 	* @param dataPath            SBAS时间序列分析图像数据储存路径（相对路径）
@@ -216,7 +216,7 @@ public:
 		const char* dataName,
 		const char* dataPath
 	);
-	/*@brief 添加哨兵一号burst拼接节点
+	/** @brief 添加哨兵一号burst拼接节点
 	* @param dataNode            deburst图像数据节点名
 	* @param dataName            deburst图像数据名
 	* @param dataPath            deburst图像数据储存路径（相对路径）
@@ -227,7 +227,7 @@ public:
 		const char* dataName,
 		const char* dataPath
 	);
-	/*@brief 添加地理编码节点
+	/** @brief 添加地理编码节点
 	* @param dataNode            地理编码图像数据节点名
 	* @param dataName            地理编码图像数据名
 	* @param dataPath            地理编码图像数据储存路径（相对路径）
@@ -241,7 +241,7 @@ public:
 		const char* level
 	);
 
-	/*@brief 添加干涉相位生成节点
+	/** @brief 添加干涉相位生成节点
 	* @param datanode_node                 干涉相位图像节点名
 	* @param node_name                     干涉相位图像名
 	* @param node_path                     干涉相位图像路径
@@ -628,7 +628,7 @@ public:
 	@param filename     文件名
 	*/
 	int creat_new_h5(const char* filename);
-	/*@brief 功能：向h5文件中写入零矩阵
+	/** @brief 功能：向h5文件中写入零矩阵
 	* @param filename                文件名
 	* @param dataset_name            dataset名
 	* @param type                    数据类型（CV_8U/CV_16S/CV_32S/CV_32F/CV_64F）
@@ -644,7 +644,7 @@ public:
 	* 参数3 待写入矩阵
 	*/
 	int write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array);
-	/*@brief 向h5文件中写入double类型数
+	/** @brief 向h5文件中写入double类型数
 	* @param h5File                     h5文件
 	* @param datasetName                数据名
 	* @param data                       double型数据
@@ -655,7 +655,7 @@ public:
 		const char* datasetName,
 		double data
 	);
-	/*@brief 向h5文件中写入int类型数
+	/** @brief 向h5文件中写入int类型数
 	* @param h5File                     h5文件
 	* @param datasetName                数据名
 	* @param data                       double型数据
@@ -673,7 +673,7 @@ public:
 	* 参数3：输出矩阵
 	*/
 	int read_array_from_h5(const char* filename, const char* dataset_name, Mat& out_array);
-	/*@brief 从h5文件中读出double数据
+	/** @brief 从h5文件中读出double数据
 	* @param h5File                      h5文件
 	* @param datasetName                 数据名
 	* @param data                        数据
@@ -684,7 +684,7 @@ public:
 		const char* datasetName,
 		double* data
 	);
-	/*@brief 从h5文件中读出int数据
+	/** @brief 从h5文件中读出int数据
 	* @param h5File                      h5文件
 	* @param datasetName                 数据名
 	* @param data                        数据
@@ -1063,7 +1063,7 @@ public:
 
 
 
-	/*@brief 经/纬/高 ---> x/y/z
+	/** @brief 经/纬/高 ---> x/y/z
 	* @param lon                 经度
 	* @param lat                 纬度
 	* @param elevation           高度
@@ -1079,28 +1079,29 @@ public:
 	@return 成功返回0，否则返回-1
 	*/
 	int phase2cos(const Mat& phase, Mat& cos, Mat& sin);
-	/*@brief 生成范德蒙矩阵
+	/** @brief 生成范德蒙矩阵
 	* @param inArray                           自变量序列
 	* @param vandermondeMatrix                 范德蒙矩阵
 	* @param degree                            阶数
-	* @return 成功返回-1，否则返回0
+	* @return 成功返回0，否则返回-1
 	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
 		Mat& vandermondeMatrix,
 		int degree
 	);
-	/*@brief 多项式拟合（Ax=b）
+	/** @brief 多项式拟合（Ax=b）
 	* @param A
 	* @param b
 	* @param x
+	* @return 成功返回0，否则返回-1
 	*/
 	static int ployFit(
 		Mat& A,
 		Mat& b,
 		Mat& x
 	);
-	/*@brief polyVal
+	/** @brief polyVal
 	* @param coefficient
 	* @param x
 	* @param val
@@ -1166,7 +1167,7 @@ class InSAR_API DigitalElevationModel
 public:
 	DigitalElevationModel();
 	~DigitalElevationModel();
-	/*@brief 计算SRTM高程文件名
+	/** @brief 计算SRTM高程文件名
 	* @param lonMin                       最小经度
 	* @param lonMax                       最大经度
 	* @param latMin                       最小纬度
@@ -1181,12 +1182,12 @@ public:
 		double latMax,
 		vector<string>& name
 	);
-	/*@brief 下载SRTM高程数据
+	/** @brief 下载SRTM高程数据
 	* @param name                         文件名
 	* @return 成功返回0，否则返回-1
 	*/
 	int downloadSRTM(const char* name);
-	/*@brief 获取数字高程模型
+	/** @brief 获取数字高程模型
 	* @param filepath                     文件路径
 	* @param lonMin                       最小经度
 	* @param lonMax                       最大经度
@@ -1201,7 +1202,7 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief 根据经纬度获取高程(平均插值法)
+	/** @brief 根据经纬度获取高程(平均插值法)
 	* @param lon                          经度
 	* @param lat                          纬度
 	* @param elevation                    高度
@@ -1212,7 +1213,7 @@ public:
 		double lat,
 		double* elevation
 	);
-	/*@brief 读取SRTM中的geotiff高程数据
+	/** @brief 读取SRTM中的geotiff高程数据
 	* @param geotiffFile                  geotiff文件
 	* @param outDEM                       读出的DEM数据
 	* @return 成功返回0，否则返回-1
@@ -1221,7 +1222,7 @@ public:
 		const char* geotiffFile,
 		Mat& outDEM
 	);
-	/*@brief 解压文件到指定文件夹
+	/** @brief 解压文件到指定文件夹
 	* @param srcFile                      待解压压缩文件
 	* @param dstPath                      目标文件夹
 	* @return 成功返回0，否则返回-1
@@ -1267,39 +1268,39 @@ public:
 	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime);
 	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime, double delta_time);
 	~orbitStateVectors();
-	/*@brief 设置场景拍摄起始终止时间
+	/** @brief 设置场景拍摄起始终止时间
 	* @param startTime
 	* @param stopTime
 	* @return 成功返回0，否则返回-1
 	*/
 	int setSceneStartStopTime(double startTime, double stopTime);
-	/*@brief 获取拍摄起始时刻
+	/** @brief 获取拍摄起始时刻
 	* @return 返回拍摄起始时刻
 	*/
 	double get_start_time();
-	/*@brief 获取拍摄结束时刻
+	/** @brief 获取拍摄结束时刻
 	* @return 返回拍摄结束时刻
 	*/
 	double get_stop_time();
-	/*@brief 获取卫星三维位置信息（拉格朗日插值）
+	/** @brief 获取卫星三维位置信息（拉格朗日插值）
 	* @param azimuthTime                   方位向时间
 	* @param position                      卫星三维位置
 	* @return 成功返回0，否则返回-1
 	*/
 	int getPosition(double azimuthTime, Position& position);
-	/*@brief 获取卫星三维速度信息（拉格朗日插值）
+	/** @brief 获取卫星三维速度信息（拉格朗日插值）
 	* @param azimuthTime                   方位向时间
 	* @param velocity                      卫星三维速度
 	* @return 成功返回0，否则返回-1
 	*/
 	int getVelocity(double azimuthTime, Velocity& velocity);
-	/*@brief 根据方位向时间获取statevector（多项式插值）
+	/** @brief 根据方位向时间获取statevector（多项式插值）
 	* @param time                          方位向时间
 	* @param osv                           轨道信息
 	* @return 成功返回0，否则返回-1
 	*/
 	int getOrbitData(double time, OSV* osv);
-	/*@brief 更新轨道信息
+	/** @brief 更新轨道信息
 	* @return 成功返回0，否则返回-1
 	*/
 	int applyOrbit();
@@ -1327,13 +1328,13 @@ class InSAR_API CSK_reader
 public:
 	CSK_reader(const char* csk_data_file);
 	~CSK_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @param csk_data_file                    COSMO-SkyMed源hdf5数据文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
 	
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1343,14 +1344,14 @@ public:
 
 private:
 
-	/*@brief 从COSMO-SkyMed源hdf5数据L1A产品中读取数据
+	/** @brief 从COSMO-SkyMed源hdf5数据L1A产品中读取数据
 	* @param CSK_data_file                    COSMO-SkyMed源hdf5数据文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int read_data(
 		const char* CSK_data_file
 	);
-	/*@brief 从COSMO-SkyMed源hdf5数据L1A产品中读取单视复图像
+	/** @brief 从COSMO-SkyMed源hdf5数据L1A产品中读取单视复图像
 	* @param CSK_data_file                    COSMO-SkyMed源hdf5数据文件
 	* @param slc                              读出的单视复数据矩阵
 	* @return 成功返回0，否则返回-1
@@ -1360,7 +1361,7 @@ private:
 		const char* CSK_data_file,
 		ComplexMat& slc
 	);
-	/*@brief 从hdf5文件读取string类型属性
+	/** @brief 从hdf5文件读取string类型属性
 	* @param object_id                       相应的object
 	* @param attribute_name                  string属性名
 	* @param attribute_value                 string属性值（返回值）
@@ -1371,7 +1372,7 @@ private:
 		const char* attribute_name,
 		string& attribute_value
 	);
-	/*@brief 从hdf5文件读取数组类型属性
+	/** @brief 从hdf5文件读取数组类型属性
 	* @param object_id                       相应的object
 	* @param attribute_name                  属性名
 	* @param attribute_value                 属性值（返回值）
@@ -1413,12 +1414,12 @@ class InSAR_API HTHT_reader
 public:
 	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0为单星模式,mode=1为多星干涉模式
 	~HTHT_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
 
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1428,7 +1429,7 @@ public:
 
 private:
 
-	/*@brief 从宏图L1产品中读取数据
+	/** @brief 从宏图L1产品中读取数据
 	@param xml_file                    宏图xml数据文件（.xml）
 	@param data_file                   宏图xml数据文件（.tiff）
 	@return 成功返回0，否则返回-1
@@ -1437,7 +1438,7 @@ private:
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief 从宏图数据L1产品中读取单视复图像
+	/** @brief 从宏图数据L1产品中读取单视复图像
 	* @param data_file                        宏图图像数据文件（.tiff）
 	* @param slc                              读出的单视复数据矩阵
 	* @return 成功返回0，否则返回-1
@@ -1478,12 +1479,12 @@ class InSAR_API AIRSAT_reader
 public:
 	AIRSAT_reader(const char* data_file, const char* xml_file);
 	~AIRSAT_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
 
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1493,14 +1494,14 @@ public:
 
 private:
 
-	/*@brief 时间戳转换（UTC2GPS）
+	/** @brief 时间戳转换（UTC2GPS）
 	* @param utc_time                  UTC时间戳  
 	* @param gps_time                  GPS时间
 	* @return 成功返回0，否则返回-1
 	*/
 	int UTC2GPS(const char* utc_time, double* gps_time);
 
-	/*@brief 从L1产品中读取数据
+	/** @brief 从L1产品中读取数据
 	@param xml_file                    xml数据文件（.xml）
 	@param data_file                   xml数据文件（.tiff）
 	@return 成功返回0，否则返回-1
@@ -1509,7 +1510,7 @@ private:
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief 从L1产品中读取单视复图像
+	/** @brief 从L1产品中读取单视复图像
 	* @param data_file                        图像数据文件（.tiff）
 	* @param slc                              读出的单视复数据矩阵
 	* @return 成功返回0，否则返回-1
@@ -1549,12 +1550,12 @@ class InSAR_API Biomass1A_reader
 public:
 	Biomass1A_reader(const char* amp_file, const char* phase_file, const char* xml_file, const char* orbit_file, const char* polarization);
 	~Biomass1A_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
 
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1564,14 +1565,14 @@ public:
 
 private:
 
-	/*@brief 时间戳转换（UTC2GPS）
+	/** @brief 时间戳转换（UTC2GPS）
 	* @param utc_time                  UTC时间戳
 	* @param gps_time                  GPS时间
 	* @return 成功返回0，否则返回-1
 	*/
 	int UTC2GPS(const char* utc_time, double* gps_time);
 
-	/*@brief 从L1产品中读取数据
+	/** @brief 从L1产品中读取数据
 	@param xml_file                    xml数据文件（.xml）
 	@param amp_file                    幅度数据文件（.tiff）
 	@param orbit_file                  轨道数据文件（.tiff）
@@ -1584,7 +1585,7 @@ private:
 		const char* orbit_file,
 		const char* phase_file
 	);
-	/*@brief 从L1产品中读取单视复图像
+	/** @brief 从L1产品中读取单视复图像
 	* @param amp_file                         幅度数据文件（.tiff）
 	* @param phase_file                       相位数据文件（.tiff）
 	* @param slc                              读出的单视复数据矩阵
@@ -1627,12 +1628,12 @@ class InSAR_API LUTAN_reader
 public:
 	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1为单星模式,mode=2为双星干涉模式
 	~LUTAN_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
 
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1642,7 +1643,7 @@ public:
 
 private:
 
-	/*@brief 从陆探一号L1产品中读取数据
+	/** @brief 从陆探一号L1产品中读取数据
 	@param xml_file                    陆探一号xml数据文件（.xml）
 	@param data_file                   陆探一号xml数据文件（.tiff）
 	@return 成功返回0，否则返回-1
@@ -1651,7 +1652,7 @@ private:
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief 从陆探一号L1产品中读取单视复图像
+	/** @brief 从陆探一号L1产品中读取单视复图像
 	* @param data_file                        陆探一号图像数据文件（.tiff）
 	* @param slc                              读出的单视复数据矩阵
 	* @return 成功返回0，否则返回-1
@@ -1694,16 +1695,16 @@ class InSAR_API Spacety_reader
 public:
 	Spacety_reader(const char* data_file, const char* xml_file);
 	~Spacety_reader();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
-	/*@brief 初始化（聚束模式数据测试用）
+	/** @brief 初始化（聚束模式数据测试用）
 	* @return 成功返回0，否则返回-1
 	*/
 	int init_test();
 
-	/*@brief 将数据写入到指定h5文件
+	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1713,7 +1714,7 @@ public:
 
 private:
 
-	/*@brief 从天仪L1产品中读取数据
+	/** @brief 从天仪L1产品中读取数据
 	@param xml_file                    天仪xml数据文件（.xml）
 	@param data_file                   天仪xml数据文件（.tiff）
 	@return 成功返回0，否则返回-1
@@ -1722,7 +1723,7 @@ private:
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief 从天仪L1产品中读取数据（聚束模式数据测试用）
+	/** @brief 从天仪L1产品中读取数据（聚束模式数据测试用）
 	@param xml_file                    天仪xml数据文件（.xml）
 	@param data_file                   天仪xml数据文件（.tiff）
 	@return 成功返回0，否则返回-1
@@ -1731,7 +1732,7 @@ private:
 		const char* xml_file,
 		const char* data_file
 	);
-	/*@brief 从天仪数据L1产品中读取单视复图像
+	/** @brief 从天仪数据L1产品中读取单视复图像
 	* @param data_file                        天仪图像数据文件（.tiff）
 	* @param slc                              读出的单视复数据矩阵
 	* @return 成功返回0，否则返回-1
@@ -1798,67 +1799,67 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int getBurstCount(int* burstCount);
-	/*@brief 获取每个burst第一行方位向时间
+	/** @brief 获取每个burst第一行方位向时间
 	* @return 成功返回0， 否则返回-1
 	*/
 	int getBurstAzimuthTime();
-	/*@brief 获取每个burst每行第一个有效像素列数
+	/** @brief 获取每个burst每行第一个有效像素列数
 	* @return 成功返回0，否则返回-1
 	*/
 	int getFirstValidSample();
-	/*@brief 获取每个burst每行最后一个有效像素列数
+	/** @brief 获取每个burst每行最后一个有效像素列数
 	* @param firstValidSample                        每个burst每行最后一个有效像素列数(burstCount×1)
 	* @return 成功返回0，否则返回-1
 	*/
 	int getLastValidSample();
-	/*@brief 获取每个burst第一行有效像素行数
+	/** @brief 获取每个burst第一行有效像素行数
 	* @param firstValidLine                          每个burst第一行有效像素行数(burstCount×1)
 	* @return 成功返回0，否则返回-1
 	*/
 	int getFirstValidLine();
-	/*@brief 获取每个burst最后一行有效像素行数
+	/** @brief 获取每个burst最后一行有效像素行数
 	* @param lastValidLine                           每个burst最后一行有效像素行数(burstCount×1)
 	* @return 成功返回0，否则返回-1
 	*/
 	int getLastValidLine();
-	/*@brief 获取地面控制点信息
+	/** @brief 获取地面控制点信息
 	* @param geolocationGridPoint                    地面控制点(n×6，经/纬/高/行/列/下视角)
 	* @return 成功返回0，否则返回-1
 	*/
 	int getGeolocationGridPoint();
-	/*@brief 更新控制点信息
+	/** @brief 更新控制点信息
 	* @return 成功返回0，否则返回-1
 	*/
 	int updateGeolocationGridPoint();
-	/*@brief 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
+	/** @brief 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
 	* @return 成功返回0，否则返回-1
 	*/
 	int fitCoordinateConversionCoefficient();
-	/*@brief 获取轨道信息
+	/** @brief 获取轨道信息
 	* @return 成功返回0，否则返回-1
 	*/
 	int getOrbitList();
-	/*@brief 获取精密轨道数据
+	/** @brief 获取精密轨道数据
 	* @param POD_file                                精密轨道数据文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int getPOD(const char* POD_file);
-	/*@brief 获取其他参数
+	/** @brief 获取其他参数
 	* @return 成功返回0，否则返回-1
 	*/
 	int getOtherParameters();
 
-	/*@brief 准备数据
+	/** @brief 准备数据
 	* @param PODFile                                  精密轨道数据文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int prepareData(const char* PODFile = NULL);
-	/*@brief 从TIFF文件中读出复图像数据
+	/** @brief 从TIFF文件中读出复图像数据
 	* @param slc                                     复图像数据
 	* @return 成功返回0，否则返回-1
 	*/
 	int getSLC(ComplexMat& slc);
-	/*@brief 将数据写入h5文件
+	/** @brief 将数据写入h5文件
 	* @param h5File                                  目标h5文件(默认为NULL)
 	* @return 成功返回0，否则返回-1
 	*/
@@ -1969,31 +1970,31 @@ private:
 class InSAR_API Sentinel1Utils
 {
 public:
-	/*@brief 默认构造函数
+	/** @brief 默认构造函数
 	*/
 	Sentinel1Utils(const char* h5File);
 	~Sentinel1Utils();
-	/*@brief 初始化
+	/** @brief 初始化
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
-	/*@brief 计算每个burst的方位向参考时间
+	/** @brief 计算每个burst的方位向参考时间
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeReferenceTime();
-	/*@brief 计算每个burst的方位向多普勒调频率
+	/** @brief 计算每个burst的方位向多普勒调频率
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeRangeDependDopplerRate();
-	/*@brief 计算每个burst的方位向多普勒中心频率
+	/** @brief 计算每个burst的方位向多普勒中心频率
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeDopplerCentroid();
-	/*@brief 计算每个burst的总多普勒率（调频率加扫频率）
+	/** @brief 计算每个burst的总多普勒率（调频率加扫频率）
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeDopplerRate();
-	/*@brief 计算burst数据的去斜相位和去模相位
+	/** @brief 计算burst数据的去斜相位和去模相位
 	* @param burstIndex                           burst序号
 	* @param derampDemodPhase                     去斜去模相位
 	* @return 成功返回0，否则返回-1
@@ -2002,7 +2003,7 @@ public:
 		int burstIndex,
 		Mat& derampDemodPhase
 	);
-	/*@brief 从h5文件中读出一个burst的数据
+	/** @brief 从h5文件中读出一个burst的数据
 	* @param burstIndex                          burst序号
 	* @param burstSLC                            一个burst的复数据
 	* @return 成功返回0，否则返回-1
@@ -2014,7 +2015,7 @@ public:
 
 
 
-	/*@brief 计算多普勒频率
+	/** @brief 计算多普勒频率
 	* @param groundPosition                       地面点位置
 	* @param satellitePosition                    卫星位置
 	* @param satelliteVelocity                    卫星速度
@@ -2027,7 +2028,7 @@ public:
 		Velocity satelliteVelocity,
 		double* dopplerFrequency
 	);
-	/*@brief 计算地面点对应的零多普勒方位向时刻
+	/** @brief 计算地面点对应的零多普勒方位向时刻
 	* @param groundPosition                       地面点位置
 	* @param zeroDopplerTime                      零多普勒方位向时刻
 	* @param dopplerFrequency                     多普勒频率(默认为0)
@@ -2038,7 +2039,7 @@ public:
 		double* zeroDopplerTime,
 		double dopplerFrequency = 0.0
 	);
-	/*@brief 计算地面点投影到SAR图像坐标系下的距离向和方位向坐标
+	/** @brief 计算地面点投影到SAR图像坐标系下的距离向和方位向坐标
 	* @param burstIndex                           burst序号
 	* @param groundPosition                       地面点位置
 	* @param rangeIndex                           距离向坐标
@@ -2051,7 +2052,7 @@ public:
 		double* rangeIndex,
 		double* azimuthIndex
 	);
-	/*@brief 计算给定卫星方位向时间和地面点位置时的斜距
+	/** @brief 计算给定卫星方位向时间和地面点位置时的斜距
 	* @param azimuthTime                         方位向时间
 	* @param groundPosition                      地面点位置
 	* @param slantRange                          斜距
@@ -2062,7 +2063,7 @@ public:
 		Position groundPosition,
 		double* slantRange
 	);
-	/*@brief 获取地面点目标所在burst信息
+	/** @brief 获取地面点目标所在burst信息
 	* @param groundPosition                      地面点目标
 	* @param burstIndice                         burst信息
 	* @return 成功返回0，否则返回-1
@@ -2071,7 +2072,7 @@ public:
 		Position groundPosition,
 		BurstIndices& burstIndice
 	);
-	/*@brief 计算场景地理位置（经纬度）边界
+	/** @brief 计算场景地理位置（经纬度）边界
 	* @param lonMin                           最小经度
 	* @param lonMax                           最大经度
 	* @param latMin                           最小纬度
@@ -2084,7 +2085,7 @@ public:
 		double* latMin,
 		double* latMax
 	);
-	/*@brief 计算场景地理位置（经纬度）边界
+	/** @brief 计算场景地理位置（经纬度）边界
 	* @param lonMin                           最小经度
 	* @param lonMax                           最大经度
 	* @param latMin                           最小纬度
@@ -2099,7 +2100,7 @@ public:
 		double* latMax,
 		int burstIndex
 	);
-	/*@brief burst拼接
+	/** @brief burst拼接
 	* @param outFile                          deburst输出h5文件
 	* @return 成功返回0，否则返回-1
 	*/
@@ -2204,7 +2205,7 @@ class InSAR_API Sentinel1BackGeocoding
 public:
 	Sentinel1BackGeocoding();
 	~Sentinel1BackGeocoding();
-	/*@brief 初始化后向地理编码配准
+	/** @brief 初始化后向地理编码配准
 	* @param h5Files                       哨兵一号原始数据文件
 	* @param outFiles                      处理结果保存文件
 	* @param DEMPath                       DEM文件路径
@@ -2217,17 +2218,17 @@ public:
 		const char* DEMPath,
 		int masterIndex
 	);
-	/*@brief 加载哨兵一号数据
+	/** @brief 加载哨兵一号数据
 	* @param h5Files                       哨兵一号原始数据文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int loadData(vector<string>& h5Files);
-	/*@brief 设置DEM文件路径
+	/** @brief 设置DEM文件路径
 	* @param DEMPath                       DEM文件路径
 	* @return 成功返回0，否则返回-1
 	*/
 	int setDEMPath(const char* DEMPath);
-	/*@brief 加载数字高程模型
+	/** @brief 加载数字高程模型
 	* @param filepath                      DEM文件路径
 	* @param lonMin                        最小经度
 	* @param lonMax                        最大经度
@@ -2242,16 +2243,16 @@ public:
 		double latMin,
 		double latMax
 	);
-	/*@brief 加载处理结果保存文件
+	/** @brief 加载处理结果保存文件
 	* @param outFiles                     处理结果保存文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int loadOutFiles(vector<string>& outFiles);
-	/*@brief 准备结果保存文件
+	/** @brief 准备结果保存文件
 	* @return 成功返回0，否则返回-1
 	*/
 	int prepareOutFiles();
-	/*@brief 设置主影像
+	/** @brief 设置主影像
 	* @param masterIndex                  主影像序号
 	* @return 成功返回0，否则返回-1
 	*/
@@ -2259,11 +2260,11 @@ public:
 
 
 
-	/*@brief 计算主辅图像之间的burst偏移量
+	/** @brief 计算主辅图像之间的burst偏移量
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeBurstOffset();
-	/*@brief 去斜去模操作
+	/** @brief 去斜去模操作
 	* @param derampDemodPhase                 斜模相位
 	* @param slc                              复图像数据
 	* @return 成功返回0，否则返回-1
@@ -2272,7 +2273,7 @@ public:
 		Mat& derampDemodPhase,
 		ComplexMat& slc
 	);
-	/*@brief 计算DEM点投影在SAR辅图像中的位置
+	/** @brief 计算DEM点投影在SAR辅图像中的位置
 	* @param slaveImageIndex                       辅图像序号
 	* @param mBurstIndex                           主图像burst序号
 	* @return 成功返回0，否则返回-1
@@ -2281,13 +2282,13 @@ public:
 		int slaveImagesIndex,
 		int mBurstIndex
 	);
-	/*@brief 计算辅图像偏移
+	/** @brief 计算辅图像偏移
 	* @param slaveAzimuthOffset                    辅图像方位向偏移
 	* @param slaveRangeOffset                      辅图像距离向偏移
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& slaveRangeOffset);
-	/*@brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
+	/** @brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
 	* @param slaveOffset                           偏移量
 	* @param a0                                    拟合系数
 	* @param a1                                    拟合系数
@@ -2300,7 +2301,7 @@ public:
 		double* a1,
 		double* a2
 	);
-	/*@brief 复图像双线性插值重采样（inplace，原地操作）
+	/** @brief 复图像双线性插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
 	* @param dstHeight                             重采样图像高度
 	* @param dstWidth                              重采样图像宽度
@@ -2319,7 +2320,7 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az
 	);
-	/*@brief 复图像sinc插值重采样（inplace，原地操作）
+	/** @brief 复图像sinc插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
 	* @param dstHeight                             重采样图像高度
 	* @param dstWidth                              重采样图像宽度
@@ -2338,7 +2339,7 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az
 	);
-	/*@brief 辅图像双线性插值重采样
+	/** @brief 辅图像双线性插值重采样
 	* @param mBurstIndex                           主图像burst序号
 	* @param slaveImageIndex                       辅图像序号
 	* @param slaveSLC                              重采样后的辅图像数据
@@ -2349,11 +2350,11 @@ public:
 		int slaveImageIndex,
 		ComplexMat& slaveSLC
 	);
-	/*@brief 计算deburst信息
+	/** @brief 计算deburst信息
 	* @return 成功返回0，否则返回-1
 	*/
 	int deBurstConfig();
-	/*@brief 后向地理编码配准
+	/** @brief 后向地理编码配准
 	* @return 成功返回0，否则返回-1
 	*/
 	int backGeoCodingCoregistration();
