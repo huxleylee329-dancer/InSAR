@@ -3,6 +3,7 @@
 #include <mutex>        // 解决 std::once_flag/call_once 依赖                                
 #include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
 #include"..\include\FormatConversion.h"                                                      
+#include"..\include\Utils.h"
 #include"..\include\tinyxml.h"                                                               
 //#include<atlconv.h>                                                                        
 //#include<tchar.h>                                                                          
@@ -257,18 +258,7 @@ namespace
 	}
 }
 
-inline bool return_check(int ret, const char* detail_info, const char* error_head)
-{
-	if (ret < 0)
-	{
-		fprintf(stderr, "%s %s\n\n", error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+
 
 inline void report_progress(ProgressCallback progressCallback, void* userData, int percent, const char* message)
 {

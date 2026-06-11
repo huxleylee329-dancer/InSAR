@@ -24,31 +24,7 @@
 #pragma comment(lib, "FormatConversion.lib")
 #endif // _DEBUG
 using namespace cv;
-inline bool return_check(int ret, const char* detail_info, const char* error_head)
-{
-	if (ret < 0)
-	{
-		fprintf(stderr, "%s %s\n\n", error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
 
-inline bool parallel_check(volatile bool parallel_flag, const char* detail_info, const char* parallel_error_head)
-{
-	if (!parallel_flag)
-	{
-		fprintf(stderr, "%s %s\n\n", parallel_error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
 
 inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
 {

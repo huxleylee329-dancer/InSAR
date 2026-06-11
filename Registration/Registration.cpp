@@ -122,32 +122,78 @@ namespace
 		// 归一化，避免有限窗截断导致幅度偏移
 		return sum_val / sum_w;
 	}
-}
-inline bool return_check(int ret, const char* detail_info, const char* error_head)
-{
-	if (ret < 0)
+
+	void padBorder(const cv::Mat& src, cv::Mat& dst)
 	{
-		fprintf(stderr, "%s %s\n\n", error_head, detail_info);
-		return true;
+		int nr = src.rows;
+		int nc = src.cols;
+		dst = cv::Mat::zeros(nr + 3, nc + 3, CV_64F);
+
+		src(cv::Range(0, 1), cv::Range(0, 1)).copyTo(dst(cv::Range(0, 1), cv::Range(0, 1)));
+		src(cv::Range(0, 1), cv::Range(0, nc)).copyTo(dst(cv::Range(0, 1), cv::Range(1, nc + 1)));
+		src(cv::Range(0, 1), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(0, 1), cv::Range(nc + 1, nc + 2)));
+		src(cv::Range(0, 1), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(0, 1), cv::Range(nc + 2, nc + 3)));
+		src(cv::Range(0, nr), cv::Range(0, 1)).copyTo(dst(cv::Range(1, nr + 1), cv::Range(0, 1)));
+		src(cv::Range(nr - 1, nr), cv::Range(0, 1)).copyTo(dst(cv::Range(nr + 1, nr + 2), cv::Range(0, 1)));
+		src(cv::Range(nr - 1, nr), cv::Range(0, 1)).copyTo(dst(cv::Range(nr + 2, nr + 3), cv::Range(0, 1)));
+		src(cv::Range(nr - 1, nr), cv::Range(0, nc)).copyTo(dst(cv::Range(nr + 1, nr + 2), cv::Range(1, nc + 1)));
+		src(cv::Range(nr - 1, nr), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(nr + 1, nr + 2), cv::Range(nc + 2, nc + 3)));
+		dst(cv::Range(nr + 1, nr + 2), cv::Range(0, nc + 3)).copyTo(dst(cv::Range(nr + 2, nr + 3), cv::Range(0, nc + 3)));
+		src(cv::Range(0, nr), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(1, nr + 1), cv::Range(nc + 1, nc + 2)));
+		src(cv::Range(nr - 1, nr), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(nr + 2, nr + 3), cv::Range(nc + 1, nc + 2)));
+		src(cv::Range(nr - 1, nr), cv::Range(nc - 1, nc)).copyTo(dst(cv::Range(nr + 2, nr + 3), cv::Range(nc + 2, nc + 3)));
+		dst(cv::Range(0, nr + 3), cv::Range(nc + 1, nc + 2)).copyTo(dst(cv::Range(0, nr + 3), cv::Range(nc + 2, nc + 3)));
+		src(cv::Range(0, nr), cv::Range(0, nc)).copyTo(dst(cv::Range(1, nr + 1), cv::Range(1, nc + 1)));
 	}
-	else
+
+	inline double bilinear_interp2d(const cv::Mat& img, double row, double col)
 	{
-		return false;
+		int rows = img.rows;
+		int cols = img.cols;
+		int mm = static_cast<int>(std::floor(row));
+		int nn = static_cast<int>(std::floor(col));
+
+		if (mm < 0 || nn < 0 || mm > rows - 1 || nn > cols - 1)
+		{
+			return 0.0;
+		}
+
+		int mm1 = mm + 1;
+		int nn1 = nn + 1;
+		mm1 = mm1 >= rows - 1 ? rows - 1 : mm1;
+		nn1 = nn1 >= cols - 1 ? cols - 1 : nn1;
+
+		double v00, v01, v10, v11;
+		switch (img.depth())
+		{
+		case CV_64F:
+			v00 = img.at<double>(mm, nn);
+			v01 = img.at<double>(mm, nn1);
+			v10 = img.at<double>(mm1, nn);
+			v11 = img.at<double>(mm1, nn1);
+			break;
+		case CV_32F:
+			v00 = img.at<float>(mm, nn);
+			v01 = img.at<float>(mm, nn1);
+			v10 = img.at<float>(mm1, nn);
+			v11 = img.at<float>(mm1, nn1);
+			break;
+		case CV_16S:
+			v00 = img.at<short>(mm, nn);
+			v01 = img.at<short>(mm, nn1);
+			v10 = img.at<short>(mm1, nn);
+			v11 = img.at<short>(mm1, nn1);
+			break;
+		default:
+			return 0.0;
+		}
+
+		double upper = v00 + (v01 - v00) * (col - nn);
+		double lower = v10 + (v11 - v10) * (col - nn);
+		return upper + (lower - upper) * (row - mm);
 	}
 }
 
-inline bool parallel_check(volatile bool parallel_flag, const char* detail_info, const char* parallel_error_head)
-{
-	if (!parallel_flag)
-	{
-		fprintf(stderr, "%s %s\n\n", parallel_error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
 
 inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
 {
@@ -533,74 +579,8 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	new_image_slave.im = Mat::zeros(nr + 3, nc + 3, CV_64F);
 
 	//扩充矩阵(扩展三行三列)
-
-	//实部
-
-	InputMatrix.re(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.re(Range(0, 1), Range(0, 1)));
-
-	InputMatrix.re(Range(0, 1), Range(0, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(1, nc + 1)));
-
-	InputMatrix.re(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(nc + 2, nc + 3)));
-
-	InputMatrix.re(Range(0, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(1, nc + 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(nc + 2, nc + 3)));
-
-	new_image_slave.re(Range(nr + 1, nr + 2), Range(0, nc + 3)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(0, nc + 3)));
-
-	InputMatrix.re(Range(0, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(nc + 2, nc + 3)));
-
-	new_image_slave.re(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.re(Range(0, nr + 3), Range(nc + 2, nc + 3)));
-
-
-
-	InputMatrix.re(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(1, nc + 1)));
-
-
-	//虚部
-
-	InputMatrix.im(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.im(Range(0, 1), Range(0, 1)));
-
-	InputMatrix.im(Range(0, 1), Range(0, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(1, nc + 1)));
-
-	InputMatrix.im(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(nc + 2, nc + 3)));
-
-	InputMatrix.im(Range(0, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(1, nc + 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(nc + 2, nc + 3)));
-
-	new_image_slave.im(Range(nr + 1, nr + 2), Range(0, nc + 3)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(0, nc + 3)));
-
-	InputMatrix.im(Range(0, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(nc + 2, nc + 3)));
-
-	new_image_slave.im(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.im(Range(0, nr + 3), Range(nc + 2, nc + 3)));
-
-	//内点
-	InputMatrix.im(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(1, nc + 1)));
+	padBorder(InputMatrix.re, new_image_slave.re);
+	padBorder(InputMatrix.im, new_image_slave.im);
 
 
 	//行权
@@ -667,74 +647,8 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	new_image_slave.im = Mat::zeros(nr + 3, nc + 3, CV_64F);
 
 	//扩充矩阵(扩展三行三列)
-
-	//实部
-
-	InputMatrix.re(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.re(Range(0, 1), Range(0, 1)));
-
-	InputMatrix.re(Range(0, 1), Range(0, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(1, nc + 1)));
-
-	InputMatrix.re(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(0, 1), Range(nc + 2, nc + 3)));
-
-	InputMatrix.re(Range(0, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(0, 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(1, nc + 1)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 1, nr + 2), Range(nc + 2, nc + 3)));
-
-	new_image_slave.re(Range(nr + 1, nr + 2), Range(0, nc + 3)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(0, nc + 3)));
-
-	InputMatrix.re(Range(0, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(nc + 1, nc + 2)));
-
-	InputMatrix.re(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.re(Range(nr + 2, nr + 3), Range(nc + 2, nc + 3)));
-
-	new_image_slave.re(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.re(Range(0, nr + 3), Range(nc + 2, nc + 3)));
-
-
-
-	InputMatrix.re(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.re(Range(1, nr + 1), Range(1, nc + 1)));
-
-
-	//虚部
-
-	InputMatrix.im(Range(0, 1), Range(0, 1)).copyTo(new_image_slave.im(Range(0, 1), Range(0, 1)));
-
-	InputMatrix.im(Range(0, 1), Range(0, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(1, nc + 1)));
-
-	InputMatrix.im(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(0, 1), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(0, 1), Range(nc + 2, nc + 3)));
-
-	InputMatrix.im(Range(0, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, 1)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(0, 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(1, nc + 1)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 1, nr + 2), Range(nc + 2, nc + 3)));
-
-	new_image_slave.im(Range(nr + 1, nr + 2), Range(0, nc + 3)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(0, nc + 3)));
-
-	InputMatrix.im(Range(0, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(nc + 1, nc + 2)));
-
-	InputMatrix.im(Range(nr - 1, nr), Range(nc - 1, nc)).copyTo(new_image_slave.im(Range(nr + 2, nr + 3), Range(nc + 2, nc + 3)));
-
-	new_image_slave.im(Range(0, nr + 3), Range(nc + 1, nc + 2)).copyTo(new_image_slave.im(Range(0, nr + 3), Range(nc + 2, nc + 3)));
-
-	//内点
-	InputMatrix.im(Range(0, nr), Range(0, nc)).copyTo(new_image_slave.im(Range(1, nr + 1), Range(1, nc + 1)));
+	padBorder(InputMatrix.re, new_image_slave.re);
+	padBorder(InputMatrix.im, new_image_slave.im);
 
 
 
@@ -795,14 +709,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 double Registration::WeightCalculation(double offset)
 {
 	double weight = 0;
-	if (offset > 0)
-	{
-		offset = offset;
-	}
-	else
-	{
-		offset = -offset;
-	}
+	offset = fabs(offset);
 
 	if (offset < 1.0)
 	{
@@ -982,7 +889,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		(master.type() != CV_64F && master.type() != CV_32F && master.type() != CV_16S)
 		)
 	{
-		fprintf(stderr, "coregistration_pixel(): input check failed!\n");
+		fprintf(stderr, "coregistration_subpixel(): input check failed!\n");
 		return -1;
 	}
 
@@ -1054,7 +961,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	int n = (master.GetCols()) / blocksize;
 	if (m * n < 10)
 	{
-		fprintf(stderr, "coregistration_pixel(): try smaller blocksize!\n");
+		fprintf(stderr, "coregistration_subpixel(): try smaller blocksize!\n");
 		return -1;
 	}
 	Mat offset_r = Mat::zeros(m, n, CV_64F); Mat offset_c = Mat::zeros(m, n, CV_64F);
@@ -1209,7 +1116,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	m = 1; n = count;
 	if (count < 11)
 	{
-		fprintf(stderr, "coregistration_pixel(): insufficient valide sub blocks!\n");
+		fprintf(stderr, "coregistration_subpixel(): insufficient valide sub blocks!\n");
 		return -1;
 	}
 	double offset_x = (double)master.GetCols() / 2;
@@ -1262,12 +1169,12 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	}
 	if (!cv::solve(A, b_r, coef_r, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		fprintf(stderr, "coregistration_subpixel(): matrix deficiency!\n");
 		return -1;
 	}
 	if (!cv::solve(A, b_c, coef_c, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		fprintf(stderr, "coregistration_subpixel(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -1288,89 +1195,37 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	int master_type = master.type();
 	slave_tmp = master;
 	int rows_slave = slave.GetRows(); int cols_slave = slave.GetCols();
+
+	const double cr0 = coef_r.at<double>(0, 0);
+	const double cr1 = coef_r.at<double>(1, 0);
+	const double cr2 = coef_r.at<double>(2, 0);
+	const double cc0 = coef_c.at<double>(0, 0);
+	const double cc1 = coef_c.at<double>(1, 0);
+	const double cc2 = coef_c.at<double>(2, 0);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
-		double x, y, ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
-		int mm, nn, mm1, nn1;
-		double offset_rows, offset_cols, upper, lower;
+		double x, y, ii, jj;
+		double offset_rows, offset_cols;
 		for (int j = 0; j < cols; j++)
 		{
 			jj = (double)j;
 			ii = (double)i;
 			x = (jj - offset_x) / scale_x;
 			y = (ii - offset_y) / scale_y;
-			tmp.at<double>(0, 0) = 1.0;
-			tmp.at<double>(0, 1) = x;
-			tmp.at<double>(0, 2) = y;
 
-			result = tmp * coef_r;
-			offset_rows = result.at<double>(0, 0);
-			result = tmp * coef_c;
-			offset_cols = result.at<double>(0, 0);
+			offset_rows = cr0 + cr1 * x + cr2 * y;
+			offset_cols = cc0 + cc1 * x + cc2 * y;
 
 			ii += offset_rows;
 			jj += offset_cols;
 			
-			mm = (int)floor(ii); nn = (int)floor(jj);
-			if (mm < 0 || nn < 0 || mm > rows_slave - 1 || nn > cols_slave - 1)
-			{
-				if (master_type == CV_64F)
-				{
-					slave_tmp.re.at<double>(i, j) = 0.0;
-					slave_tmp.im.at<double>(i, j) = 0.0;
-				}
-				else if (master_type == CV_32F)
-				{
-					slave_tmp.re.at<float>(i, j) = 0.0;
-					slave_tmp.im.at<float>(i, j) = 0.0;
-				}
-				else
-				{
-					slave_tmp.re.at<short>(i, j) = 0;
-					slave_tmp.im.at<short>(i, j) = 0;
-				}
-			}
-			else
-			{
-				mm1 = mm + 1; nn1 = nn + 1;
-				mm1 = mm1 >= rows_slave - 1 ? rows_slave - 1 : mm1;
-				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
-				if (master_type == CV_64F)
-				{
-					//实部插值
-					upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
-					lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//虚部插值
-					upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
-					lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-				}
-				else if (master_type == CV_32F)
-				{
-					//实部插值
-					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
-					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.re.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
-					//虚部插值
-					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
-					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.im.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
-				}
-				else
-				{
-					//实部插值
-					upper = (double)slave.re.at<short>(mm, nn) + double(slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
-					lower = (double)slave.re.at<short>(mm1, nn) + double(slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.re.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
-					//虚部插值
-					upper = (double)slave.im.at<short>(mm, nn) + double(slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
-					lower = (double)slave.im.at<short>(mm1, nn) + double(slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
-					slave_tmp.im.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
-				}
-			}
+			double re_val = bilinear_interp2d(slave.re, ii, jj);
+			double im_val = bilinear_interp2d(slave.im, ii, jj);
 
+			mat_set_from_double(slave_tmp.re, i, j, re_val);
+			mat_set_from_double(slave_tmp.im, i, j, im_val);
 		}
 	}
 	slave = slave_tmp;
@@ -1414,7 +1269,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 		(master.type() != CV_64F && master.type() != CV_32F && master.type() != CV_16S)
 		)
 	{
-		fprintf(stderr, "coregistration_pixel(): input check failed!\n");
+		fprintf(stderr, "coregistration_subpixel_sinc(): input check failed!\n");
 		return -1;
 	}
 
@@ -1486,7 +1341,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	int n = (master.GetCols()) / blocksize;
 	if (m * n < 10)
 	{
-		fprintf(stderr, "coregistration_pixel(): try smaller blocksize!\n");
+		fprintf(stderr, "coregistration_subpixel_sinc(): try smaller blocksize!\n");
 		return -1;
 	}
 	Mat offset_r = Mat::zeros(m, n, CV_64F); Mat offset_c = Mat::zeros(m, n, CV_64F);
@@ -1640,7 +1495,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	m = 1; n = count;
 	if (count < 11)
 	{
-		fprintf(stderr, "coregistration_pixel(): insufficient valide sub blocks!\n");
+		fprintf(stderr, "coregistration_subpixel_sinc(): insufficient valide sub blocks!\n");
 		return -1;
 	}
 	double offset_x = (double)master.GetCols() / 2;
@@ -1693,12 +1548,12 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	}
 	if (!cv::solve(A, b_r, coef_r, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		fprintf(stderr, "coregistration_subpixel_sinc(): matrix deficiency!\n");
 		return -1;
 	}
 	if (!cv::solve(A, b_c, coef_c, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		fprintf(stderr, "coregistration_subpixel_sinc(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -1797,7 +1652,7 @@ int Registration::all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& o
 	transpose(matrix, matrix_t);
 	if (!solve(matrix_t * matrix, matrix_t * offset_row, para1, DECOMP_LU))
 	{
-		fprintf(stderr, "all_subpixel_move(): cant' solve least square problem!\n");
+		fprintf(stderr, "all_subpixel_move(): can't solve least square problem!\n");
 		return -1;
 	}
 
@@ -1808,7 +1663,7 @@ int Registration::all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& o
 	Mat para2;
 	if (!solve(matrix_t * matrix, matrix_t * offset_col, para2, DECOMP_LU))
 	{
-		fprintf(stderr, "all_subpixel_move(): cant' solve least square problem!\n");
+		fprintf(stderr, "all_subpixel_move(): can't solve least square problem!\n");
 		return -1;
 	}
 	Mat connect[] = { para1, para2 };
@@ -2187,7 +2042,7 @@ int Registration::fitSlaveOffset(Mat& slaveOffset, Mat& masterRange,
 	b = A_t * offset;
 	if (!cv::solve(A, b, coef, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "fitSlaveOffset(): matrix defficiency!\n");
+		fprintf(stderr, "fitSlaveOffset(): matrix deficiency!\n");
 		return -1;
 	}
 	if (a0) *a0 = coef.at<double>(0, 0);
@@ -2299,90 +2154,36 @@ int Registration::performBilinearResampling(
 	}
 	int rows = dstHeight; int cols = dstWidth;
 	int cols_slave = slave.GetCols(); int rows_slave = slave.GetRows();
+
+	const double cr0 = coef_r.at<double>(0, 0);
+	const double cr1 = coef_r.at<double>(1, 0);
+	const double cr2 = coef_r.at<double>(2, 0);
+	const double cc0 = coef_c.at<double>(0, 0);
+	const double cc1 = coef_c.at<double>(1, 0);
+	const double cc2 = coef_c.at<double>(2, 0);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
 		// removed unused: x, y
-		double ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
-		int mm, nn, mm1, nn1;
-		double offset_rows, offset_cols, upper, lower;
+		double ii, jj;
+		double offset_rows, offset_cols;
 		for (int j = 0; j < cols; j++)
 		{
 			jj = (double)j;
 			ii = (double)i;
-			tmp.at<double>(0, 0) = 1.0;
-			tmp.at<double>(0, 1) = jj;
-			tmp.at<double>(0, 2) = ii;
 
-			result = tmp * coef_r;
-			offset_rows = result.at<double>(0, 0);
-			result = tmp * coef_c;
-			offset_cols = result.at<double>(0, 0);
+			offset_rows = cr0 + cr1 * jj + cr2 * ii;
+			offset_cols = cc0 + cc1 * jj + cc2 * ii;
 
 			ii += offset_rows;
 			jj += offset_cols;
 
-			mm = (int)floor(ii); nn = (int)floor(jj);
-			if (mm < 0 || nn < 0 || mm > rows_slave - 1 || nn > cols_slave - 1)
-			{
-				if (type == CV_16S)
-				{
-					slcResampled.re.at<short>(i, j) = 0;
-					slcResampled.im.at<short>(i, j) = 0;
-				}
-				else if (type == CV_32F)
-				{
-					slcResampled.re.at<float>(i, j) = 0.0;
-					slcResampled.im.at<float>(i, j) = 0.0;
-				}
-				else
-				{
-					slcResampled.re.at<double>(i, j) = 0.0;
-					slcResampled.im.at<double>(i, j) = 0.0;
-				}
-				
-			}
-			else
-			{
-				mm1 = mm + 1; nn1 = nn + 1;
-				mm1 = mm1 >= rows_slave - 1 ? rows_slave - 1 : mm1;
-				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
-				if (type == CV_16S)
-				{
-					//实部插值
-					upper = slave.re.at<short>(mm, nn) + (slave.re.at<short>(mm, nn1) - slave.re.at<short>(mm, nn)) * (jj - (double)nn);
-					lower = slave.re.at<short>(mm1, nn) + (slave.re.at<short>(mm1, nn1) - slave.re.at<short>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.re.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
-					//虚部插值
-					upper = slave.im.at<short>(mm, nn) + (slave.im.at<short>(mm, nn1) - slave.im.at<short>(mm, nn)) * (jj - (double)nn);
-					lower = slave.im.at<short>(mm1, nn) + (slave.im.at<short>(mm1, nn1) - slave.im.at<short>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.im.at<short>(i, j) = static_cast<short>(upper + (lower - upper) * (ii - (double)mm));
-				}
-				else if (type == CV_32F)
-				{
-					//实部插值
-					upper = slave.re.at<float>(mm, nn) + (slave.re.at<float>(mm, nn1) - slave.re.at<float>(mm, nn)) * (jj - (double)nn);
-					lower = slave.re.at<float>(mm1, nn) + (slave.re.at<float>(mm1, nn1) - slave.re.at<float>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.re.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
-					//虚部插值
-					upper = slave.im.at<float>(mm, nn) + (slave.im.at<float>(mm, nn1) - slave.im.at<float>(mm, nn)) * (jj - (double)nn);
-					lower = slave.im.at<float>(mm1, nn) + (slave.im.at<float>(mm1, nn1) - slave.im.at<float>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.im.at<float>(i, j) = static_cast<float>(upper + (lower - upper) * (ii - (double)mm));
-				}
-				else
-				{
-					//实部插值
-					upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
-					lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-					//虚部插值
-					upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
-					lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
-					slcResampled.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-				}
-				
-			}
+			double re_val = bilinear_interp2d(slave.re, ii, jj);
+			double im_val = bilinear_interp2d(slave.im, ii, jj);
 
+			mat_set_from_double(slcResampled.re, i, j, re_val);
+			mat_set_from_double(slcResampled.im, i, j, im_val);
 		}
 	}
 	slave = slcResampled;

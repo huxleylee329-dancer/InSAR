@@ -23,18 +23,7 @@
         ch = *instring; \
 }
 
-inline bool return_check(int ret, const char* detail_info, const char* error_head)
-{
-	if (ret < 0)
-	{
-		fprintf(stderr, "%s %s\n\n", error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+
 
 SBAS_node::SBAS_node()
 {

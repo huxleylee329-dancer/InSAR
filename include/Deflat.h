@@ -1,7 +1,5 @@
 #pragma once
-#ifndef __DEFLAT__H__
-#define __DEFLAT__H__
-#include"..\include\Package.h"
+#include "..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
 
@@ -530,6 +528,3 @@ private:
 	/*SRTM全球高程url*/
 	string SRTMURL = "http://srtm.csi.cgiar.org/wp-content/uploads/files/srtm_5x5/TIFF/";
 };
-
-
-#endif // !__DEFLAT__H__

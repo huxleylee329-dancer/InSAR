@@ -67,18 +67,17 @@ Most modules exchange image data as OpenCV `Mat` and complex SAR data as `Comple
 
 Header files use Windows-style relative includes such as `..\include\Package.h`, and project files also reference source files from sibling directories, especially TinyXML files from `FormatConversion`. Keep this project-file layout in mind when moving files or adding sources; a source added to disk will not be compiled unless the relevant `.vcxproj` includes it.
 
-Several comments and identifiers are domain-specific and some Chinese comments may display with mojibake depending on encoding. Preserve existing file encoding and style when editing legacy files.
+Several comments and identifiers are domain-specific. All source files have been unified as UTF-8 (without BOM) or ASCII. Preserve existing style when editing legacy files.
 
 ## File encoding rules
 
-Source files are unified as UTF-8 with MSVC `/utf-8` compiler flag enabled. When editing files, follow these rules to avoid introducing encoding issues:
+All source files (`.cpp`, `.h`, `.hpp`) in this repository are unified as UTF-8 (without BOM) or ASCII, and the MSVC `/utf-8` compiler flag is enabled. When editing files, follow these rules to avoid introducing encoding issues:
 
-1. **Confirm encoding before editing**: Do not assume all source files are UTF-8. Before editing `.cpp` / `.h` files containing Chinese text, confirm their actual encoding (UTF-8 / GBK / UTF-8 BOM) to avoid writing with the wrong encoding and causing garbled output.
+1. **Save source files as UTF-8 (without BOM)**: Ensure all new C++ source and header files (`.cpp`, `.h`, `.hpp`) are saved in UTF-8 encoding without BOM, or standard ASCII. Do not strip BOM from Visual Studio project files (`.sln`, `.vcxproj`, `.filters`), which should remain as UTF-8 with BOM.
 
-2. **Explicitly specify encoding for automated modifications**: Do not use PowerShell default redirection or `Get-Content` / `Set-Content` to batch-modify source code. Use Python or IDE tools with explicit `encoding="utf-8"` for read/write operations. When processing historical GBK files, identify the input encoding first; never read blindly as UTF-8.
+2. **Explicitly specify UTF-8 for automated modifications**: Do not use PowerShell default redirection or `Get-Content` / `Set-Content` to batch-modify source code. Use Python or IDE tools with explicit `encoding="utf-8"` for read/write operations.
 
-3. **Save new or modified source files as UTF-8**: With the `/utf-8` compiler flag enabled, new files do not need a BOM.
+3. **Hex escapes only as last resort**: Do not proactively convert Chinese comments or strings to `\xe6...` form. Only consider this when specific strings are repeatedly corrupted across toolchains or cross-platform migration, and obtain user consent first.
 
-4. **Hex escapes only as last resort**: Do not proactively convert Chinese comments or strings to `\xe6...` form. Only consider this when specific strings are repeatedly corrupted across toolchains or cross-platform migration, and obtain user consent first.
+4. **External library path encoding follows actual API conventions**: Check whether external libraries support UTF-8 paths or require wide-character interfaces. For OpenCV, HDF5, GDAL, etc., handle path encoding based on actual project usage.
 
-5. **External library path encoding follows actual API conventions**: Do not blanket-convert all external library paths to GBK. Check whether the library supports UTF-8 paths or provides wide-character interfaces. For OpenCV, HDF5, GDAL, etc., handle path encoding based on actual project usage.

@@ -20,45 +20,22 @@
 #pragma comment(lib, "Utils.lib")
 #endif // _DEBUG
 using namespace cv;
-inline bool return_check(int ret, const char* detail_info, const char* error_head)
-{
-	if (ret < 0)
-	{
-		fprintf(stderr, "%s %s\n\n", error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+
+namespace {
+	const double NEWTON_CONVERGENCE_THRESHOLD = 0.0000454;
 }
 
-inline bool parallel_check(volatile bool parallel_flag, const char* detail_info,
-	const char* parallel_error_head)
-{
-	if (!parallel_flag)
-	{
-		fprintf(stderr, "%s %s\n\n", parallel_error_head, detail_info);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+// Forward declarations
+bool findZeroDopplerTime(
+    orbitStateVectors& stateVectors,
+    const Position& groundPosition,
+    double wavelength, double time_interval,
+    double dopplerFrequency,
+    double& zeroDopplerTime, double& distance);
 
-inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
-{
-	if (ret < 0)
-	{
-		parallel_flag = false;
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+
+template<typename T, typename Predicate>
+void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid);
 
 Deflat::Deflat()
 {
@@ -170,6 +147,7 @@ int Deflat::get_satellite_aztime_NEWTON(double center_time, Mat& coef, Mat pos_x
 	*aztime = init_time;
 	Mat S_xyz, V_xyz, A_xyz, D_xyz;
 	int ret;
+	bool converged = false;
 	for (int iter = 0; iter < 15; iter++)
 	{
 		ret = get_xyz(*aztime, coef, S_xyz);
@@ -181,11 +159,17 @@ int Deflat::get_satellite_aztime_NEWTON(double center_time, Mat& coef, Mat pos_x
 		D_xyz = pos_xyz - S_xyz;
 		sol = -(D_xyz.dot(V_xyz)) / (A_xyz.dot(D_xyz) - V_xyz.dot(V_xyz) + 0.000000001);
 		*aztime = *aztime + sol;
-		if (fabs(sol) < 0.0000454)
+		if (fabs(sol) < NEWTON_CONVERGENCE_THRESHOLD)
 		{
+			converged = true;
 			break;
 		}
 		
+	}
+	if (!converged)
+	{
+		fprintf(stderr, "get_satellite_aztime_NEWTON(): Newton iteration failed to converge!\n\n");
+		return -1;
 	}
 	return 0;
 }
@@ -216,7 +200,7 @@ int Deflat::Orbit_Polyfit(Mat& Orbit, Mat& coef)
 	Mat A_t, _coef;
 	cv::transpose(A, A_t);
 	double ret = invert(A_t * A, A);
-	if (fabs(ret) < 0.0)
+	if (fabs(ret) < 1e-12)
 	{
 		fprintf(stderr, "matrix is singular!\n\n");
 		return -1;
@@ -270,12 +254,12 @@ int Deflat::deflat(
 		return -1;
 	}
 	int ret;
-	double C = 2 * 3.1415926535;
-	double lambda = 300000000.0 / (auxi.at<double>(0, 4));
-	if (mode == 1) C = 4 * 3.1415926535;
+	double C = 2.0 * PI;
+	double lambda = VEL_C / (auxi.at<double>(0, 4));
+	if (mode == 1) C = 4.0 * PI;
 	else
 	{
-		C = 2.0 * 3.1415926535;
+		C = 2.0 * PI;
 	}
 	if (multilook_times > 1)
 	{
@@ -960,77 +944,10 @@ int Deflat::demMapping(
 			lon = lon > 180.0 ? (lon - 360.0) : lon;
 			height = DEM.at<short>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
-			int numOrbitVec = stateVectors.newStateVectors.rows;
-			double firstVecTime = 0.0;
-			double secondVecTime = 0.0;
-			double firstVecFreq = 0.0;
-			double secondVecFreq = 0.0;
-			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-					stateVectors.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-					stateVectors.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			double zeroDopplerTime, distance;
+			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
-
-			double lowerBoundTime = firstVecTime;
-			double upperBoundTime = secondVecTime;
-			double lowerBoundFreq = firstVecFreq;
-			double upperBoundFreq = secondVecFreq;
-			double midTime, midFreq;
-			double diffTime = fabs(upperBoundTime - lowerBoundTime);
-			double absLineTimeInterval = time_interval;
-
-			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			int numIterations = 0; Position pos; Velocity vel;
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors.getPosition(midTime, pos);
-				stateVectors.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime =  midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-
-
-			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
 			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
@@ -1047,106 +964,7 @@ int Deflat::demMapping(
 	}
 	
 	//投影DEM插值
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			if (DEM_out.at<short>(i, j) != invalid) continue;
-			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
-			int up, down, left, right;
-			double value1, value2, ratio1, ratio2;
-			//寻找上面有值的点
-			up = i;
-			while (true)
-			{
-				up--;
-				if (up < 0) break;
-				if (DEM_out.at<short>(up, j) != invalid) break;
-			}
-			//寻找下面有值的点
-			down = i;
-			while (true)
-			{
-				down++;
-				if (down > sceneHeight - 1) break;
-				if (DEM_out.at<short>(down, j) != invalid) break;
-			}
-			//寻找左边有值的点
-			left = j;
-			while (true)
-			{
-				left--;
-				if (left < 0) break;
-				if (DEM_out.at<short>(i, left) != invalid) break;
-			}
-			//寻找右边有值的点
-			right = j;
-			while (true)
-			{
-				right++;
-				if (right > sceneWidth - 1) break;
-				if (DEM_out.at<short>(i, right) != invalid) break;
-			}
-
-			//上下左右都有值
-			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<short>(i, left)) + 
-					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<short>(up, j)) +
-					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
-				continue;
-			}
-			//上下有值
-			if (up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<short>(up, j)) +
-					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = static_cast<short>(value2);
-				continue;
-			}
-			//左右有值
-			if (left >= 0 && right <= sceneWidth - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<short>(i, left)) +
-					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				DEM_out.at<short>(i, j) = static_cast<short>(value1);
-				continue;
-			}
-			//上边有值
-			if (up >= 0)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(up, j);
-				continue;
-			}
-			//下边有值
-			if (down <= sceneHeight - 1)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(down, j);
-				continue;
-			}
-			//左边有值
-			if (left >= 0)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, left);
-				continue;
-			}
-			//右边有值
-			if (right <= sceneWidth - 1)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, right);
-				continue;
-			}
-			//上下左右都没有值
-			DEM_out.at<short>(i, j) = 0;
-			
-		}
-	}
+	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
 	return 0;
 }
@@ -1238,87 +1056,10 @@ int Deflat::demMapping(
 			lon = lon > 180.0 ? (lon - 360.0) : lon;
 			height = DEM.at<short>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
-			int numOrbitVec = stateVectors.newStateVectors.rows;
-			double firstVecTime = 0.0;
-			double secondVecTime = 0.0;
-			double firstVecFreq = 0.0;
-			double secondVecFreq = 0.0;
-			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-					stateVectors.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-					stateVectors.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			double zeroDopplerTime, distance;
+			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
-
-			double lowerBoundTime = firstVecTime;
-			double upperBoundTime = secondVecTime;
-			double lowerBoundFreq = firstVecFreq;
-			double upperBoundFreq = secondVecFreq;
-			double midTime, midFreq;
-			double diffTime = fabs(upperBoundTime - lowerBoundTime);
-			double absLineTimeInterval = time_interval;
-
-			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			int numIterations = 0; Position pos; Velocity vel;
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors.getPosition(midTime, pos);
-				stateVectors.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime = midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-
-
-			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-
-			// 用最终 zeroDopplerTime 重新计算卫星位置和斜距
-			stateVectors.getPosition(zeroDopplerTime, pos);
-			stateVectors.getVelocity(zeroDopplerTime, vel);
-
-			xdiff = groundPosition.x - pos.x;
-			ydiff = groundPosition.y - pos.y;
-			zdiff = groundPosition.z - pos.z;
-
-			distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
 
 			double azimuthIndexD = (zeroDopplerTime - acquisitionStartTime) / time_interval
 				+ geocoding_cali_factor_az - offset_row;
@@ -1347,238 +1088,11 @@ int Deflat::demMapping(
 		}
 	}
 	//投影DEM插值
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			if (DEM_out.at<short>(i, j) != invalid) continue;
-			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
-			int up, down, left, right;
-			double value1, value2, ratio1, ratio2;
-			//寻找上面有值的点
-			up = i;
-			while (true)
-			{
-				up--;
-				if (up < 0) break;
-				if (DEM_out.at<short>(up, j) != invalid) break;
-			}
-			//寻找下面有值的点
-			down = i;
-			while (true)
-			{
-				down++;
-				if (down > sceneHeight - 1) break;
-				if (DEM_out.at<short>(down, j) != invalid) break;
-			}
-			//寻找左边有值的点
-			left = j;
-			while (true)
-			{
-				left--;
-				if (left < 0) break;
-				if (DEM_out.at<short>(i, left) != invalid) break;
-			}
-			//寻找右边有值的点
-			right = j;
-			while (true)
-			{
-				right++;
-				if (right > sceneWidth - 1) break;
-				if (DEM_out.at<short>(i, right) != invalid) break;
-			}
+	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
 
-			//上下左右都有值
-			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<short>(i, left)) +
-					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<short>(up, j)) +
-					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = static_cast<short>((value1 + value2) / 2.0);
-				continue;
-			}
-			//上下有值
-			if (up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<short>(up, j)) +
-					double(DEM_out.at<short>(down, j) - DEM_out.at<short>(up, j)) * ratio2;
-				DEM_out.at<short>(i, j) = static_cast<short>(value2);
-				continue;
-			}
-			//左右有值
-			if (left >= 0 && right <= sceneWidth - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<short>(i, left)) +
-					double(DEM_out.at<short>(i, right) - DEM_out.at<short>(i, left)) * ratio1;
-				DEM_out.at<short>(i, j) = static_cast<short>(value1);
-				continue;
-			}
-			//上边有值
-			if (up >= 0)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(up, j);
-				continue;
-			}
-			//下边有值
-			if (down <= sceneHeight - 1)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(down, j);
-				continue;
-			}
-			//左边有值
-			if (left >= 0)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, left);
-				continue;
-			}
-			//右边有值
-			if (right <= sceneWidth - 1)
-			{
-				DEM_out.at<short>(i, j) = DEM_out.at<short>(i, right);
-				continue;
-			}
-			//上下左右都没有值
-			DEM_out.at<short>(i, j) = 0;
-
-		}
-	}
-
-	//投影经度插值
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			if (mappedLon.at<double>(i, j) > -998.0) continue;
-			// removed unused: up_count, down_count, left_count, right_count (planned interpolation counters, never implemented)
-			int up, down, left, right;
-			double value1, value2, ratio1, ratio2;
-			//寻找上面有值的点
-			up = i;
-			while (true)
-			{
-				up--;
-				if (up < 0) break;
-				if (mappedLat.at<double>(up, j) > -998.0) break;
-			}
-			//寻找下面有值的点
-			down = i;
-			while (true)
-			{
-				down++;
-				if (down > sceneHeight - 1) break;
-				if (mappedLat.at<double>(down, j) > -998.0) break;
-			}
-			//寻找左边有值的点
-			left = j;
-			while (true)
-			{
-				left--;
-				if (left < 0) break;
-				if (mappedLat.at<double>(i, left) > -998.0) break;
-			}
-			//寻找右边有值的点
-			right = j;
-			while (true)
-			{
-				right++;
-				if (right > sceneWidth - 1) break;
-				if (mappedLat.at<double>(i, right) > -998.0) break;
-			}
-
-			//上下左右都有值
-			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(mappedLat.at<double>(i, left)) +
-					double(mappedLat.at<double>(i, right) - mappedLat.at<double>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(mappedLat.at<double>(up, j)) +
-					double(mappedLat.at<double>(down, j) - mappedLat.at<double>(up, j)) * ratio2;
-				mappedLat.at<double>(i, j) = (value1 + value2) / 2.0;
-
-
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(mappedLon.at<double>(i, left)) +
-					double(mappedLon.at<double>(i, right) - mappedLon.at<double>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(mappedLon.at<double>(up, j)) +
-					double(mappedLon.at<double>(down, j) - mappedLon.at<double>(up, j)) * ratio2;
-				mappedLon.at<double>(i, j) = (value1 + value2) / 2.0;
-
-				continue;
-			}
-			//上下有值
-			if (up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(mappedLat.at<double>(up, j)) +
-					double(mappedLat.at<double>(down, j) - mappedLat.at<double>(up, j)) * ratio2;
-				mappedLat.at<double>(i, j) = value2;
-
-
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(mappedLon.at<double>(up, j)) +
-					double(mappedLon.at<double>(down, j) - mappedLon.at<double>(up, j)) * ratio2;
-				mappedLon.at<double>(i, j) = value2;
-				continue;
-			}
-			//左右有值
-			if (left >= 0 && right <= sceneWidth - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(mappedLat.at<double>(i, left)) +
-					double(mappedLat.at<double>(i, right) - mappedLat.at<double>(i, left)) * ratio1;
-				mappedLat.at<double>(i, j) = value1;
-
-
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(mappedLon.at<double>(i, left)) +
-					double(mappedLon.at<double>(i, right) - mappedLon.at<double>(i, left)) * ratio1;
-				mappedLon.at<double>(i, j) = value1;
-				continue;
-			}
-			//上边有值
-			if (up >= 0)
-			{
-				mappedLat.at<double>(i, j) = mappedLat.at<double>(up, j);
-
-				mappedLon.at<double>(i, j) = mappedLon.at<double>(up, j);
-				continue;
-			}
-			//下边有值
-			if (down <= sceneHeight - 1)
-			{
-				mappedLat.at<double>(i, j) = mappedLat.at<double>(down, j);
-
-				mappedLon.at<double>(i, j) = mappedLon.at<double>(down, j);
-				continue;
-			}
-			//左边有值
-			if (left >= 0)
-			{
-				mappedLat.at<double>(i, j) = mappedLat.at<double>(i, left);
-
-				mappedLon.at<double>(i, j) = mappedLon.at<double>(i, left);
-				continue;
-			}
-			//右边有值
-			if (right <= sceneWidth - 1)
-			{
-				mappedLat.at<double>(i, j) = mappedLat.at<double>(i, right);
-
-				mappedLon.at<double>(i, j) = mappedLon.at<double>(i, right);
-				continue;
-			}
-			//上下左右都没有值
-			mappedLat.at<double>(i, j) = 0;
-			mappedLon.at<double>(i, j) = 0;
-		}
-	}
+	//投影经纬度插值
+	fillInvalidGaps<double>(mappedLon, [](double val) { return val <= -998.0; });
+	fillInvalidGaps<double>(mappedLat, [](double val) { return val <= -998.0; });
 	//投影纬度插值
 	cv::GaussianBlur(mappedLat, mappedLat, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(mappedLon, mappedLon, cv::Size(5, 5), 1, 1);
@@ -1665,77 +1179,10 @@ int Deflat::demMapping_float(
 			lon = lon > 180.0 ? (lon - 360.0) : lon;
 			height = DEM.at<float>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
-			int numOrbitVec = stateVectors.newStateVectors.rows;
-			double firstVecTime = 0.0;
-			double secondVecTime = 0.0;
-			double firstVecFreq = 0.0;
-			double secondVecFreq = 0.0;
-			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-					stateVectors.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-					stateVectors.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			double zeroDopplerTime, distance;
+			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
-
-			double lowerBoundTime = firstVecTime;
-			double upperBoundTime = secondVecTime;
-			double lowerBoundFreq = firstVecFreq;
-			double upperBoundFreq = secondVecFreq;
-			double midTime, midFreq;
-			double diffTime = fabs(upperBoundTime - lowerBoundTime);
-			double absLineTimeInterval = time_interval;
-
-			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			int numIterations = 0; Position pos; Velocity vel;
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors.getPosition(midTime, pos);
-				stateVectors.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime = midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-
-
-			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
 			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
@@ -1753,105 +1200,7 @@ int Deflat::demMapping_float(
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;
 	//投影DEM插值
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			if (DEM_out.at<float>(i, j) > -998.0) continue;
-			int up, down, left, right/*, up_count, down_count, left_count, right_count*/;
-			double value1, value2, ratio1, ratio2;
-			//寻找上面有值的点
-			up = i;
-			while (true)
-			{
-				up--;
-				if (up < 0) break;
-				if (DEM_out.at<float>(up, j) > -998.0) break;
-			}
-			//寻找下面有值的点
-			down = i;
-			while (true)
-			{
-				down++;
-				if (down > sceneHeight - 1) break;
-				if (DEM_out.at<float>(down, j) > -998.0) break;
-			}
-			//寻找左边有值的点
-			left = j;
-			while (true)
-			{
-				left--;
-				if (left < 0) break;
-				if (DEM_out.at<float>(i, left) > -998.0) break;
-			}
-			//寻找右边有值的点
-			right = j;
-			while (true)
-			{
-				right++;
-				if (right > sceneWidth - 1) break;
-				if (DEM_out.at<float>(i, right) > -998.0) break;
-			}
-
-			//上下左右都有值
-			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<float>(i, left)) +
-					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<float>(up, j)) +
-					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
-				continue;
-			}
-			//上下有值
-			if (up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<float>(up, j)) +
-					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = static_cast<float>(value2);
-				continue;
-			}
-			//左右有值
-			if (left >= 0 && right <= sceneWidth - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<float>(i, left)) +
-					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				DEM_out.at<float>(i, j) = static_cast<float>(value1);
-				continue;
-			}
-			//上边有值
-			if (up >= 0)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(up, j);
-				continue;
-			}
-			//下边有值
-			if (down <= sceneHeight - 1)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(down, j);
-				continue;
-			}
-			//左边有值
-			if (left >= 0)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(i, left);
-				continue;
-			}
-			//右边有值
-			if (right <= sceneWidth - 1)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(i, right);
-				continue;
-			}
-			//上下左右都没有值
-			DEM_out.at<float>(i, j) = 0;
-
-		}
-	}
+	fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; });
 
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
 	return 0;
@@ -1931,77 +1280,10 @@ int Deflat::paraMapping_float(
 			lon = lon > 180.0 ? (lon - 360.0) : lon;
 			height = DEM.at<float>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
-			int numOrbitVec = stateVectors.newStateVectors.rows;
-			double firstVecTime = 0.0;
-			double secondVecTime = 0.0;
-			double firstVecFreq = 0.0;
-			double secondVecFreq = 0.0;
-			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-					stateVectors.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-					stateVectors.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			double zeroDopplerTime, distance;
+			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
-
-			double lowerBoundTime = firstVecTime;
-			double upperBoundTime = secondVecTime;
-			double lowerBoundFreq = firstVecFreq;
-			double upperBoundFreq = secondVecFreq;
-			double midTime, midFreq;
-			double diffTime = fabs(upperBoundTime - lowerBoundTime);
-			double absLineTimeInterval = time_interval;
-
-			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			int numIterations = 0; Position pos; Velocity vel;
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors.getPosition(midTime, pos);
-				stateVectors.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime = midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-
-
-			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
 			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
@@ -2019,105 +1301,7 @@ int Deflat::paraMapping_float(
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;
 	//投影DEM插值
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			if (DEM_out.at<float>(i, j) > -998.0) continue;
-			int up, down, left, right/*, up_count, down_count, left_count, right_count*/;
-			double value1, value2, ratio1, ratio2;
-			//寻找上面有值的点
-			up = i;
-			while (true)
-			{
-				up--;
-				if (up < 0) break;
-				if (DEM_out.at<float>(up, j) > -998.0) break;
-			}
-			//寻找下面有值的点
-			down = i;
-			while (true)
-			{
-				down++;
-				if (down > sceneHeight - 1) break;
-				if (DEM_out.at<float>(down, j) > -998.0) break;
-			}
-			//寻找左边有值的点
-			left = j;
-			while (true)
-			{
-				left--;
-				if (left < 0) break;
-				if (DEM_out.at<float>(i, left) > -998.0) break;
-			}
-			//寻找右边有值的点
-			right = j;
-			while (true)
-			{
-				right++;
-				if (right > sceneWidth - 1) break;
-				if (DEM_out.at<float>(i, right) > -998.0) break;
-			}
-
-			//上下左右都有值
-			if (left >= 0 && right <= sceneWidth - 1 && up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<float>(i, left)) +
-					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<float>(up, j)) +
-					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
-				continue;
-			}
-			//上下有值
-			if (up >= 0 && down <= sceneHeight - 1)
-			{
-				ratio2 = double(i - up) / double(down - up);
-				value2 = double(DEM_out.at<float>(up, j)) +
-					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = static_cast<float>(value2);
-				continue;
-			}
-			//左右有值
-			if (left >= 0 && right <= sceneWidth - 1)
-			{
-				ratio1 = double(j - left) / double(right - left);
-				value1 = double(DEM_out.at<float>(i, left)) +
-					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				DEM_out.at<float>(i, j) = static_cast<float>(value1);
-				continue;
-			}
-			//上边有值
-			if (up >= 0)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(up, j);
-				continue;
-			}
-			//下边有值
-			if (down <= sceneHeight - 1)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(down, j);
-				continue;
-			}
-			//左边有值
-			if (left >= 0)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(i, left);
-				continue;
-			}
-			//右边有值
-			if (right <= sceneWidth - 1)
-			{
-				DEM_out.at<float>(i, j) = DEM_out.at<float>(i, right);
-				continue;
-			}
-			//上下左右都没有值
-			DEM_out.at<float>(i, j) = 0;
-
-		}
-	}
+	fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; });
 
 	cv::GaussianBlur(DEM_out, output, cv::Size(5, 5), 1, 1);
 	return 0;
@@ -2194,77 +1378,13 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
-	int numOrbitVec = stateVectors.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance;
+	if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
 
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-
+	Position pos;
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		double time = zeroDopplerTime + (double)i * (1.0 / prf);
@@ -2313,7 +1433,7 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 		!slcH5File
 		)
 	{
-		fprintf(stderr, "SLC_deramp(): input check failed!\n");
+		fprintf(stderr, "slantrange_compute_test(): input check failed!\n");
 		return -1;
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
@@ -2346,6 +1466,7 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 	double delta_t = statevec.at<double>(1, 0) - statevec.at<double>(0, 0);
 	orbitStateVectors stateVectors(statevec, start, end, delta_t);
 	stateVectors.applyOrbit();
+	Position pos;
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		double dopplerFrequency = 0.0;
@@ -2357,76 +1478,11 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 		lon = lon > 180.0 ? (lon - 360.0) : lon;
 		height = mappedDEM.at<short>(i, (int)sceneWidth / 2);
 		Utils::ell2xyz(lon, lat, height, groundPosition);
-		int numOrbitVec = stateVectors.newStateVectors.rows;
-		double firstVecTime = 0.0;
-		double secondVecTime = 0.0;
-		double firstVecFreq = 0.0;
-		double secondVecFreq = 0.0;
-		double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-		for (int ii = 0; ii < numOrbitVec; ii++) {
-			Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-				stateVectors.newStateVectors.at<double>(ii, 3));
-			Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-				stateVectors.newStateVectors.at<double>(ii, 6));
-			currentFreq = 0;
-			xdiff = groundPosition.x - orb_pos.x;
-			ydiff = groundPosition.y - orb_pos.y;
-			zdiff = groundPosition.z - orb_pos.z;
-			distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-			currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-			if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-				firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-				firstVecFreq = currentFreq;
-			}
-			else {
-				secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-				secondVecFreq = currentFreq;
-				break;
-			}
-		}
-
-		if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
-			fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
+		double zeroDopplerTime, distance;
+		if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
+			fprintf(stderr, "slantrange_compute_test(): orbit mismatch!\n");
 			return -1;
 		}
-
-		double lowerBoundTime = firstVecTime;
-		double upperBoundTime = secondVecTime;
-		double lowerBoundFreq = firstVecFreq;
-		double upperBoundFreq = secondVecFreq;
-		double midTime, midFreq;
-		double diffTime = fabs(upperBoundTime - lowerBoundTime);
-		double absLineTimeInterval = 1.0 / prf;
-
-		int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-		int numIterations = 0; Position pos; Velocity vel;
-		while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-			midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-			stateVectors.getPosition(midTime, pos);
-			stateVectors.getVelocity(midTime, vel);
-			xdiff = groundPosition.x - pos.x;
-			ydiff = groundPosition.y - pos.y;
-			zdiff = groundPosition.z - pos.z;
-			distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-			midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-			if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-				lowerBoundTime = midTime;
-				lowerBoundFreq = midFreq;
-			}
-			else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-				upperBoundTime = midTime;
-				upperBoundFreq = midFreq;
-			}
-			else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-				zeroDopplerTime = midTime;
-				break;
-			}
-
-			diffTime = fabs(upperBoundTime - lowerBoundTime);
-			numIterations++;
-		}
-		zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 		double time = zeroDopplerTime;
 		stateVectors.getPosition(time, pos);
 		sate1.at<double>(i, 0) = pos.x;
@@ -2469,7 +1525,7 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 		!slcH5File
 		)
 	{
-		fprintf(stderr, "SLC_deramp(): input check failed!\n");
+		fprintf(stderr, "slantrange_compute(): input check failed!\n");
 		return -1;
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
@@ -2514,77 +1570,13 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
-	int numOrbitVec = stateVectors.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
-		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
+	double zeroDopplerTime, distance;
+	if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
+		fprintf(stderr, "slantrange_compute(): orbit mismatch!\n");
 		return -1;
 	}
 
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-
+	Position pos; Velocity vel;
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		double time = zeroDopplerTime + (double)i * (1.0 / prf);
@@ -2850,197 +1842,18 @@ int Deflat::getSRTMFileName(double lonMin, double lonMax, double latMin, double 
 	}
 	name.clear();
 	char tmp[512];
-	int maxRows = 24; int maxCols = 72; int startRow, endRow, startCol, endCol;
+	int startRow, endRow, startCol, endCol;
 	double spacing = 5.0;
 	startRow = (int)((60.0 - latMax) / spacing) + 1;
 	endRow = (int)((60.0 - latMin) / spacing) + 1;
 	startCol = (int)((lonMin + 180.0) / spacing) + 1;
 	endCol = (int)((lonMax + 180.0) / spacing) + 1;
-	if (startRow == endRow)
+
+	for (int r = startRow; r <= endRow; r++)
 	{
-		if (startCol == endCol)
+		for (int c = startCol; c <= endCol; c++)
 		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-		}
-		else
-		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, startRow);
-			}
-			name.push_back(string(tmp));
-		}
-	}
-	else
-	{
-		if (startCol == endCol)
-		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-			memset(tmp, 0, 512);
-			if (startCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, endRow);
-			}
-			name.push_back(string(tmp));
-		}
-		else
-		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, endRow);
-			}
-			else if (endCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, endRow);
-			}
-			else if (endCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, endRow);
-			}
-			name.push_back(string(tmp));
-
-			memset(tmp, 0, 512);
-			if (startCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, endRow);
-			}
+			sprintf(tmp, "srtm_%02d_%02d.zip", c, r);
 			name.push_back(string(tmp));
 		}
 	}
@@ -3065,11 +1878,167 @@ int Deflat::downloadSRTM(const char* name)
 	HRESULT Result = URLDownloadToFileA(NULL, url.c_str(), savefile.c_str(), 0, NULL);
 	if (Result != S_OK)
 	{
-		fprintf(stderr, "downloadSRTM(): download failded!\n");
+		fprintf(stderr, "downloadSRTM(): download failed!\n");
 		return -1;
 	}
 	return 0;
 }
+
+namespace {
+	std::string getTifPath(const std::string& demPath, const std::string& zipFileName)
+	{
+		std::string folderName = zipFileName.substr(0, zipFileName.length() - 4);
+		std::string path = demPath + "\\" + folderName + "\\" + folderName + ".tif";
+		std::replace(path.begin(), path.end(), '/', '\\');
+		return path;
+	}
+}
+
+template<typename T, typename Predicate>
+void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid)
+{
+		int rows = mat.rows;
+		int cols = mat.cols;
+		for (int i = 0; i < rows; i++)
+		{
+			for (int j = 0; j < cols; j++)
+			{
+				if (!is_invalid(mat.at<T>(i, j))) continue;
+				int up = i, down = i, left = j, right = j;
+				while (--up >= 0 && is_invalid(mat.at<T>(up, j)));
+				while (++down < rows && is_invalid(mat.at<T>(down, j)));
+				while (--left >= 0 && is_invalid(mat.at<T>(i, left)));
+				while (++right < cols && is_invalid(mat.at<T>(i, right)));
+
+				if (left >= 0 && right < cols && up >= 0 && down < rows)
+				{
+					double ratio1 = double(j - left) / double(right - left);
+					double value1 = double(mat.at<T>(i, left)) + double(mat.at<T>(i, right) - mat.at<T>(i, left)) * ratio1;
+					double ratio2 = double(i - up) / double(down - up);
+					double value2 = double(mat.at<T>(up, j)) + double(mat.at<T>(down, j) - mat.at<T>(up, j)) * ratio2;
+					mat.at<T>(i, j) = static_cast<T>((value1 + value2) / 2.0);
+				}
+				else if (up >= 0 && down < rows)
+				{
+					double ratio2 = double(i - up) / double(down - up);
+					double value2 = double(mat.at<T>(up, j)) + double(mat.at<T>(down, j) - mat.at<T>(up, j)) * ratio2;
+					mat.at<T>(i, j) = static_cast<T>(value2);
+				}
+				else if (left >= 0 && right < cols)
+				{
+					double ratio1 = double(j - left) / double(right - left);
+					double value1 = double(mat.at<T>(i, left)) + double(mat.at<T>(i, right) - mat.at<T>(i, left)) * ratio1;
+					mat.at<T>(i, j) = static_cast<T>(value1);
+				}
+				else if (up >= 0)
+				{
+					mat.at<T>(i, j) = mat.at<T>(up, j);
+				}
+				else if (down < rows)
+				{
+					mat.at<T>(i, j) = mat.at<T>(down, j);
+				}
+				else if (left >= 0)
+				{
+					mat.at<T>(i, j) = mat.at<T>(i, left);
+				}
+				else if (right < cols)
+				{
+					mat.at<T>(i, j) = mat.at<T>(i, right);
+				}
+				else
+				{
+					mat.at<T>(i, j) = 0;
+				}
+			}
+		}
+}
+
+bool findZeroDopplerTime(
+	orbitStateVectors& stateVectors,
+	const Position& groundPosition,
+	double wavelength,
+	double time_interval,
+	double dopplerFrequency,
+	double& zeroDopplerTime,
+	double& distance)
+{
+		int numOrbitVec = stateVectors.newStateVectors.rows;
+		double firstVecTime = 0.0;
+		double secondVecTime = 0.0;
+		double firstVecFreq = 0.0;
+		double secondVecFreq = 0.0;
+		double currentFreq, xdiff, ydiff, zdiff;
+
+		for (int ii = 0; ii < numOrbitVec; ii++) {
+			Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
+				stateVectors.newStateVectors.at<double>(ii, 3));
+			Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
+				stateVectors.newStateVectors.at<double>(ii, 6));
+			xdiff = groundPosition.x - orb_pos.x;
+			ydiff = groundPosition.y - orb_pos.y;
+			zdiff = groundPosition.z - orb_pos.z;
+			double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+			currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * dist);
+			if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
+				firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
+				firstVecFreq = currentFreq;
+			}
+			else {
+				secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
+				secondVecFreq = currentFreq;
+				break;
+			}
+		}
+
+		if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			return false;
+		}
+
+		double lowerBoundTime = firstVecTime;
+		double upperBoundTime = secondVecTime;
+		double lowerBoundFreq = firstVecFreq;
+		double upperBoundFreq = secondVecFreq;
+		double midTime, midFreq;
+		double diffTime = fabs(upperBoundTime - lowerBoundTime);
+		double absLineTimeInterval = time_interval;
+
+		int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
+		int numIterations = 0;
+		Position pos; Velocity vel;
+		while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
+			midTime = (upperBoundTime + lowerBoundTime) / 2.0;
+			stateVectors.getPosition(midTime, pos);
+			stateVectors.getVelocity(midTime, vel);
+			xdiff = groundPosition.x - pos.x;
+			ydiff = groundPosition.y - pos.y;
+			zdiff = groundPosition.z - pos.z;
+			double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+			midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * dist);
+			if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
+				lowerBoundTime = midTime;
+				lowerBoundFreq = midFreq;
+			}
+			else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
+				upperBoundTime = midTime;
+				upperBoundFreq = midFreq;
+			}
+			else if (fabs(midFreq - dopplerFrequency) < 0.01) {
+				lowerBoundTime = midTime;
+				break;
+			}
+			diffTime = fabs(upperBoundTime - lowerBoundTime);
+			numIterations++;
+		}
+
+		zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
+		stateVectors.getPosition(zeroDopplerTime, pos);
+		xdiff = groundPosition.x - pos.x;
+		ydiff = groundPosition.y - pos.y;
+		zdiff = groundPosition.z - pos.z;
+		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+		return true;
+	}
 
 int Deflat::getSRTMDEM(
 	const char* filepath,
@@ -3153,12 +2122,8 @@ int Deflat::getSRTMDEM(
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
-		string folderName = srtmFileName[0];
-		folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-		string path = this->DEMPath + string("\\") + folderName;
-		path = path + string("\\") + folderName + string(".tif");
+		string path = getTifPath(this->DEMPath, srtmFileName[0]);
 		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
-		std::replace(path.begin(), path.end(), '/', '\\');
 		ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 		//if (return_check(ret, "geotiffread()", error_head)) return -1;
 		outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(DEM_out);
@@ -3198,20 +2163,12 @@ int Deflat::getSRTMDEM(
 
 			if (yy < yy2)
 			{
-				string folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				string path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
+				string path = getTifPath(this->DEMPath, srtmFileName[0]);
 				outDEM = Mat::zeros(6000, 6000, CV_16S);
 				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-				folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
+				path = getTifPath(this->DEMPath, srtmFileName[1]);
 				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3219,20 +2176,12 @@ int Deflat::getSRTMDEM(
 			}
 			else
 			{
-				string folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				string path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
+				string path = getTifPath(this->DEMPath, srtmFileName[1]);
 				outDEM = Mat::zeros(6000, 6000, CV_16S);
 				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-				folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
+				path = getTifPath(this->DEMPath, srtmFileName[0]);
 				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3271,20 +2220,12 @@ int Deflat::getSRTMDEM(
 
 				if (xx > xx2)
 				{
-					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					string path = getTifPath(this->DEMPath, srtmFileName[0]);
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					path = getTifPath(this->DEMPath, srtmFileName[1]);
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3292,20 +2233,12 @@ int Deflat::getSRTMDEM(
 				}
 				else
 				{
-					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					string path = getTifPath(this->DEMPath, srtmFileName[1]);
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					path = getTifPath(this->DEMPath, srtmFileName[0]);
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3341,20 +2274,12 @@ int Deflat::getSRTMDEM(
 
 				if (xx < xx2)
 				{
-					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					string path = getTifPath(this->DEMPath, srtmFileName[0]);
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					path = getTifPath(this->DEMPath, srtmFileName[1]);
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3362,20 +2287,12 @@ int Deflat::getSRTMDEM(
 				}
 				else
 				{
-					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					string path = getTifPath(this->DEMPath, srtmFileName[1]);
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
-					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
+					path = getTifPath(this->DEMPath, srtmFileName[0]);
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3428,11 +2345,7 @@ int Deflat::getSRTMDEM(
 			else if (startCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
-			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			string path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			string path = getTifPath(this->DEMPath, tmpstr);
 			outDEM = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3442,11 +2355,7 @@ int Deflat::getSRTMDEM(
 			else if (endCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3457,11 +2366,7 @@ int Deflat::getSRTMDEM(
 			else if (startCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3471,11 +2376,7 @@ int Deflat::getSRTMDEM(
 			else if (endCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM3);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3523,11 +2424,7 @@ int Deflat::getSRTMDEM(
 			else if (startCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, startRow);
-			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			string path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			string path = getTifPath(this->DEMPath, tmpstr);
 			outDEM = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3537,11 +2434,7 @@ int Deflat::getSRTMDEM(
 			else if (endCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, startRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3552,11 +2445,7 @@ int Deflat::getSRTMDEM(
 			else if (startCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, startCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
@@ -3566,11 +2455,7 @@ int Deflat::getSRTMDEM(
 			else if (endCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
 			else format = "srtm_%d_%d.zip";
 			sprintf(tmpstr, format, endCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
+			path = getTifPath(this->DEMPath, tmpstr);
 			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
 			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM3);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;

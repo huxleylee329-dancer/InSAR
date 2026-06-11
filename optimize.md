@@ -170,13 +170,13 @@
 ### P1 — 重要
 
 - [ ] **`Orbit_Polyfit` 仅属于 Deflat 模块**（原误记在 `Registration` 模块，已修正，见 Deflat P0 建议）
-- [ ] **`interp_cubic` 两个重载中边界扩展代码完全重复** — `Registration.cpp:312-583`
+- [x] **`interp_cubic` 两个重载中边界扩展代码完全重复** — `Registration.cpp:312-583`
   - 约 120 行 copyTo 操作完全一致
   - 应抽取为 `padBorderComplex()` 辅助函数
-- [ ] **双线性插值逻辑重复** — `Registration.cpp:1070-1153` vs `1713-1798`
+- [x] **双线性插值逻辑重复** — `Registration.cpp:1070-1153` vs `1713-1798`
   - `coregistration_subpixel` 和 `performBilinearResampling` 中三分支双线性插值重复约 60 行
   - 建议使用模板或统一的类型无关插值函数
-- [ ] **OMP 并行循环内逐行创建 Mat 对象** — `Registration.cpp:1070-1076,1714-1718`
+- [x] **OMP 并行循环内逐行创建 Mat 对象** — `Registration.cpp:1070-1076,1714-1718`
   - 每行创建 `Mat tmp` 和 `Mat result`（实际是逐行创建，并非逐像素，但大图时仍会产生数万次频繁分配与锁竞争）
   - 应移到循环外预分配
 - [ ] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Registration.cpp:19-56`
@@ -184,7 +184,7 @@
 
 ### P2 — 建议
 
-- [ ] **`WeightCalculation` 中自赋值** — `Registration.cpp:590`
+- [x] **`WeightCalculation` 中自赋值** — `Registration.cpp:590`
   - `offset = offset;` 无效，整个 if-else 块等价于 `offset = fabs(offset);`
 - [ ] **函数参数过多** — `Registration.h:127-146`
   - `getDEMRgAzPos` 共 18 个参数，建议封装为结构体
@@ -196,14 +196,14 @@
 
 ### P3 — 优化
 
-- [ ] **头文件 include guard 冗余** — `Registration.h:1-2`
+- [x] **头文件 include guard 冗余** — `Registration.h:1-2`
   - 同时使用 `#pragma once` 和 `#ifndef`，建议统一
-- [ ] **include 路径缺少空格** — `Registration.h:4-6`
+- [x] **include 路径缺少空格** — `Registration.h:4-6`
   - `#include"..\include\Package.h"` 应为 `#include "..\include\Package.h"`
-- [ ] **错误信息拼写错误** — `Registration.cpp:1044,1049,1212`
+- [x] **错误信息拼写错误** — `Registration.cpp:1044,1049,1212`
   - `"matrix defficiency"` → `"matrix deficiency"`
   - `"cant'"` → `"can't"`
-- [ ] **函数名与错误信息不匹配** — `Registration.cpp:775,837,991`
+- [x] **函数名与错误信息不匹配** — `Registration.cpp:775,837,991`
   - `coregistration_subpixel` 中错误消息写的是 `"coregistration_pixel()"`
 - [ ] **注释掉的调试代码未清理** — `Registration.cpp:661,756-757,876-877,896-900,914-954`
 - [ ] **魔数散布** — `Registration.cpp:859`（0.65 相干性阈值）、`784`（10000 裁剪尺寸）
@@ -214,7 +214,7 @@
 
 ### P0 — 必须修复
 
-- [ ] **`Orbit_Polyfit` 奇异矩阵检测永远为假** — `Deflat.cpp:199`
+- [x] **`Orbit_Polyfit` 奇异矩阵检测永远为假** — `Deflat.cpp:199`
   - `if (fabs(ret) < 0.0)` 永远为 false
   - 应改为 `if (fabs(ret) < 1e-12)`
 
@@ -223,17 +223,17 @@
 - [ ] **文件过大：2887 行，职责过多** — `Deflat/Deflat.cpp`
   - 建议拆分：SRTM 相关功能（~760 行）移至 `SRTMManager` 类
   - DEM 映射功能（~670 行）可考虑独立
-- [ ] **零多普勒时间搜索代码重复 5 处** — `Deflat.cpp:951-1047,1224-1322,1625-1703,1790-1868`
+- [x] **零多普勒时间搜索代码重复 5 处** — `Deflat.cpp:951-1047,1224-1322,1625-1703,1790-1868`
   - 每处约 60-80 行，与 Registration/Utils 中的版本完全相同
   - 应调用共享的 `findZeroDopplerTime()` 函数
-- [ ] **`getSRTMFileName` 格式化逻辑重复 8+ 次** — `Deflat.cpp:2122-2331`
+- [x] **`getSRTMFileName` 格式化逻辑重复 8+ 次** — `Deflat.cpp:2122-2331`
   - 可用 `sprintf(buf, "srtm_%02d_%02d.zip", col, row)` 一行替代所有 if-else
-- [ ] **`getSRTMDEM` 中 tif 路径构建重复 15 次** — `Deflat.cpp:2438-2880`
+- [x] **`getSRTMDEM` 中 tif 路径构建重复 15 次** — `Deflat.cpp:2438-2880`
   - 应抽取为辅助函数
-- [ ] **`get_satellite_aztime_NEWTON` 不检测迭代发散** — `Deflat.cpp:152-191`
+- [x] **`get_satellite_aztime_NEWTON` 不检测迭代发散** — `Deflat.cpp:152-191`
   - 始终返回 0（成功），即使迭代 15 次未收敛也不会报错
   - 应添加发散检测
-- [ ] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Deflat.cpp:23-61`
+- [x] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Deflat.cpp:23-61`
   - 应提取到公共头文件
 
 ### P2 — 建议
@@ -246,21 +246,21 @@
 - [ ] **变量命名混乱** — `Deflat.cpp:490,718`
   - `int xxxx` 作为轨道索引，应命名为 `orbitIdx`
   - `a0,a1,a2,a3,a4,a5,offset_inc,scale_inc` 应定义结构体
-- [ ] **`demMapping` 中 DEM 插值搜索填充算法重复** — `Deflat.cpp:1050-1149` vs `1323-1561`
+- [x] **`demMapping` 中 DEM 插值搜索填充算法重复** — `Deflat.cpp:1050-1149` vs `1323-1561`
   - 两个重载中约 100 行搜索填充逻辑完全相同
 
 ### P3 — 优化
 
-- [ ] **魔数散布** — `Deflat.cpp:273,274,275`
+- [x] **魔数散布** — `Deflat.cpp:273,274,275`
   - `3.1415926535` 应使用 `PI` 宏
   - `300000000.0` 应使用 `VEL_C` 常量
   - `0.0000454` 牛顿迭代收敛阈值应命名常量化
-- [ ] **错误信息拼写错误** — `Deflat.cpp:2348`
+- [x] **错误信息拼写错误** — `Deflat.cpp:2348`
   - `"download failded"` → `"download failed"`
-- [ ] **函数名与错误信息不匹配** — `Deflat.cpp:1754`
+- [x] **函数名与错误信息不匹配** — `Deflat.cpp:1754`
   - `slantrange_compute` 中错误消息写的是 `"SLC_deramp()"`
 - [ ] **大量注释掉的代码未清理** — `Deflat.cpp:876-877,1591-1607,2052-2057`
-- [ ] **头文件 include guard 冗余** — `Deflat.h:1-2`
+- [x] **头文件 include guard 冗余** — `Deflat.h:1-2`
 
 ---
 
