@@ -1,14 +1,14 @@
 #pragma once
 #include<stdio.h>
 #include<stdlib.h>
-struct Heap //´´½¨Ğ¡¶¥¶ÑÒÔ´¢´æ½â²øÁÚ½ÓµãĞòÁĞ
+struct Heap //åˆ›å»ºå°é¡¶å †ä»¥å‚¨å­˜è§£ç¼ é‚»æ¥ç‚¹åºåˆ—
 {
 	int size;
 	int* x = (int*)malloc(sizeof(int) * 100000000);
 	int* y = (int*)malloc(sizeof(int) * 100000000);
 	double* queue = (double*)malloc(sizeof(double) * 100000000);
 public:
-	Heap()         //³õÊ¼»¯ 
+	Heap()         //åˆå§‹åŒ– 
 	{
 		size = 0;
 		/*for (int i = 0; i < 1000000; i++)
@@ -22,7 +22,7 @@ public:
 	{
 	}
 
-	void shift_up(int i)  //ÉÏ¸¡ 
+	void shift_up(int i)  //ä¸Šæµ® 
 	{
 		while (i > 1)
 		{
@@ -41,7 +41,7 @@ public:
 			i >>= 1;
 		}
 	}
-	void shift_down(int i)   //ÏÂ³Á 
+	void shift_down(int i)   //ä¸‹æ²‰ 
 	{
 		while ((i << 1) <= size)
 		{
@@ -64,7 +64,7 @@ public:
 			else return;
 		}
 	}
-	int push(double v, int map_x, int map_y)   //¼ÓÈëÔªËØ 
+	int push(double v, int map_x, int map_y)   //åŠ å…¥å…ƒç´  
 	{
 		if (v < 0 ||
 			map_x < 0 ||
@@ -79,7 +79,7 @@ public:
 		shift_up(size);
 		return 0;
 	}
-	int pop()         //µ¯³ö²Ù×÷ 
+	int pop()         //å¼¹å‡ºæ“ä½œ 
 	{
 		if (size <= 0)
 		{
@@ -99,7 +99,7 @@ public:
 		shift_down(1);
 		return 0;
 	}
-	int top(int* x0, int* y0)			//Êä³ö¸ù½Úµã×ø±ê
+	int top(int* x0, int* y0)			//è¾“å‡ºæ ¹èŠ‚ç‚¹åæ ‡
 	{
 		if (size <= 0)
 		{

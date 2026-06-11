@@ -4,17 +4,17 @@
 
 // C4251: å¯¼å‡ºç±»çš„æˆå‘˜ä½¿ç”¨äº†æ— DLLå¯¼å‡ºæ¥å£çš„ç±»å‹(std::string, cv::Matç­‰)ï¼Œå¯¹æœ¬é¡¹ç›®æ— å®é™…å½±å“
 #pragma warning(disable: 4251)
-#define PI 3.141592653589793238
+#define PI 3.14159265358979323846
 #define VEL_C 299792458.0
 #define INPUTMAXSIZE 1024
 #include"opencv2\core\core.hpp"
 #include"opencv2\highgui\highgui.hpp"
 #include"opencv2\imgproc\imgproc.hpp"
 #include"opencv2\opencv.hpp"
-#include <omp.h>  /*¶àÏß³Ì¼ÆËã¿â*/
+#include <omp.h>  /*å¤šçº¿ç¨‹è®¡ç®—åº“*/
 
 /*-------------------------------------------------------*/
-/*                    ÈıÎ¬Î»ÖÃÊ¸Á¿                       */
+/*                    ä¸‰ç»´ä½ç½®çŸ¢é‡                       */
 /*-------------------------------------------------------*/
 struct Position
 {
@@ -27,21 +27,21 @@ struct Position
 		this->y = 0.0;
 		this->z = 0.0;
 	}
-	/*´«Öµ¹¹Ôìº¯Êı*/
+	/*ä¼ å€¼æ„é€ å‡½æ•°*/
 	Position(double x, double y, double z)
 	{
 		this->x = x;
 		this->y = y;
 		this->z = z;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	Position(const Position& cp)
 	{
 		this->x = cp.x;
 		this->y = cp.y;
 		this->z = cp.z;
 	}
-	/*¸³Öµº¯Êı(Éî¿½±´)*/
+	/*èµ‹å€¼å‡½æ•°(æ·±æ‹·è´)*/
 	Position operator=(const Position& cp)
 	{
 		this->x = cp.x;
@@ -53,7 +53,7 @@ struct Position
 };
 
 /*-------------------------------------------------------*/
-/*                    ÈıÎ¬ËÙ¶ÈÊ¸Á¿                       */
+/*                    ä¸‰ç»´é€Ÿåº¦çŸ¢é‡                       */
 /*-------------------------------------------------------*/
 struct Velocity
 {
@@ -66,21 +66,21 @@ struct Velocity
 		this->vy = 0.0;
 		this->vz = 0.0;
 	}
-	/*´«Öµ¹¹Ôìº¯Êı*/
+	/*ä¼ å€¼æ„é€ å‡½æ•°*/
 	Velocity(double vx, double vy, double vz)
 	{
 		this->vx = vx;
 		this->vy = vy;
 		this->vz = vz;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	Velocity(const Velocity& cp)
 	{
 		this->vx = cp.vx;
 		this->vy = cp.vy;
 		this->vz = cp.vz;
 	}
-	/*¸³Öµº¯Êı(Éî¿½±´)*/
+	/*èµ‹å€¼å‡½æ•°(æ·±æ‹·è´)*/
 	Velocity operator=(const Velocity& cp)
 	{
 		this->vx = cp.vx;
@@ -92,7 +92,7 @@ struct Velocity
 };
 
 /*-------------------------------------------------------*/
-/*                   ÎÀĞÇ¹ìµÀĞÅÏ¢                        */
+/*                   å«æ˜Ÿè½¨é“ä¿¡æ¯                        */
 /*-------------------------------------------------------*/
 struct OSV
 {
@@ -117,7 +117,7 @@ struct OSV
 		this->vy = vy;
 		this->vz = vz;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	OSV(const OSV& osv)
 	{
 		this->time = osv.time;
@@ -128,7 +128,7 @@ struct OSV
 		this->vy = osv.vy;
 		this->vz = osv.vz;
 	}
-	/*¸³Öµº¯Êı*/
+	/*èµ‹å€¼å‡½æ•°*/
 	OSV operator=(const OSV& osv)
 	{
 		this->time = osv.time;

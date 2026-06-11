@@ -6,41 +6,41 @@
 
 
 /*----------------------------------------*/
-/*          Ğ¡»ùÏß¼¯Èı½ÇÍøÂç½Úµã          */
+/*          å°åŸºçº¿é›†ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹          */
 /*----------------------------------------*/
 class InSAR_API SBAS_node
 {
 public:
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	SBAS_node();
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	SBAS_node(const SBAS_node& cp);
-	/*³õÊ¼»¯¹¹Ôìº¯Êı1*/
+	/*åˆå§‹åŒ–æ„é€ å‡½æ•°1*/
 	SBAS_node(int num_neigh_edge);
 	~SBAS_node();
-	/*¸³Öµº¯Êı£¨Éî¿½±´£©*/
+	/*èµ‹å€¼å‡½æ•°ï¼ˆæ·±æ‹·è´ï¼‰*/
 	SBAS_node operator = (const SBAS_node& src);
 
 
-	/*´¹Ö±»ùÏß(m)*/
+	/*å‚ç›´åŸºçº¿(m)*/
 	double B_spatial;
-	/*Ê±¼ä»ùÏß(day)*/
+	/*æ—¶é—´åŸºçº¿(day)*/
 	double B_temporal;
-	/*ÁÚ½Ó±ßÊıÁ¿*/
+	/*é‚»æ¥è¾¹æ•°é‡*/
 	int num_neigh_edges;
-	/*ÁÚ½Ó±ßĞòºÅ*/
+	/*é‚»æ¥è¾¹åºå·*/
 	int* neigh_edges;
-	/*½ÚµãÏàÎ»*/
+	/*èŠ‚ç‚¹ç›¸ä½*/
 	double phase;
-	/*½Úµãºá×ø±ê*/
+	/*èŠ‚ç‚¹æ¨ªåæ ‡*/
 	double x;
-	/*½Úµã×İ×ø±ê*/
+	/*èŠ‚ç‚¹çºµåæ ‡*/
 	double y;
-	/*ÊÇ·ñÒÑ½â²ø(Ä¬ÈÏÎ´½â²ø)*/
+	/*æ˜¯å¦å·²è§£ç¼ (é»˜è®¤æœªè§£ç¼ )*/
 	bool b_unwrapped;
-	/*¸ß³Ì²Ğ²î*/
+	/*é«˜ç¨‹æ®‹å·®*/
 	double epsilon_height;
-	/*ÏßĞÔĞÎ±äËÙÂÊ*/
+	/*çº¿æ€§å½¢å˜é€Ÿç‡*/
 	double deformation_vel;
 private:
 
@@ -48,32 +48,32 @@ private:
 };
 
 /*----------------------------------------*/
-/*        Ğ¡»ùÏß¼¯Èı½ÇÍøÂç±ß½á¹¹Ìå        */
+/*        å°åŸºçº¿é›†ä¸‰è§’ç½‘ç»œè¾¹ç»“æ„ä½“        */
 /*----------------------------------------*/
 struct SBAS_edge
 {
-	/*ÊÇ·ñÎª±ß½ç(Ä¬ÈÏÎª·ñ)*/
+	/*æ˜¯å¦ä¸ºè¾¹ç•Œ(é»˜è®¤ä¸ºå¦)*/
 	bool isBoundry;
-	/*±ßĞòºÅ*/
+	/*è¾¹åºå·*/
 	int num;
-	/*¶Ëµã1ĞòºÅ*/
+	/*ç«¯ç‚¹1åºå·*/
 	int end1;
-	/*¶Ëµã2ĞòºÅ*/
+	/*ç«¯ç‚¹2åºå·*/
 	int end2;
 
-	/*»ı·ÖÔöÒæ*/
+	/*ç§¯åˆ†å¢ç›Š*/
 	double gain;
-	/*ÏàÎ»Ìİ¶È£¨¶¨ÒåÎª´óĞòºÅ¶Ëµã - Ğ¡ĞòºÅ¶Ëµã£©*/
+	/*ç›¸ä½æ¢¯åº¦ï¼ˆå®šä¹‰ä¸ºå¤§åºå·ç«¯ç‚¹ - å°åºå·ç«¯ç‚¹ï¼‰*/
 	double phase_gradient;
-	/*ÏßĞÔĞÎ±äËÙ¶ÈÌİ¶È(¶¨ÒåÎª´óĞòºÅ¶Ëµã - Ğ¡ĞòºÅ¶Ëµã)*/
+	/*çº¿æ€§å½¢å˜é€Ÿåº¦æ¢¯åº¦(å®šä¹‰ä¸ºå¤§åºå·ç«¯ç‚¹ - å°åºå·ç«¯ç‚¹)*/
 	double delta_deformation_vel;
-	/*¸ß³Ì²Ğ²îÌİ¶È(¶¨ÒåÎª´óĞòºÅ¶Ëµã - Ğ¡ĞòºÅ¶Ëµã)*/
+	/*é«˜ç¨‹æ®‹å·®æ¢¯åº¦(å®šä¹‰ä¸ºå¤§åºå·ç«¯ç‚¹ - å°åºå·ç«¯ç‚¹)*/
 	double delta_epsilon_height;
-	/*È¨Öµ*/
+	/*æƒå€¼*/
 	double weight;
 
 
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	SBAS_edge()
 	{
 		isBoundry = false;
@@ -81,7 +81,7 @@ struct SBAS_edge
 		phase_gradient = delta_deformation_vel = delta_epsilon_height = gain = 0.0;
 		weight = 1.0;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	SBAS_edge(const SBAS_edge& cp)
 	{
 		isBoundry = cp.isBoundry;
@@ -94,7 +94,7 @@ struct SBAS_edge
 		gain = cp.gain;
 		weight = cp.weight;
 	}
-	/*¸³Öµ£¨Éî¿½±´£©*/
+	/*èµ‹å€¼ï¼ˆæ·±æ‹·è´ï¼‰*/
 	SBAS_edge operator = (const SBAS_edge& cp)
 	{
 		isBoundry = cp.isBoundry;
@@ -111,40 +111,40 @@ struct SBAS_edge
 };
 
 /*----------------------------------------*/
-/*      Ğ¡»ùÏß¼¯Èı½ÇÍøÂçÈı½ÇĞÎ½á¹¹Ìå      */
+/*      å°åŸºçº¿é›†ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢ç»“æ„ä½“      */
 /*----------------------------------------*/
 struct SBAS_triangle
 {
-	/*Èı½ÇĞÎĞòºÅ*/
+	/*ä¸‰è§’å½¢åºå·*/
 	int num;
-	/*µã1*/
+	/*ç‚¹1*/
 	int p1;
-	/*µã2*/
+	/*ç‚¹2*/
 	int p2;
-	/*µã3*/
+	/*ç‚¹3*/
 	int p3;
-	/*Èı½ÇĞÎ²Ğ²îÖµ*/
+	/*ä¸‰è§’å½¢æ®‹å·®å€¼*/
 	double residue;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ1*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·1*/
 	int neigh1;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ2*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·2*/
 	int neigh2;
-	/*ÏàÁÚÈı½ÇĞÎĞòºÅ3*/
+	/*ç›¸é‚»ä¸‰è§’å½¢åºå·3*/
 	int neigh3;
-	/*±ß1£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹1ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge1;
-	/*±ß2£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹2ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge2;
-	/*±ß3£¨´Ó1¿ªÊ¼£©*/
+	/*è¾¹3ï¼ˆä»1å¼€å§‹ï¼‰*/
 	int edge3;
 
-	/*Ä¬ÈÏ¹¹Ôìº¯Êı*/
+	/*é»˜è®¤æ„é€ å‡½æ•°*/
 	SBAS_triangle()
 	{
 		num = p1 = p2 = p3 = neigh1 = neigh2 = neigh3 = edge1 = edge2 = edge3 = 0;
 		residue = 0.0;
 	}
-	/*¿½±´¹¹Ôìº¯Êı*/
+	/*æ‹·è´æ„é€ å‡½æ•°*/
 	SBAS_triangle(const SBAS_triangle& cp)
 	{
 		this->edge1 = cp.edge1;
@@ -157,7 +157,7 @@ struct SBAS_triangle
 		this->p1 = cp.p1; this->p2 = cp.p2; this->p3 = cp.p3;
 		this->residue = cp.residue;
 	}
-	/*¸³Öµ(Éî¿½±´)*/
+	/*èµ‹å€¼(æ·±æ‹·è´)*/
 	SBAS_triangle operator= (const SBAS_triangle& cp)
 	{
 		this->edge1 = cp.edge1;
@@ -174,7 +174,7 @@ struct SBAS_triangle
 };
 
 /*----------------------------------------*/
-/*             Ğ¡»ùÏß¼¯·½·¨Àà             */
+/*             å°åŸºçº¿é›†æ–¹æ³•ç±»             */
 /*----------------------------------------*/
 class InSAR_API SBAS
 {
@@ -182,34 +182,34 @@ public:
 	SBAS();
 	~SBAS();
 
-	/*@brief Ğ´ÈëÊ±¿Õ»ùÏßÈı½ÇÍøÂç½Úµã
-	* @param nodeFile                   ½ÚµãÎÄ¼ş
-	* @param B_temporal                 Ê±¼ä»ùÏß£¨1¡Án£¬µ¥Î»£ºday£©
-	* @param B_effect                   ¿Õ¼ä»ùÏß£¨1¡Án£¬µ¥Î»£ºm£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å†™å…¥æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param nodeFile                   èŠ‚ç‚¹æ–‡ä»¶
+	* @param B_temporal                 æ—¶é—´åŸºçº¿ï¼ˆ1Ã—nï¼Œå•ä½ï¼šdayï¼‰
+	* @param B_effect                   ç©ºé—´åŸºçº¿ï¼ˆ1Ã—nï¼Œå•ä½ï¼šmï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int write_spatialTemporal_node(
 		const char* nodeFile,
 		Mat& B_temporal,
 		Mat& B_effect
 	);
-	/*@brief ÉèÖÃÊ±¿Õ»ùÏßÈı½ÇÍøÂç½ÚµãµÄÊ±¿Õ»ùÏßÖµºÍ½Úµã×ø±ê
-	* @param nodes                     Èı½ÇÍøÂç½ÚµãÊı×é
-	* @param B_temporal                 Ê±¼ä»ùÏß£¨1¡Án£¬µ¥Î»£ºday£©
-	* @param B_effect                   ¿Õ¼ä»ùÏß£¨1¡Án£¬µ¥Î»£ºm£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è®¾ç½®æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹çš„æ—¶ç©ºåŸºçº¿å€¼å’ŒèŠ‚ç‚¹åæ ‡
+	* @param nodes                     ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param B_temporal                 æ—¶é—´åŸºçº¿ï¼ˆ1Ã—nï¼Œå•ä½ï¼šdayï¼‰
+	* @param B_effect                   ç©ºé—´åŸºçº¿ï¼ˆ1Ã—nï¼Œå•ä½ï¼šmï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int set_spatialTemporalBaseline(
 		vector<SBAS_node>& nodes,
 		Mat& B_temporal,
 		Mat& B_effect
 	);
-	/** @brief ´Ó.edgeÎÄ¼ş¶ÁÈ¡DelaunayÈı½ÇÍøµÄ±ßĞÅÏ¢
-	* @param edge_file               .edgeÎÄ¼ş
-	* @param num_nodes               ½ÚµãÊı
-	* @param edges                   DelaunayÈı½ÇÍø±ßÊı×é£¨·µ»ØÖµ£©
-	* @param node_neighbours         Ã¿¸ö½ÚµãµÄÁÚ½Ó±ßÊı£¨·µ»ØÖµ£©
-	* @return  ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
+	/** @brief ä».edgeæ–‡ä»¶è¯»å–Delaunayä¸‰è§’ç½‘çš„è¾¹ä¿¡æ¯
+	* @param edge_file               .edgeæ–‡ä»¶
+	* @param num_nodes               èŠ‚ç‚¹æ•°
+	* @param edges                   Delaunayä¸‰è§’ç½‘è¾¹æ•°ç»„ï¼ˆè¿”å›å€¼ï¼‰
+	* @param node_neighbours         æ¯ä¸ªèŠ‚ç‚¹çš„é‚»æ¥è¾¹æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	* @return  æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
 	*/
 	int read_edges(
 		const char* edge_file,
@@ -217,24 +217,24 @@ public:
 		vector<SBAS_edge>& edges,
 		vector<int>& node_neighbours
 	);
-	/*@brief ³õÊ¼»¯SBAS_node£¨Ö»³õÊ¼»¯Èı½ÇÍøÂç¹ØÏµ£©
-	* @param node                   SBAS_node½ÚµãÊı×é
-	* @param edges                  SBAS_edge±ßÊı×é
-	* @param node_neighbours        Ã¿¸ö½ÚµãµÄÁÚ½Ó±ßÊı
-	* @return  ³É¹¦·µ»Ø0£¬ ·ñÔò·µ»Ø-1
+	/*@brief åˆå§‹åŒ–SBAS_nodeï¼ˆåªåˆå§‹åŒ–ä¸‰è§’ç½‘ç»œå…³ç³»ï¼‰
+	* @param node                   SBAS_nodeèŠ‚ç‚¹æ•°ç»„
+	* @param edges                  SBAS_edgeè¾¹æ•°ç»„
+	* @param node_neighbours        æ¯ä¸ªèŠ‚ç‚¹çš„é‚»æ¥è¾¹æ•°
+	* @return  æˆåŠŸè¿”å›0ï¼Œ å¦åˆ™è¿”å›-1
 	*/
 	int init_SBAS_node(
 		vector<SBAS_node>& node,
 		vector<SBAS_edge>& edges,
 		vector<int>& node_neighbours
 	);
-	/*@brief ³õÊ¼»¯SBAS_triangle£¨Ö»³õÊ¼»¯Èı½ÇÍøÂç¹ØÏµ£©
-	* @param ele_file            .eleÎÄ¼ş
-	* @param neigh_file          .neighÎÄ¼ş
-	* @param triangles           SBAS_triangleÈı½ÇĞÎ½á¹¹ÌåÊı×é
-	* @param edges               SBAS_edgeÈı½ÇĞÎ±ß½á¹¹ÌåÊı×é
-	* @param nodes               SBAS_nodeÈı½ÇĞÎ½ÚµãÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief åˆå§‹åŒ–SBAS_triangleï¼ˆåªåˆå§‹åŒ–ä¸‰è§’ç½‘ç»œå…³ç³»ï¼‰
+	* @param ele_file            .eleæ–‡ä»¶
+	* @param neigh_file          .neighæ–‡ä»¶
+	* @param triangles           SBAS_triangleä¸‰è§’å½¢ç»“æ„ä½“æ•°ç»„
+	* @param edges               SBAS_edgeä¸‰è§’å½¢è¾¹ç»“æ„ä½“æ•°ç»„
+	* @param nodes               SBAS_nodeä¸‰è§’å½¢èŠ‚ç‚¹æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int init_SBAS_triangle(
 		const char* ele_file,
@@ -243,23 +243,23 @@ public:
 		vector<SBAS_edge>& edges,
 		vector<SBAS_node>& nodes
 	);
-	/*@brief ¼ÆËãÊ±¿Õ»ùÏßÈı½ÇÍøÂç²Ğ²îµã£¨²Ğ²î»ı·Ö·½ÏòÎªÄæÊ±Õë£©
-	* @param nodes                Ê±¿Õ»ùÏßÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                Ê±¿Õ»ùÏßÈı½ÇÍøÂç±ßÊı×é
-	* @param triangles            Ê±¿Õ»ùÏßÈı½ÇÍøÂçÈı½ÇĞÎÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è®¡ç®—æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œæ®‹å·®ç‚¹ï¼ˆæ®‹å·®ç§¯åˆ†æ–¹å‘ä¸ºé€†æ—¶é’ˆï¼‰
+	* @param nodes                æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param triangles            æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int compute_spatialTemporal_residue(
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangles
 	);
-	/*@brief ½«×îĞ¡·ÑÓÃÁ÷ÎÊÌâĞ´ÈëDIMACSÎÄ¼ş£¬×¼±¸Çó½â£¨Ê±¿Õ»ùÏßÈı½ÇÍø£©
-	* @param DIMACS_file          DIMACSÎÄ¼ş
-	* @param nodes                Ê±¿Õ»ùÏßÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                Ê±¿Õ»ùÏßÈı½ÇÍøÂç±ßÊı×é
-	* @param triangle             Ê±¿Õ»ùÏßÈı½ÇÍøÂçÈı½ÇĞÎÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å°†æœ€å°è´¹ç”¨æµé—®é¢˜å†™å…¥DIMACSæ–‡ä»¶ï¼Œå‡†å¤‡æ±‚è§£ï¼ˆæ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ï¼‰
+	* @param DIMACS_file          DIMACSæ–‡ä»¶
+	* @param nodes                æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param triangle             æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int writeDIMACS_temporal(
 		const char* DIMACS_file,
@@ -267,15 +267,15 @@ public:
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangle
 	);
-	/*@brief ¸ù¾İÊ±¿Õ»ùÏßÈı½ÇÍøÉú³É²î·Ö¸ÉÉæÏàÎ»£¨Ö÷Í¼ÏñÊ±¼ä>¸¨Í¼ÏñÊ±¼ä£©,Éú³ÉµÄ²î·ÖÏàÎ»ÓëÊ±¿Õ»ùÏßÈı½ÇÍøÂç±ßÊı×é¶ÔÓ¦
-	* @param SLCH5Files          SLCÍ¼ÏñÎÄ¼ş
-	* @param edges               Ê±¿Õ»ùÏßÈı½ÇÍøÂç±ß½á¹¹ÌåÊı×é
-	* @param nodes               Ê±¿Õ»ùÏßÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param multilook_az        ·½Î»Ïò¶àÊÓ±¶Êı
-	* @param multilook_rg        ¾àÀëÏò¶àÊÓ±¶Êı
-	* @param ifgSavePath         ²î·ÖÏàÎ»h5ÎÄ¼ş±£´æÂ·¾¶
-	* @param b_save_images       ÊÇ·ñ±£´æÎªÍ¼Æ¬£¨Ä¬ÈÏÎª·ñ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç”Ÿæˆå·®åˆ†å¹²æ¶‰ç›¸ä½ï¼ˆä¸»å›¾åƒæ—¶é—´>è¾…å›¾åƒæ—¶é—´ï¼‰,ç”Ÿæˆçš„å·®åˆ†ç›¸ä½ä¸æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„å¯¹åº”
+	* @param SLCH5Files          SLCå›¾åƒæ–‡ä»¶
+	* @param edges               æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œè¾¹ç»“æ„ä½“æ•°ç»„
+	* @param nodes               æ—¶ç©ºåŸºçº¿ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param multilook_az        æ–¹ä½å‘å¤šè§†å€æ•°
+	* @param multilook_rg        è·ç¦»å‘å¤šè§†å€æ•°
+	* @param ifgSavePath         å·®åˆ†ç›¸ä½h5æ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @param b_save_images       æ˜¯å¦ä¿å­˜ä¸ºå›¾ç‰‡ï¼ˆé»˜è®¤ä¸ºå¦ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generate_interferograms(
 		vector<string>& SLCH5Files,
@@ -286,30 +286,30 @@ public:
 		const char* ifgSavePath,
 		bool b_save_images = false
 	);
-	/*@brief ¸ù¾İ¸ßÏà¸ÉÑÚÄ¤¾ØÕóĞ´ÈëÈı½ÇÍø½ÚµãÎÄ¼ş
-	* @param mask                     ¸ßÏà¸ÉÑÚÄ¤¾ØÕó(intĞÍ)
-	* @param nodeFile                 Èı½ÇÍøÂç½Úµã
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®é«˜ç›¸å¹²æ©è†œçŸ©é˜µå†™å…¥ä¸‰è§’ç½‘èŠ‚ç‚¹æ–‡ä»¶
+	* @param mask                     é«˜ç›¸å¹²æ©è†œçŸ©é˜µ(intå‹)
+	* @param nodeFile                 ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int write_high_coherence_node(
 		Mat& mask,
 		const char* nodeFile
 	);
-	/*@brief ¸ù¾İ¸ßÏà¸ÉÑÚÄ¤¾ØÕóÉèÖÃÈı½ÇÍøÂç½ÚµãµÄ×ø±êÖµ
-	* @param mask                     ¸ßÏà¸ÉÑÚÄ¤¾ØÕó£¨intĞÍ£©
-	* @param nodes                    ¸ßÏà¸ÉÈı½ÇÍøÂç½ÚµãÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®é«˜ç›¸å¹²æ©è†œçŸ©é˜µè®¾ç½®ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹çš„åæ ‡å€¼
+	* @param mask                     é«˜ç›¸å¹²æ©è†œçŸ©é˜µï¼ˆintå‹ï¼‰
+	* @param nodes                    é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int set_high_coherence_node_coordinate(
 		Mat& mask,
 		vector<SBAS_node>& nodes
 	);
-	/*@brief ¸ù¾İ¸ßÏà¸ÉÑÚÄ¤¾ØÕóÉèÖÃÈı½ÇÍøÂç½ÚµãÏàÎ»Öµ£¬²¢¼ÆËãÏàÁÚ½ÚµãÖ®¼äµÄÏàÎ»Ìİ¶È£¨Ìİ¶È¶¨ÒåÎª´óĞòºÅ-Ğ¡ĞòºÅ£©
-	* @param mask                     ¸ßÏà¸ÉÑÚÄ¤¾ØÕó£¨intĞÍ£©
-	* @param nodes                    ¸ßÏà¸ÉÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                    ¸ßÏà¸ÉÈı½ÇÍøÂç±ßÊı×é
-	* @param phase                    ¸ÉÉæÏàÎ»
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®é«˜ç›¸å¹²æ©è†œçŸ©é˜µè®¾ç½®ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹ç›¸ä½å€¼ï¼Œå¹¶è®¡ç®—ç›¸é‚»èŠ‚ç‚¹ä¹‹é—´çš„ç›¸ä½æ¢¯åº¦ï¼ˆæ¢¯åº¦å®šä¹‰ä¸ºå¤§åºå·-å°åºå·ï¼‰
+	* @param mask                     é«˜ç›¸å¹²æ©è†œçŸ©é˜µï¼ˆintå‹ï¼‰
+	* @param nodes                    é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                    é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param phase                    å¹²æ¶‰ç›¸ä½
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int set_high_coherence_node_phase(
 		Mat& mask,
@@ -318,12 +318,12 @@ public:
 		Mat& phase
 	);
 	
-	/*@brief ½«×îĞ¡·ÑÓÃÁ÷ÎÊÌâĞ´ÈëDIMACSÎÄ¼ş£¬×¼±¸Çó½â£¨¸ßÏà¸ÉµãÈı½ÇÍø£©
-	* @param DIMACS_file          DIMACSÎÄ¼ş
-	* @param nodes                ¸ßÏà¸ÉµãÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                ¸ßÏà¸ÉµãÈı½ÇÍøÂç±ßÊı×é
-	* @param triangles            ¸ßÏà¸ÉµãÈı½ÇÍøÂçÈı½ÇĞÎÊı×é
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å°†æœ€å°è´¹ç”¨æµé—®é¢˜å†™å…¥DIMACSæ–‡ä»¶ï¼Œå‡†å¤‡æ±‚è§£ï¼ˆé«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ï¼‰
+	* @param DIMACS_file          DIMACSæ–‡ä»¶
+	* @param nodes                é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param triangles            é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢æ•°ç»„
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int writeDIMACS_spatial(
 		const char* DIMACS_file,
@@ -331,14 +331,14 @@ public:
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangles
 	);
-	/*@brief ´Ó×îĞ¡·ÑÓÃÁ÷Çó½âÆ÷½âËãÎÄ¼şÖĞ¶ÁÈ¡½á¹û(¸üĞÂÌİ¶È)
-	* @param MCF_solution_file    ×îĞ¡·ÑÓÃÁ÷Çó½âÆ÷½âËãÎÄ¼ş
-	* @param nodes                Èı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                Èı½ÇÍøÂç±ßÊı×é
-	* @param triangles            Èı½ÇÍøÂçÈı½ÇĞÎÊı×é
-	* @param obj_value            ×îÓÅÄ¿±êÖµ
-	* @param flowcount            ×ÜÁ÷¶¯Öµ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä»æœ€å°è´¹ç”¨æµæ±‚è§£å™¨è§£ç®—æ–‡ä»¶ä¸­è¯»å–ç»“æœ(æ›´æ–°æ¢¯åº¦)
+	* @param MCF_solution_file    æœ€å°è´¹ç”¨æµæ±‚è§£å™¨è§£ç®—æ–‡ä»¶
+	* @param nodes                ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param triangles            ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢æ•°ç»„
+	* @param obj_value            æœ€ä¼˜ç›®æ ‡å€¼
+	* @param flowcount            æ€»æµåŠ¨å€¼
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int readDIMACS(
 		const char* MCF_solution_file,
@@ -348,13 +348,13 @@ public:
 		double* obj_value,
 		double* flowcount = NULL
 	);
-	/*@brief ½«²î·Ö¸ÉÉæÏàÎ»¶ÑÕ»¸ßÏà¸ÉµãÖ®¼äµÄÏàÎ»Ìİ¶ÈĞÅÏ¢£¨Óë¸ßÏà¸ÉµãÈı½ÇÍøÂçµÄ±ß¶ÔÓ¦£©±£´æÔÚh5ÎÄ¼şÖĞ
-	* @param phaseFiles           ²î·Ö¸ÉÉæÏàÎ»Êı¾İ¶ÑÕ»ÎÄ¼ş
-	* @param mask                 ¸ßÏà¸ÉµãÑÚÄ¤
-	* @param nodes                ¸ßÏà¸ÉÈı½ÇÍøÂç½ÚµãÊı×é
-	* @param edges                ¸ßÏà¸ÉÈı½ÇÍøÂç±ßÊı×é
-	* @param dstH5File            ±£´æh5ÎÄ¼ş
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief å°†å·®åˆ†å¹²æ¶‰ç›¸ä½å †æ ˆé«˜ç›¸å¹²ç‚¹ä¹‹é—´çš„ç›¸ä½æ¢¯åº¦ä¿¡æ¯ï¼ˆä¸é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œçš„è¾¹å¯¹åº”ï¼‰ä¿å­˜åœ¨h5æ–‡ä»¶ä¸­
+	* @param phaseFiles           å·®åˆ†å¹²æ¶‰ç›¸ä½æ•°æ®å †æ ˆæ–‡ä»¶
+	* @param mask                 é«˜ç›¸å¹²ç‚¹æ©è†œ
+	* @param nodes                é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹æ•°ç»„
+	* @param edges                é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œè¾¹æ•°ç»„
+	* @param dstH5File            ä¿å­˜h5æ–‡ä»¶
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int saveGradientStack(
 		vector<string>& phaseFiles,
@@ -363,14 +363,14 @@ public:
 		vector<SBAS_edge>& edges,
 		const char* dstH5File
 	);
-	/*@brief ¹À¼Æ²î·Ö¸ÉÉæÏàÎ»Êı¾İ¶ÑÕ»Ïà¹ØÏµÊı²¢Éú³É¸ßÏà¸ÉÑÚÄ¤
-	* @param phaseFiles               ²î·Ö¸ÉÉæÏàÎ»Êı¾İ¶ÑÕ»ÎÄ¼ş
-	* @param wndsize_rg               Ïà¹ØÏµÊı¹À¼Æ¾àÀëÏò´°¿Ú´óĞ¡£¨ÆæÊı£©
-	* @param wndsize_az               Ïà¹ØÏµÊı¹À¼Æ·½Î»Ïò´°¿Ú´óĞ¡£¨ÆæÊı£©
-	* @param coherence_thresh         ¸ßÏà¸ÉµãÏà¹ØÏµÊıãĞÖµ£¨0~1£©
-	* @param count_thresh             ÑÚÄ¤É¸Ñ¡ãĞÖµ£¨0~1£¬ÈôÄ³µãÏà¹ØÏµÊı´óÓÚãĞÖµµÄÍ¼·ùÊı´óÓÚcount_thresh¡ÁÍ¼·ùÊı£¬Ôò¸ÃµãÎª¸ßÏà¸Éµã£©
-	* @param mask                     ¸ßÏà¸ÉÑÚÄ¤£¨·µ»ØÖµ£¬intĞÍ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä¼°è®¡å·®åˆ†å¹²æ¶‰ç›¸ä½æ•°æ®å †æ ˆç›¸å…³ç³»æ•°å¹¶ç”Ÿæˆé«˜ç›¸å¹²æ©è†œ
+	* @param phaseFiles               å·®åˆ†å¹²æ¶‰ç›¸ä½æ•°æ®å †æ ˆæ–‡ä»¶
+	* @param wndsize_rg               ç›¸å…³ç³»æ•°ä¼°è®¡è·ç¦»å‘çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼‰
+	* @param wndsize_az               ç›¸å…³ç³»æ•°ä¼°è®¡æ–¹ä½å‘çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼‰
+	* @param coherence_thresh         é«˜ç›¸å¹²ç‚¹ç›¸å…³ç³»æ•°é˜ˆå€¼ï¼ˆ0~1ï¼‰
+	* @param count_thresh             æ©è†œç­›é€‰é˜ˆå€¼ï¼ˆ0~1ï¼Œè‹¥æŸç‚¹ç›¸å…³ç³»æ•°å¤§äºé˜ˆå€¼çš„å›¾å¹…æ•°å¤§äºcount_threshÃ—å›¾å¹…æ•°ï¼Œåˆ™è¯¥ç‚¹ä¸ºé«˜ç›¸å¹²ç‚¹ï¼‰
+	* @param mask                     é«˜ç›¸å¹²æ©è†œï¼ˆè¿”å›å€¼ï¼Œintå‹ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generate_high_coherence_mask(
 		vector<string>& phaseFiles,
@@ -380,12 +380,12 @@ public:
 		double count_thresh,
 		Mat& mask
 	);
-	/*@brief ºéË®ÑÍÃ»·¨¸ßÏà¸Éµã»ı·Ö½â²ø£¨Èı½ÇÍøÂç±ßÌİ¶ÈÒÑ¾­ÓÃMCFÇó½â¹ı£©
-	* @param nodes                   ¸ßÏà¸ÉµãÈı½ÇÍøÂç½Úµã
-	* @param edges                   ¸ßÏà¸ÉµãÈı½ÇÍøÂç±ß
-	* @param start                   ½â²øÆğÊ¼½Úµã
-	* @param b_zero_start            ½â²øÆğÊ¼µãÖµÊÇ·ñÉèÖÃÎª0
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ´ªæ°´æ·¹æ²¡æ³•é«˜ç›¸å¹²ç‚¹ç§¯åˆ†è§£ç¼ ï¼ˆä¸‰è§’ç½‘ç»œè¾¹æ¢¯åº¦å·²ç»ç”¨MCFæ±‚è§£è¿‡ï¼‰
+	* @param nodes                   é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param edges                   é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œè¾¹
+	* @param start                   è§£ç¼ èµ·å§‹èŠ‚ç‚¹
+	* @param b_zero_start            è§£ç¼ èµ·å§‹ç‚¹å€¼æ˜¯å¦è®¾ç½®ä¸º0
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int floodFillUnwrap(
 		vector<SBAS_node>& nodes,
@@ -393,67 +393,67 @@ public:
 		int start,
 		bool b_zero_start = false
 	);
-	/*@brief ÓÃÏà¸ÉÏµÊıÉèÖÃ¸ßÏà¸ÉµãÈı½ÇÍøÂç±ßµÄÈ¨ÖØ
-	* @param coherence               Ïà¸ÉÏµÊı
-	* @param nodes                   ¸ßÏà¸ÉµãÈı½ÇÍøÂç½Úµã
-	* @param edges                   ¸ßÏà¸ÉµãÈı½ÇÍøÂç±ß
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ç”¨ç›¸å¹²ç³»æ•°è®¾ç½®é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œè¾¹çš„æƒé‡
+	* @param coherence               ç›¸å¹²ç³»æ•°
+	* @param nodes                   é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param edges                   é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œè¾¹
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int set_weight_by_coherence(
 		Mat& coherence,
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges
 	);
-	/*@brief ´ÓÈı½ÇÍøÂç½ÚµãÖĞ»ñÈ¡½â²øÏàÎ»
-	* @param nodes                   Èı½ÇÍøÂç½Úµã
-	* @param phase                   ÏàÎ»£¨·µ»ØÖµ£¬inplace²Ù×÷£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief ä»ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹ä¸­è·å–è§£ç¼ ç›¸ä½
+	* @param nodes                   ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param phase                   ç›¸ä½ï¼ˆè¿”å›å€¼ï¼Œinplaceæ“ä½œï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int retrieve_unwrapped_phase(
 		vector<SBAS_node>& nodes,
 		Mat& phase
 	);
-	/*@brief ¸ù¾İÔ­Ê¼²î·ÖÏàÎ»£¬¼ÆËã¸ßÏà¸ÉµãÈı½ÇÍøÂç²Ğ²îµã£¨²Ğ²î»ı·Ö·½ÏòÎªÄæÊ±Õë£©
-	* @param nodes                   ¸ßÏà¸ÉÈı½ÇÍøÂç½Úµã
-	* @param edges                   ¸ßÏà¸ÉÈı½ÇÍøÂç±ß
-	* @param triangles               ¸ßÏà¸ÉÈı½ÇÍøÂçÈı½ÇĞÎ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®åŸå§‹å·®åˆ†ç›¸ä½ï¼Œè®¡ç®—é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œæ®‹å·®ç‚¹ï¼ˆæ®‹å·®ç§¯åˆ†æ–¹å‘ä¸ºé€†æ—¶é’ˆï¼‰
+	* @param nodes                   é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param edges                   é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œè¾¹
+	* @param triangles               é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int compute_high_coherence_residue(
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangle
 	);
-	/*@brief ¸ù¾İÊ±¼äÎ¬½â²øÌİ¶È£¬¼ÆËã¸ßÏà¸ÉµãÈı½ÇÍøÂç²Ğ²îµã£¨²Ğ²î»ı·Ö·½ÏòÎªÄæÊ±Õë£©
-	* @param nodes                   ¸ßÏà¸ÉÈı½ÇÍøÂç½Úµã
-	* @param edges                   ¸ßÏà¸ÉÈı½ÇÍøÂç±ß
-	* @param triangles               ¸ßÏà¸ÉÈı½ÇÍøÂçÈı½ÇĞÎ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®æ—¶é—´ç»´è§£ç¼ æ¢¯åº¦ï¼Œè®¡ç®—é«˜ç›¸å¹²ç‚¹ä¸‰è§’ç½‘ç»œæ®‹å·®ç‚¹ï¼ˆæ®‹å·®ç§¯åˆ†æ–¹å‘ä¸ºé€†æ—¶é’ˆï¼‰
+	* @param nodes                   é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œèŠ‚ç‚¹
+	* @param edges                   é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œè¾¹
+	* @param triangles               é«˜ç›¸å¹²ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int compute_high_coherence_residue_by_gradient(
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangle
 	);
-	/*@brief ¼ì²éÈı½ÇÍøÂçÖĞ²Ğ²îµãÊı
-	* @param triangles              Èı½ÇÍøÂçÈı½ÇĞÎ
-	* @param num                    ²Ğ²îµãÊı£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ£€æŸ¥ä¸‰è§’ç½‘ç»œä¸­æ®‹å·®ç‚¹æ•°
+	* @param triangles              ä¸‰è§’ç½‘ç»œä¸‰è§’å½¢
+	* @param num                    æ®‹å·®ç‚¹æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int residue_num(
 		vector<SBAS_triangle>& triangles,
 		int* num
 	);
-	/*@brief ¸ù¾İÊ±¿Õ»ùÏß·Ö²¼ºÍÏàÓ¦ãĞÖµµÃµ½¸ÉÉæ×éºÏ¾ØÕó£¬²¢Çó³öÏàÓ¦µÄÊ±¿Õ»ùÏß
-	* @param spatial                        ¿Õ¼ä»ùÏß(1¡Án£¬µ¥Î»£ºm)
-	* @param temporal                       Ê±¼ä»ùÏß£¨1¡Án£¬µ¥Î»£ºday£©
-	* @param spatial_thresh                 ¿Õ¼ä»ùÏßãĞÖµ£¨m£©
-	* @param temporal_thresh_low            Ê±¼ä»ùÏßµÍãĞÖµ£¨m£©
-	* @param temporal_thresh                Ê±¼ä»ùÏß¸ßãĞÖµ£¨year£©
-	* @param formation_matrix               ¸ÉÉæ×éºÏ¾ØÕó£¨·µ»ØÖµ£¬intĞÍ£¬n¡Án£©
-	* @param spatial_baseline               ¿Õ¼ä»ùÏß¾ØÕó£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£¬µ¥Î»£ºm£©
-	* @param temporal_baseline              Ê±¼ä»ùÏß¾ØÕó£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£¬µ¥Î»£ºyear£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®æ—¶ç©ºåŸºçº¿åˆ†å¸ƒå’Œç›¸åº”é˜ˆå€¼å¾—åˆ°å¹²æ¶‰ç»„åˆçŸ©é˜µï¼Œå¹¶æ±‚å‡ºç›¸åº”çš„æ—¶ç©ºåŸºçº¿
+	* @param spatial                        ç©ºé—´åŸºçº¿(1Ã—nï¼Œå•ä½ï¼šm)
+	* @param temporal                       æ—¶é—´åŸºçº¿ï¼ˆ1Ã—nï¼Œå•ä½ï¼šdayï¼‰
+	* @param spatial_thresh                 ç©ºé—´åŸºçº¿é˜ˆå€¼ï¼ˆmï¼‰
+	* @param temporal_thresh_low            æ—¶é—´åŸºçº¿ä½é˜ˆå€¼ï¼ˆmï¼‰
+	* @param temporal_thresh                æ—¶é—´åŸºçº¿é«˜é˜ˆå€¼ï¼ˆyearï¼‰
+	* @param formation_matrix               å¹²æ¶‰ç»„åˆçŸ©é˜µï¼ˆè¿”å›å€¼ï¼Œintå‹ï¼ŒnÃ—nï¼‰
+	* @param spatial_baseline               ç©ºé—´åŸºçº¿çŸ©é˜µï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼Œå•ä½ï¼šmï¼‰
+	* @param temporal_baseline              æ—¶é—´åŸºçº¿çŸ©é˜µï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼Œå•ä½ï¼šyearï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int get_formation_matrix(
 		Mat& spatial,
@@ -465,17 +465,17 @@ public:
 		Mat& spatial_baseline,
 		Mat& temporal_baseline
 	);
-	/*@brief ¸ù¾İ¸ÉÉæ×éºÏ¾ØÕóÉú³É²î·Ö¸ÉÉæÏàÎ»£¨Ö÷Í¼ÏñÊ±¼ä>¸¨Í¼ÏñÊ±¼ä£©
-	* @param SLCH5Files          SLCÍ¼ÏñÎÄ¼ş
-	* @param formation_matrix    ¸ÉÉæÏàÎ»×éºÏ¾ØÕó
-	* @param spatial_baseline    ¿Õ¼ä»ùÏß£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£©
-	* @param temporal_baseline   Ê±¼ä»ùÏß£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£©
-	* @param multilook_az        ·½Î»Ïò¶àÊÓ±¶Êı
-	* @param multilook_rg        ¾àÀëÏò¶àÊÓ±¶Êı
-	* @param ifgSavePath         ²î·ÖÏàÎ»h5ÎÄ¼ş±£´æÂ·¾¶
-	* @param b_save_images       ÊÇ·ñ±£´æÎªÍ¼Æ¬£¨Ä¬ÈÏÎª·ñ£©
-	* @param Goldstein_alpha     GoldsteinÂË²¨Ç¿¶È£¨Ä¬ÈÏÎª0.8£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief æ ¹æ®å¹²æ¶‰ç»„åˆçŸ©é˜µç”Ÿæˆå·®åˆ†å¹²æ¶‰ç›¸ä½ï¼ˆä¸»å›¾åƒæ—¶é—´>è¾…å›¾åƒæ—¶é—´ï¼‰
+	* @param SLCH5Files          SLCå›¾åƒæ–‡ä»¶
+	* @param formation_matrix    å¹²æ¶‰ç›¸ä½ç»„åˆçŸ©é˜µ
+	* @param spatial_baseline    ç©ºé—´åŸºçº¿ï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼‰
+	* @param temporal_baseline   æ—¶é—´åŸºçº¿ï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼‰
+	* @param multilook_az        æ–¹ä½å‘å¤šè§†å€æ•°
+	* @param multilook_rg        è·ç¦»å‘å¤šè§†å€æ•°
+	* @param ifgSavePath         å·®åˆ†ç›¸ä½h5æ–‡ä»¶ä¿å­˜è·¯å¾„
+	* @param b_save_images       æ˜¯å¦ä¿å­˜ä¸ºå›¾ç‰‡ï¼ˆé»˜è®¤ä¸ºå¦ï¼‰
+	* @param Goldstein_alpha     Goldsteinæ»¤æ³¢å¼ºåº¦ï¼ˆé»˜è®¤ä¸º0.8ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int generate_interferograms(
 		vector<string>& SLCH5Files,
@@ -488,31 +488,31 @@ public:
 		bool b_save_images = false,
 		double alpha = 0.8
 	);
-	/*@brief ¼ÆËãÊ±¼äÏà¹ØÏµÊı£¨temporal_coherence£©£¬ÆÀ¹ÀÊ±¼äĞòÁĞ¹À¼ÆĞ§¹û
-	* @param estimated_phase_series              Ê±¼äĞòÁĞ²î·ÖÏàÎ»¹À¼Æ½á¹û(n¡Á1)
-	* @param phase_series                        Ô­Ê¼²î·ÖÏàÎ»(n¡Á1)
-	* @param temporal_coherence                  Ê±¼äÏà¹ØÏµÊı£¨·µ»ØÖµ£©
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è®¡ç®—æ—¶é—´ç›¸å…³ç³»æ•°ï¼ˆtemporal_coherenceï¼‰ï¼Œè¯„ä¼°æ—¶é—´åºåˆ—ä¼°è®¡æ•ˆæœ
+	* @param estimated_phase_series              æ—¶é—´åºåˆ—å·®åˆ†ç›¸ä½ä¼°è®¡ç»“æœ(nÃ—1)
+	* @param phase_series                        åŸå§‹å·®åˆ†ç›¸ä½(nÃ—1)
+	* @param temporal_coherence                  æ—¶é—´ç›¸å…³ç³»æ•°ï¼ˆè¿”å›å€¼ï¼‰
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int compute_temporal_coherence(
 		Mat& estimated_phase_series,
 		Mat& phase_series,
 		double* temporal_coherence
 	);
-	/*@brief »ùÓÚÍ¬ÖÊÏñÔªÊ¶±ğµÄ×ÔÊÊÓ¦¶àÊÓ¸ÉÉæÏàÎ»Éú³É£¨·Ö¿é¶ÁÈ¡¡¢¼ÆËã¡¢´¢´æ£©
-	@param coregis_slc_files              Åä×¼²¢È¥Ğ±ºóSARÍ¼ÏñÊı¾İ¶ÑÕ»£¨ÎÄ¼ş£©
-	@param ifgSavePath                    ²î·ÖÏàÎ»h5ÎÄ¼ş±£´æÂ·¾¶
-	@param formation_matrix               SBAS¸ÉÉæ×éºÏ¾ØÕó
-	@param spatial_baseline               ¿Õ¼ä»ùÏß£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£©
-	@param temporal_baseline              Ê±¼ä»ùÏß£¨Óë¸ÉÉæ×éºÏ¾ØÕó¶ÔÓ¦£©
-	@param blocksize_row                  ×Ó¿é³ß´ç£¨ĞĞ£¬±ØĞë´óÓÚÍ¬ÖÊ¼ìÑéËÑË÷´°¿Ú°ë¾¶£©
-	@param blocksize_col                  ×Ó¿é³ß´ç£¨ÁĞ£¬±ØĞë´óÓÚÍ¬ÖÊ¼ìÑéËÑË÷´°¿Ú°ë¾¶£©
-	@param out_mask                       ÑÚÄ¤Êä³ö£¨intĞÍ£¬±ê¼Ç¾­¹ıEVD·¨¹À¼ÆµÄÏñËØµã£¬Óë²ÎÊıthresh_c1_to_c2ÓĞ¹Ø£©
-	@param b_coh_est                      ÊÇ·ñ¹À¼ÆÏà¹ØÏµÊı£¨Ä¬ÈÏÊÇ£©
-	@param homogeneous_test_wnd           Í¬ÖÊ¼ìÑéËÑË÷´°¿Ú´óĞ¡£¨ÆæÊı£¬homogeneous_test_wnd¡Áhomogeneous_test_wnd£¬ Ä¬ÈÏÎª21¡Á21£©
-	@param thresh_c1_to_c2                Ğ­·½²î¾ØÕóµÚ2ÌØÕ÷ÖµÓëµÚ1ÌØÕ÷Öµ±ÈÖµãĞÖµ£¨0-1Ö®¼ä£¬Ä¬ÈÏÎª0.7£¬Ğ¡ÓÚãĞÖµÔò½øĞĞEVD¹À¼Æ£©
-	@param b_normalize                    Ğ­·½²î¾ØÕóÊÇ·ñ¹éÒ»»¯£¨Ä¬ÈÏÊÇ£©
-	@param b_save_images                  ÊÇ·ñ½«¸ÉÉæÏàÎ»±£´æÎªÍ¼Æ¬£¨Ä¬ÈÏÊÇ£©
+	/*@brief åŸºäºåŒè´¨åƒå…ƒè¯†åˆ«çš„è‡ªé€‚åº”å¤šè§†å¹²æ¶‰ç›¸ä½ç”Ÿæˆï¼ˆåˆ†å—è¯»å–ã€è®¡ç®—ã€å‚¨å­˜ï¼‰
+	@param coregis_slc_files              é…å‡†å¹¶å»æ–œåSARå›¾åƒæ•°æ®å †æ ˆï¼ˆæ–‡ä»¶ï¼‰
+	@param ifgSavePath                    å·®åˆ†ç›¸ä½h5æ–‡ä»¶ä¿å­˜è·¯å¾„
+	@param formation_matrix               SBASå¹²æ¶‰ç»„åˆçŸ©é˜µ
+	@param spatial_baseline               ç©ºé—´åŸºçº¿ï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼‰
+	@param temporal_baseline              æ—¶é—´åŸºçº¿ï¼ˆä¸å¹²æ¶‰ç»„åˆçŸ©é˜µå¯¹åº”ï¼‰
+	@param blocksize_row                  å­å—å°ºå¯¸ï¼ˆè¡Œï¼Œå¿…é¡»å¤§äºåŒè´¨æ£€éªŒæœç´¢çª—å£åŠå¾„ï¼‰
+	@param blocksize_col                  å­å—å°ºå¯¸ï¼ˆåˆ—ï¼Œå¿…é¡»å¤§äºåŒè´¨æ£€éªŒæœç´¢çª—å£åŠå¾„ï¼‰
+	@param out_mask                       æ©è†œè¾“å‡ºï¼ˆintå‹ï¼Œæ ‡è®°ç»è¿‡EVDæ³•ä¼°è®¡çš„åƒç´ ç‚¹ï¼Œä¸å‚æ•°thresh_c1_to_c2æœ‰å…³ï¼‰
+	@param b_coh_est                      æ˜¯å¦ä¼°è®¡ç›¸å…³ç³»æ•°ï¼ˆé»˜è®¤æ˜¯ï¼‰
+	@param homogeneous_test_wnd           åŒè´¨æ£€éªŒæœç´¢çª—å£å¤§å°ï¼ˆå¥‡æ•°ï¼Œhomogeneous_test_wndÃ—homogeneous_test_wndï¼Œ é»˜è®¤ä¸º21Ã—21ï¼‰
+	@param thresh_c1_to_c2                åæ–¹å·®çŸ©é˜µç¬¬2ç‰¹å¾å€¼ä¸ç¬¬1ç‰¹å¾å€¼æ¯”å€¼é˜ˆå€¼ï¼ˆ0-1ä¹‹é—´ï¼Œé»˜è®¤ä¸º0.7ï¼Œå°äºé˜ˆå€¼åˆ™è¿›è¡ŒEVDä¼°è®¡ï¼‰
+	@param b_normalize                    åæ–¹å·®çŸ©é˜µæ˜¯å¦å½’ä¸€åŒ–ï¼ˆé»˜è®¤æ˜¯ï¼‰
+	@param b_save_images                  æ˜¯å¦å°†å¹²æ¶‰ç›¸ä½ä¿å­˜ä¸ºå›¾ç‰‡ï¼ˆé»˜è®¤æ˜¯ï¼‰
 	*/
 	int adaptive_multilooking(
 		vector<string>& coregis_slc_files,
@@ -529,12 +529,12 @@ public:
 		bool b_normalize = true,
 		bool b_save_images = true
 	);
-	/*@brief ¹ìµÀ¾«Á¶ÖØÈ¥Æ½£¨Ò»½×ÄâºÏ£©
-	* @param unwrapped_phase                       ½â²øÏàÎ»
-	* @param mask                                  ¸ßÏà¸ÉµãÑÚÄ¤
-	* @param coherence                             Ïà¹ØÏµÊı
-	* @param coh_thresh                            Ñ¡¿ØÖÆµãÏà¹ØÏµÊıãĞÖµ
-	* @return ³É¹¦·µ»Ø0£¬·ñÔò·µ»Ø-1
+	/*@brief è½¨é“ç²¾ç‚¼é‡å»å¹³ï¼ˆä¸€é˜¶æ‹Ÿåˆï¼‰
+	* @param unwrapped_phase                       è§£ç¼ ç›¸ä½
+	* @param mask                                  é«˜ç›¸å¹²ç‚¹æ©è†œ
+	* @param coherence                             ç›¸å…³ç³»æ•°
+	* @param coh_thresh                            é€‰æ§åˆ¶ç‚¹ç›¸å…³ç³»æ•°é˜ˆå€¼
+	* @return æˆåŠŸè¿”å›0ï¼Œå¦åˆ™è¿”å›-1
 	*/
 	int refinement_and_reflattening(
 		Mat& unwrapped_phase,
