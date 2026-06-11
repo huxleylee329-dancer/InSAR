@@ -388,7 +388,7 @@ ComplexMat ComplexMat::sum(int dim) const
 	{
 		re = Mat::zeros(1, nc, CV_64F);
 		im = Mat::zeros(1, nc, CV_64F);
-
+		
 #pragma omp parallel for schedule(guided)
 		for (int j = 0; j < nc; j++)
 		{
@@ -560,4 +560,12 @@ void ComplexMat::convertTo(ComplexMat& out, int type) const
 		this->re.convertTo(out.re, type);
 		this->im.convertTo(out.im, type);
 	}
+}
+
+ComplexMat ComplexMat::clone() const
+{
+	ComplexMat out;
+	re.copyTo(out.re);
+	im.copyTo(out.im);
+	return out;
 }

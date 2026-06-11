@@ -3,12 +3,12 @@
 #define __COMPLEXMAT__H__
 #include"..\include\Package.h"
 #include<complex>
-using cv::Mat;
-using namespace std;
 
 #pragma warning(push)
 #pragma warning(disable: 4251)
 
+using cv::Mat;
+using namespace std;
 class InSAR_API ComplexMat
 {
 public:
@@ -52,7 +52,7 @@ public:
 	/// @param dim 求和方向（0为沿着每列求和，1为沿着每行求和）
 	ComplexMat sum(int dim = 0) const;
 	/// @brief 求取复矩阵行列式
-	std::complex<double> determinant() const;
+	complex<double> determinant() const;
 	/// @brief 求取复共轭
 	ComplexMat conj() const;
 	/// @brief 求取(共轭)转置
@@ -65,13 +65,11 @@ public:
 	bool isempty()const;
 	/// @brief 转换类型
 	void convertTo(ComplexMat& out, int type) const;
+	/// @brief 拷贝复制
+	ComplexMat clone() const;
 	Mat re;
 	Mat im;
 private:
-
-	// 以下两个成员变量从未被使用，2026-06-07 代码优化时注释掉
-	// Mat mod;
-	// Mat Phase;
 };
 
 

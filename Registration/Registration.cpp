@@ -16,6 +16,113 @@
 #pragma comment(lib, "FormatConversion.lib")
 #endif // _DEBUG
 using namespace cv;
+
+namespace
+{
+	constexpr double INSAR_PI = 3.141592653589793238462643383279502884;
+
+	inline double sinc_func(double x)
+	{
+		if (std::abs(x) < 1.0e-12) return 1.0;
+		double pix = INSAR_PI * x;
+		return std::sin(pix) / pix;
+	}
+
+	inline double hamming_window(double x, int radius)
+	{
+		double ax = std::abs(x);
+		if (ax > static_cast<double>(radius)) return 0.0;
+
+		// Hamming window: center = 1, edge ≈ 0.08
+		return 0.54 + 0.46 * std::cos(INSAR_PI * ax / static_cast<double>(radius));
+	}
+
+	inline double windowed_sinc_weight(double x, int radius)
+	{
+		if (std::abs(x) > static_cast<double>(radius)) return 0.0;
+		return sinc_func(x) * hamming_window(x, radius);
+	}
+
+	inline double mat_get_as_double(const cv::Mat& img, int r, int c)
+	{
+		switch (img.depth())
+		{
+		case CV_64F:
+			return img.at<double>(r, c);
+		case CV_32F:
+			return static_cast<double>(img.at<float>(r, c));
+		case CV_16S:
+			return static_cast<double>(img.at<short>(r, c));
+		default:
+			return 0.0;
+		}
+	}
+
+	inline void mat_set_from_double(cv::Mat& img, int r, int c, double v)
+	{
+		switch (img.depth())
+		{
+		case CV_64F:
+			img.at<double>(r, c) = v;
+			break;
+		case CV_32F:
+			img.at<float>(r, c) = static_cast<float>(v);
+			break;
+		case CV_16S:
+			img.at<short>(r, c) = cv::saturate_cast<short>(v);
+			break;
+		default:
+			break;
+		}
+	}
+
+	inline double sinc_interp2d(const cv::Mat& img, double row, double col, int radius)
+	{
+		const int rows = img.rows;
+		const int cols = img.cols;
+
+		// 坐标完全越界，直接置零
+		if (row < 0.0 || col < 0.0 || row > static_cast<double>(rows - 1) || col > static_cast<double>(cols - 1))
+		{
+			return 0.0;
+		}
+
+		// 为避免边界处 sinc 核不完整导致伪影，靠近边缘的像元直接置零
+		if (row < radius || col < radius ||
+			row > static_cast<double>(rows - 1 - radius) ||
+			col > static_cast<double>(cols - 1 - radius))
+		{
+			return 0.0;
+		}
+
+		int r0 = static_cast<int>(std::floor(row));
+		int c0 = static_cast<int>(std::floor(col));
+
+		double sum_val = 0.0;
+		double sum_w = 0.0;
+
+		for (int rr = r0 - radius; rr <= r0 + radius; rr++)
+		{
+			double wr = windowed_sinc_weight(row - static_cast<double>(rr), radius);
+			if (std::abs(wr) < 1.0e-15) continue;
+
+			for (int cc = c0 - radius; cc <= c0 + radius; cc++)
+			{
+				double wc = windowed_sinc_weight(col - static_cast<double>(cc), radius);
+				if (std::abs(wc) < 1.0e-15) continue;
+
+				double w = wr * wc;
+				sum_val += mat_get_as_double(img, rr, cc) * w;
+				sum_w += w;
+			}
+		}
+
+		if (std::abs(sum_w) < 1.0e-14) return 0.0;
+
+		// 归一化，避免有限窗截断导致幅度偏移
+		return sum_val / sum_w;
+	}
+}
 inline bool return_check(int ret, const char* detail_info, const char* error_head)
 {
 	if (ret < 0)
@@ -66,20 +173,69 @@ Registration::Registration()
 Registration::~Registration()
 {
 }
-int Registration::fft2(Mat& Src, Mat& Dst)
+//int Registration::fft2(Mat& Src, Mat& Dst)
+//{
+//	if (Src.rows < 1 ||
+//		Src.cols < 1 ||
+//		Src.channels() != 1||
+//		Src.type() != CV_64F)
+//	{
+//		fprintf(stderr, "fft2(): input check failed!\n\n");
+//		return -1;
+//	}
+//	Mat planes[] = { Mat_<double>(Src), Mat::zeros(Src.size(), CV_64F) };
+//	Mat complexImg;
+//	merge(planes, 2, complexImg);
+//	dft(complexImg, Dst);
+//	return 0;
+//}
+
+int Registration::fft2(cv::Mat& Src, cv::Mat& Dst)
 {
 	if (Src.rows < 1 ||
 		Src.cols < 1 ||
-		Src.channels() != 1||
-		Src.type() != CV_64F)
+		Src.channels() != 1)
 	{
 		fprintf(stderr, "fft2(): input check failed!\n\n");
 		return -1;
 	}
-	Mat planes[] = { Mat_<double>(Src), Mat::zeros(Src.size(), CV_64F) };
-	Mat complexImg;
-	merge(planes, 2, complexImg);
-	dft(complexImg, Dst);
+
+	const int srcType = Src.type();
+
+	// 支持 short / float / double
+	if (srcType != CV_16S &&
+		srcType != CV_32F &&
+		srcType != CV_64F)
+	{
+		fprintf(stderr, "fft2(): unsupported input type! Only CV_16S, CV_32F, CV_64F are supported.\n\n");
+		return -1;
+	}
+
+	cv::Mat srcConverted;
+	cv::Mat planes[2];
+	cv::Mat complexImg;
+
+	if (srcType == CV_64F)
+	{
+		// double 输入 -> double 复数输出
+		planes[0] = Src;
+		planes[1] = cv::Mat::zeros(Src.size(), CV_64F);
+		cv::merge(planes, 2, complexImg);   // complexImg: CV_64FC2
+	}
+	else
+	{
+		// short / float 输入 -> float 复数输出
+		if (srcType == CV_16S)
+			Src.convertTo(srcConverted, CV_32F);
+		else
+			srcConverted = Src;
+
+		planes[0] = srcConverted;
+		planes[1] = cv::Mat::zeros(Src.size(), CV_32F);
+		cv::merge(planes, 2, complexImg);   // complexImg: CV_32FC2
+	}
+
+	cv::dft(complexImg, Dst);
 	return 0;
 }
 
@@ -113,42 +269,96 @@ int Registration::fftshift2(Mat& matrix)
 
 int Registration::real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col)
 {
+	//if (Master.GetRows() < 1 ||
+	//	Master.GetCols() < 1 ||
+	//	Master.GetRows() != Slave.GetRows() ||
+	//	Master.GetCols() != Slave.GetCols())
+	//{
+	//	fprintf(stderr, "real_coherent(): input check failed!\n\n");
+	//	return -1;
+	//}
+	//int ret;
+	//Mat img1;
+	//Mat img2;
+	//img1 = Master.GetMod();
+	//img2 = Slave.GetMod();
+	//Mat im1fft;
+	//Mat im2fft;
+	//ret = fft2(img1, im1fft);
+	//if (return_check(ret, "fft2(*, *)", error_head)) return -1;
+	//ret = fft2(img2, im2fft);
+	//if (return_check(ret, "fft2(*, *)", error_head)) return -1;
+	//Mat spectrum;
+	//mulSpectrums(im1fft, im2fft, spectrum, 0, true);
+
+	//Mat result;
+	//idft(spectrum, result, DFT_REAL_OUTPUT);//需要显示图像时可以用DFT_SCALE
+
+	//ret = fftshift2(result);
+	//if (return_check(ret, "fftshift2(*)", error_head)) return -1;
+	//normalize(result, result, 0, 1, NORM_MINMAX);
+
+	//int r = result.rows / 2;
+	//int c = result.cols / 2;
+	//Point peak_loc;
+	//minMaxLoc(result, NULL, NULL, NULL, &peak_loc);
+
+	//*offset_row = r - peak_loc.y;
+	//*offset_col = c - peak_loc.x;
+	//return 0;
+
+
 	if (Master.GetRows() < 1 ||
 		Master.GetCols() < 1 ||
 		Master.GetRows() != Slave.GetRows() ||
-		Master.GetCols() != Slave.GetCols())
+		Master.GetCols() != Slave.GetCols() ||
+		offset_row == nullptr ||
+		offset_col == nullptr)
 	{
 		fprintf(stderr, "real_coherent(): input check failed!\n\n");
 		return -1;
 	}
+
 	int ret;
-	Mat img1;
-	Mat img2;
-	img1 = Master.GetMod();
-	img2 = Slave.GetMod();
-	Mat im1fft;
-	Mat im2fft;
-	ret = fft2(img1, im1fft);
+
+	// 1) 幅度图
+	Mat img1 = Master.GetMod();
+	Mat img2 = Slave.GetMod();
+
+	// 2) FFT
+	Mat fft1, fft2_mat;
+	ret = fft2(img1, fft1);
 	if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	ret = fft2(img2, im2fft);
+	img1.release();
+
+	ret = fft2(img2, fft2_mat);
 	if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	Mat spectrum;
-	mulSpectrums(im1fft, im2fft, spectrum, 0, true);
+	img2.release();
 
-	Mat result;
-	idft(spectrum, result, DFT_REAL_OUTPUT);//需要显示图像时可以用DFT_SCALE
+	// 3) 直接复用 fft1 作为互功率谱结果，少开一个 spectrum
+	mulSpectrums(fft1, fft2_mat, fft1, 0, true);
+	fft2_mat.release();
 
-	ret = fftshift2(result);
-	if (return_check(ret, "fftshift2(*)", error_head)) return -1;
-	normalize(result, result, 0, 1, NORM_MINMAX);
+	// 4) IFFT 得到相关图
+	Mat corr;
+	idft(fft1, corr, DFT_REAL_OUTPUT);
+	fft1.release();
 
-	int r = result.rows / 2;
-	int c = result.cols / 2;
+	// 不再做 normalize，也不做 fftshift2
+	// 直接在未 shift 的相关图中找峰值
 	Point peak_loc;
-	minMaxLoc(result, NULL, NULL, NULL, &peak_loc);
+	minMaxLoc(corr, nullptr, nullptr, nullptr, &peak_loc);
 
-	*offset_row = r - peak_loc.y;
-	*offset_col = c - peak_loc.x;
+	const int rows = corr.rows;
+	const int cols = corr.cols;
+	const int half_r = rows / 2;
+	const int half_c = cols / 2;
+
+	// 将未 shift 的峰值位置转换为有符号偏移
+	// 对应原来 fftshift 后 center - peak 的效果
+	*offset_row = (peak_loc.y <= half_r) ? (-peak_loc.y) : (rows - peak_loc.y);
+	*offset_col = (peak_loc.x <= half_c) ? (-peak_loc.x) : (cols - peak_loc.x);
+
 	return 0;
 }
 
@@ -802,10 +1012,15 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	}
 	else
 	{
-		start_r = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? (slave.GetRows() + offset_rows_pre - master.GetRows()) : 0;
-		start_r2 = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? 0 : (master.GetRows() - slave.GetRows() - offset_rows_pre);
-		end_r = slave.GetRows() + offset_rows_pre;
-		end_r2 = master.GetRows();
+		//start_r = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? (slave.GetRows() + offset_rows_pre - master.GetRows()) : 0;
+		//start_r2 = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? 0 : (master.GetRows() - slave.GetRows() - offset_rows_pre);
+		//end_r = slave.GetRows() + offset_rows_pre;
+		//end_r2 = master.GetRows();
+
+		start_r = 0;
+		start_r2 = -offset_rows_pre;
+		end_r = (slave.GetRows() - offset_rows_pre) > master.GetRows() ? (master.GetRows() + offset_rows_pre) : slave.GetRows();
+		end_r2 = (slave.GetRows() - offset_rows_pre) > master.GetRows() ? master.GetRows() : slave.GetRows() - offset_rows_pre;
 	}
 	if (offset_cols_pre > 0)
 	{
@@ -816,10 +1031,15 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	}
 	else
 	{
-		start_c = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? (slave.GetCols() + offset_cols_pre - master.GetCols()) : 0;
-		start_c2 = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? 0 : (master.GetCols() - slave.GetCols() - offset_cols_pre);
-		end_c = slave.GetCols() + offset_cols_pre;
-		end_c2 = master.GetCols();
+		//start_c = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? (slave.GetCols() + offset_cols_pre - master.GetCols()) : 0;
+		//start_c2 = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? 0 : (master.GetCols() - slave.GetCols() - offset_cols_pre);
+		//end_c = slave.GetCols() + offset_cols_pre;
+		//end_c2 = master.GetCols();
+
+		start_c = 0;
+		start_c2 = -offset_cols_pre;
+		end_c = (slave.GetCols() - offset_cols_pre) > master.GetCols() ? (master.GetCols() + offset_cols_pre) : slave.GetCols();
+		end_c2 = (slave.GetCols() - offset_cols_pre) > master.GetCols() ? master.GetCols() : slave.GetCols() - offset_cols_pre;
 	}
 	slave.re(cv::Range(start_r, end_r), cv::Range(start_c, end_c)).copyTo(slave_r.re(cv::Range(start_r2, end_r2), cv::Range(start_c2, end_c2)));
 	slave.im(cv::Range(start_r, end_r), cv::Range(start_c, end_c)).copyTo(slave_r.im(cv::Range(start_r2, end_r2), cv::Range(start_c2, end_c2)));
@@ -856,7 +1076,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		ComplexMat master_sub, slave_sub, master_sub_interp, slave_sub_interp, master1, slave1;
 		Mat amplitude_slave, sign, coh1;
 		int offset_row, offset_col;
-		double mean_coh, coh_thresh = 0.65;
+		double mean_coh, coh_thresh = 0.05;
 		for (int j = 0; j < n; j++)
 		{
 			//计算相关系数判断是否是有效数据
@@ -893,11 +1113,12 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 				}
 			}
 			//sign = amplitude_slave < 0.0000001;
-			/*int thresh = blocksize * blocksize / 4;
+			int thresh = blocksize * blocksize / 4;
 			if (count_zero > thresh)
 			{
 				sentinel0.at<double>(i, j) = 1.0;
-			}*/
+				continue;
+			}
 			interp_paddingzero(slave_sub, slave_sub_interp, interp_times);
 			//求取偏移量
 			real_coherent(master_sub_interp, slave_sub_interp, &offset_row, &offset_col);
@@ -1179,6 +1400,374 @@ int Registration::every_subpixel_move(int i, int j, Mat& coefficient, double* of
 
 	*offset_row = a1 + b1 * i + c1 * j + d1 * i * i + e1 * j * j + f1 * i * j;
 	*offset_col = a2 + b2 * i + c2 * j + d2 * i * i + e2 * j * j + f2 * i * j;
+	return 0;
+}
+
+int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
+	int* offset_col, double coh_thresh)
+{
+	if (master.isempty() ||
+		slave.isempty() ||
+		//blocksize * 5 > (slave.GetCols() < slave.GetRows() ? slave.GetCols() : slave.GetRows()) ||
+		blocksize < 8 || interp_times < 1 ||
+		master.type() != slave.type() ||
+		(master.type() != CV_64F && master.type() != CV_32F && master.type() != CV_16S)
+		)
+	{
+		fprintf(stderr, "coregistration_pixel(): input check failed!\n");
+		return -1;
+	}
+
+	//粗配准
+	ComplexMat slave_r, master_small, slave_small;
+	slave_r = master;
+	slave_r.re = 0.0; slave_r.im = 0.0;
+	int nr0 = master.GetRows() > 10000 ? 10000 : master.GetRows();
+	int nc0 = master.GetCols() > 10000 ? 10000 : master.GetCols();
+	nr0 = slave.GetRows() > nr0 ? nr0 : slave.GetRows();
+	nc0 = slave.GetCols() > nc0 ? nc0 : slave.GetCols();
+
+	master_small = master(cv::Range(0, nr0), cv::Range(0, nc0));
+	slave_small = slave(cv::Range(0, nr0), cv::Range(0, nc0));
+	master_small.convertTo(master_small, CV_64F);
+	slave_small.convertTo(slave_small, CV_64F);
+	int offset_rows_pre, offset_cols_pre;
+	real_coherent(master_small, slave_small, &offset_rows_pre, &offset_cols_pre);
+
+	int start_r, start_r2, end_r, end_r2, start_c, end_c, start_c2, end_c2;
+	if (offset_rows_pre > 0)
+	{
+		start_r = offset_rows_pre;
+		start_r2 = 0;
+		end_r = (slave.GetRows() - offset_rows_pre) > master.GetRows() ? (offset_rows_pre + master.GetRows()) : slave.GetRows();
+		end_r2 = start_r2 + (end_r - start_r);
+	}
+	else
+	{
+		//start_r = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? (slave.GetRows() + offset_rows_pre - master.GetRows()) : 0;
+		//start_r2 = (slave.GetRows() + offset_rows_pre) > master.GetRows() ? 0 : (master.GetRows() - slave.GetRows() - offset_rows_pre);
+		//end_r = slave.GetRows() + offset_rows_pre;
+		//end_r2 = master.GetRows();
+
+		start_r = 0;
+		start_r2 = -offset_rows_pre;
+		end_r = (slave.GetRows() - offset_rows_pre) > master.GetRows() ? (master.GetRows() + offset_rows_pre) : slave.GetRows();
+		end_r2 = (slave.GetRows() - offset_rows_pre) > master.GetRows() ? master.GetRows() : slave.GetRows() - offset_rows_pre;
+	}
+	if (offset_cols_pre > 0)
+	{
+		start_c = offset_cols_pre;
+		start_c2 = 0;
+		end_c = (slave.GetCols() - offset_cols_pre) > master.GetCols() ? (offset_cols_pre + master.GetCols()) : slave.GetCols();
+		end_c2 = start_c2 + (end_c - start_c);
+	}
+	else
+	{
+		//start_c = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? (slave.GetCols() + offset_cols_pre - master.GetCols()) : 0;
+		//start_c2 = (slave.GetCols() + offset_cols_pre) > master.GetCols() ? 0 : (master.GetCols() - slave.GetCols() - offset_cols_pre);
+		//end_c = slave.GetCols() + offset_cols_pre;
+		//end_c2 = master.GetCols();
+
+		start_c = 0;
+		start_c2 = -offset_cols_pre;
+		end_c = (slave.GetCols() - offset_cols_pre) > master.GetCols() ? (master.GetCols() + offset_cols_pre) : slave.GetCols();
+		end_c2 = (slave.GetCols() - offset_cols_pre) > master.GetCols() ? master.GetCols() : slave.GetCols() - offset_cols_pre;
+	}
+	slave.re(cv::Range(start_r, end_r), cv::Range(start_c, end_c)).copyTo(slave_r.re(cv::Range(start_r2, end_r2), cv::Range(start_c2, end_c2)));
+	slave.im(cv::Range(start_r, end_r), cv::Range(start_c, end_c)).copyTo(slave_r.im(cv::Range(start_r2, end_r2), cv::Range(start_c2, end_c2)));
+	slave = slave_r;
+
+	/*---------------------------------------*/
+	/*              求取偏移量矩阵           */
+	/*---------------------------------------*/
+	interp_times = interp_times > 32 ? 32 : interp_times;//限定最多32倍插值
+	Utils util;
+	int m = (master.GetRows()) / blocksize;
+	int n = (master.GetCols()) / blocksize;
+	if (m * n < 10)
+	{
+		fprintf(stderr, "coregistration_pixel(): try smaller blocksize!\n");
+		return -1;
+	}
+	Mat offset_r = Mat::zeros(m, n, CV_64F); Mat offset_c = Mat::zeros(m, n, CV_64F);
+	Mat offset_coord_row = Mat::zeros(m, n, CV_64F);
+	Mat offset_coord_col = Mat::zeros(m, n, CV_64F);
+	Mat sentinel0 = Mat::zeros(m, n, CV_64F);
+	//子块中心坐标
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			offset_coord_row.at<double>(i, j) = ((double)blocksize) / 2 * (double)(2 * i + 1);
+			offset_coord_col.at<double>(i, j) = ((double)blocksize) / 2 * (double)(2 * j + 1);
+		}
+	}
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < m; i++)
+	{
+		ComplexMat master_sub, slave_sub, master_sub_interp, slave_sub_interp, master1, slave1;
+		Mat amplitude_slave, sign, coh1;
+		int offset_row, offset_col;
+		double mean_coh;
+		for (int j = 0; j < n; j++)
+		{
+			//计算相关系数判断是否是有效数据
+			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.re);
+			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.im);
+			if (master1.type() != CV_64F) master1.convertTo(master1, CV_64F);
+			slave.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave1.re);
+			slave.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave1.im);
+			if (slave1.type() != CV_64F) slave1.convertTo(slave1, CV_64F);
+			registration_pixel(master1, slave1);
+			util.complex_coherence(master1, slave1, 7, 7, coh1);
+			mean_coh = cv::mean(coh1)[0];
+			if (mean_coh < coh_thresh)
+			{
+				sentinel0.at<double>(i, j) = 1.0;
+				continue;
+			}
+			//主图像子块插值
+			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master_sub.re);
+			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master_sub.im);
+			if (master_sub.type() != CV_64F) master_sub.convertTo(master_sub, CV_64F);
+			interp_paddingzero(master_sub, master_sub_interp, interp_times);
+			//辅图像子块插值
+			slave.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave_sub.re);
+			slave.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave_sub.im);
+			if (slave_sub.type() != CV_64F) slave_sub.convertTo(slave_sub, CV_64F);
+			amplitude_slave = slave_sub.re;
+			int count_zero = 0;
+			for (int ii = 0; ii < amplitude_slave.rows; ii++)
+			{
+				for (int jj = 0; jj < amplitude_slave.cols; jj++)
+				{
+					if (fabs(amplitude_slave.at<double>(ii, jj)) < 0.0000001) count_zero++;
+				}
+			}
+			//sign = amplitude_slave < 0.0000001;
+			int thresh = blocksize * blocksize / 4;
+			if (count_zero > thresh)
+			{
+				sentinel0.at<double>(i, j) = 1.0;
+				continue;
+			}
+			interp_paddingzero(slave_sub, slave_sub_interp, interp_times);
+			//求取偏移量
+			real_coherent(master_sub_interp, slave_sub_interp, &offset_row, &offset_col);
+			offset_r.at<double>(i, j) = (double)offset_row / (double)interp_times;
+			offset_c.at<double>(i, j) = (double)offset_col / (double)interp_times;
+
+		}
+	}
+
+	/*---------------------------------------*/
+	/*    拟合偏移量（将坐标做归一化处理）   */
+	/*---------------------------------------*/
+
+	/*
+	* 拟合公式为 offser_row/offser_col = a0 + a1*x + a2*y
+	*/
+
+	////剔除outliers
+	Mat sentinel = Mat::zeros(m, n, CV_64F);
+	int /*ix, iy, */count = 0, c = 0; double /*delta, */thresh = 2.0;
+	//for (int i = 0; i < m; i++)
+	//{
+	//	for (int j = 0; j < n; j++)
+	//	{
+	//		count = 0;
+	//		//上
+	//		ix = j; 
+	//		iy = i - 1; iy = iy < 0 ? 0 : iy;
+	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
+	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
+	//		if (fabs(delta) >= thresh) count++;
+	//		//下
+	//		ix = j;
+	//		iy = i + 1; iy = iy > m - 1 ? m - 1 : iy;
+	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
+	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
+	//		if (fabs(delta) >= thresh) count++;
+	//		//左
+	//		ix = j - 1; ix = ix < 0 ? 0 : ix;
+	//		iy = i; 
+	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
+	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
+	//		if (fabs(delta) >= thresh) count++;
+	//		//右
+	//		ix = j + 1; ix = ix > n - 1 ? n - 1 : ix;
+	//		iy = i;
+	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
+	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
+	//		if (fabs(delta) >= thresh) count++;
+
+	//		if (count > 2) { sentinel.at<double>(i, j) = 1.0; }
+	//	}
+	//}
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			if (sentinel.at<double>(i, j) > 0.5 || sentinel0.at<double>(i, j) > 0.5) c++;
+		}
+	}
+	Mat offset_c_0, offset_r_0, offset_coord_row_0, offset_coord_col_0;
+	offset_c_0 = Mat::zeros(m * n - c, 1, CV_64F);
+	offset_r_0 = Mat::zeros(m * n - c, 1, CV_64F);
+	offset_coord_row_0 = Mat::zeros(m * n - c, 1, CV_64F);
+	offset_coord_col_0 = Mat::zeros(m * n - c, 1, CV_64F);
+	count = 0;
+	for (int i = 0; i < m; i++)
+	{
+		for (int j = 0; j < n; j++)
+		{
+			if (sentinel.at<double>(i, j) < 0.5 && sentinel0.at<double>(i, j) < 0.5)
+			{
+				offset_r_0.at<double>(count, 0) = offset_r.at<double>(i, j);
+				offset_c_0.at<double>(count, 0) = offset_c.at<double>(i, j);
+				offset_coord_row_0.at<double>(count, 0) = offset_coord_row.at<double>(i, j);
+				offset_coord_col_0.at<double>(count, 0) = offset_coord_col.at<double>(i, j);
+				count++;
+			}
+		}
+	}
+
+
+	offset_c = offset_c_0;
+	offset_r = offset_r_0;
+	offset_coord_row = offset_coord_row_0;
+	offset_coord_col = offset_coord_col_0;
+	m = 1; n = count;
+	if (count < 11)
+	{
+		fprintf(stderr, "coregistration_pixel(): insufficient valide sub blocks!\n");
+		return -1;
+	}
+	double offset_x = (double)master.GetCols() / 2;
+	double offset_y = (double)master.GetRows() / 2;
+	double scale_x = (double)master.GetCols();
+	double scale_y = (double)master.GetRows();
+	offset_coord_row -= offset_y;
+	offset_coord_col -= offset_x;
+	offset_coord_row /= scale_y;
+	offset_coord_col /= scale_x;
+	Mat A = Mat::ones(m * n, 3, CV_64F);
+	Mat temp, A_t;
+	offset_coord_col.copyTo(A(Range(0, m * n), Range(1, 2)));
+
+	offset_coord_row.copyTo(A(Range(0, m * n), Range(2, 3)));
+
+
+
+	cv::transpose(A, A_t);
+
+	Mat b_r, b_c, coef_r, coef_c, error_r, error_c, b_t, a, a_t;
+
+	A.copyTo(a);
+	cv::transpose(a, a_t);
+	offset_r.copyTo(b_r);
+	b_r = A_t * b_r;
+
+	offset_c.copyTo(b_c);
+	b_c = A_t * b_c;
+
+	A = A_t * A;
+
+	double rms1 = -1.0; double rms2 = -1.0;
+	Mat eye = Mat::zeros(m * n, m * n, CV_64F);
+	for (int i = 0; i < m * n; i++)
+	{
+		eye.at<double>(i, i) = 1.0;
+	}
+	if (cv::invert(A, error_r, cv::DECOMP_LU) > 0)
+	{
+		cv::transpose(offset_r, b_t);
+		error_r = b_t * (eye - a * error_r * a_t) * offset_r;
+		rms1 = sqrt(error_r.at<double>(0, 0) / double(m * n));
+	}
+	if (cv::invert(A, error_c, cv::DECOMP_LU) > 0)
+	{
+		cv::transpose(offset_c, b_t);
+		error_c = b_t * (eye - a * error_c * a_t) * offset_c;
+		rms2 = sqrt(error_c.at<double>(0, 0) / double(m * n));
+	}
+	if (!cv::solve(A, b_r, coef_r, cv::DECOMP_NORMAL))
+	{
+		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		return -1;
+	}
+	if (!cv::solve(A, b_c, coef_c, cv::DECOMP_NORMAL))
+	{
+		fprintf(stderr, "coregistration_subpixel(): matrix defficiency!\n");
+		return -1;
+	}
+
+	/*---------------------------------------*/
+	/*    双线性插值获取重采样后的辅图像     */
+	/*---------------------------------------*/
+
+		/*---------------------------------------*/
+	/*    Windowed sinc 插值获取重采样后的辅图像 */
+	/*---------------------------------------*/
+
+	Mat tt(1, 3, CV_64F);
+	tt.at<double>(0, 0) = 1.0;
+	tt.at<double>(0, 1) = (0.0 - offset_x) / scale_x;
+	tt.at<double>(0, 2) = (0.0 - offset_y) / scale_y;
+
+	if (offset_row) *offset_row = static_cast<int>(cvRound(sum(tt * coef_r)[0]));
+	if (offset_col) *offset_col = static_cast<int>(cvRound(sum(tt * coef_c)[0]));
+
+	int rows = master.GetRows();
+	int cols = master.GetCols();
+
+	ComplexMat slave_tmp;
+	slave_tmp = master;
+
+	int rows_slave = slave.GetRows();
+	int cols_slave = slave.GetCols();
+
+	// sinc 插值核半径
+	// radius = 4 表示使用 9×9 的二维 sinc 核
+	// 如果想更高精度，可以改成 6，但速度会明显变慢
+	const int SINC_RADIUS = 4;
+
+	// 提前取出系数，避免在每个像元里反复创建 Mat，速度会快很多
+	const double cr0 = coef_r.at<double>(0, 0);
+	const double cr1 = coef_r.at<double>(1, 0);
+	const double cr2 = coef_r.at<double>(2, 0);
+
+	const double cc0 = coef_c.at<double>(0, 0);
+	const double cc1 = coef_c.at<double>(1, 0);
+	const double cc2 = coef_c.at<double>(2, 0);
+
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			double jj = static_cast<double>(j);
+			double ii = static_cast<double>(i);
+
+			double x = (jj - offset_x) / scale_x;
+			double y = (ii - offset_y) / scale_y;
+
+			double offset_rows = cr0 + cr1 * x + cr2 * y;
+			double offset_cols = cc0 + cc1 * x + cc2 * y;
+
+			double src_row = ii + offset_rows;
+			double src_col = jj + offset_cols;
+
+			// 对实部和虚部分别做 sinc 插值
+			double re_val = sinc_interp2d(slave.re, src_row, src_col, SINC_RADIUS);
+			double im_val = sinc_interp2d(slave.im, src_row, src_col, SINC_RADIUS);
+
+			mat_set_from_double(slave_tmp.re, i, j, re_val);
+			mat_set_from_double(slave_tmp.im, i, j, im_val);
+		}
+	}
+
+	slave = slave_tmp;
 	return 0;
 }
 
@@ -1800,4 +2389,114 @@ int Registration::performBilinearResampling(
 	return 0;
 }
 
+
+int Registration::performSincResampling(
+	ComplexMat& slave,
+	int dstHeight,
+	int dstWidth,
+	double a0Rg, double a1Rg, double a2Rg,
+	double a0Az, double a1Az, double a2Az,
+	int* offset_row,
+	int* offset_col
+)
+{
+	if (slave.isempty() || dstHeight < 2 || dstWidth < 2 ||
+		(slave.type() != CV_16S && slave.type() != CV_64F && slave.type() != CV_32F)
+		)
+	{
+		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
+		return -1;
+	}
+
+	ComplexMat slcResampled;
+	int type = slave.type();
+
+	if (type == CV_16S)
+	{
+		slcResampled.re.create(dstHeight, dstWidth, CV_16S);
+		slcResampled.im.create(dstHeight, dstWidth, CV_16S);
+	}
+	else if (type == CV_32F)
+	{
+		slcResampled.re.create(dstHeight, dstWidth, CV_32F);
+		slcResampled.im.create(dstHeight, dstWidth, CV_32F);
+	}
+	else
+	{
+		slcResampled.re.create(dstHeight, dstWidth, CV_64F);
+		slcResampled.im.create(dstHeight, dstWidth, CV_64F);
+	}
+
+	// Azimuth / row direction offset
+	Mat coef_r(3, 1, CV_64F);
+
+	coef_r.at<double>(0, 0) = a0Az;
+	coef_r.at<double>(1, 0) = a1Az;
+	coef_r.at<double>(2, 0) = a2Az;
+
+	// Range / column direction offset
+	Mat coef_c(3, 1, CV_64F);
+
+	coef_c.at<double>(0, 0) = a0Rg;
+	coef_c.at<double>(1, 0) = a1Rg;
+	coef_c.at<double>(2, 0) = a2Rg;
+
+	if (offset_row && offset_col)
+	{
+		Mat tt(1, 3, CV_64F);
+		tt.at<double>(0, 0) = 1.0;
+		tt.at<double>(0, 1) = 0.0;
+		tt.at<double>(0, 2) = 0.0;
+
+		// 保持原接口 int*，这里仍然四舍五入
+		*offset_row = static_cast<int>(cvRound(sum(tt * coef_r)[0]));
+		*offset_col = static_cast<int>(cvRound(sum(tt * coef_c)[0]));
+	}
+
+	int rows = dstHeight;
+	int cols = dstWidth;
+
+	// sinc 插值半径
+	// SINC_RADIUS = 4 表示使用 9 × 9 有限窗 sinc 核
+	// 可改为 6，但速度会明显下降
+	const int SINC_RADIUS = 4;
+
+	// 提前取出系数，避免每个像元反复创建 Mat 和做矩阵乘法
+	const double cr0 = a0Az;
+	const double cr1 = a1Az;
+	const double cr2 = a2Az;
+
+	const double cc0 = a0Rg;
+	const double cc1 = a1Rg;
+	const double cc2 = a2Rg;
+
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			double ii = static_cast<double>(i);
+			double jj = static_cast<double>(j);
+
+			// offset_rows = a0Az + a1Az * col + a2Az * row
+			double offset_rows = cr0 + cr1 * jj + cr2 * ii;
+
+			// offset_cols = a0Rg + a1Rg * col + a2Rg * row
+			double offset_cols = cc0 + cc1 * jj + cc2 * ii;
+
+			double src_row = ii + offset_rows;
+			double src_col = jj + offset_cols;
+
+			double re_value = sinc_interp2d(slave.re, src_row, src_col, SINC_RADIUS);
+			double im_value = sinc_interp2d(slave.im, src_row, src_col, SINC_RADIUS);
+
+			mat_set_from_double(slcResampled.re, i, j, re_value);
+			mat_set_from_double(slcResampled.im, i, j, im_value);
+		}
+	}
+
+	slave = slcResampled;
+
+	return 0;
+}
 

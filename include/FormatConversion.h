@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #ifndef __FORMATCONVERSION__H__
 #define __FORMATCONVERSION__H__
 #include<string>
@@ -25,7 +25,7 @@ public:
 	~XMLFile();
 
 	/** @brief 创建新的工程文件
-
+	
 	@param project_path       工程路径
 	@param project_name       工程名
 	@param project_version    工程文件版本
@@ -820,7 +820,7 @@ public:
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename,
-		const char* polarization
+		const char* polarization ="HH"
 	);
 	int TSX2h5(
 		const char* xml_filename,
@@ -847,7 +847,7 @@ public:
 	*/
 	int read_POD(const char* POD_filename, double start_time, double stop_time, const char* dst_h5_filename);
 	/** @brief 从sentinel1卫星数据中读出slc数据（读出数据类型为16位整型）
-	*
+	* 
 	* @param filename                    sentinel1卫星数据文件名
 	* @param xml_filename                xml参数文件
 	* @param slc                         复矩阵（读出的slc数据）
@@ -908,7 +908,7 @@ public:
 		void* userData
 	);
 	/** @brief 读出一个burst数据
-	*
+	* 
 	* @param pnode                         burst节点信息
 	* @param xmldoc                        xml结构体
 	* @param fp                            图像文件指针
@@ -941,7 +941,7 @@ public:
 		int* overlapSize
 	);
 	/** @brief 计算burst之间的重叠区域尺寸
-	*
+	* 
 	* @param last_burst                      上一个burst
 	* @param this_burst                      待计算重叠区域尺寸的burst
 	* @param overlapSize                     重叠区域尺寸
@@ -953,7 +953,7 @@ public:
 		int* overlapSize
 	);
 	/** @brief burst之间进行拼接（将src_burst拼接到dst_burst上）
-	*
+	* 
 	* @param src_burst                 被拼接burst
 	* @param dst_burst                 拼接burst
 	* @param stitch_type               缝合方式（low/mid/high）
@@ -1015,8 +1015,8 @@ public:
 		void* userData
 	);
 	/** @brief 将原h5文件中的参数信息拷贝到另一个h5中
-
-	@param Input_file        原始h5文件
+	
+    @param Input_file        原始h5文件
 	@param Output_file       输出h5文件
 	*/
 	int Copy_para_from_h5_2_h5(const char* Input_file, const char* Output_file);
@@ -1038,6 +1038,28 @@ public:
 	*/
 	int read_height_metric_from_GEDI_L2B(const char* gedi_h5_file, Mat& rh100, Mat& elev_lowestmode, Mat& elev_highestreturn, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index);
 
+	/** @brief 从GEDI L2A级产品中读取树高及地理坐标等信息
+	* @param gedi_h5_file                        GEDI L2A级产品文件（HDF5格式）
+	* @param rh                                  rh参数
+	* @param lon                                 经度信息
+	* @param lat                                 纬度信息
+	* @param dem                                 TanDEM-X 90m 高程信息
+	* @param quality_index                       质量信息
+	* @param rh_percentile                       树高提取参数（rh_percentile = 1~100，默认为100）
+	* @return 成功返回0，否则返回-1
+	*/
+	int read_height_metric_from_GEDI_L2A(const char* gedi_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 100);
+	/** @brief 从ICESat-2 L3A级产品中读取树高及地理坐标等信息
+	* @param gedi_h5_file                        ICESat-2 L3A级产品文件（HDF5格式）
+	* @param rh                                  rh参数
+	* @param lon                                 经度信息
+	* @param lat                                 纬度信息
+	* @param dem                                 高程信息
+	* @param quality_index                       质量信息([80,100]则为质量合格数据，127为无效值)
+	* @param rh_percentile                       树高提取参数（rh_percentile = 10(1), 15(2), 20(3), 25(4), 30(...),..., 80(15), 85(16), 90(17), 95(18)，默认为95(18)）
+	* @return 成功返回0，否则返回-1
+	*/
+	int read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 18);
 
 
 
@@ -1058,11 +1080,11 @@ public:
 	*/
 	int phase2cos(const Mat& phase, Mat& cos, Mat& sin);
 	/** @brief 生成范德蒙矩阵
-	 * @param inArray                           自变量序列
-	 * @param vandermondeMatrix                 范德蒙矩阵
-	 * @param degree                            阶数
-	 * @return 成功返回0，否则返回-1
-	 */
+	* @param inArray                           自变量序列
+	* @param vandermondeMatrix                 范德蒙矩阵
+	* @param degree                            阶数
+	* @return 成功返回0，否则返回-1
+	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
 		Mat& vandermondeMatrix,
@@ -1287,7 +1309,7 @@ public:
 	Mat stateVectors;
 	Mat newStateVectors;
 private:
-
+	
 	int nv = 10;
 	double dt;
 	int polyDegree = 3;
@@ -1311,7 +1333,7 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
-
+	
 	/** @brief 将数据写入到指定h5文件
 	* @param dst_h5                          指定hdf5文件
 	* @return 成功返回0，否则返回-1
@@ -1448,6 +1470,155 @@ private:
 	int mode = 0;
 
 };
+
+/*------------------------------------------------*/
+/*            中科卫星Ku-SAR数据读取工具          */
+/*------------------------------------------------*/
+class InSAR_API AIRSAT_reader
+{
+public:
+	AIRSAT_reader(const char* data_file, const char* xml_file);
+	~AIRSAT_reader();
+	/** @brief 初始化
+	* @return 成功返回0，否则返回-1
+	*/
+	int init();
+
+	/** @brief 将数据写入到指定h5文件
+	* @param dst_h5                          指定hdf5文件
+	* @return 成功返回0，否则返回-1
+	*/
+	int write_to_h5(
+		const char* dst_h5
+	);
+
+private:
+
+	/** @brief 时间戳转换（UTC2GPS）
+	* @param utc_time                  UTC时间戳  
+	* @param gps_time                  GPS时间
+	* @return 成功返回0，否则返回-1
+	*/
+	int UTC2GPS(const char* utc_time, double* gps_time);
+
+	/** @brief 从L1产品中读取数据
+	@param xml_file                    xml数据文件（.xml）
+	@param data_file                   xml数据文件（.tiff）
+	@return 成功返回0，否则返回-1
+	*/
+	int read_data(
+		const char* xml_file,
+		const char* data_file
+	);
+	/** @brief 从L1产品中读取单视复图像
+	* @param data_file                        图像数据文件（.tiff）
+	* @param slc                              读出的单视复数据矩阵
+	* @return 成功返回0，否则返回-1
+	*/
+
+	int read_slc(
+		const char* data_file,
+		ComplexMat& slc
+	);
+private:
+	string AIRSAT_data_file, AIRSAT_xml_file;
+	bool b_initialized;
+	string acquisition_start_time;
+	string acquisition_stop_time;
+	double azimuth_resolution;
+	double azimuth_spacing;
+	double carrier_frequency;
+	double inc_center;
+	double prf;
+	double range_resolution;
+	double range_spacing;
+	double slant_range_first_pixel;
+	double slant_range_last_pixel;
+	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
+		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
+	Mat state_vec;
+	string sensor;
+	ComplexMat slc;
+};
+
+
+/*------------------------------------------------*/
+/*                Biomass L1A reader              */
+/*------------------------------------------------*/
+class InSAR_API Biomass1A_reader
+{
+public:
+	Biomass1A_reader(const char* amp_file, const char* phase_file, const char* xml_file, const char* orbit_file, const char* polarization);
+	~Biomass1A_reader();
+	/** @brief 初始化
+	* @return 成功返回0，否则返回-1
+	*/
+	int init();
+
+	/** @brief 将数据写入到指定h5文件
+	* @param dst_h5                          指定hdf5文件
+	* @return 成功返回0，否则返回-1
+	*/
+	int write_to_h5(
+		const char* dst_h5
+	);
+
+private:
+
+	/** @brief 时间戳转换（UTC2GPS）
+	* @param utc_time                  UTC时间戳
+	* @param gps_time                  GPS时间
+	* @return 成功返回0，否则返回-1
+	*/
+	int UTC2GPS(const char* utc_time, double* gps_time);
+
+	/** @brief 从L1产品中读取数据
+	@param xml_file                    xml数据文件（.xml）
+	@param amp_file                    幅度数据文件（.tiff）
+	@param orbit_file                  轨道数据文件（.tiff）
+	@param phase_file                  相位数据文件（.tiff）
+	@return 成功返回0，否则返回-1
+	*/
+	int read_data(
+		const char* xml_file,
+		const char* amp_file,
+		const char* orbit_file,
+		const char* phase_file
+	);
+	/** @brief 从L1产品中读取单视复图像
+	* @param amp_file                         幅度数据文件（.tiff）
+	* @param phase_file                       相位数据文件（.tiff）
+	* @param slc                              读出的单视复数据矩阵
+	* @return 成功返回0，否则返回-1
+	*/
+
+	int read_slc(
+		const char* amp_file,
+		const char* phase_file,
+		ComplexMat& slc
+	);
+private:
+	string Biomass1A_reader_amp_file, Biomass1A_reader_phase_file, Biomass1A_reader_orbit_file, Biomass1A_reader_xml_file;
+	bool b_initialized;
+	string acquisition_start_time;
+	string acquisition_stop_time;
+	double azimuth_resolution;
+	double azimuth_spacing;
+	double carrier_frequency;
+	double inc_center;
+	double prf;
+	double range_resolution;
+	double range_spacing;
+	double slant_range_first_pixel;
+	double slant_range_last_pixel;
+	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
+		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
+	Mat state_vec;
+	string sensor;
+	ComplexMat slc;
+	string polarization;
+};
+
 
 /*------------------------------------------------*/
 /*               陆探1号数据读取工具              */
@@ -1737,7 +1908,7 @@ private:
 	string startTime;
 	/*拍摄结束UTC时间*/
 	string stopTime;
-
+	
 
 
 
@@ -2058,7 +2229,7 @@ public:
 	*/
 	int setDEMPath(const char* DEMPath);
 	/** @brief 加载数字高程模型
-	* @param filepath                      文件路径
+	* @param filepath                      DEM文件路径
 	* @param lonMin                        最小经度
 	* @param lonMax                        最大经度
 	* @param latMin                        最小纬度
@@ -2149,6 +2320,25 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az
 	);
+	/** @brief 复图像sinc插值重采样（inplace，原地操作）
+	* @param slc                                   待重采样图像（原地操作）
+	* @param dstHeight                             重采样图像高度
+	* @param dstWidth                              重采样图像宽度
+	* @param a0Rg                                  距离向偏移拟合系数
+	* @param a1Rg                                  距离向偏移拟合系数
+	* @param a2Rg                                  距离向偏移拟合系数
+	* @param a0Az                                  方位向偏移拟合系数
+	* @param a1Az                                  方位向偏移拟合系数
+	* @param a2Az                                  方位向偏移拟合系数
+	* @return 成功返回0，否则返回-1
+	*/
+	int performSincResampling(
+		ComplexMat& slc,
+		int dstHeight,
+		int dstWidth,
+		double a0Rg, double a1Rg, double a2Rg,
+		double a0Az, double a1Az, double a2Az
+	);
 	/** @brief 辅图像双线性插值重采样
 	* @param mBurstIndex                           主图像burst序号
 	* @param slaveImageIndex                       辅图像序号
@@ -2211,4 +2401,26 @@ public:
 	char error_head[256];
 
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #endif // !__FORMATCONVERSION__H__
+
+

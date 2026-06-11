@@ -1481,6 +1481,35 @@ public:
 		double* lonMin,
 		double* latMin
 	);
+	/*@brief 根据图像四角点经纬度，计算图像的地理边界（最大最小经纬度）,无扩展
+	@param topleft_lon                             左上角经度
+	@param topleft_lat                             左上角纬度
+	@param topright_lon                            右上角经度
+	@param topright_lat                            右上角纬度
+	@param bottomleft_lon                          左下角经度
+	@param bottomleft_lat                          左下角纬度
+	@param bottomright_lon                         右下角经度
+	@param bottomright_lat                         右下角纬度
+	@param lonMax                                  最大经度（返回值）
+	@param latMax                                  最大纬度（返回值）
+	@param lonMin                                  最小经度（返回值）
+	@param latMin                                  最小纬度（返回值）
+	@return 成功返回0，否则返回-1
+	*/
+	static int computeImageGeoBoundry_no_expansion(
+		double topleft_lon,
+		double topleft_lat,
+		double topright_lon,
+		double topright_lat,
+		double bottomleft_lon,
+		double bottomleft_lat,
+		double bottomright_lon,
+		double bottomright_lat,
+		double* lonMax,
+		double* latMax,
+		double* lonMin,
+		double* latMin
+	);
 	/*@brief 根据地理边界信息获取SRTM高程
 	* @param filepath                     下载的SRTM高程文件保存路径
 	* @param DEM_out                      DEM数据（返回值，short型）
@@ -1502,6 +1531,31 @@ public:
 		double latMin,
 		double latMax
 	);
+	/*@brief 根据地理边界信息获取Copernicus30m高程
+	* @param filepath                     下载的Copernicus高程文件保存路径
+	* @param DEM_out                      DEM数据（返回值，float型）
+	* @param lonUpperLeft                 左上角经度（返回值）
+	* @param latUpperLeft                 左上角纬度（返回值）
+	* @param lon_spacing                  经度采样间隔（返回值）
+	* @param lat_spacing                  纬度采样间隔（返回值）
+	* @param lonMin                       最小经度
+	* @param lonMax                       最大经度
+	* @param latMin                       最小纬度
+	* @param latMax                       最大纬度
+	* @return 成功返回0，否则返回-1
+	*/
+	static int getCopernicusDEM(
+		const char* filepath,
+		Mat& DEM_out,
+		double* lonUpperLeft,
+		double* latUpperLeft,
+		double* lon_spacing,
+		double* lat_spacing,
+		double lonMin,
+		double lonMax,
+		double latMin,
+		double latMax
+	);
 	/*@brief 根据地理边界信息计算所需下载的SRTM高程文件名
 	* @param lonMin                       最小经度
 	* @param lonMax                       最大经度
@@ -1517,12 +1571,42 @@ public:
 		double latMax,
 		vector<string>& name
 	);
+	/*@brief 根据地理边界信息计算所需下载的Copernicus高程文件名
+	* @param lonMin                       最小经度
+	* @param lonMax                       最大经度
+	* @param latMin                       最小纬度
+	* @param latMax                       最大纬度
+	* @param name                         文件名
+	* @return 成功返回0，否则返回-1
+	*/
+	static int getCopernicusDEMFileName(
+		double lonMin,
+		double lonMax,
+		double latMin,
+		double latMax,
+		vector<string>& name
+	);
 	/*@brief 下载SRTM高程数据
 	* @param name                         文件名
 	* @param DEMpath                      下载DEM文件保存路径
 	* @return 成功返回0，否则返回-1
 	*/
 	static int downloadSRTM(const char* name, const char* DEMpath);
+	/*@brief 下载Copernicus高程数据
+	* @param name                         文件名
+	* @param DEMpath                      下载DEM文件保存路径
+	* @return 成功返回0，否则返回-1
+	*/
+	static int downloadCopernicusDEM(const char* name, const char* DEMpath);
+	/*@brief 读取geotiff高程数据
+	* @param geotiffFile                  geotiff文件
+	* @param outDEM                       读出的DEM数据
+	* @return 成功返回0，否则返回-1
+	*/
+	static int CopernicusDEM_geotiffread(
+		const char* geotiffFile,
+		Mat& outDEM
+	);
 	/*@brief 根据四个角经纬度坐标，将图片叠加到Google Earth上
 	* @param BottomLeft_lon                左下角经度
 	* @param BottomLeft_lat                左下角纬度
@@ -1931,6 +2015,7 @@ public:
 	);
 private:
 	static constexpr const char* SRTMURL = "https://srtm.csi.cgiar.org/wp-content/uploads/files/srtm_5x5/TIFF/";
+	static constexpr const char* CopernicusDEMURL = "https://copernicus-dem-30m.s3.amazonaws.com/";
 	static constexpr const char* error_head = "UTILS_DLL_ERROR: error happens when using ";
 	static constexpr const char* parallel_error_head = "UTILS_DLL_ERROR: error happens when using parallel computing in function: ";
 

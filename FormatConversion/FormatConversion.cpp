@@ -1,25 +1,147 @@
-#include"pch.h"
-#include <direct.h>
-#include"gdal_priv.h"
-#include"..\include\FormatConversion.h"
-#include"..\include\tinyxml.h"
-#include <mutex>
+#include"pch.h"                                                                              
+#include <direct.h>     // 解决 _mkdir 找不到标识符错误                                      
+#include <mutex>        // 解决 std::once_flag/call_once 依赖                                
+#include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
+#include"..\include\FormatConversion.h"                                                      
+#include"..\include\tinyxml.h"                                                               
+//#include<atlconv.h>                                                                        
+//#include<tchar.h>                                                                          
+#include<urlmon.h>                                                                           
+#pragma comment(lib,"URlmon")   
 
 static std::recursive_mutex g_h5_mutex;
 #define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex);
 
 static std::once_flag g_gdal_init_flag;
-static void InitializeGDALOnce()
-{
+static void InitializeGDALOnce()                                                             
+{                                                                                            
 	std::call_once(g_gdal_init_flag, [](){
 		GDALAllRegister();
 	});
 }
 
-//#include<atlconv.h>
-//#include<tchar.h>
-#include<urlmon.h>
-#pragma comment(lib,"URlmon")
+/**
+ * @brief 生成5阶范德蒙矩阵（用于TerraSAR-X和Sentinel-1坐标转换）
+ * 矩阵结构：[1, x, x², x³, x⁴, y, xy, x²y, x³y, x⁴y, y², xy², x²y², x³y², y³, xy³, x²y³, y⁴, xy⁴, y⁵]
+ * @param row               行坐标序列（已归一化）
+ * @param col               列坐标序列（已归一化）
+ * @param vandermondeMatrix 输出的范德蒙矩阵（N×25）
+ * @return 成功返回0，失败返回-1
+ */
+static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermondeMatrix)
+{
+	if (row.empty() || col.empty() || row.rows != col.rows)
+	{
+		fprintf(stderr, "createVandermondeMatrix(): input check failed!\n");
+		return -1;
+	}
+
+	int n = row.rows;
+	vandermondeMatrix = Mat::ones(n, 25, CV_64F);
+	Mat temp;
+
+	// 列索引与原始双四次多项式项对应如下：
+	// 0=1, 1=x, 2=x², 3=x³, 4=x⁴
+	// 5=y, 6=yx, 7=yx², 8=yx³, 9=yx⁴
+	// 10=y², 11=y²x, 12=y²x², 13=y²x³, 14=y²x⁴
+	// 15=y³, 16=y³x, 17=y³x², 18=y³x³, 19=y³x⁴
+	// 20=y⁴, 21=y⁴x, 22=y⁴x², 23=y⁴x³, 24=y⁴x⁴
+
+	// x 的幂次：x, x², x³, x⁴(第 1 到 4)
+	row.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(1, 2)));
+	temp = row.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(2, 3)));
+	temp = temp.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(3, 4)));
+	temp = temp.mul(row);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(4, 5)));
+
+	// y * x^j (j=0..4) (第 5 到 9)
+	col.copyTo(temp);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5, 6)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5 + j, 6 + j)));
+	}
+
+	// y² * x^j (j=0..4) (第 10 到 14)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10, 11)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10 + j, 11 + j)));
+	}
+
+	// y³ * x^j (j=0..4) (第 15 到 19)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15, 16)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15 + j, 16 + j)));
+	}
+
+	// y⁴ * x^j (j=0..4) (第 20 到 24)
+	col.copyTo(temp);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp = temp.mul(col);
+	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20, 21)));
+	for (int j = 1; j <= 4; j++) {
+		temp = temp.mul(row);
+		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20 + j, 21 + j)));
+	}
+
+	return 0;
+}
+
+/**
+ * @brief 多项式拟合（最小二乘法）
+ * @param A           范德蒙矩阵
+ * @param b           目标值向量
+ * @param coefficient 输出的系数向量
+ * @param rms         输出的RMS误差（可选，传nullptr则不计算）
+ * @return 成功返回0，失败返回-1
+ */
+static int polyFit(const Mat& A, const Mat& b, Mat& coefficient, double* rms = nullptr)
+{
+	if (A.empty() || b.empty() || A.rows != b.rows)
+	{
+		fprintf(stderr, "polyFit(): input check failed!\n");
+		return -1;
+	}
+
+	Mat At, AtA, Atb;
+	cv::transpose(A, At);
+	AtA = At * A;
+	Atb = At * b;
+
+	if (!cv::solve(AtA, Atb, coefficient, cv::DECOMP_NORMAL))
+	{
+		fprintf(stderr, "polyFit(): solve failed!\n");
+		return -1;
+	}
+
+	// 计算 RMS
+	if (rms != nullptr)
+	{
+		Mat error, a, a_t, b_t;
+		A.copyTo(a);
+		cv::transpose(a, a_t);
+
+		*rms = -1.0;
+		if (cv::invert(AtA, error, cv::DECOMP_LU) > 0)
+		{
+			cv::transpose(b, b_t);
+			error = b_t * b - (b_t * a) * error * (a_t * b);
+			*rms = sqrt(error.at<double>(0, 0) / double(b.rows));
+		}
+	}
+
+	return 0;
+}
 
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
@@ -27,6 +149,113 @@ static void InitializeGDALOnce()
 #pragma comment(lib,"ComplexMat.lib")
 
 #endif // _DEBUG
+
+namespace
+{
+	constexpr double INSAR_PI = 3.141592653589793238462643383279502884;
+
+	inline double sinc_func(double x)
+	{
+		if (std::abs(x) < 1.0e-12) return 1.0;
+		double pix = INSAR_PI * x;
+		return std::sin(pix) / pix;
+	}
+
+	inline double hamming_window(double x, int radius)
+	{
+		double ax = std::abs(x);
+		if (ax > static_cast<double>(radius)) return 0.0;
+
+		// Hamming window: center = 1, edge ≈ 0.08
+		return 0.54 + 0.46 * std::cos(INSAR_PI * ax / static_cast<double>(radius));
+	}
+
+	inline double windowed_sinc_weight(double x, int radius)
+	{
+		if (std::abs(x) > static_cast<double>(radius)) return 0.0;
+		return sinc_func(x) * hamming_window(x, radius);
+	}
+
+	inline double mat_get_as_double(const cv::Mat& img, int r, int c)
+	{
+		switch (img.depth())
+		{
+		case CV_64F:
+			return img.at<double>(r, c);
+		case CV_32F:
+			return static_cast<double>(img.at<float>(r, c));
+		case CV_16S:
+			return static_cast<double>(img.at<short>(r, c));
+		default:
+			return 0.0;
+		}
+	}
+
+	inline void mat_set_from_double(cv::Mat& img, int r, int c, double v)
+	{
+		switch (img.depth())
+		{
+		case CV_64F:
+			img.at<double>(r, c) = v;
+			break;
+		case CV_32F:
+			img.at<float>(r, c) = static_cast<float>(v);
+			break;
+		case CV_16S:
+			img.at<short>(r, c) = cv::saturate_cast<short>(v);
+			break;
+		default:
+			break;
+		}
+	}
+
+	inline double sinc_interp2d(const cv::Mat& img, double row, double col, int radius)
+	{
+		const int rows = img.rows;
+		const int cols = img.cols;
+
+		// 坐标完全越界，直接置零
+		if (row < 0.0 || col < 0.0 || row > static_cast<double>(rows - 1) || col > static_cast<double>(cols - 1))
+		{
+			return 0.0;
+		}
+
+		// 为避免边界处 sinc 核不完整导致伪影，靠近边缘的像元直接置零
+		if (row < radius || col < radius ||
+			row > static_cast<double>(rows - 1 - radius) ||
+			col > static_cast<double>(cols - 1 - radius))
+		{
+			return 0.0;
+		}
+
+		int r0 = static_cast<int>(std::floor(row));
+		int c0 = static_cast<int>(std::floor(col));
+
+		double sum_val = 0.0;
+		double sum_w = 0.0;
+
+		for (int rr = r0 - radius; rr <= r0 + radius; rr++)
+		{
+			double wr = windowed_sinc_weight(row - static_cast<double>(rr), radius);
+			if (std::abs(wr) < 1.0e-15) continue;
+
+			for (int cc = c0 - radius; cc <= c0 + radius; cc++)
+			{
+				double wc = windowed_sinc_weight(col - static_cast<double>(cc), radius);
+				if (std::abs(wc) < 1.0e-15) continue;
+
+				double w = wr * wc;
+				sum_val += mat_get_as_double(img, rr, cc) * w;
+				sum_w += w;
+			}
+		}
+
+		if (std::abs(sum_w) < 1.0e-14) return 0.0;
+
+		// 归一化，避免有限窗截断导致幅度偏移
+		return sum_val / sum_w;
+	}
+}
 
 inline bool return_check(int ret, const char* detail_info, const char* error_head)
 {
@@ -94,129 +323,6 @@ int UTC2GPS(const char* utc_time, double* gps_time)
 	return 0;
 }
 
-/**
- * @brief 生成5阶范德蒙矩阵（用于TerraSAR-X和Sentinel-1坐标转换）
- * 矩阵结构：[1, x, x², x³, x⁴, y, xy, x²y, x³y, x⁴y, y², xy², x²y², x³y², y³, xy³, x²y³, y⁴, xy⁴, y⁵]
- * @param row               行坐标序列（已归一化）
- * @param col               列坐标序列（已归一化）
- * @param vandermondeMatrix 输出的范德蒙矩阵（N×25）
- * @return 成功返回0，失败返回-1
- */
-static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermondeMatrix)
-{
-	if (row.empty() || col.empty() || row.rows != col.rows)
-	{
-		fprintf(stderr, "createVandermondeMatrix(): input check failed!\n");
-		return -1;
-	}
-
-	int n = row.rows;
-	vandermondeMatrix = Mat::ones(n, 25, CV_64F);
-	Mat temp;
-
-	// 列索引与原始双四次多项式项对应如下：
-	// 0=1, 1=x, 2=x², 3=x³, 4=x⁴
-	// 5=y, 6=yx, 7=yx², 8=yx³, 9=yx⁴
-	// 10=y², 11=y²x, 12=y²x², 13=y²x³, 14=y²x⁴
-	// 15=y³, 16=y³x, 17=y³x², 18=y³x³, 19=y³x⁴
-	// 20=y⁴, 21=y⁴x, 22=y⁴x², 23=y⁴x³, 24=y⁴x⁴
-
-	// x 的幂次：x, x², x³, x⁴ (列 1 到 4)
-	row.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(1, 2)));
-	temp = row.mul(row);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(2, 3)));
-	temp = temp.mul(row);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(3, 4)));
-	temp = temp.mul(row);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(4, 5)));
-
-	// y * x^j (j=0..4) (列 5 到 9)
-	col.copyTo(temp);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5, 6)));
-	for (int j = 1; j <= 4; j++) {
-		temp = temp.mul(row);
-		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5 + j, 6 + j)));
-	}
-
-	// y² * x^j (j=0..4) (列 10 到 14)
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10, 11)));
-	for (int j = 1; j <= 4; j++) {
-		temp = temp.mul(row);
-		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10 + j, 11 + j)));
-	}
-
-	// y³ * x^j (j=0..4) (列 15 到 19)
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15, 16)));
-	for (int j = 1; j <= 4; j++) {
-		temp = temp.mul(row);
-		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15 + j, 16 + j)));
-	}
-
-	// y⁴ * x^j (j=0..4) (列 20 到 24)
-	col.copyTo(temp);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp = temp.mul(col);
-	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20, 21)));
-	for (int j = 1; j <= 4; j++) {
-		temp = temp.mul(row);
-		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(20 + j, 21 + j)));
-	}
-
-	return 0;
-}
-
-/**
- * @brief 多项式拟合（最小二乘法）
- * @param A           范德蒙矩阵
- * @param b           目标值向量
- * @param coefficient 输出的系数向量
- * @param rms         输出的RMS误差（可选，传nullptr则不计算）
- * @return 成功返回0，失败返回-1
- */
-static int polyFit(const Mat& A, const Mat& b, Mat& coefficient, double* rms = nullptr)
-{
-	if (A.empty() || b.empty() || A.rows != b.rows)
-	{
-		fprintf(stderr, "polyFit(): input check failed!\n");
-		return -1;
-	}
-
-	Mat At, AtA, Atb;
-	cv::transpose(A, At);
-	AtA = At * A;
-	Atb = At * b;
-
-	if (!cv::solve(AtA, Atb, coefficient, cv::DECOMP_NORMAL))
-	{
-		fprintf(stderr, "polyFit(): solve failed!\n");
-		return -1;
-	}
-
-	// 计算 RMS
-	if (rms != nullptr)
-	{
-		Mat error, a, a_t, b_t;
-		A.copyTo(a);
-		cv::transpose(a, a_t);
-
-		*rms = -1.0;
-		if (cv::invert(AtA, error, cv::DECOMP_LU) > 0)
-		{
-			cv::transpose(b, b_t);
-			error = b_t * b - (b_t * a) * error * (a_t * b);
-			*rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-		}
-	}
-
-	return 0;
-}
-
 FormatConversion::FormatConversion()
 {
 	memset(this->error_head, 0, 256);
@@ -262,7 +368,7 @@ int FormatConversion::utc2gps(const char* utc_time, double* gps_time)
 
 int FormatConversion::creat_new_h5(const char* filename)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL)
 	{
 		fprintf(stderr, "creat_new_h5(): invalid filename!\n");
@@ -285,7 +391,7 @@ int FormatConversion::creat_new_h5(const char* filename)
 
 int FormatConversion::write_zero_array_to_h5(const char* filename, const char* dataset_name, int type, int rows, int cols)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		(type != CV_64F && type != CV_16S && type != CV_32S && type != CV_32F && type != CV_8U)
@@ -359,7 +465,7 @@ int FormatConversion::write_zero_array_to_h5(const char* filename, const char* d
 
 int FormatConversion::write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		input_array.empty() ||
@@ -458,7 +564,7 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 
 int FormatConversion::write_double_to_h5(const char* h5File, const char* datasetName, double data)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "write_double_to_h5(): input check failed!\n");
@@ -473,7 +579,7 @@ int FormatConversion::write_double_to_h5(const char* h5File, const char* dataset
 
 int FormatConversion::write_int_to_h5(const char* h5File, const char* datasetName, int data)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "write_double_to_h5(): input check failed!\n");
@@ -488,7 +594,7 @@ int FormatConversion::write_int_to_h5(const char* h5File, const char* datasetNam
 
 int FormatConversion::read_array_from_h5(const char* filename, const char* dataset_name, Mat& out_array)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL
 		)
@@ -561,7 +667,7 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 
 int FormatConversion::read_double_from_h5(const char* h5File, const char* datasetName, double* data)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "read_double_from_h5(): input check failed!\n");
@@ -577,7 +683,7 @@ int FormatConversion::read_double_from_h5(const char* h5File, const char* datase
 
 int FormatConversion::read_int_from_h5(const char* h5File, const char* datasetName, int* data)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!h5File || !datasetName)
 	{
 		fprintf(stderr, "read_int_from_h5(): input check failed!\n");
@@ -593,7 +699,7 @@ int FormatConversion::read_int_from_h5(const char* h5File, const char* datasetNa
 
 int FormatConversion::read_subarray_from_h5(const char* filename, const char* dataset_name, int offset_row, int offset_col, int rows_subarray, int cols_subarray, Mat& out_array)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		offset_row < 0 ||
@@ -699,17 +805,17 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 	{
 
 	}
+	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
 	H5Sclose(dataspace_id);
 	H5Tclose(type);
-	H5Sclose(memspace_id);
 	return 0;
 }
 
 int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* dataset_name, Mat& subarray, int offset_row, int offset_col, int rows_subarray, int cols_subarray)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (h5_filename == NULL ||
 		dataset_name == NULL ||
 		offset_row < 0 ||
@@ -858,17 +964,17 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 	{
 
 	}
+	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
 	H5Sclose(dataspace_id);
 	H5Tclose(type);
-	H5Sclose(memspace_id);
 	return 0;
 }
 
 int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_name, const char* Str)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL||
 		Str == NULL
@@ -939,7 +1045,7 @@ int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_
 
 int FormatConversion::read_str_from_h5(const char* filename, const char* dataset_name, string& Str)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL
 		)
@@ -997,7 +1103,7 @@ int FormatConversion::read_str_from_h5(const char* filename, const char* dataset
 
 int FormatConversion::write_slc_to_h5(const char* filename, const ComplexMat& slc)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL ||
 		slc.isempty()/*||
 		slc.type() != CV_64F*/
@@ -1016,7 +1122,7 @@ int FormatConversion::write_slc_to_h5(const char* filename, const ComplexMat& sl
 
 int FormatConversion::read_slc_from_h5(const char* filename, ComplexMat& slc)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (filename == NULL)
 	{
 		fprintf(stderr, "read_slc_from_h5(): input check failed!\n");
@@ -1037,77 +1143,112 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		fprintf(stderr, "read_slc_from_TSXcos(): input check failed!\n");
 		return -1;
 	}
-	InitializeGDALOnce();	//注册已知驱动
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//打开cos文件
-	if (poDataset == NULL)
+
+	InitializeGDALOnce();   /* 注册驱动 */
+
+	GDALDatasetH hDataset = GDALOpen(filename, GA_ReadOnly);
+	if (hDataset == NULL)
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): failed to open %s!\n", filename);
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
-	int xsize = 0;
-	int ysize = 0;
-	if (nBand == 1)
-	{
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//获取指向波段1的指针
-		xsize = poBand->GetXSize();		//cols
-		ysize = poBand->GetYSize();		//rows
-		if (xsize < 0 || ysize < 0)
-		{
-			fprintf(stderr, "read_slc_from_TSXcos(): band rows and cols error!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-		int* pbuf = NULL;
-		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//分配数据指针空间
-		if (!pbuf)
-		{
-			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		int i, j;
-		//ComplexMat CMat;
-		//CMat.re = Mat::zeros(ysize, xsize, CV_64F);
-		//CMat.im = Mat::zeros(ysize, xsize, CV_64F);
-		slc.re.create(ysize, xsize, CV_16S);
-		slc.im.create(ysize, xsize, CV_16S);
-		for (i = 0; i < ysize; i++)
-			for (j = 0; j < xsize; j++)
-			{
-				/*将数据按照实部、虚部读入Mat中
-				由于cos按照大端存储，RasterIO会自动转化为小端，但会导致实部虚部位置颠倒
-				因此高16位为虚部，低16位为实部
-				*/
-				slc.re.ptr<short>(i)[j] = (pbuf[j + i * xsize] << 16) >> 16;
-				slc.im.ptr<short>(i)[j] = (pbuf[j + i * xsize] >> 16);
-			}
-		if (pbuf)
-		{
-			free(pbuf);
-			pbuf = NULL;
-		}
-		GDALClose(poDataset);
-	}
-	else
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand != 1)
 	{
 		fprintf(stderr, "read_slc_from_TSXcos(): number of Bands != 1\n");
-		GDALClose(poDataset);
+		GDALClose(hDataset);
 		return -1;
 	}
-	
+
+	/* 获取波段 1 */
+	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc_from_TSXcos(): failed to get band 1\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand);
+	int ysize = GDALGetRasterBandYSize(hBand);
+
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc_from_TSXcos(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	GDALDataType dataType = GDALGetRasterDataType(hBand);
+	if (dataType != GDT_CInt16)
+	{
+		fprintf(stderr, "read_slc_from_TSXcos(): unexpected data type\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	/* 分配缓冲区（int32，实部+虚部打包） */
+	int* pbuf = (int*)malloc(sizeof(int) * xsize * ysize);
+	if (pbuf == NULL)
+	{
+		fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	/* 读取数据 */
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_CInt16,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc_from_TSXcos(): RasterIO failed\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	/* 创建输出矩阵（假设 slc.re / slc.im 已存在） */
+	slc.re.create(ysize, xsize, CV_16S);
+	slc.im.create(ysize, xsize, CV_16S);
+
+	/* COS 数据解析：
+	   高 16 位：虚部
+	   低 16 位：实部
+	*/
+	for (int i = 0; i < ysize; ++i)
+	{
+		for (int j = 0; j < xsize; ++j)
+		{
+			int v = pbuf[j + i * xsize];
+			slc.re.ptr<short>(i)[j] = (short)((v << 16) >> 16);
+			slc.im.ptr<short>(i)[j] = (short)(v >> 16);
+		}
+	}
+
+	free(pbuf);
+	pbuf = NULL;
+
+	GDALClose(hDataset);
+
 	return 0;
 }
 
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename)
 {
+	H5_LOCK;
 	return TSX2h5(cosar_filename, xml_filename, GEOREF_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (cosar_filename == NULL ||
 		xml_filename == NULL ||
 		GEOREF_filename == NULL ||
@@ -1184,7 +1325,6 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
 	report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数");
-
 	// 生成5阶范德蒙矩阵
 	Mat A, temp, coefficient;
 	double rms;
@@ -1221,6 +1361,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	//拟合下视角
+
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -1642,11 +1783,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename)
 {
+	H5_LOCK;
 	return TSX2h5(xml_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
 	{
@@ -1687,11 +1830,13 @@ int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filena
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization)
 {
+	H5_LOCK;
 	return TSX2h5(xml_filename, dst_h5_filename, polarization, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (xml_filename == NULL ||
 		dst_h5_filename == NULL)
 	{
@@ -2124,11 +2269,13 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 
 int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file)
 {
+	H5_LOCK;
 	return sentinel2h5(tiff_filename, xml_filename, dst_h5_filename, POD_file, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_filename, const char* dst_h5_filename, const char* POD_file, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (tiff_filename == NULL ||
 		xml_filename == NULL ||
 		dst_h5_filename == NULL
@@ -2252,6 +2399,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	//拟合下视角
+
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -2651,6 +2799,7 @@ int FormatConversion::import_sentinel(
 	const char* PODFile
 )
 {
+	H5_LOCK;
 	return import_sentinel(manifest, subswath_name, polarization, dest_h5_file, PODFile, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
@@ -2664,6 +2813,7 @@ int FormatConversion::import_sentinel(
 	void* userData
 )
 {
+	H5_LOCK;
 	if (manifest == NULL ||
 		subswath_name == NULL ||
 		polarization == NULL ||
@@ -3522,11 +3672,13 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 
 int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5)
 {
+	H5_LOCK;
 	return ALOS2h5(IMG_file, LED_file, dst_h5, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
 }
 
 int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const char* dst_h5, ProgressCallback progressCallback, void* userData)
 {
+	H5_LOCK;
 	if (IMG_file == NULL ||
 		LED_file == NULL ||
 		dst_h5 == NULL)
@@ -7762,7 +7914,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 
 int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char* Output_file)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (Input_file == NULL ||
 		Output_file == NULL)
 	{
@@ -7919,17 +8071,17 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 	Mat& quality_index
 )
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!gedi_h5_file)
 	{
 		fprintf(stderr, "read_height_metric_from_GEDI_L2B(): input check failed!\n");
 		return -1;
 	}
 	vector<string> beam_name_list;
-	//beam_name_list.push_back("/BEAM0000/");
-	//beam_name_list.push_back("/BEAM0001/");
-	//beam_name_list.push_back("/BEAM0010/");
-	//beam_name_list.push_back("/BEAM0011/");
+	beam_name_list.push_back("/BEAM0000/");
+	beam_name_list.push_back("/BEAM0001/");
+	beam_name_list.push_back("/BEAM0010/");
+	beam_name_list.push_back("/BEAM0011/");
 	beam_name_list.push_back("/BEAM0101/");
 	beam_name_list.push_back("/BEAM0110/");
 	beam_name_list.push_back("/BEAM1000/");
@@ -7941,6 +8093,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		return -1;
 	}
 	Mat rh100_tmp, zg_tmp, zt_tmp, lon_tmp, lat_tmp, dem_tmp, quality_index_tmp;
+	int count = 0;
 	for (int i = 0; i < beam_name_list.size(); i++)
 	{
 		//读取RH100参数
@@ -7949,9 +8102,9 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		if (dataset_id < 0)
 		{
 			fprintf(stderr, "read_height_metric_from_GEDI_L2B(): failed to open dataset %s!\n", str.c_str());
-			H5Fclose(file_id);
-			return -1;
+			continue;
 		}
+		count++;
 		hid_t space_id = H5Dget_space(dataset_id);
 		if (space_id < 0)
 		{
@@ -7995,7 +8148,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		zg_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zg_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zg_tmp.data);
 		if (status < 0)
@@ -8027,7 +8180,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 		}
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
-		status;
+		// status; // 无操作语句，已注释
 		zt_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); zt_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)zt_tmp.data);
 		if (status < 0)
@@ -8168,7 +8321,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 			return -1;
 		}
 
-		if (i == 0)
+		if (count == 1)
 		{
 			rh100_tmp.copyTo(rh100);
 			zg_tmp.copyTo(elev_lowestmode);
@@ -8197,6 +8350,434 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 	quality_index.convertTo(quality_index, CV_16S);
 	H5Fclose(file_id);
 
+	return 0;
+}
+
+int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile)
+{
+	H5_LOCK;
+	if (!gedi_h5_file || rh_percentile < 1 || rh_percentile > 100)
+	{
+		fprintf(stderr, "read_height_metric_from_GEDI_L2A(): input check failed!\n");
+		return -1;
+	}
+	vector<string> beam_name_list;
+	beam_name_list.push_back("/BEAM0000/");
+	beam_name_list.push_back("/BEAM0001/");
+	beam_name_list.push_back("/BEAM0010/");
+	beam_name_list.push_back("/BEAM0011/");
+	beam_name_list.push_back("/BEAM0101/");
+	beam_name_list.push_back("/BEAM0110/");
+	beam_name_list.push_back("/BEAM1000/");
+	beam_name_list.push_back("/BEAM1011/");
+	hid_t file_id = H5Fopen(gedi_h5_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	if (file_id < 0)
+	{
+		fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open %s!\n", gedi_h5_file);
+		return -1;
+	}
+	Mat rh_tmp, zg_tmp, zt_tmp, lon_tmp, lat_tmp, dem_tmp, quality_index_tmp;
+	int count = 0;
+	for (int i = 0; i < beam_name_list.size(); i++)
+	{
+		//读取RH参数
+		string str = beam_name_list[i] + "rh";
+		hid_t dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataset %s!\n", str.c_str());
+			continue;
+		}
+		count++;
+		hid_t space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		hsize_t dims[3];
+		int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		hid_t type = H5Dget_type(dataset_id);
+		herr_t status;
+		rh_tmp.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); rh_tmp = 0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)rh_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+		rh_tmp(cv::Range(0, static_cast<int>(dims[0])), cv::Range(rh_percentile, rh_percentile + 1)).copyTo(rh_tmp);
+		//读取lat参数
+		str = beam_name_list[i] + "lat_highestreturn";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lat_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取lon参数
+		str = beam_name_list[i] + "lon_highestreturn";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lon_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取dem参数
+		str = beam_name_list[i] + "digital_elevation_model";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取quality_index参数
+		str = beam_name_list[i] + "quality_flag";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
+		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		if (count == 1)
+		{
+			rh_tmp.copyTo(rh);
+			lon_tmp.copyTo(lon);
+			lat_tmp.copyTo(lat);
+			dem_tmp.copyTo(dem);
+			quality_index_tmp.copyTo(quality_index);
+		}
+		else
+		{
+			cv::vconcat(rh, rh_tmp, rh);
+			cv::vconcat(lon, lon_tmp, lon);
+			cv::vconcat(lat, lat_tmp, lat);
+			cv::vconcat(dem, dem_tmp, dem);
+			cv::vconcat(quality_index, quality_index_tmp, quality_index);
+		}
+
+
+		H5Dclose(dataset_id);
+		H5Sclose(space_id);
+		H5Tclose(type);
+	}
+	quality_index.convertTo(quality_index, CV_16S);
+	H5Fclose(file_id);
+	return 0;
+}
+
+int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile)
+{
+	H5_LOCK;
+	if (!ICESat_2_h5_file || rh_percentile < 1 || rh_percentile > 18)
+	{
+		fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): input check failed!\n");
+		return -1;
+	}
+	vector<string> beam_name_list;
+	beam_name_list.push_back("/gt1l/");
+	beam_name_list.push_back("/gt1r/");
+	beam_name_list.push_back("/gt2l/");
+	beam_name_list.push_back("/gt2r/");
+	beam_name_list.push_back("/gt3l/");
+	beam_name_list.push_back("/gt3r/");
+	hid_t file_id = H5Fopen(ICESat_2_h5_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	if (file_id < 0)
+	{
+		fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open %s!\n", ICESat_2_h5_file);
+		return -1;
+	}
+	Mat rh_tmp, zg_tmp, zt_tmp, lon_tmp, lat_tmp, dem_tmp, quality_index_tmp;
+	int count = 0;
+	for (int i = 0; i < beam_name_list.size(); i++)
+	{
+		//读取RH参数
+		string str = beam_name_list[i] + "land_segments/canopy/canopy_h_metrics";
+		hid_t dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataset %s!\n", str.c_str());
+			continue;
+		}
+		count++;
+		hid_t space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		hsize_t dims[3];
+		int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		hid_t type = H5Dget_type(dataset_id);
+		herr_t status;
+		rh_tmp.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); rh_tmp = 0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)rh_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+		rh_tmp(cv::Range(0, static_cast<int>(dims[0])), cv::Range(rh_percentile-1, rh_percentile)).copyTo(rh_tmp);
+		//读取lat参数
+		str = beam_name_list[i] + "land_segments/latitude";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lat_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取lon参数
+		str = beam_name_list[i] + "land_segments/longitude";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lon_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取dem参数
+		str = beam_name_list[i] + "land_segments/dem_h";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
+		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		//读取quality_index参数
+		str = beam_name_list[i] + "land_segments/canopy/can_quality_score";
+		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
+		if (dataset_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataset %s!\n", str.c_str());
+			H5Fclose(file_id);
+			return -1;
+		}
+		space_id = H5Dget_space(dataset_id);
+		if (space_id < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open dataspace of %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Fclose(file_id);
+			return -1;
+		}
+		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+		type = H5Dget_type(dataset_id);
+		// status; // 无操作语句，已注释
+		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
+		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
+		if (status < 0)
+		{
+			fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to read from %s!\n", str.c_str());
+			H5Dclose(dataset_id);
+			H5Sclose(space_id);
+			H5Fclose(file_id);
+			H5Tclose(type);
+			return -1;
+		}
+
+		if (count == 1)
+		{
+			rh_tmp.copyTo(rh);
+			lon_tmp.copyTo(lon);
+			lat_tmp.copyTo(lat);
+			dem_tmp.copyTo(dem);
+			quality_index_tmp.copyTo(quality_index);
+		}
+		else
+		{
+			cv::vconcat(rh, rh_tmp, rh);
+			cv::vconcat(lon, lon_tmp, lon);
+			cv::vconcat(lat, lat_tmp, lat);
+			cv::vconcat(dem, dem_tmp, dem);
+			cv::vconcat(quality_index, quality_index_tmp, quality_index);
+		}
+
+
+		H5Dclose(dataset_id);
+		H5Sclose(space_id);
+		H5Tclose(type);
+	}
+	quality_index.convertTo(quality_index, CV_16S);
+	H5Fclose(file_id);
 	return 0;
 }
 
@@ -8923,6 +9504,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	temp.copyTo(lat_coefficient);
 
 	//拟合下视角
+
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
 	A = Mat::ones(inc.rows, 6, CV_64F);
@@ -9392,7 +9974,7 @@ int Sentinel1Reader::getSLC(ComplexMat& slc)
 
 int Sentinel1Reader::writeToh5(const char* h5File)
 {
-	H5_LOCK
+	H5_LOCK;
 	int ret;
 	if (!h5File || !bXmlLoad)
 	{
@@ -9761,7 +10343,7 @@ int Sentinel1Utils::computeDopplerRate()
 }
 
 int Sentinel1Utils::computeDerampDemodPhase(
-	int burstIndex, 
+	int burstIndex,
 	Mat& derampDemodPhase
 )
 {
@@ -9928,7 +10510,8 @@ int Sentinel1Utils::getZeroDopplerTime(Position groundPosition, double* zeroDopp
 	}
 
 
-	*zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
+	//*zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
+	*zeroDopplerTime = lowerBoundTime + (dopplerFrequency - lowerBoundFreq) * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	return 0;
 }
@@ -10437,8 +11020,8 @@ int DigitalElevationModel::getRawDEM(
 			ret = downloadSRTM(srtmFileName[i].c_str());
 			if (ret < 0)//未下载到DEM数据,则以0填充
 			{
-				int rows = static_cast<int>((latMax - latMin) / latSpacing);
-				int cols = static_cast<int>((lonMax - lonMin) / lonSpacing);
+				int rows = cvRound((latMax - latMin) / latSpacing);
+				int cols = cvRound((lonMax - lonMin) / lonSpacing);
 				Mat temp = Mat::zeros(rows, cols, CV_16S);
 				temp.copyTo(this->rawDEM);
 				this->lonUpperLeft = lonMin;
@@ -10478,16 +11061,16 @@ int DigitalElevationModel::getRawDEM(
 		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 		lonLowerRight = lonUpperLeft + 5.0;
 
-		startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+		startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+		endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+		startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 		startCol = startCol < 1 ? 1 : startCol;
 		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+		endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10518,16 +11101,16 @@ int DigitalElevationModel::getRawDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10592,16 +11175,16 @@ int DigitalElevationModel::getRawDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+				endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10661,16 +11244,16 @@ int DigitalElevationModel::getRawDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10822,16 +11405,16 @@ int DigitalElevationModel::getRawDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+			endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10916,16 +11499,16 @@ int DigitalElevationModel::getRawDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -10945,8 +11528,8 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 {
 	if (!elevation) return -1;
 	int row, col;
-	row = static_cast<int>((this->latUpperLeft - lat) / this->latSpacing);
-	col = static_cast<int>((lon - this->lonUpperLeft) / this->lonSpacing);
+	row = cvRound((this->latUpperLeft - lat) / this->latSpacing);
+	col = cvRound((lon - this->lonUpperLeft) / this->lonSpacing);
 	if (row < 0 || col < 0 || row >= this->rows || col >= this->cols) return -1;
 	double elevationUL, elevationUR, elevationLL, elevationLR;
 	// removed unused: upper, lower (bilinear interpolation remnant, using simple average instead)
@@ -10962,68 +11545,94 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 	return 0;
 }
 
-int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
-{
-	if (!filename) return -1;
-	InitializeGDALOnce();	//注册已知驱动
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);	//打开geotiff文件
-	if (poDataset == NULL)
-	{
-		fprintf(stderr, "geotiffread(): failed to open %s!\n", filename);
-		return -1;
-	}
-	int nBand = poDataset->GetRasterCount();	//获取波段数（geotiff应为1）
-	int xsize = 0;
-	int ysize = 0;
-	if (nBand == 1)
-	{
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);	//获取指向波段1的指针
-		xsize = poBand->GetXSize();		//cols
-		ysize = poBand->GetYSize();		//rows
-		if (xsize < 0 || ysize < 0)
-		{
-			fprintf(stderr, "geotiffread(): band rows and cols error!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，geotiff应为16位整型
-		short* pbuf = NULL;
-		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//分配数据指针空间
-		if (!pbuf)
-		{
-			fprintf(stderr, "geotiffread(): out of memory!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		// removed unused: i, j (memcpy used instead of pixel-by-pixel copy)
-		outDEM.create(ysize, xsize, CV_16S);
-		memcpy(outDEM.data, pbuf, sizeof(short) * xsize * ysize);
-		if (pbuf)
-		{
-			free(pbuf);
-			pbuf = NULL;
-		}
-		GDALClose(poDataset);
-	}
-	else
-	{
-		fprintf(stderr, "geotiffread(): number of Bands != 1\n");
-		GDALClose(poDataset);
-		return -1;
-	}
-	int rows = outDEM.rows;
-	int cols = outDEM.cols;
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < rows; i++)
-	{
-		for (int j = 0; j < cols; j++)
-		{
-			if (outDEM.at<short>(i, j) < 0) outDEM.at<short>(i, j) = 0;
-		}
-	}
-	return 0;
-}
+    int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)             
+    {                                                                                     
+        if (!filename)
+            return -1;
+                                                                                          
+        InitializeGDALOnce();    // 注册已知驱动，多线程安全
+                                                                                          
+        GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);
+        if (poDataset == NULL)
+        {
+            fprintf(stderr, "geotiffread(): failed to open %s!\n", filename);
+            return -1;
+        }
+                                                                                          
+        int nBand = poDataset->GetRasterCount();
+        if (nBand != 1)
+        {
+            fprintf(stderr, "geotiffread(): number of Bands != 1\n");
+            GDALClose(poDataset);
+            return -1;
+        }
+                                                                                          
+        GDALRasterBand* poBand = poDataset->GetRasterBand(1);
+        if (poBand == NULL)
+        {
+            fprintf(stderr, "geotiffread(): failed to get band!\n");
+            GDALClose(poDataset);
+            return -1;
+        }
+                                                                                          
+        int xsize = poBand->GetXSize();  // cols
+        int ysize = poBand->GetYSize();  // rows
+        if (xsize <= 0 || ysize <= 0)
+        {
+            fprintf(stderr, "geotiffread(): band rows and cols error!\n");
+            GDALClose(poDataset);
+            return -1;
+        }
+                                                                                          
+        /* 原始数据类型（常见为 GDT_Int16） */
+        GDALDataType srcType = poBand->GetRasterDataType();
+                                                                                          
+        /* 分配缓冲区（short） */
+        short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
+        if (!pbuf)
+        {
+            fprintf(stderr, "geotiffread(): out of memory!\n");
+            GDALClose(poDataset);
+            return -1;
+        }
+                                                                                          
+        /* 读取：强制以 GDT_Int16 输出，避免 memcpy 类型不匹配 */
+        if (poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, GDT_Int16, 0,
+  0) != CE_None)                                                                          
+        {
+            fprintf(stderr, "geotiffread(): RasterIO failed\n");
+            free(pbuf);
+            GDALClose(poDataset);
+            return -1;
+        }
+                                                                                          
+        outDEM.create(ysize, xsize, CV_16S);
+        memcpy(outDEM.data, pbuf, sizeof(short) * xsize * ysize);
+    
+        free(pbuf);
+        pbuf = NULL;
+        GDALClose(poDataset);
+                                                                                          
+        /* 将负值置零（保持你原来的 OpenMP 逻辑） */
+        int rows = outDEM.rows;
+        int cols = outDEM.cols;
+                                                                                          
+    #pragma omp parallel for schedule(guided)                                             
+        for (int i = 0; i < rows; i++)
+        {
+            short* rowp = outDEM.ptr<short>(i);
+            for (int j = 0; j < cols; j++)
+            {
+                if (rowp[j] < 0)
+                    rowp[j] = 0;
+            }
+        }
+                                                                                          
+        return 0;
+    } 
+
+
+
 
 int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 {
@@ -11470,7 +12079,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 int Sentinel1BackGeocoding::fitSlaveOffset(
 	Mat& slaveOffset,
 	double* a0,
-	double* a1, 
+	double* a1,
 	double* a2
 )
 {
@@ -11530,8 +12139,8 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 
 int Sentinel1BackGeocoding::performBilinearResampling(
 	ComplexMat& slave,
-	int dstHeight, 
-	int dstWidth, 
+	int dstHeight,
+	int dstWidth,
 	double a0Rg, double a1Rg, double a2Rg,
 	double a0Az, double a1Az, double a2Az
 )
@@ -11601,6 +12210,78 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 		}
 	}
 	slave = slcResampled;
+	return 0;
+}
+
+int Sentinel1BackGeocoding::performSincResampling(
+	ComplexMat& slave,
+	int dstHeight,
+	int dstWidth,
+	double a0Rg, double a1Rg, double a2Rg,
+	double a0Az, double a1Az, double a2Az
+)
+{
+	if (slave.isempty() || dstHeight < 2 || dstWidth < 2)
+	{
+		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
+		return -1;
+	}
+
+	ComplexMat slcResampled;
+
+	// 统一转成 double，便于 sinc 插值
+	if (slave.type() != CV_64F)
+	{
+		slave.convertTo(slave, CV_64F);
+	}
+
+	slcResampled.re.create(dstHeight, dstWidth, CV_64F);
+	slcResampled.im.create(dstHeight, dstWidth, CV_64F);
+
+	int rows = dstHeight;
+	int cols = dstWidth;
+
+	// sinc 插值半径
+	// SINC_RADIUS = 4 表示 9 × 9 窗口
+	// 可改为 6，对应 13 × 13，精度略高但速度明显变慢
+	const int SINC_RADIUS = 4;
+
+	// 提前取出系数，避免每个像元创建 Mat 并做矩阵乘法
+	const double cr0 = a0Az;
+	const double cr1 = a1Az;
+	const double cr2 = a2Az;
+
+	const double cc0 = a0Rg;
+	const double cc1 = a1Rg;
+	const double cc2 = a2Rg;
+
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			double ii = static_cast<double>(i);
+			double jj = static_cast<double>(j);
+
+			// 行方向偏移：azimuth offset
+			double offset_rows = cr0 + cr1 * jj + cr2 * ii;
+
+			// 列方向偏移：range offset
+			double offset_cols = cc0 + cc1 * jj + cc2 * ii;
+
+			double src_row = ii + offset_rows;  // /* + 0.0053 */ 如果你还需要这个经验修正，可加在这里
+			double src_col = jj + offset_cols;
+
+			double re_value = sinc_interp2d(slave.re, src_row, src_col, SINC_RADIUS);
+			double im_value = sinc_interp2d(slave.im, src_row, src_col, SINC_RADIUS);
+
+			slcResampled.re.at<double>(i, j) = re_value;
+			slcResampled.im.at<double>(i, j) = im_value;
+		}
+	}
+
+	slave = slcResampled;
+
 	return 0;
 }
 
@@ -12027,6 +12708,7 @@ CSK_reader::~CSK_reader()
 
 int CSK_reader::init()
 {
+	H5_LOCK;
 	if (b_initialized) return 0;
 	if (csk_data_file.empty())
 	{
@@ -12045,7 +12727,7 @@ int CSK_reader::init()
 
 int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (CSK_data_file == NULL
 		)
 	{
@@ -12124,7 +12806,7 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 
 int CSK_reader::read_data(const char* CSK_data_file)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!CSK_data_file)
 	{
 		fprintf(stderr, "read_data(): input check failed!\n");
@@ -12408,7 +13090,7 @@ int CSK_reader::read_data(const char* CSK_data_file)
 
 int CSK_reader::write_to_h5(const char* dst_h5)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!dst_h5)
 	{
 		fprintf(stderr, "write_meta_data(): input check failed!\n");
@@ -12461,7 +13143,7 @@ int CSK_reader::write_to_h5(const char* dst_h5)
 
 int CSK_reader::get_str_attribute(hid_t object_id, const char* attribute_name, string& attribute_value)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!attribute_name)
 	{
 		fprintf(stderr, "get_str_attribute(): input check failed!\n");
@@ -12497,7 +13179,7 @@ int CSK_reader::get_str_attribute(hid_t object_id, const char* attribute_name, s
 
 int CSK_reader::get_array_attribute(hid_t object_id, const char* attribute_name, Mat& out_array)
 {
-	H5_LOCK
+	H5_LOCK;
 	if (!attribute_name)
 	{
 		fprintf(stderr, "get_str_attribute(): input check failed!\n");
@@ -12589,71 +13271,114 @@ int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	InitializeGDALOnce();	//注册已知驱动
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
-	if (poDataset == NULL)
+
+	InitializeGDALOnce();
+
+	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
+	if (hDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
-	int xsize = 0;
-	int ysize = 0;
-	//获取指向波段1的指针
-	GDALRasterBand* poBand = poDataset->GetRasterBand(1);	
-	xsize = poBand->GetXSize();		//cols
-	ysize = poBand->GetYSize();		//rows
-	if (xsize < 0 || ysize < 0)
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand < 2)
 	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(poDataset);
+		fprintf(stderr, "read_slc(): number of bands < 2!\n");
+		GDALClose(hDataset);
 		return -1;
 	}
-	GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-	short* pbuf = NULL;
-	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//分配数据指针空间
+
+	/* ---------- Band 1: Real ---------- */
+	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 1!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand);
+	int ysize = GDALGetRasterBandYSize(hBand);
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
 	if (!pbuf)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(poDataset);
+		GDALClose(hDataset);
 		return -1;
 	}
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-	int i, j;
-	slc.re.create(ysize, xsize, CV_16S);
-	slc.im.create(ysize, xsize, CV_16S);
-	size_t offset = 0;
-	for (i = 0; i < ysize; i++)
-		for (j = 0; j < xsize; j++)
-		{
-			slc.re.ptr<short>(i)[j] = pbuf[offset];
-			offset++;
-		}
-	//获取指向波段2的指针
-	poBand = poDataset->GetRasterBand(2);
-	xsize = poBand->GetXSize();		//cols
-	ysize = poBand->GetYSize();		//rows
-	if (xsize < 0 || ysize < 0)
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
 	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(poDataset);
-		return -1;
-	}
-	dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-	offset = 0;
-	for (i = 0; i < ysize; i++)
-		for (j = 0; j < xsize; j++)
-		{
-			slc.im.ptr<short>(i)[j] = pbuf[offset];
-			offset++;
-		}
-	if (pbuf)
-	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
 		free(pbuf);
-		pbuf = NULL;
+		GDALClose(hDataset);
+		return -1;
 	}
-	GDALClose(poDataset);
+
+	slc.re.create(ysize, xsize, CV_16S);
+
+	size_t offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.re.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	/* ---------- Band 2: Imag ---------- */
+	hBand = GDALGetRasterBand(hDataset, 2);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	slc.im.create(ysize, xsize, CV_16S);
+
+	offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.im.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	free(pbuf);
+	GDALClose(hDataset);
 
 	return 0;
 }
@@ -12762,7 +13487,6 @@ int HTHT_reader::read_data(const char* xml_file, const char* data_file)
 
 int HTHT_reader::write_to_h5(const char* dst_h5)
 {
-	H5_LOCK
 	if (!dst_h5)
 	{
 		fprintf(stderr, "write_to_h5(): input check failed!\n");
@@ -12821,6 +13545,752 @@ int HTHT_reader::write_to_h5(const char* dst_h5)
 	return 0;
 }
 
+AIRSAT_reader::AIRSAT_reader(const char* data_file, const char* xml_file)
+{
+	b_initialized = false;
+	this->AIRSAT_data_file = data_file;
+	this->AIRSAT_xml_file = xml_file;
+}
+
+AIRSAT_reader::~AIRSAT_reader()
+{
+}
+
+int AIRSAT_reader::init()
+{
+	if (b_initialized) return 0;
+	if (AIRSAT_data_file.empty())
+	{
+		fprintf(stderr, "init(): input check failed!\n");
+		return -1;
+	}
+	int ret = read_data(this->AIRSAT_xml_file.c_str(), this->AIRSAT_data_file.c_str());
+	if (ret < 0)
+	{
+		fprintf(stderr, "init(): read_data failed!\n");
+		return -1;
+	}
+	b_initialized = true;
+	return 0;
+}
+
+int AIRSAT_reader::UTC2GPS(const char* utc_time, double* gps_time)
+{
+	if (utc_time == NULL || gps_time == NULL)
+	{
+		fprintf(stderr, "UTC2GPS(): input check failed!\n");
+		return -1;
+	}
+	int ret, year, month, day, hour, minute, second/*, s*/;
+	double sec;
+	ret = sscanf(utc_time, "%d-%d-%d %d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
+	if (ret != 6)
+	{
+		fprintf(stderr, "UTC2GPS(): %s: unknown format!\n", utc_time);
+		return -1;
+	}
+	second = int(floor(sec));
+	sec = sec - (double)second;
+	tm TM;
+	TM.tm_year = year - 1900;
+	TM.tm_mon = month - 1;
+	TM.tm_mday = day;
+	TM.tm_hour = hour;
+	TM.tm_min = minute;
+	TM.tm_sec = second;
+	TM.tm_isdst = 0;
+	*gps_time = double(mktime(&TM) - 315964809) + sec;
+	return 0;
+}
+
+int AIRSAT_reader::read_slc(const char* data_file, ComplexMat& slc)
+{
+	if (data_file == NULL)
+	{
+		fprintf(stderr, "read_slc(): input check failed!\n");
+		return -1;
+	}
+
+	InitializeGDALOnce();
+
+	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
+	if (hDataset == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
+		return -1;
+	}
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand < 2)
+	{
+		fprintf(stderr, "read_slc(): number of bands < 2!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	/* ================= Band 1 : Real ================= */
+	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 1!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand);
+	int ysize = GDALGetRasterBandYSize(hBand);
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
+	if (!pbuf)
+	{
+		fprintf(stderr, "read_slc(): out of memory!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	slc.re.create(ysize, xsize, CV_16S);
+
+	size_t offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.re.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	/* ================= Band 2 : Imag ================= */
+	hBand = GDALGetRasterBand(hDataset, 2);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	slc.im.create(ysize, xsize, CV_16S);
+
+	offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.im.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	free(pbuf);
+	GDALClose(hDataset);
+
+	return 0;
+}
+
+int AIRSAT_reader::read_data(const char* xml_file, const char* data_file)
+{
+	if (!xml_file || !data_file)
+	{
+		fprintf(stderr, "read_data(): input check failed!\n");
+		return -1;
+	}
+	int ret = read_slc(data_file, slc);
+	if (ret < 0)
+	{
+		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
+		return -1;
+	}
+	XMLFile xmldoc;
+	ret = xmldoc.XMLFile_load(xml_file);
+	if (ret < 0)
+	{
+		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
+		return -1;
+	}
+
+	//读取轨道参数
+	TiXmlElement* pnode, * pchild/*, * pchild1*/;
+	int numOfstateVec = 0;
+	pnode = NULL;
+	ret = xmldoc.find_node("GPSParam", pnode);
+	while (pnode)
+	{
+		numOfstateVec += 1;
+		pnode = pnode->NextSiblingElement();
+	}
+
+	ret = xmldoc.find_node("GPSParam", pnode);
+	double time, x, y, z, vx, vy, vz;
+	state_vec.create(numOfstateVec, 7, CV_64F);
+	for (int i = 0; i < numOfstateVec; i++)
+	{
+		if (!pnode) break;
+		//GPS时间
+		ret = xmldoc._find_node(pnode, "TimeStamp", pchild);
+		ret = this->UTC2GPS(pchild->GetText(), &time);
+		//位置x
+		ret = xmldoc._find_node(pnode, "xPosition", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &x);
+		//位置y
+		ret = xmldoc._find_node(pnode, "yPosition", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &y);
+		//位置z
+		ret = xmldoc._find_node(pnode, "zPosition", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &z);
+		//速度x
+		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vx);
+		//速度y
+		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vy);
+		//速度z
+		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vz);
+
+		//赋值
+		state_vec.at<double>(i, 0) = time;
+		state_vec.at<double>(i, 1) = x;
+		state_vec.at<double>(i, 2) = y;
+		state_vec.at<double>(i, 3) = z;
+		state_vec.at<double>(i, 4) = vx;
+		state_vec.at<double>(i, 5) = vy;
+		state_vec.at<double>(i, 6) = vz;
+		pnode = pnode->NextSiblingElement();
+	}
+
+	//拍摄起始时间
+	ret = xmldoc.find_node("imagingTime", pnode);
+	ret = xmldoc._find_node(pnode, "start", pchild);
+	this->acquisition_start_time = pchild->GetText();
+	std::replace(this->acquisition_start_time.begin(), this->acquisition_start_time.end(), ' ', 'T');
+	//拍摄结束时间
+	ret = xmldoc._find_node(pnode, "end", pchild);
+	this->acquisition_stop_time = pchild->GetText();
+	std::replace(this->acquisition_stop_time.begin(), this->acquisition_stop_time.end(), ' ', 'T');
+	//卫星名称
+	ret = xmldoc.get_str_para("satellite", this->sensor);
+	//脉冲重复频率
+	ret = xmldoc.get_double_para("Prf", &this->prf);
+	//中心频率
+	ret = xmldoc.get_double_para("RadarCenterFrequency", &this->carrier_frequency);
+	this->carrier_frequency = this->carrier_frequency * 1e9;
+	//最近斜距
+	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
+	//距离方位采样间隔/分辨率
+	ret = xmldoc.get_double_para("Widthspace", &this->range_spacing);
+	ret = xmldoc.get_double_para("Heightspace", &this->azimuth_spacing);
+	ret = xmldoc.get_double_para("Widthspace", &this->range_resolution);
+	ret = xmldoc.get_double_para("Heightspace", &this->azimuth_resolution);
+
+	//中心下视角incidenceAngleMidSwath
+	double inc_near = 0, inc_far = 0;
+	ret = xmldoc.get_double_para("incidenceAngleNearRange", &inc_near);
+	ret = xmldoc.get_double_para("incidenceAngleFarRange", &inc_far);
+	this->inc_center = (inc_near + inc_far) * 0.5;
+
+	//四角经纬度
+	ret = xmldoc.find_node("topLeft", pnode);
+	ret = xmldoc._find_node(pnode, "Latitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lat);
+	ret = xmldoc._find_node(pnode, "Longitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lon);
+
+	ret = xmldoc.find_node("topRight", pnode);
+	ret = xmldoc._find_node(pnode, "Latitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lat);
+	ret = xmldoc._find_node(pnode, "Longitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lon);
+
+	ret = xmldoc.find_node("bottomLeft", pnode);
+	ret = xmldoc._find_node(pnode, "Latitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lat);
+	ret = xmldoc._find_node(pnode, "Longitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lon);
+
+	ret = xmldoc.find_node("bottomRight", pnode);
+	ret = xmldoc._find_node(pnode, "Latitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lat);
+	ret = xmldoc._find_node(pnode, "Longitude", pchild);
+	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lon);
+
+	return 0;
+}
+
+int AIRSAT_reader::write_to_h5(const char* dst_h5)
+{
+	if (!dst_h5)
+	{
+		fprintf(stderr, "write_to_h5(): input check failed!\n");
+		return -1;
+	}
+	int ret;
+	if (!b_initialized)
+	{
+		ret = init();
+		if (ret < 0)
+		{
+			fprintf(stderr, "write_to_h5(): init() failed!\n");
+			return -1;
+		}
+	}
+	FormatConversion conversion;
+	ret = conversion.creat_new_h5(dst_h5);
+	if (ret < 0)
+	{
+		fprintf(stderr, "write_to_h5(): failed to create %s!\n", dst_h5);
+		return -1;
+	}
+	conversion.write_array_to_h5(dst_h5, "state_vec", this->state_vec);
+
+	conversion.write_double_to_h5(dst_h5, "azimuth_spacing", this->azimuth_spacing);
+	conversion.write_double_to_h5(dst_h5, "range_spacing", this->range_spacing);
+	conversion.write_double_to_h5(dst_h5, "slant_range_first_pixel", this->slant_range_first_pixel);
+	conversion.write_double_to_h5(dst_h5, "carrier_frequency", this->carrier_frequency);
+	conversion.write_double_to_h5(dst_h5, "prf", this->prf);
+	conversion.write_double_to_h5(dst_h5, "inc_center", this->inc_center);
+
+	conversion.write_double_to_h5(dst_h5, "topLeftLat", this->topleft_lat);
+	conversion.write_double_to_h5(dst_h5, "topLeftLon", this->topleft_lon);
+	conversion.write_double_to_h5(dst_h5, "topRightLat", this->topright_lat);
+	conversion.write_double_to_h5(dst_h5, "topRightLon", this->topright_lon);
+	conversion.write_double_to_h5(dst_h5, "bottomLeftLat", this->bottomleft_lat);
+	conversion.write_double_to_h5(dst_h5, "bottomLeftLon", this->bottomleft_lon);
+	conversion.write_double_to_h5(dst_h5, "bottomRightLat", this->bottomright_lat);
+	conversion.write_double_to_h5(dst_h5, "bottomRightLon", this->bottomright_lon);
+
+	conversion.write_str_to_h5(dst_h5, "sensor", this->sensor.c_str());
+	conversion.write_str_to_h5(dst_h5, "acquisition_start_time", this->acquisition_start_time.c_str());
+	conversion.write_str_to_h5(dst_h5, "acquisition_stop_time", this->acquisition_stop_time.c_str());
+
+	conversion.write_int_to_h5(dst_h5, "azimuth_len", slc.GetRows());
+	conversion.write_int_to_h5(dst_h5, "range_len", slc.GetCols());
+
+	conversion.write_int_to_h5(dst_h5, "offset_row", 0);
+	conversion.write_int_to_h5(dst_h5, "offset_col", 0);
+
+
+	conversion.write_slc_to_h5(dst_h5, slc);
+
+	return 0;
+}
+
+Biomass1A_reader::Biomass1A_reader(
+	const char* amp_file,
+	const char* phase_file,
+	const char* xml_file, 
+	const char* orbit_file, 
+	const char* polarization
+)
+{
+	b_initialized = false;
+	this->Biomass1A_reader_amp_file = amp_file;
+	this->Biomass1A_reader_phase_file = phase_file;
+	this->Biomass1A_reader_orbit_file = orbit_file;
+	this->Biomass1A_reader_xml_file = xml_file;
+	this->polarization = polarization;
+}
+
+Biomass1A_reader::~Biomass1A_reader()
+{
+}
+
+int Biomass1A_reader::init()
+{
+	if (b_initialized) return 0;
+	if (Biomass1A_reader_amp_file.empty() || Biomass1A_reader_phase_file.empty() || Biomass1A_reader_orbit_file.empty())
+	{
+		fprintf(stderr, "init(): input check failed!\n");
+		return -1;
+	}
+	int ret = read_data(this->Biomass1A_reader_xml_file.c_str(), this->Biomass1A_reader_amp_file.c_str(),
+		this->Biomass1A_reader_phase_file.c_str(), this->Biomass1A_reader_orbit_file.c_str());
+	if (ret < 0)
+	{
+		fprintf(stderr, "init(): read_data failed!\n");
+		return -1;
+	}
+	b_initialized = true;
+	return 0;
+}
+
+int Biomass1A_reader::UTC2GPS(const char* utc_time, double* gps_time)
+{
+	if (utc_time == NULL || gps_time == NULL)
+	{
+		fprintf(stderr, "UTC2GPS(): input check failed!\n");
+		return -1;
+	}
+	int ret, year, month, day, hour, minute, second/*, s*/;
+	double sec;
+	ret = sscanf(utc_time, "UTC=%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
+	if (ret != 6)
+	{
+		fprintf(stderr, "UTC2GPS(): %s: unknown format!\n", utc_time);
+		return -1;
+	}
+	second = int(floor(sec));
+	sec = sec - (double)second;
+	tm TM;
+	TM.tm_year = year - 1900;
+	TM.tm_mon = month - 1;
+	TM.tm_mday = day;
+	TM.tm_hour = hour;
+	TM.tm_min = minute;
+	TM.tm_sec = second;
+	TM.tm_isdst = 0;
+	*gps_time = double(mktime(&TM) - 315964809) + sec;
+	return 0;
+}
+
+int Biomass1A_reader::read_slc(
+	const char* amp_file,
+	const char* phase_file,
+	ComplexMat& slc)
+{
+	if (amp_file == NULL || phase_file == NULL)
+	{
+		fprintf(stderr, "read_slc(): input check failed!\n");
+		return -1;
+	}
+	int ix = 1;
+	if (this->polarization == "HH") ix = 1;
+	else if (this->polarization == "HV") ix = 2;
+	else if (this->polarization == "VH") ix = 3;
+	else  ix = 4;
+	InitializeGDALOnce();
+
+	/* ===================== 读取幅度 ===================== */
+	GDALDatasetH hDS_amp = GDALOpen(amp_file, GA_ReadOnly);
+	if (hDS_amp == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to open %s!\n", amp_file);
+		return -1;
+	}
+
+	GDALRasterBandH hBand_amp = GDALGetRasterBand(hDS_amp, ix);
+	if (hBand_amp == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get amplitude band!\n");
+		GDALClose(hDS_amp);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand_amp);
+	int ysize = GDALGetRasterBandYSize(hBand_amp);
+
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc(): band rows and cols error!\n");
+		GDALClose(hDS_amp);
+		return -1;
+	}
+
+	GDALDataType dataType = GDALGetRasterDataType(hBand_amp);
+
+	float* pbuf = (float*)malloc(sizeof(float) * xsize * ysize);
+	if (!pbuf)
+	{
+		fprintf(stderr, "read_slc(): out of memory!\n");
+		GDALClose(hDS_amp);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand_amp,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		dataType,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO (amplitude) failed!\n");
+		free(pbuf);
+		GDALClose(hDS_amp);
+		return -1;
+	}
+
+	cv::Mat amplitude(ysize, xsize, CV_32F);
+	size_t offset = 0;
+	for (int i = 0; i < ysize; i++)
+		for (int j = 0; j < xsize; j++)
+			amplitude.ptr<float>(i)[j] = pbuf[offset++];
+
+	GDALClose(hDS_amp);
+
+	/* ===================== 读取相位 ===================== */
+	GDALDatasetH hDS_phase = GDALOpen(phase_file, GA_ReadOnly);
+	if (hDS_phase == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to open %s!\n", phase_file);
+		free(pbuf);
+		return -1;
+	}
+
+	GDALRasterBandH hBand_phase = GDALGetRasterBand(hDS_phase, ix);
+	if (hBand_phase == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get phase band!\n");
+		GDALClose(hDS_phase);
+		free(pbuf);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand_phase,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		dataType,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO (phase) failed!\n");
+		GDALClose(hDS_phase);
+		free(pbuf);
+		return -1;
+	}
+
+	cv::Mat phase(ysize, xsize, CV_32F);
+	offset = 0;
+	for (int i = 0; i < ysize; i++)
+		for (int j = 0; j < xsize; j++)
+			phase.ptr<float>(i)[j] = pbuf[offset++];
+
+	GDALClose(hDS_phase);
+	free(pbuf);
+
+	/* ===================== 构造复数 SLC ===================== */
+	slc.re.create(ysize, xsize, CV_32F);
+	slc.im.create(ysize, xsize, CV_32F);
+
+	for (int i = 0; i < ysize; i++)
+		for (int j = 0; j < xsize; j++)
+		{
+			float amp = amplitude.at<float>(i, j);
+			float phs = phase.at<float>(i, j);
+			slc.re.ptr<float>(i)[j] = amp * cosf(phs);
+			slc.im.ptr<float>(i)[j] = amp * sinf(phs);
+		}
+
+	return 0;
+}
+
+int Biomass1A_reader::read_data(
+	const char* xml_file,
+	const char* amp_file,
+	const char* phase_file,
+	const char* orbit_file)
+{
+	if (!xml_file || !amp_file || !phase_file || !orbit_file)
+	{
+		fprintf(stderr, "read_data(): input check failed!\n");
+		return -1;
+	}
+	int ret = read_slc(amp_file, phase_file, slc);
+	if (ret < 0)
+	{
+		fprintf(stderr, "read_data(): can't read slc from %s\n", amp_file);
+		return -1;
+	}
+	XMLFile xmldoc, orbitdoc;
+	ret = xmldoc.XMLFile_load(xml_file);
+	if (ret < 0)
+	{
+		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
+		return -1;
+	}
+	ret = orbitdoc.XMLFile_load(orbit_file);
+	if (ret < 0)
+	{
+		fprintf(stderr, "read_data(): can't load %s\n", orbit_file);
+		return -1;
+	}
+
+	//读取轨道参数
+	TiXmlElement* pnode, * pchild/*, * pchild1*/;
+	int numOfstateVec = 0;
+	pnode = NULL;
+	ret = orbitdoc.find_node("OSV", pnode);
+	while (pnode)
+	{
+		numOfstateVec += 1;
+		pnode = pnode->NextSiblingElement();
+	}
+
+	ret = orbitdoc.find_node("OSV", pnode);
+	double time, x, y, z, vx, vy, vz;
+	state_vec.create(numOfstateVec, 7, CV_64F);
+	for (int i = 0; i < numOfstateVec; i++)
+	{
+		if (!pnode) break;
+		//GPS时间
+		ret = orbitdoc._find_node(pnode, "UTC", pchild);
+		ret = this->UTC2GPS(pchild->GetText(), &time);
+		//位置x
+		ret = orbitdoc._find_node(pnode, "X", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &x);
+		//位置y
+		ret = orbitdoc._find_node(pnode, "Y", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &y);
+		//位置z
+		ret = orbitdoc._find_node(pnode, "Z", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &z);
+		//速度x
+		ret = orbitdoc._find_node(pnode, "VX", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vx);
+		//速度y
+		ret = orbitdoc._find_node(pnode, "VY", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vy);
+		//速度z
+		ret = orbitdoc._find_node(pnode, "VZ", pchild);
+		ret = sscanf(pchild->GetText(), "%lf", &vz);
+
+		//赋值
+		state_vec.at<double>(i, 0) = time;
+		state_vec.at<double>(i, 1) = x;
+		state_vec.at<double>(i, 2) = y;
+		state_vec.at<double>(i, 3) = z;
+		state_vec.at<double>(i, 4) = vx;
+		state_vec.at<double>(i, 5) = vy;
+		state_vec.at<double>(i, 6) = vz;
+		pnode = pnode->NextSiblingElement();
+	}
+
+	//拍摄起始时间
+	ret = xmldoc.find_node("firstLineAzimuthTime", pnode);
+	this->acquisition_start_time = pnode->GetText();
+	//拍摄结束时间
+	ret = xmldoc.find_node("lastLineAzimuthTime", pnode);
+	this->acquisition_stop_time = pnode->GetText();
+	//卫星名称
+	ret = xmldoc.get_str_para("mission", this->sensor);
+	//脉冲重复频率
+	ret = xmldoc.get_double_para("azimuthTimeInterval", &this->prf);
+	this->prf = 1.0 / this->prf;
+	//中心频率
+	ret = xmldoc.get_double_para("radarCarrierFrequency", &this->carrier_frequency);
+	this->carrier_frequency = this->carrier_frequency;
+	//最近斜距
+	ret = xmldoc.get_double_para("firstSampleSlantRangeTime", &this->slant_range_first_pixel);
+	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
+	//距离方位采样间隔/分辨率
+	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
+	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
+	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_resolution);
+	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_resolution);
+
+	//中心下视角incidenceAngleMidSwath
+	double inc_near = 0, inc_far = 0;
+	this->inc_center = (inc_near + inc_far) * 0.5;
+
+	//四角经纬度
+	ret = xmldoc.find_node("footprint", pnode);
+	ret = sscanf(pnode->GetText(), "%lf %lf %lf %lf %lf %lf %lf %lf",
+		&this->bottomleft_lat, &this->bottomleft_lon,
+		&this->bottomright_lat, &this->bottomright_lon, 
+		&this->topright_lat, &this->topright_lon, 
+		&this->topleft_lat, &this->topleft_lon);
+
+	return 0;
+}
+
+int Biomass1A_reader::write_to_h5(const char* dst_h5)
+{
+	if (!dst_h5)
+	{
+		fprintf(stderr, "write_to_h5(): input check failed!\n");
+		return -1;
+	}
+	int ret;
+	if (!b_initialized)
+	{
+		ret = init();
+		if (ret < 0)
+		{
+			fprintf(stderr, "write_to_h5(): init() failed!\n");
+			return -1;
+		}
+	}
+	FormatConversion conversion;
+	ret = conversion.creat_new_h5(dst_h5);
+	if (ret < 0)
+	{
+		fprintf(stderr, "write_to_h5(): failed to create %s!\n", dst_h5);
+		return -1;
+	}
+	conversion.write_array_to_h5(dst_h5, "state_vec", this->state_vec);
+
+	conversion.write_double_to_h5(dst_h5, "azimuth_spacing", this->azimuth_spacing);
+	conversion.write_double_to_h5(dst_h5, "range_spacing", this->range_spacing);
+	conversion.write_double_to_h5(dst_h5, "slant_range_first_pixel", this->slant_range_first_pixel);
+	conversion.write_double_to_h5(dst_h5, "carrier_frequency", this->carrier_frequency);
+	conversion.write_double_to_h5(dst_h5, "prf", this->prf);
+	conversion.write_double_to_h5(dst_h5, "inc_center", this->inc_center);
+
+	conversion.write_double_to_h5(dst_h5, "topLeftLat", this->topleft_lat);
+	conversion.write_double_to_h5(dst_h5, "topLeftLon", this->topleft_lon);
+	conversion.write_double_to_h5(dst_h5, "topRightLat", this->topright_lat);
+	conversion.write_double_to_h5(dst_h5, "topRightLon", this->topright_lon);
+	conversion.write_double_to_h5(dst_h5, "bottomLeftLat", this->bottomleft_lat);
+	conversion.write_double_to_h5(dst_h5, "bottomLeftLon", this->bottomleft_lon);
+	conversion.write_double_to_h5(dst_h5, "bottomRightLat", this->bottomright_lat);
+	conversion.write_double_to_h5(dst_h5, "bottomRightLon", this->bottomright_lon);
+
+	conversion.write_str_to_h5(dst_h5, "sensor", this->sensor.c_str());
+	conversion.write_str_to_h5(dst_h5, "acquisition_start_time", this->acquisition_start_time.c_str());
+	conversion.write_str_to_h5(dst_h5, "acquisition_stop_time", this->acquisition_stop_time.c_str());
+	conversion.write_str_to_h5(dst_h5, "polarization", this->polarization.c_str());
+
+	conversion.write_int_to_h5(dst_h5, "azimuth_len", slc.GetRows());
+	conversion.write_int_to_h5(dst_h5, "range_len", slc.GetCols());
+
+	conversion.write_int_to_h5(dst_h5, "offset_row", 0);
+	conversion.write_int_to_h5(dst_h5, "offset_col", 0);
+
+
+	conversion.write_slc_to_h5(dst_h5, slc);
+
+	return 0;
+}
+
 LUTAN_reader::LUTAN_reader(const char* data_file, const char* xml_file, int mode)
 {
 	b_initialized = false;
@@ -12858,71 +14328,114 @@ int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	InitializeGDALOnce();	//注册已知驱动
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
-	if (poDataset == NULL)
+
+	InitializeGDALOnce();
+
+	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
+	if (hDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
-	int xsize = 0;
-	int ysize = 0;
-	//获取指向波段1的指针
-	GDALRasterBand* poBand = poDataset->GetRasterBand(1);
-	xsize = poBand->GetXSize();		//cols
-	ysize = poBand->GetYSize();		//rows
-	if (xsize < 0 || ysize < 0)
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand < 2)
 	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(poDataset);
+		fprintf(stderr, "read_slc(): number of bands < 2!\n");
+		GDALClose(hDataset);
 		return -1;
 	}
-	GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-	short* pbuf = NULL;
-	pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//分配数据指针空间
+
+	/* ================= Band 1 : Real ================= */
+	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 1!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand);
+	int ysize = GDALGetRasterBandYSize(hBand);
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
 	if (!pbuf)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(poDataset);
+		GDALClose(hDataset);
 		return -1;
 	}
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-	int i, j;
-	slc.re.create(ysize, xsize, CV_16S);
-	slc.im.create(ysize, xsize, CV_16S);
-	size_t offset = 0;
-	for (i = 0; i < ysize; i++)
-		for (j = 0; j < xsize; j++)
-		{
-			slc.re.ptr<short>(i)[j] = pbuf[offset];
-			offset++;
-		}
-	//获取指向波段2的指针
-	poBand = poDataset->GetRasterBand(2);
-	xsize = poBand->GetXSize();		//cols
-	ysize = poBand->GetYSize();		//rows
-	if (xsize < 0 || ysize < 0)
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
 	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(poDataset);
-		return -1;
-	}
-	dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-	poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-	offset = 0;
-	for (i = 0; i < ysize; i++)
-		for (j = 0; j < xsize; j++)
-		{
-			slc.im.ptr<short>(i)[j] = pbuf[offset];
-			offset++;
-		}
-	if (pbuf)
-	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
 		free(pbuf);
-		pbuf = NULL;
+		GDALClose(hDataset);
+		return -1;
 	}
-	GDALClose(poDataset);
+
+	slc.re.create(ysize, xsize, CV_16S);
+
+	size_t offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.re.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	/* ================= Band 2 : Imag ================= */
+	hBand = GDALGetRasterBand(hDataset, 2);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "read_slc(): failed to get band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	if (GDALRasterIO(
+		hBand,
+		GF_Read,
+		0, 0,
+		xsize, ysize,
+		pbuf,
+		xsize, ysize,
+		GDT_Int16,
+		0, 0) != CE_None)
+	{
+		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
+		free(pbuf);
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	slc.im.create(ysize, xsize, CV_16S);
+
+	offset = 0;
+	for (int i = 0; i < ysize; i++)
+	{
+		short* rowp = slc.im.ptr<short>(i);
+		for (int j = 0; j < xsize; j++)
+			rowp[j] = pbuf[offset++];
+	}
+
+	free(pbuf);
+	GDALClose(hDataset);
 
 	return 0;
 }
@@ -13050,7 +14563,6 @@ int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
 
 int LUTAN_reader::write_to_h5(const char* dst_h5)
 {
-	H5_LOCK
 	if (!dst_h5)
 	{
 		fprintf(stderr, "write_to_h5(): input check failed!\n");
@@ -13159,6 +14671,193 @@ int Spacety_reader::init_test()
 	return 0;
 }
 
+//int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
+//{
+//	if (data_file == NULL)
+//	{
+//		fprintf(stderr, "read_slc(): input check failed!\n");
+//		return -1;
+//	}
+//
+//	GDALAllRegister();
+//
+//	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
+//	if (hDataset == NULL)
+//	{
+//		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
+//		return -1;
+//	}
+//
+//	int nBand = GDALGetRasterCount(hDataset);
+//
+//	/* =========================================================
+//	 * 情况一：单波段 packed complex（Int32）
+//	 * 低 16 bit : Real
+//	 * 高 16 bit : Imag
+//	 * ========================================================= */
+//	if (nBand == 1)
+//	{
+//		GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+//		if (hBand == NULL)
+//		{
+//			fprintf(stderr, "read_slc(): failed to get band 1!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		int xsize = GDALGetRasterBandXSize(hBand);
+//		int ysize = GDALGetRasterBandYSize(hBand);
+//		if (xsize <= 0 || ysize <= 0)
+//		{
+//			fprintf(stderr, "read_slc(): band rows and cols error!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		int* pbuf = (int*)malloc(sizeof(int) * xsize * ysize);
+//		if (!pbuf)
+//		{
+//			fprintf(stderr, "read_slc(): out of memory!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		if (GDALRasterIO(
+//			hBand,
+//			GF_Read,
+//			0, 0,
+//			xsize, ysize,
+//			pbuf,
+//			xsize, ysize,
+//			GDT_Int32,
+//			0, 0) != CE_None)
+//		{
+//			fprintf(stderr, "read_slc(): RasterIO failed!\n");
+//			free(pbuf);
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		slc.re.create(ysize, xsize, CV_16S);
+//		slc.im.create(ysize, xsize, CV_16S);
+//
+//		for (int i = 0; i < ysize; i++)
+//		{
+//			short* re_row = slc.re.ptr<short>(i);
+//			short* im_row = slc.im.ptr<short>(i);
+//			for (int j = 0; j < xsize; j++)
+//			{
+//				int v = pbuf[j + i * xsize];
+//				re_row[j] = (short)(v & 0xFFFF);
+//				im_row[j] = (short)((v >> 16) & 0xFFFF);
+//			}
+//		}
+//
+//		free(pbuf);
+//		GDALClose(hDataset);
+//	}
+//	/* =========================================================
+//	 * 情况二：双波段 SLC
+//	 * Band 1 : Real (Int16)
+//	 * Band 2 : Imag (Int16)
+//	 * ========================================================= */
+//	else
+//	{
+//		GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+//		if (hBand == NULL)
+//		{
+//			fprintf(stderr, "read_slc(): failed to get band 1!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		int xsize = GDALGetRasterBandXSize(hBand);
+//		int ysize = GDALGetRasterBandYSize(hBand);
+//		if (xsize <= 0 || ysize <= 0)
+//		{
+//			fprintf(stderr, "read_slc(): band rows and cols error!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
+//		if (!pbuf)
+//		{
+//			fprintf(stderr, "read_slc(): out of memory!\n");
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		/* ---------- Band 1 : Real ---------- */
+//		if (GDALRasterIO(
+//			hBand,
+//			GF_Read,
+//			0, 0,
+//			xsize, ysize,
+//			pbuf,
+//			xsize, ysize,
+//			GDT_Int16,
+//			0, 0) != CE_None)
+//		{
+//			fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
+//			free(pbuf);
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		slc.re.create(ysize, xsize, CV_16S);
+//
+//		size_t offset = 0;
+//		for (int i = 0; i < ysize; i++)
+//		{
+//			short* row = slc.re.ptr<short>(i);
+//			for (int j = 0; j < xsize; j++)
+//				row[j] = pbuf[offset++];
+//		}
+//
+//		/* ---------- Band 2 : Imag ---------- */
+//		hBand = GDALGetRasterBand(hDataset, 2);
+//		if (hBand == NULL)
+//		{
+//			fprintf(stderr, "read_slc(): failed to get band 2!\n");
+//			free(pbuf);
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		if (GDALRasterIO(
+//			hBand,
+//			GF_Read,
+//			0, 0,
+//			xsize, ysize,
+//			pbuf,
+//			xsize, ysize,
+//			GDT_Int16,
+//			0, 0) != CE_None)
+//		{
+//			fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
+//			free(pbuf);
+//			GDALClose(hDataset);
+//			return -1;
+//		}
+//
+//		slc.im.create(ysize, xsize, CV_16S);
+//
+//		offset = 0;
+//		for (int i = 0; i < ysize; i++)
+//		{
+//			short* row = slc.im.ptr<short>(i);
+//			for (int j = 0; j < xsize; j++)
+//				row[j] = pbuf[offset++];
+//		}
+//
+//		free(pbuf);
+//		GDALClose(hDataset);
+//	}
+//
+//	return 0;
+//}
+
 int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 {
 	if (data_file == NULL)
@@ -13166,117 +14865,221 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check failed!\n");
 		return -1;
 	}
-	InitializeGDALOnce();	//注册已知驱动
-	GDALDataset* poDataset = (GDALDataset*)GDALOpen(data_file, GA_ReadOnly);	//打开tiff文件
-	if (poDataset == NULL)
+
+	InitializeGDALOnce();
+
+	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
+	if (hDataset == NULL)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
 		return -1;
 	}
-	int nBand = poDataset->GetRasterCount();	//获取波段数（cos应为1）
-	if (nBand == 1)
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand < 1)
 	{
-		int xsize = 0;
-		int ysize = 0;
-		//获取指向波段1的指针
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);
-		xsize = poBand->GetXSize();		//cols
-		ysize = poBand->GetYSize();		//rows
-		if (xsize < 0 || ysize < 0)
-		{
-			fprintf(stderr, "read_slc(): band rows and cols error!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-		int* pbuf = NULL;
-		pbuf = (int*)malloc(sizeof(int) * xsize * ysize);		//分配数据指针空间
-		if (!pbuf)
-		{
-			fprintf(stderr, "read_slc_from_TSXcos(): out of memory!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		int i, j;
-		slc.re.create(ysize, xsize, CV_16S);
-		slc.im.create(ysize, xsize, CV_16S);
-		for (i = 0; i < ysize; i++)
-			for (j = 0; j < xsize; j++)
-			{
-				slc.re.ptr<short>(i)[j] = (pbuf[j + i * xsize] << 16) >> 16;
-				slc.im.ptr<short>(i)[j] = (pbuf[j + i * xsize] >> 16);
-			}
-		if (pbuf)
-		{
-			free(pbuf);
-			pbuf = NULL;
-		}
-		GDALClose(poDataset);
+		fprintf(stderr, "read_slc(): no raster band found!\n");
+		GDALClose(hDataset);
+		return -1;
 	}
-	else
+
+	GDALRasterBandH hBand1 = GDALGetRasterBand(hDataset, 1);
+	if (hBand1 == NULL)
 	{
-		int xsize = 0;
-		int ysize = 0;
-		//获取指向波段1的指针
-		GDALRasterBand* poBand = poDataset->GetRasterBand(1);
-		xsize = poBand->GetXSize();		//cols
-		ysize = poBand->GetYSize();		//rows
-		if (xsize < 0 || ysize < 0)
-		{
-			fprintf(stderr, "read_slc(): band rows and cols error!\n");
-			GDALClose(poDataset);
-			return -1;
-		}
-		GDALDataType dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-		short* pbuf = NULL;
-		pbuf = (short*)malloc(sizeof(short) * xsize * ysize);		//分配数据指针空间
+		fprintf(stderr, "read_slc(): failed to get band 1!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand1);
+	int ysize = GDALGetRasterBandYSize(hBand1);
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "read_slc(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	GDALDataType dt = GDALGetRasterDataType(hBand1);
+	printf("Band1 type = %s\n", GDALGetDataTypeName(dt));
+
+	/* =========================================================
+	 * 情况一：单波段 GDAL 复数类型，例如 CInt16
+	 * ========================================================= */
+	if (nBand == 1 && dt == GDT_CInt16)
+	{
+		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize * 2);
 		if (!pbuf)
 		{
 			fprintf(stderr, "read_slc(): out of memory!\n");
-			GDALClose(poDataset);
+			GDALClose(hDataset);
 			return -1;
 		}
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		int i, j;
+
+		if (GDALRasterIO(
+			hBand1,
+			GF_Read,
+			0, 0,
+			xsize, ysize,
+			pbuf,
+			xsize, ysize,
+			GDT_CInt16,
+			0, 0) != CE_None)
+		{
+			fprintf(stderr, "read_slc(): RasterIO failed on complex band!\n");
+			free(pbuf);
+			GDALClose(hDataset);
+			return -1;
+		}
+
 		slc.re.create(ysize, xsize, CV_16S);
 		slc.im.create(ysize, xsize, CV_16S);
-		size_t offset = 0;
-		for (i = 0; i < ysize; i++)
-			for (j = 0; j < xsize; j++)
-			{
-				slc.re.ptr<short>(i)[j] = pbuf[offset];
-				offset++;
-			}
-		//获取指向波段2 of 指针
-		poBand = poDataset->GetRasterBand(2);
-		xsize = poBand->GetXSize();		//cols
-		ysize = poBand->GetYSize();		//rows
-		if (xsize < 0 || ysize < 0)
+
+		size_t idx = 0;
+		for (int i = 0; i < ysize; i++)
 		{
-			fprintf(stderr, "read_slc(): band rows and cols error!\n");
-			GDALClose(poDataset);
+			short* re_row = slc.re.ptr<short>(i);
+			short* im_row = slc.im.ptr<short>(i);
+			for (int j = 0; j < xsize; j++)
+			{
+				re_row[j] = pbuf[idx++];   // real
+				im_row[j] = pbuf[idx++];   // imag
+			}
+		}
+
+		free(pbuf);
+		GDALClose(hDataset);
+		return 0;
+	}
+
+	/* =========================================================
+	 * 情况二：单波段 packed complex（自定义 Int32）
+	 * 低 16 bit : Real
+	 * 高 16 bit : Imag
+	 * ========================================================= */
+	if (nBand == 1 && dt == GDT_Int32)
+	{
+		int* pbuf = (int*)malloc(sizeof(int) * xsize * ysize);
+		if (!pbuf)
+		{
+			fprintf(stderr, "read_slc(): out of memory!\n");
+			GDALClose(hDataset);
 			return -1;
 		}
-		dataType = poBand->GetRasterDataType();	//数据存储类型，cos应为GDT_CInt16
-		poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, dataType, 0, 0);		//读取复图像数据到pbuf中
-		offset = 0;
-		for (i = 0; i < ysize; i++)
-			for (j = 0; j < xsize; j++)
-			{
-				slc.im.ptr<short>(i)[j] = pbuf[offset];
-				offset++;
-			}
-		if (pbuf)
-		{
-			free(pbuf);
-			pbuf = NULL;
-		}
-		GDALClose(poDataset);
-	}
-	
 
-	return 0;
+		if (GDALRasterIO(
+			hBand1,
+			GF_Read,
+			0, 0,
+			xsize, ysize,
+			pbuf,
+			xsize, ysize,
+			GDT_Int32,
+			0, 0) != CE_None)
+		{
+			fprintf(stderr, "read_slc(): RasterIO failed!\n");
+			free(pbuf);
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		slc.re.create(ysize, xsize, CV_16S);
+		slc.im.create(ysize, xsize, CV_16S);
+
+		for (int i = 0; i < ysize; i++)
+		{
+			short* re_row = slc.re.ptr<short>(i);
+			short* im_row = slc.im.ptr<short>(i);
+			for (int j = 0; j < xsize; j++)
+			{
+				unsigned int v = (unsigned int)pbuf[j + i * xsize];
+				re_row[j] = (short)(v & 0xFFFF);
+				im_row[j] = (short)((v >> 16) & 0xFFFF);
+			}
+		}
+
+		free(pbuf);
+		GDALClose(hDataset);
+		return 0;
+	}
+
+	/* =========================================================
+	 * 情况三：双波段 SLC
+	 * Band 1 : Real
+	 * Band 2 : Imag
+	 * ========================================================= */
+	if (nBand >= 2)
+	{
+		GDALRasterBandH hBand2 = GDALGetRasterBand(hDataset, 2);
+		if (hBand2 == NULL)
+		{
+			fprintf(stderr, "read_slc(): failed to get band 2!\n");
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
+		if (!pbuf)
+		{
+			fprintf(stderr, "read_slc(): out of memory!\n");
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		if (GDALRasterIO(
+			hBand1,
+			GF_Read,
+			0, 0,
+			xsize, ysize,
+			pbuf,
+			xsize, ysize,
+			GDT_Int16,
+			0, 0) != CE_None)
+		{
+			fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
+			free(pbuf);
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		slc.re.create(ysize, xsize, CV_16S);
+		for (int i = 0; i < ysize; i++)
+		{
+			short* row = slc.re.ptr<short>(i);
+			memcpy(row, pbuf + (size_t)i * xsize, sizeof(short) * xsize);
+		}
+
+		if (GDALRasterIO(
+			hBand2,
+			GF_Read,
+			0, 0,
+			xsize, ysize,
+			pbuf,
+			xsize, ysize,
+			GDT_Int16,
+			0, 0) != CE_None)
+		{
+			fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
+			free(pbuf);
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		slc.im.create(ysize, xsize, CV_16S);
+		for (int i = 0; i < ysize; i++)
+		{
+			short* row = slc.im.ptr<short>(i);
+			memcpy(row, pbuf + (size_t)i * xsize, sizeof(short) * xsize);
+		}
+
+		free(pbuf);
+		GDALClose(hDataset);
+		return 0;
+	}
+
+	fprintf(stderr, "read_slc(): unsupported data format!\n");
+	GDALClose(hDataset);
+	return -1;
 }
 
 int Spacety_reader::read_data(const char* xml_file, const char* data_file)
@@ -13355,7 +15158,8 @@ int Spacety_reader::read_data(const char* xml_file, const char* data_file)
 	//卫星名称
 	this->sensor = "fucheng-1";
 	//脉冲重复频率
-	ret = xmldoc.get_double_para("prf", &this->prf);
+	ret = xmldoc.get_double_para("azimuthTimeInterval", &this->prf);
+	this->prf = 1.0 / this->prf;
 	//中心频率
 	ret = xmldoc.get_double_para("radarFrequency", &this->carrier_frequency);
 	//this->carrier_frequency = this->carrier_frequency * 1e9;
@@ -13537,7 +15341,6 @@ int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
 
 int Spacety_reader::write_to_h5(const char* dst_h5)
 {
-	H5_LOCK
 	if (!dst_h5)
 	{
 		fprintf(stderr, "write_to_h5(): input check failed!\n");
