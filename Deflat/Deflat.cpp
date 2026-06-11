@@ -1031,8 +1031,8 @@ int Deflat::demMapping(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = static_cast<int>((zeroDopplerTime - acquisitionStartTime) / time_interval);
-			int rangeIndex = static_cast<int>((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
+			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -1647,7 +1647,7 @@ int Deflat::demMapping_float(
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
-	int ret;
+	/*int ret;*/
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -1736,8 +1736,8 @@ int Deflat::demMapping_float(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = (zeroDopplerTime - acquisitionStartTime) / time_interval;
-			int rangeIndex = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing;
+			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -1758,7 +1758,7 @@ int Deflat::demMapping_float(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			if (DEM_out.at<float>(i, j) > -998.0) continue;
-			int up, down, left, right, up_count, down_count, left_count, right_count;
+			int up, down, left, right/*, up_count, down_count, left_count, right_count*/;
 			double value1, value2, ratio1, ratio2;
 			//寻找上面有值的点
 			up = i;
@@ -1802,7 +1802,7 @@ int Deflat::demMapping_float(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<float>(up, j)) +
 					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = (value1 + value2) / 2.0;
+				DEM_out.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
 				continue;
 			}
 			//上下有值
@@ -1811,7 +1811,7 @@ int Deflat::demMapping_float(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<float>(up, j)) +
 					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = value2;
+				DEM_out.at<float>(i, j) = static_cast<float>(value2);
 				continue;
 			}
 			//左右有值
@@ -1820,7 +1820,7 @@ int Deflat::demMapping_float(
 				ratio1 = double(j - left) / double(right - left);
 				value1 = double(DEM_out.at<float>(i, left)) +
 					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				DEM_out.at<float>(i, j) = value1;
+				DEM_out.at<float>(i, j) = static_cast<float>(value1);
 				continue;
 			}
 			//上边有值
@@ -1913,7 +1913,7 @@ int Deflat::paraMapping_float(
 	double delta_t = stateVector.at<double>(1, 0) - stateVector.at<double>(0, 0);
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime, delta_t);
 	stateVectors.applyOrbit();
-	int ret;
+	/*int ret;*/
 	double time_interval = 1.0 / prf;
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
@@ -2002,8 +2002,8 @@ int Deflat::paraMapping_float(
 
 
 			zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			int azimuthIndex = (zeroDopplerTime - acquisitionStartTime) / time_interval;
-			int rangeIndex = (distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing;
+			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
+			int rangeIndex = cvRound((distance - nearRangeTime * VEL_C * 0.5) / rangeSpacing);
 			azimuthIndex = azimuthIndex - offset_row;
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
@@ -2024,7 +2024,7 @@ int Deflat::paraMapping_float(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			if (DEM_out.at<float>(i, j) > -998.0) continue;
-			int up, down, left, right, up_count, down_count, left_count, right_count;
+			int up, down, left, right/*, up_count, down_count, left_count, right_count*/;
 			double value1, value2, ratio1, ratio2;
 			//寻找上面有值的点
 			up = i;
@@ -2068,7 +2068,7 @@ int Deflat::paraMapping_float(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<float>(up, j)) +
 					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = (value1 + value2) / 2.0;
+				DEM_out.at<float>(i, j) = static_cast<float>((value1 + value2) / 2.0);
 				continue;
 			}
 			//上下有值
@@ -2077,7 +2077,7 @@ int Deflat::paraMapping_float(
 				ratio2 = double(i - up) / double(down - up);
 				value2 = double(DEM_out.at<float>(up, j)) +
 					double(DEM_out.at<float>(down, j) - DEM_out.at<float>(up, j)) * ratio2;
-				DEM_out.at<float>(i, j) = value2;
+				DEM_out.at<float>(i, j) = static_cast<float>(value2);
 				continue;
 			}
 			//左右有值
@@ -2086,7 +2086,7 @@ int Deflat::paraMapping_float(
 				ratio1 = double(j - left) / double(right - left);
 				value1 = double(DEM_out.at<float>(i, left)) +
 					double(DEM_out.at<float>(i, right) - DEM_out.at<float>(i, left)) * ratio1;
-				DEM_out.at<float>(i, j) = value1;
+				DEM_out.at<float>(i, j) = static_cast<float>(value1);
 				continue;
 			}
 			//上边有值
@@ -2318,9 +2318,9 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
 	int ret;
-	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
-		nearRangeTime, wavelength, prf, start, end;
-	int sceneHeight, sceneWidth, offset_row, offset_col;
+	double /*lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
+		nearRangeTime, */wavelength, prf, start, end;
+	int sceneHeight, sceneWidth/*, offset_row, offset_col*/;
 	Mat lon_coef, lat_coef, statevec;
 	string start_time, end_time;
 	ret = conversion.read_int_from_h5(slcH5File, "range_len", &sceneWidth);
@@ -3180,16 +3180,16 @@ int Deflat::getSRTMDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -3254,16 +3254,16 @@ int Deflat::getSRTMDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+				endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -3323,16 +3323,16 @@ int Deflat::getSRTMDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -3484,16 +3484,16 @@ int Deflat::getSRTMDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+			endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -3578,16 +3578,16 @@ int Deflat::getSRTMDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 

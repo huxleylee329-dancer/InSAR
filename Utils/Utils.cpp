@@ -9057,11 +9057,11 @@ int Utils::getCopernicusDEM(
 	int ret = getCopernicusDEMFileName(lonMin, lonMax, latMin, latMax, CopernicusDEMFileName);
 	if (ret < 0)//以0填充
 	{
-		int rows = (latMax - latMin) / latSpacing;
-		int cols = (lonMax - lonMin) / lonSpacing;
+		int rows = cvRound((latMax - latMin) / latSpacing);
+		int cols = cvRound((lonMax - lonMin) / lonSpacing);
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			cols = (- lonMax + lonMin + 360.0) / lonSpacing;
+			cols = cvRound((- lonMax + lonMin + 360.0) / lonSpacing);
 		}
 		Mat temp = Mat::zeros(rows, cols, CV_32F);
 		temp.copyTo(DEM_out);
@@ -9159,27 +9159,27 @@ int Utils::getCopernicusDEM(
 		total_rows = outDEM.rows;
 		total_cols = outDEM.cols;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -9283,27 +9283,27 @@ int Utils::getCopernicusDEM(
 			lonUpperLeft = yy;
 			lonLowerRight = yy + 1;
 
-			startRow = (latUpperLeft - latMax) / latSpacing;
+			startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / latSpacing;
+			endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
 			if (fabs(lonMax - lonMin) > 180.0)
 			{
-				startCol = (lonMax - lonUpperLeft) / lonSpacing;
+				startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+				endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 			}
 			else
 			{
-				startCol = (lonMin - lonUpperLeft) / lonSpacing;
+				startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMax - lonUpperLeft) / lonSpacing;
+				endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 			}
@@ -9351,27 +9351,27 @@ int Utils::getCopernicusDEM(
 			latUpperLeft = xx + 1;
 			latLowerRight = xx;
 
-			startRow = (latUpperLeft - latMax) / latSpacing;
+			startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = (latUpperLeft - latMin) / latSpacing;
+			endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
 			if (fabs(lonMax - lonMin) > 180.0)
 			{
-				startCol = (lonMax - lonUpperLeft) / lonSpacing;
+				startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+				endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 			}
 			else
 			{
-				startCol = (lonMin - lonUpperLeft) / lonSpacing;
+				startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = (lonMax - lonUpperLeft) / lonSpacing;
+				endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 			}
@@ -9523,27 +9523,27 @@ int Utils::getCopernicusDEM(
 		lonUpperLeft = yy;
 		lonLowerRight = yy + 1;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -9605,27 +9605,27 @@ int Utils::getCopernicusDEM(
 		latUpperLeft = xx + 1;
 		latLowerRight = xx;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -9648,7 +9648,7 @@ int Utils::getCopernicusDEM(
 	//DEM在4个方格内
 	else if (CopernicusDEMFileName.size() == 4)
 	{
-		int xx[4], yy[4], temp;
+		int xx[4], yy[4]/*, temp*/;
 
 		for (int i = 0; i < 4; i++)
 		{
@@ -9738,27 +9738,27 @@ int Utils::getCopernicusDEM(
 		lonUpperLeft = yy[0];
 		lonLowerRight = yy[0] + 2;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -9773,7 +9773,7 @@ int Utils::getCopernicusDEM(
 	//DEM在6个方格内	
 	else if (CopernicusDEMFileName.size() == 6)
 	{
-		int xx[6], yy[6], temp;
+		int xx[6], yy[6]/*, temp*/;
 
 		for (int i = 0; i < 6; i++)
 		{
@@ -9967,27 +9967,27 @@ int Utils::getCopernicusDEM(
 
 		
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -10001,7 +10001,7 @@ int Utils::getCopernicusDEM(
 	//DEM在8个方格内	
 	else if (CopernicusDEMFileName.size() == 8)
 	{
-		int xx[8], yy[8], temp;
+		int xx[8], yy[8]/*, temp*/;
 
 		for (int i = 0; i < 8; i++)
 		{
@@ -10239,27 +10239,27 @@ int Utils::getCopernicusDEM(
 
 
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -10273,7 +10273,7 @@ int Utils::getCopernicusDEM(
 	//DEM在9个方格内
 	else if (CopernicusDEMFileName.size() == 9)
 	{
-		int xx[9], yy[9], temp;
+		int xx[9], yy[9]/*, temp*/;
 
 		for (int i = 0; i < 9; i++)
 		{
@@ -10415,27 +10415,27 @@ int Utils::getCopernicusDEM(
 		lonUpperLeft = yy[0];
 		lonLowerRight = yy[0] + 3;
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -10449,7 +10449,7 @@ int Utils::getCopernicusDEM(
 	//DEM在12个方格内
 	else if (CopernicusDEMFileName.size() == 12)
 	{
-		int xx[12], yy[12], temp;
+		int xx[12], yy[12]/*, temp*/;
 
 		for (int i = 0; i < 12; i++)
 		{
@@ -10780,27 +10780,27 @@ int Utils::getCopernicusDEM(
 			lonLowerRight = yy[0] + 3;
 		}
 
-		startRow = (latUpperLeft - latMax) / latSpacing;
+		startRow = cvRound((latUpperLeft - latMax) / latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = (latUpperLeft - latMin) / latSpacing;
+		endRow = cvRound((latUpperLeft - latMin) / latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
 		if (fabs(lonMax - lonMin) > 180.0)
 		{
-			startCol = (lonMax - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMin + 360.0 - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMin + 360.0 - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
 		else
 		{
-			startCol = (lonMin - lonUpperLeft) / lonSpacing;
+			startCol = cvRound((lonMin - lonUpperLeft) / lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = (lonMax - lonUpperLeft) / lonSpacing;
+			endCol = cvRound((lonMax - lonUpperLeft) / lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 		}
@@ -11039,16 +11039,16 @@ int Utils::getCopernicusDEMFileName(double lonMin, double lonMax, double latMin,
 	name.clear();
 	char tmp[512];
 	int startLat, endLat, startLon, startLon2, endLon, endLon2;
-	startLat = ceil(latMax);
-	endLat = floor(latMin);
-	startLon = floor(lonMin);
+	startLat = static_cast<int>(ceil(latMax));
+	endLat = static_cast<int>(floor(latMin));
+	startLon = static_cast<int>(floor(lonMin));
 	startLon2 = startLon;
-	endLon = ceil(lonMax);
+	endLon = static_cast<int>(ceil(lonMax));
 	endLon2 = endLon;
 	if (fabs(lonMax - lonMin) > 180.0)//crossing the 180°/-180° longitude line
 	{
-		endLon2 = ceil(lonMax + fabs(lonMax - lonMin));
-		startLon2 = floor(lonMax);
+		endLon2 = static_cast<int>(ceil(lonMax + fabs(lonMax - lonMin)));
+		startLon2 = static_cast<int>(floor(lonMax));
 	}
 	for (int i = int(startLat); i > int(endLat); i--)
 	{
@@ -11110,7 +11110,7 @@ int Utils::downloadCopernicusDEM(const char* name, const char* DEMpath)
 		fprintf(stderr, "downloadCopernicusDEM(): network is not connected!\n");
 		return -1;
 	}
-	int ret;
+	/*int ret;*/
 	string folder = name;
 	folder = folder.substr(0, folder.length() - 4);
 	string url = string(CopernicusDEMURL) + folder + "/" + name;
@@ -15465,7 +15465,7 @@ double Utils::getGeoidHeight(const std::string& geoidFilePath, double lon, doubl
 	{
 		fprintf(stderr,
 			"无法打开 Geoid 文件: %s\n",
-			geoidFilePath);
+			geoidFilePath.c_str());
 		return 0.0;
 	}
 

@@ -482,8 +482,8 @@ int SLC_simulator::generateSLC(
 					double real, imaginary, theta;
 					double zeroDopplerTime = imaging_time.at<double>(ii, jj);
 					double distance = slant_range.at<double>(ii, jj);
-					int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-					int rangeIndex = floor((distance - nearRange) / rangeSpacing);
+					int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
+					int rangeIndex = cvRound((distance - nearRange) / rangeSpacing);
 					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
 					{
 
@@ -493,8 +493,8 @@ int SLC_simulator::generateSLC(
 						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
 						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
 						imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
-						slc.re.at<float>(azimuthIndex, rangeIndex) += real;
-						slc.im.at<float>(azimuthIndex, rangeIndex) += imaginary;
+						slc.re.at<float>(azimuthIndex, rangeIndex) += static_cast<float>(real);
+						slc.im.at<float>(azimuthIndex, rangeIndex) += static_cast<float>(imaginary);
 					}
 				}
 			}
@@ -626,8 +626,8 @@ int SLC_simulator::generateSLC_spacety(
 	slc.re = 0.0; slc.im = 0.0;
 	//分块计算，确定DEM划分大小与方式
 
-	int interp_times_row = 30.0 / azimuthSpacing / 2.0;
-	int interp_times_col = 30.0 / rangeSpacing / 4.0;
+	int interp_times_row = cvRound(30.0 / azimuthSpacing / 2.0);
+	int interp_times_col = cvRound(30.0 / rangeSpacing / 4.0);
 	interp_times_row = interp_times_row < 1 ? 1 : interp_times_row;
 	interp_times_col = interp_times_col < 1 ? 1 : interp_times_col;
 	int interp_cell = 1;
@@ -656,7 +656,7 @@ int SLC_simulator::generateSLC_spacety(
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
 	stateVectors.applyOrbit();
-	int ret;
+	/*int ret;*/
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
@@ -803,8 +803,8 @@ int SLC_simulator::generateSLC_spacety(
 					double real, imaginary, theta;
 					double zeroDopplerTime = imaging_time.at<double>(ii, jj);
 					double distance = slant_range.at<double>(ii, jj);
-					int azimuthIndex = floor((zeroDopplerTime - acquisitionStartTime) / time_interval);
-					int rangeIndex = floor((distance - nearRange) / rangeSpacing);
+					int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
+					int rangeIndex = cvRound((distance - nearRange) / rangeSpacing);
 					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
 					{
 
@@ -814,8 +814,8 @@ int SLC_simulator::generateSLC_spacety(
 						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
 						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
 						imaginary = /*sigma.at<double>(ii, jj)*/ 1.0 * (sin(theta) + noise_imaginary.at<float>(ii, jj));
-						slc.re.at<float>(azimuthIndex, rangeIndex) += real;
-						slc.im.at<float>(azimuthIndex, rangeIndex) += imaginary;
+						slc.re.at<float>(azimuthIndex, rangeIndex) += static_cast<float>(real);
+						slc.im.at<float>(azimuthIndex, rangeIndex) += static_cast<float>(imaginary);
 					}
 				}
 			}

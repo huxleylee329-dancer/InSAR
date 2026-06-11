@@ -1570,7 +1570,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 
 	////剔除outliers
 	Mat sentinel = Mat::zeros(m, n, CV_64F);
-	int ix, iy, count = 0, c = 0; double delta, thresh = 2.0;
+	int /*ix, iy, */count = 0, c = 0; double /*delta, */thresh = 2.0;
 	//for (int i = 0; i < m; i++)
 	//{
 	//	for (int j = 0; j < n; j++)

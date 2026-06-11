@@ -1,13 +1,21 @@
-#include"pch.h"
-//#include"gdal_priv.h"
-#include"gdal.h"
-#include "cpl_conv.h"
-#include"..\include\FormatConversion.h"
-#include"..\include\tinyxml.h"
-//#include<atlconv.h>
-//#include<tchar.h>
-#include<urlmon.h>
-#pragma comment(lib,"URlmon")
+#include"pch.h"                                                                              
+#include <direct.h>     // 解决 _mkdir 找不到标识符错误                                      
+#include <mutex>        // 解决 std::once_flag/call_once 依赖                                
+#include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
+#include"..\include\FormatConversion.h"                                                      
+#include"..\include\tinyxml.h"                                                               
+//#include<atlconv.h>                                                                        
+//#include<tchar.h>                                                                          
+#include<urlmon.h>                                                                           
+#pragma comment(lib,"URlmon")   
+                                              
+static std::once_flag g_gdal_init_flag;                                                      
+static void InitializeGDALOnce()                                                             
+{                                                                                            
+	std::call_once(g_gdal_init_flag, [](){
+		GDALAllRegister();
+	});
+}
 
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
@@ -8551,7 +8559,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		hid_t type = H5Dget_type(dataset_id);
 		herr_t status;
-		rh_tmp.create(dims[0], dims[1], CV_32F); rh_tmp = 0;
+		rh_tmp.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); rh_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)rh_tmp.data);
 		if (status < 0)
 		{
@@ -8562,7 +8570,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 			H5Tclose(type);
 			return -1;
 		}
-		rh_tmp(cv::Range(0, dims[0]), cv::Range(rh_percentile, rh_percentile + 1)).copyTo(rh_tmp);
+		rh_tmp(cv::Range(0, static_cast<int>(dims[0])), cv::Range(rh_percentile, rh_percentile + 1)).copyTo(rh_tmp);
 		//读取lat参数
 		str = beam_name_list[i] + "lat_highestreturn";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
@@ -8583,7 +8591,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lat_tmp.create(dims[0], 1, CV_64F); lat_tmp = 0.0;
+		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
 		{
@@ -8615,7 +8623,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lon_tmp.create(dims[0], 1, CV_64F); lon_tmp = 0.0;
+		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_64F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
 		{
@@ -8647,7 +8655,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		dem_tmp.create(dims[0], 1, CV_32F); dem_tmp = 0.0;
+		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
 		{
@@ -8679,7 +8687,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		quality_index_tmp.create(dims[0], 1, CV_8U); quality_index_tmp = 0;
+		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
 		{
@@ -8763,7 +8771,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		hid_t type = H5Dget_type(dataset_id);
 		herr_t status;
-		rh_tmp.create(dims[0], dims[1], CV_32F); rh_tmp = 0;
+		rh_tmp.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); rh_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)rh_tmp.data);
 		if (status < 0)
 		{
@@ -8774,7 +8782,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 			H5Tclose(type);
 			return -1;
 		}
-		rh_tmp(cv::Range(0, dims[0]), cv::Range(rh_percentile-1, rh_percentile)).copyTo(rh_tmp);
+		rh_tmp(cv::Range(0, static_cast<int>(dims[0])), cv::Range(rh_percentile-1, rh_percentile)).copyTo(rh_tmp);
 		//读取lat参数
 		str = beam_name_list[i] + "land_segments/latitude";
 		dataset_id = H5Dopen(file_id, str.c_str(), H5P_DEFAULT);
@@ -8795,7 +8803,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lat_tmp.create(dims[0], 1, CV_32F); lat_tmp = 0.0;
+		lat_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lat_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lat_tmp.data);
 		if (status < 0)
 		{
@@ -8827,7 +8835,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		lon_tmp.create(dims[0], 1, CV_32F); lon_tmp = 0.0;
+		lon_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); lon_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)lon_tmp.data);
 		if (status < 0)
 		{
@@ -8859,7 +8867,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		dem_tmp.create(dims[0], 1, CV_32F); dem_tmp = 0.0;
+		dem_tmp.create(static_cast<int>(dims[0]), 1, CV_32F); dem_tmp = 0.0;
 		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)dem_tmp.data);
 		if (status < 0)
 		{
@@ -8891,7 +8899,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 		ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 		type = H5Dget_type(dataset_id);
 		status;
-		quality_index_tmp.create(dims[0], 1, CV_8U); quality_index_tmp = 0;
+		quality_index_tmp.create(static_cast<int>(dims[0]), 1, CV_8U); quality_index_tmp = 0;
 		status = H5Dread(dataset_id, H5T_NATIVE_INT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)quality_index_tmp.data);
 		if (status < 0)
 		{
@@ -11317,8 +11325,8 @@ int DigitalElevationModel::getRawDEM(
 			ret = downloadSRTM(srtmFileName[i].c_str());
 			if (ret < 0)//未下载到DEM数据,则以0填充
 			{
-				int rows = static_cast<int>((latMax - latMin) / latSpacing);
-				int cols = static_cast<int>((lonMax - lonMin) / lonSpacing);
+				int rows = cvRound((latMax - latMin) / latSpacing);
+				int cols = cvRound((lonMax - lonMin) / lonSpacing);
 				Mat temp = Mat::zeros(rows, cols, CV_16S);
 				temp.copyTo(this->rawDEM);
 				this->lonUpperLeft = lonMin;
@@ -11358,16 +11366,16 @@ int DigitalElevationModel::getRawDEM(
 		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 		lonLowerRight = lonUpperLeft + 5.0;
 
-		startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+		startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 		startRow = startRow < 1 ? 1 : startRow;
 		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+		endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 		endRow = endRow < 1 ? 1 : endRow;
 		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+		startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 		startCol = startCol < 1 ? 1 : startCol;
 		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+		endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 		endCol = endCol < 1 ? 1 : endCol;
 		endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11398,16 +11406,16 @@ int DigitalElevationModel::getRawDEM(
 			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
 			lonLowerRight = lonUpperLeft + 5.0;
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11472,16 +11480,16 @@ int DigitalElevationModel::getRawDEM(
 				latLowerRight = latUpperLeft - 5.0;
 				lonUpperLeft = 175.0;
 				lonLowerRight = -175.0;
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+				endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11541,16 +11549,16 @@ int DigitalElevationModel::getRawDEM(
 				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
 				lonLowerRight = lonUpperLeft + 10.0;
 
-				startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 				startRow = startRow < 1 ? 1 : startRow;
 				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 				endRow = endRow < 1 ? 1 : endRow;
 				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+				startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 				startCol = startCol < 1 ? 1 : startCol;
 				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+				endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 				endCol = endCol < 1 ? 1 : endCol;
 				endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11702,16 +11710,16 @@ int DigitalElevationModel::getRawDEM(
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
+			endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11796,16 +11804,16 @@ int DigitalElevationModel::getRawDEM(
 
 			cv::vconcat(outDEM, outDEM2, outDEM);
 
-			startRow = static_cast<int>((latUpperLeft - latMax) / this->latSpacing);
+			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
 			startRow = startRow < 1 ? 1 : startRow;
 			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = static_cast<int>((latUpperLeft - latMin) / this->latSpacing);
+			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
 			endRow = endRow < 1 ? 1 : endRow;
 			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = static_cast<int>((lonMin - lonUpperLeft) / this->lonSpacing);
+			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
 			startCol = startCol < 1 ? 1 : startCol;
 			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = static_cast<int>((lonMax - lonUpperLeft) / this->lonSpacing);
+			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
 			endCol = endCol < 1 ? 1 : endCol;
 			endCol = endCol > total_cols ? total_cols : endCol;
 
@@ -11825,8 +11833,8 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 {
 	if (!elevation) return -1;
 	int row, col;
-	row = static_cast<int>((this->latUpperLeft - lat) / this->latSpacing);
-	col = static_cast<int>((lon - this->lonUpperLeft) / this->lonSpacing);
+	row = cvRound((this->latUpperLeft - lat) / this->latSpacing);
+	col = cvRound((lon - this->lonUpperLeft) / this->lonSpacing);
 	if (row < 0 || col < 0 || row >= this->rows || col >= this->cols) return -1;
 	double elevationUL, elevationUR, elevationLL, elevationLR;
 	// removed unused: upper, lower (bilinear interpolation remnant, using simple average instead)
@@ -13872,7 +13880,7 @@ int AIRSAT_reader::UTC2GPS(const char* utc_time, double* gps_time)
 		fprintf(stderr, "UTC2GPS(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second, s;
+	int ret, year, month, day, hour, minute, second/*, s*/;
 	double sec;
 	ret = sscanf(utc_time, "%d-%d-%d %d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
 	if (ret != 6)
@@ -14035,7 +14043,7 @@ int AIRSAT_reader::read_data(const char* xml_file, const char* data_file)
 	}
 
 	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
+	TiXmlElement* pnode, * pchild/*, * pchild1*/;
 	int numOfstateVec = 0;
 	pnode = NULL;
 	ret = xmldoc.find_node("GPSParam", pnode);
@@ -14246,7 +14254,7 @@ int Biomass1A_reader::UTC2GPS(const char* utc_time, double* gps_time)
 		fprintf(stderr, "UTC2GPS(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second, s;
+	int ret, year, month, day, hour, minute, second/*, s*/;
 	double sec;
 	ret = sscanf(utc_time, "UTC=%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
 	if (ret != 6)
@@ -14436,7 +14444,7 @@ int Biomass1A_reader::read_data(
 	}
 
 	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
+	TiXmlElement* pnode, * pchild/*, * pchild1*/;
 	int numOfstateVec = 0;
 	pnode = NULL;
 	ret = orbitdoc.find_node("OSV", pnode);
