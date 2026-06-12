@@ -465,32 +465,32 @@
 
 ### P1 — 重要
 
-- [ ] **`SBAS_node` 使用 C 风格 `malloc/free` 管理内存** — `SBAS.cpp:39-152`
+- [x] **`SBAS_node` 使用 C 风格 `malloc/free` 管理内存** — `SBAS.cpp:39-152`
   - `neigh_edges` 使用 `malloc` 分配、`free` 释放，手动实现深拷贝
   - 应改为 `std::vector<int>`，消除手动内存管理
-- [ ] **`writeDIMACS_temporal()` 与 `writeDIMACS_spatial()` 大量重复** — `SBAS.cpp:774-1221`
+- [x] **`writeDIMACS_temporal()` 与 `writeDIMACS_spatial()` 大量重复** — `SBAS.cpp:774-1221`
   - 前半段（统计残差点、边界三角形、写 DIMACS 头部）几乎完全相同
   - 应提取为公共 `writeDIMACS_common()` 辅助函数
-- [ ] **`compute_spatialTemporal_residue()` 与 `compute_high_coherence_residue()` 高度重复** — `SBAS.cpp:528-772,1743-1794`
+- [x] **`compute_spatialTemporal_residue()` 与 `compute_high_coherence_residue()` 高度重复** — `SBAS.cpp:528-772,1743-1794`
   - 共享相同的三角形循环结构、坐标提取和方向判断逻辑
   - 应提取公共骨架函数
-- [ ] **`return_check` 与其他模块重复** — `SBAS.cpp:26-37`
+- [x] **`return_check` 与其他模块重复** — `SBAS.cpp:26-37`
   - 应提取到公共头文件
 
 ### P2 — 建议
 
-- [ ] **`compute_high_coherence_residue_by_gradient()` 中边查找模式重复** — `SBAS.cpp:1832-2003`
+- [x] **`compute_high_coherence_residue_by_gradient()` 中边查找模式重复** — `SBAS.cpp:1832-2003`
   - 三角形三条边与端点的匹配关系在三个 if/else 分支中完全复制（每块约 60 行）
   - 应提取"查找某条边位于哪两个端点之间"为辅助函数
-- [ ] **赋值运算符返回值而非引用** — `SBAS.h:22,98,161`
+- [x] **赋值运算符返回值而非引用** — `SBAS.h:22,98,161`
   - `SBAS_node`、`SBAS_edge`、`SBAS_triangle` 的 `operator=` 应返回引用
-- [ ] **`SBAS_edge` 和 `SBAS_triangle` 无需手写拷贝构造和赋值** — `SBAS.h:76-174`
+- [x] **`SBAS_edge` 和 `SBAS_triangle` 无需手写拷贝构造和赋值** — `SBAS.h:76-174`
   - 全部是 POD 类型，编译器默认生成的即可
-- [ ] **`Mat` 参数缺少 const 限定** — `SBAS.h` 多处
+- [x] **`Mat` 参数缺少 const 限定** — `SBAS.h` 多处
   - `write_spatialTemporal_node()` 的 `B_temporal` 和 `B_effect` 等输入参数应为 `const Mat&`
 - [ ] **`readDIMACS` 使用 `double*` 而非引用** — `SBAS.h:348-349`
   - `obj_value` 建议使用 `double&`
-- [ ] **`error_head[256]` 使用固定大小 char 数组** — `SBAS.h` 多处
+- [x] **`error_head[256]` 使用固定大小 char 数组** — `SBAS.h` 多处
   - 建议使用 `std::string`
 
 ### P3 — 优化
@@ -499,14 +499,14 @@
   - 应为 `isBoundary`
 - [ ] **变量名 `xxxx`** — `SBAS.cpp:659`
   - 应命名为 `orbit_idx` 或 `clamped_idx`
-- [ ] **变量名 `a, b, c` 含义不清** — `SBAS.cpp:2546-2549`
+- [x] **变量名 `a, b, c` 含义不清** — `SBAS.cpp:2546-2549`
   - 建议使用 `coef_intercept`, `coef_row`, `coef_col`
-- [ ] **`GET_NEXT_LINE` 宏缩进误导** — `SBAS.cpp:18-24`
+- [x] **`GET_NEXT_LINE` 宏缩进误导** — `SBAS.cpp:18-24`
   - `else` 分支缩进对齐错误
-- [ ] **大量被注释掉的旧代码未清理** — `SBAS.cpp:596-758`（约 160 行）
-- [ ] **注释拼写错误** — `SBAS.cpp:576`
+- [x] **大量被注释掉的旧代码未清理** — `SBAS.cpp:596-758`（约 160 行）
+- [x] **注释拼写错误** — `SBAS.cpp:576`
   - "由于edge1处于end2和end2之间" 应为 "end2和end3之间"
-- [ ] **固定大小栈缓冲区** — `SBAS.cpp:970`
+- [x] **固定大小栈缓冲区** — `SBAS.cpp:970`
   - `char str[256]` 用于 `sprintf`，路径过长可能溢出，建议使用 `snprintf` 或 `std::string`
 
 ---

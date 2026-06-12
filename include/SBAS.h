@@ -13,13 +13,8 @@ class InSAR_API SBAS_node
 public:
 	/*默认构造函数*/
 	SBAS_node();
-	/*拷贝构造函数*/
-	SBAS_node(const SBAS_node& cp);
 	/*初始化构造函数1*/
 	SBAS_node(int num_neigh_edge);
-	~SBAS_node();
-	/*赋值函数（深拷贝）*/
-	SBAS_node operator = (const SBAS_node& src);
 
 
 	/*垂直基线(m)*/
@@ -29,7 +24,7 @@ public:
 	/*邻接边数量*/
 	int num_neigh_edges;
 	/*邻接边序号*/
-	int* neigh_edges;
+	std::vector<int> neigh_edges;
 	/*节点相位*/
 	double phase;
 	/*节点横坐标*/
@@ -81,33 +76,7 @@ struct SBAS_edge
 		phase_gradient = delta_deformation_vel = delta_epsilon_height = gain = 0.0;
 		weight = 1.0;
 	}
-	/*拷贝构造函数*/
-	SBAS_edge(const SBAS_edge& cp)
-	{
-		isBoundry = cp.isBoundry;
-		end1 = cp.end1;
-		end2 = cp.end2;
-		num = cp.num;
-		phase_gradient = cp.phase_gradient;
-		delta_deformation_vel = cp.delta_deformation_vel;
-		delta_epsilon_height = cp.delta_epsilon_height;
-		gain = cp.gain;
-		weight = cp.weight;
-	}
-	/*赋值（深拷贝）*/
-	SBAS_edge operator = (const SBAS_edge& cp)
-	{
-		isBoundry = cp.isBoundry;
-		end1 = cp.end1;
-		end2 = cp.end2;
-		num = cp.num;
-		phase_gradient = cp.phase_gradient;
-		delta_deformation_vel = cp.delta_deformation_vel;
-		delta_epsilon_height = cp.delta_epsilon_height;
-		gain = cp.gain;
-		weight = cp.weight;
-		return *this;
-	}
+
 };
 
 /*----------------------------------------*/
@@ -144,33 +113,7 @@ struct SBAS_triangle
 		num = p1 = p2 = p3 = neigh1 = neigh2 = neigh3 = edge1 = edge2 = edge3 = 0;
 		residue = 0.0;
 	}
-	/*拷贝构造函数*/
-	SBAS_triangle(const SBAS_triangle& cp)
-	{
-		this->edge1 = cp.edge1;
-		this->edge2 = cp.edge2;
-		this->edge3 = cp.edge3;
-		this->neigh1 = cp.neigh1;
-		this->neigh2 = cp.neigh2;
-		this->neigh3 = cp.neigh3;
-		this->num = cp.num;
-		this->p1 = cp.p1; this->p2 = cp.p2; this->p3 = cp.p3;
-		this->residue = cp.residue;
-	}
-	/*赋值(深拷贝)*/
-	SBAS_triangle operator= (const SBAS_triangle& cp)
-	{
-		this->edge1 = cp.edge1;
-		this->edge2 = cp.edge2;
-		this->edge3 = cp.edge3;
-		this->neigh1 = cp.neigh1;
-		this->neigh2 = cp.neigh2;
-		this->neigh3 = cp.neigh3;
-		this->num = cp.num;
-		this->p1 = cp.p1; this->p2 = cp.p2; this->p3 = cp.p3;
-		this->residue = cp.residue;
-		return *this;
-	}
+
 };
 
 /*----------------------------------------*/
@@ -190,8 +133,8 @@ public:
 	*/
 	int write_spatialTemporal_node(
 		const char* nodeFile,
-		Mat& B_temporal,
-		Mat& B_effect
+		const Mat& B_temporal,
+		const Mat& B_effect
 	);
 	/*@brief 设置时空基线三角网络节点的时空基线值和节点坐标
 	* @param nodes                     三角网络节点数组
@@ -201,8 +144,8 @@ public:
 	*/
 	int set_spatialTemporalBaseline(
 		vector<SBAS_node>& nodes,
-		Mat& B_temporal,
-		Mat& B_effect
+		const Mat& B_temporal,
+		const Mat& B_effect
 	);
 	/** @brief 从.edge文件读取Delaunay三角网的边信息
 	* @param edge_file               .edge文件
@@ -292,7 +235,7 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int write_high_coherence_node(
-		Mat& mask,
+		const Mat& mask,
 		const char* nodeFile
 	);
 	/*@brief 根据高相干掩膜矩阵设置三角网络节点的坐标值
@@ -301,7 +244,7 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int set_high_coherence_node_coordinate(
-		Mat& mask,
+		const Mat& mask,
 		vector<SBAS_node>& nodes
 	);
 	/*@brief 根据高相干掩膜矩阵设置三角网络节点相位值，并计算相邻节点之间的相位梯度（梯度定义为大序号-小序号）
@@ -312,10 +255,10 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int set_high_coherence_node_phase(
-		Mat& mask,
+		const Mat& mask,
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
-		Mat& phase
+		const Mat& phase
 	);
 	
 	/*@brief 将最小费用流问题写入DIMACS文件，准备求解（高相干点三角网）
@@ -358,7 +301,7 @@ public:
 	*/
 	int saveGradientStack(
 		vector<string>& phaseFiles,
-		Mat& mask,
+		const Mat& mask,
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		const char* dstH5File
@@ -400,7 +343,7 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int set_weight_by_coherence(
-		Mat& coherence,
+		const Mat& coherence,
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges
 	);
@@ -456,8 +399,8 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int get_formation_matrix(
-		Mat& spatial,
-		Mat& temporal,
+		const Mat& spatial,
+		const Mat& temporal,
 		double spatial_thresh,
 		double temporal_thresh_low,
 		double temporal_thresh,
@@ -479,9 +422,9 @@ public:
 	*/
 	int generate_interferograms(
 		vector<string>& SLCH5Files,
-		Mat& formation_matrix,
-		Mat& spatial_baseline,
-		Mat& temporal_baseline,
+		const Mat& formation_matrix,
+		const Mat& spatial_baseline,
+		const Mat& temporal_baseline,
 		int multilook_az,
 		int multilook_rg,
 		const char* ifgSavePath,
@@ -495,8 +438,8 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int compute_temporal_coherence(
-		Mat& estimated_phase_series,
-		Mat& phase_series,
+		const Mat& estimated_phase_series,
+		const Mat& phase_series,
 		double* temporal_coherence
 	);
 	/*@brief 基于同质像元识别的自适应多视干涉相位生成（分块读取、计算、储存）
@@ -517,9 +460,9 @@ public:
 	int adaptive_multilooking(
 		vector<string>& coregis_slc_files,
 		const char* ifgSavePath,
-		Mat& formation_matrix,
-		Mat& spatial_baseline,
-		Mat& temporal_baseline,
+		const Mat& formation_matrix,
+		const Mat& spatial_baseline,
+		const Mat& temporal_baseline,
 		int blocksize_row,
 		int blocksize_col,
 		Mat& out_mask,
@@ -538,12 +481,12 @@ public:
 	*/
 	int refinement_and_reflattening(
 		Mat& unwrapped_phase,
-		Mat& mask,
-		Mat& coherence,
+		const Mat& mask,
+		const Mat& coherence,
 		double coh_thresh
 	);
 private:
-	char error_head[256];
+	std::string error_head;
 };
 
 

@@ -8,7 +8,8 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
-| `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
+| `工作区现场修改` | 2026-06-12 | AI | SBAS | 1. 重构整合 writeDIMACS_temporal/spatial，提取静态辅助函数 writeDIMACS_common，去重约 400 行代码。<br>2. 合并 compute_spatialTemporal_residue 和 compute_high_coherence_residue，清理大段注释死代码并修正拼写错误。<br>3. 重构 compute_high_coherence_residue_by_gradient，消除 170 行嵌套判断，修复 edge3 判定 Bug。<br>4. 修复 GET_NEXT_LINE 宏缩进排版错位问题。<br>5. 提取 refinement_and_reflattening 像素循环中的拟合系数至循环外，消除百万次越界判定并提升性能。<br>6. 规范 POD 结构体拷贝与赋值操作，SBAS_node 返回自身引用，SBAS_edge/SBAS_triangle 使用默认拷贝赋值以符合标准。<br>7. 优化 12 处函数的只读 Mat 参数为 `const Mat&`，提升常量正确性并支持传入临时变量。<br>8. 将 SBAS_node::neigh_edges 从原始指针升级为 `std::vector<int>`，删除手写拷贝/赋值/析构，实现自动生命周期管理。<br>9. 替换 3 处路径拼接 `sprintf` 为安全的 `snprintf`，防范缓冲区溢出。<br>10. 重构私有成员 `char error_head[256]` 为 `std::string`，并在 `Utils.h` 中新增内联重载以兼容 60 余处原有调用，提升内存安全性。 |
+| `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效 of parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
 | `工作区现场修改` | 2026-06-12 | AI | Unwrap, simulation | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。<br>9. 修复 SLC_deramp_14 双频乒乓模式中类型转换 Bug，避免主星数据转换后覆盖辅星数据。<br>10. 修复 generateSLC 等 5 处函数中分块行列数不足导致除零崩溃与图像全零的逻辑缺陷。 |
 | `工作区现场修改` | 2026-06-11 | AI | Deflat | 1. 修复 Orbit_Polyfit 中奇异矩阵检测条件永远为假的 Bug。<br>2. 修复 get_satellite_aztime_NEWTON 无法检测 Newton 迭代发散的 Bug。<br>3. 重构 getSRTMFileName 坐标文件名格式化逻辑，使用双重循环与 %02d 消除约 190 行冗余的 if-else 代码。<br>4. 提取 getTifPath 辅助函数，消除 getSRTMDEM 中 15 处重复的 tif 文件路径拼接代码。<br>5. 提取 findZeroDopplerTime 辅助函数，消除 7 处 zero-Doppler 查找的冗余代码。<br>6. 将 return_check 与 parallel_check 提取为 Utils.h 中的全局 inline 函数，并清理 Deflat 和 Utils 中的局部冗余定义及死代码 parallel_flag_change。<br>7. 提取 fillInvalidGaps 模板函数，消除 5 处 DEM 和经纬度投影图空白值搜索填充的冗余代码。<br>8. 消除 Deflat.cpp 中的魔数（Pi、光速），定义牛顿收敛常量，纠正 3 处函数报错名称及下载拼写错误，并移除 Deflat.h 中的冗余头文件包含保护。 |
 | `工作区现场修改` | 2026-06-11 | AI | Registration | 1. 提取 padBorder 辅助函数去重 4 处立方插值边界扩充逻辑。<br>2. 优化双线性重采样中的 OMP 循环，提前提取多项式系数，使用浮点乘加代替循环内 cv::Mat 创建与矩阵乘法。<br>3. 修复 WeightCalculation 中的自赋值死代码，采用 fabs 绝对值函数简化逻辑。<br>4. 纠正 13 处内部报错信息拼写错误与不匹配的函数名（如 coregistration_pixel 纠正为 coregistration_subpixel_sinc）。<br>5. 提取 bilinear_interp2d 统一插值函数，消除两处重采样中约 120 行冗余的类型分支双线性插值实现。<br>6. 清理 Registration.h 中冗余的传统防重包含宏保护，规范 include 头文件时的空格排版。 |
@@ -162,21 +163,21 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   - **问题**：在 `Deflat::getSRTMDEM` 函数中，每次拼接瓦片 `.tif` 文件的全路径时，都需要手动处理后缀名替换与斜杠规范化，这套拼接流程在多个分支中重复编写了 15 次，产生了大量冗余代码。
   - **解决方法**：在 `Deflat.cpp` 的匿名命名空间中提取了 `getTifPath` 辅助函数，统一规范瓦片路径格式并处理 `/` 到 `\` 的规范化。随后将原有的 15 处繁冗的拼接代码全部重构为对该函数的单行调用，大幅简化了代码复杂度。
 - **Zero-Doppler 零多普勒时间搜索逻辑去重与重构**：
-  - **问题**：在 `Deflat.cpp` 内的不同坐标投影与反向映射函数中，存在 7 处完全重复 of 零多普勒时间二分查找搜索与距离计算代码块（位于两个 `demMapping` 重载、`demMapping_float`、`paraMapping_float`、`SLC_deramp`、`slantrange_compute_test` 及 `slantrange_compute` 内部），冗余代码达 400 余行，极难维护。
-  - **解决方法**：在 `Deflat.cpp` 的匿名命名空间中定义了一个线程安全的 `findZeroDopplerTime` 静态辅助函数，将状态向量遍历查找、区间迭代逼近、零值外推及距离解算逻辑完全封装。将 7 处繁冗的搜索逻辑全部替换为对该函数的单行调用，极大精简了代码行数，且由于所有操作均通过栈变量和只读数据指针进行，确保了在多线程 OMP 并行环境下的并发安全性。
-- **`return_check` / `parallel_check` 错误与状态校验公共提取及死代码清理**：
-  - **问题**：`return_check` 和 `parallel_check` 校验函数以 inline 形式被硬编码复制在项目内几乎所有的主要 C++ 源文件中（如 `Deflat.cpp`、`Utils.cpp` 等），产生了大量全局冗余。此外，`Deflat.cpp` 中还包含 `parallel_flag_change` inline 函数，该函数由于使用值传递参数导致修改标志失效（属于 Bug），且在 `Deflat.cpp` 中从未被实际调用，是冗余 of 死代码。
-  - **解决方法**：将 `return_check` 和 `parallel_check` 提取到公共底层头文件 `include/Utils.h` 中定义为全局 inline 函数，使其对所有包含 `Utils.h` 的模块可见，消除模块间的硬编码冗余。同时，彻底删除了 `Deflat.cpp` 和 `Utils.cpp` 内部重复定义的 `return_check` / `parallel_check` 以及未使用的死代码 `parallel_flag_change`。
-- **DEM 投影图及经纬度空白值搜索填充逻辑去重与重构**：
-  - **问题**：在 `Deflat.cpp` 的多个地理映射函数（`demMapping` 的两个重载、`demMapping_float` 以及 `paraMapping_float`）中，存在 5 处完全重复的 2D 邻域搜寻与线性插值填充算法，用于填补离散投影后产生的数据空隙，造成了 500 行左右的代码极度冗余。
-  - **解决方法**：在匿名命名空间中提取了通用类型和谓词的 `fillInvalidGaps` 模板函数。它支持对 `short`、`float` 和 `double` 等各类矩阵类型使用自定义的 Lambda 表达式来判定“无效像素”（如判定 `val == invalid` 或 `val <= -998.0`）。通过在 5 处对应位置直接调用该模板函数，使重复的向外辐射搜寻填充代码一并得以清除，极大地提高了代码库的内聚性、可维护性与整洁度。
-
-### 10. Unwrap 优化与重构 (Unwrap)
-- **`slave.convertTo` Bug 修复**：
-  - **问题**：在 `Unwrap::snaphu` 中，代码校验辅星 `slave` 的矩阵类型是否为 `CV_64F`，若不是，却误用了 `master.convertTo(slave, CV_64F);` 进行类型转换。这会导致主星（`master`）数据被转换并完全覆盖写入辅星 `slave` 矩阵，从而使后续对辅星幅度相关的处理读取到错误的主星数据。
-  - **解决方法**：将格式转换语句修正为 `slave.convertTo(slave, CV_64F);`。
-- **`CHECK_RETURN` 宏定义严重缺陷修复**：
-  - **问题**：在 `Unwrap.cpp` 顶部定义的 `CHECK_RETURN` 宏在 `if` 后缺少花括号，导致 `fprintf` 和 `return -1;` 语句无条件执行。一旦调用此宏，即便没有发生错误，也会无条件中止执行并返回 -1。
+  - **问题**：在 `Deflat.cpp` 内的不同坐标- **`Mat` 只读参数的 Const-Correctness 常量化改造**：
+  - **问题**：SBAS 模块中多个成员函数在接收 `cv::Mat` 输入时，其参数在函数内部仅作为只读数据读取，但原声明使用了非 const 的引用类型 `Mat&`。这不符合 C++ 的常量正确性（Const-Correctness）原则，且导致调用端无法直接传入临时的（R-value）Mat 对象（例如 `cv::Mat()` 临时变量）。
+  - **解决方法**：将 SBAS 模块中 12 个函数的只读 Mat 参数统一优化为 `const Mat&`，提升了接口的安全性和通用性。受影响的函数包括：
+    * `write_spatialTemporal_node`
+    * `set_spatialTemporalBaseline`
+    * `write_high_coherence_node`
+    * `set_high_coherence_node_coordinate`
+    * `set_high_coherence_node_phase`
+    * `set_weight_by_coherence`
+    * `get_formation_matrix`
+    * `generate_interferograms`
+    * `saveGradientStack`
+    * `compute_temporal_coherence`
+    * `adaptive_multilooking`
+    * `refinement_and_reflattening`�并返回 -1。
   - **解决方法**：由于全局校验已统一为 `Utils.h` 中的 `return_check` 内联函数，且 `Unwrap.cpp` 中所有校验位置均已使用 `return_check` 替代该宏，因此直接将该死代码宏彻底删除，杜绝隐患。
 - **`quality.at<int>` 类型不匹配 Bug 修复**：
   - **问题**：在 `Unwrap::quailtyGuidedFloodfill` 和 `Unwrap::qualityGuided` 函数中，对入参 `quality` 的类型进行了必须为 `CV_64F` 的强制校验。然而在寻优循环中，却使用了 `quality.at<int>(i, j)` 进行数值访问。由于 OpenCV 的 `at<T>` 是无转换强转，会导致将 8 字节的 `double` 错误地读取为 4 字节的整型，获取到垃圾数值，导致解缠种子点定位错误。
@@ -245,6 +246,57 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   将仅在模块内被引用的 `GaussianFilter` 参数 `window` 改为只读引用 `const Mat& window`，提升了数值安全性并避免不必要的对象拷贝开销；同时去除了 `Filter.h` 中传统宏包含保护（仅保留 `#pragma once`），规范了代码结构。
 - **`volatile bool` 升级为 `std::atomic<bool>`**：
   将 `slope_adaptive_filter` 中用于 OpenMP 错误控制的 `volatile bool parallel_flag` 升级为 `std::atomic<bool> parallel_flag`，以保证多线程下的内存可见性与线程安全性，消除数据竞争隐患。
+
+### 14. SBAS 模块优化与重构 (SBAS)
+- **`writeDIMACS_temporal` 与 `writeDIMACS_spatial` 重构去重**：
+  - **问题**：`writeDIMACS_temporal` 和 `writeDIMACS_spatial` 均包含 200 余行代码，其前半段输入参数校验、DIMACS 文件描述块构造、正负残差点统计、边界三角形统计、大地节点写入等逻辑完全相同。其差异仅在两处：1) 空间模式下强制忽略平衡状态，均写大地节点与边界流；2) 空间模式下，弧费用与边界流费用需要动态根据相邻/边界边的权重（`weight`）来决定，而时间模式下恒定为 `1.0`。
+  - **解决方法**：在 `SBAS.cpp` 匿名命名空间/文件内部定义了静态辅助函数 `get_neigh_edge_weight` and `get_boundary_edge_weight` 以及公共实现 `writeDIMACS_common`。通过 `is_spatial` 布尔参数控制空间模式的分支。重构后，`writeDIMACS_temporal` 和 `writeDIMACS_spatial` 原有接口不变，其内容均缩减为单行向 `writeDIMACS_common` 的转发调用。该重构在消除约 400 行重复代码的同时，不修改 `SBAS.h` 中的任何 API 声明，不影响任何外部调用，也确保了二进制/ABI 兼容性。
+- **`compute_spatialTemporal_residue` 与 `compute_high_coherence_residue` 重构去重与注释清理**：
+  - **问题**：`compute_spatialTemporal_residue` 与 `compute_high_coherence_residue` 均包含约 150 行代码，其循环框架、顶点序号处理、地理坐标提取、三角形走向向量计算（`direction`）以及根据走向调整残值正负号的逻辑 100% 相同。其区别仅在于残差数值本身的计算算法。此外，前者中还遗留了约 160 行历史开发时遗留的注释死代码块，极大地阻碍了代码的可读性，且内部存在一处关于 edge 处于端点之间的拼写错误注释（“处于end2和end2之间”）。
+  - **解决方法**：在 `SBAS.cpp` 匿名命名空间中提取了通用的 `compute_residue_common` 辅助函数，封装了共享的坐标提取、走向计算以及最终的符号判定写入逻辑，通过布尔参数 `is_spatial_temporal` 控制计算公式的计算分支。重构后，两个公开 API 原有签名不变，均通过单行转发调用 `compute_residue_common`。同时，清理了原来大段无用的注释死代码，并将拼写错误的注释纠正为“处于end2和end3之间”，消除了近 300 行无用冗余，提高了代码整洁度与可读性。
+- **`compute_high_coherence_residue_by_gradient` 嵌套分支重构与 Copy-Paste Bug 修复**：
+  - **问题**：该函数为了对三角形环路的三条边进行端点对齐并累加梯度差，包含一段长达 170 行的臃肿 3 层嵌套 `if-else` 分支。代码极难维护且极易出错。经审查，发现了一个隐蔽的 **Copy-Paste 逻辑 Bug**：在 Outer Branch B 的 Sub-branch B2 中，`edge3` 本应连接 `end1` 和 `end2`，原代码却误写成了 `if (end1 > end3)` （误用了 `end3`），导致部分拓扑下的符号计算反向。
+  - **解决方法**：推导总结出单步累加的物理公式：`contribution = (to > from ? 1.0 : -1.0) * edges[e - 1].phase_gradient`。并在 `SBAS.cpp` 匿名命名空间提取了 `find_connecting_edge` 和 `get_step_gradient` 辅助函数。将原主循环中的 170 行嵌套判断改写为 3 行对辅助函数的通用调用，不仅消成了 130 余行冗余逻辑，而且自动纠正了上述复制粘贴引入的隐藏 Bug。
+- **`GET_NEXT_LINE` 局部宏缩进规范化**：
+  - **问题**：`SBAS.cpp` 顶部的局部宏 `GET_NEXT_LINE` 内部的 `else` 缩进混乱错位，极易引起可读性误导。
+  - **解决方法**：将缩进格式化对齐，使其符合标准的大括号/分支逻辑排版。
+- **`refinement_and_reflattening` 拟合参数提取与性能优化**：
+  - **问题**：在轨道重去平拟合过程中，原本在 `rows * cols` 百万级像素的双重循环体内部，频繁重复调用 `x.at<double>(...)` 提取恒定不变的平面拟合系数（a, b, c），产生了极高且无用的堆栈越界判定开销。
+  - **解决方法**：将三个系数提至外层循环外部，重命名为更有物理意义的 `coef_intercept`、`coef_row`、`coef_col`，在保留 100% 相同数学逻辑的同时，消除了百万次矩阵越界检测开销，提速了运行效率。
+- **POD 结构体与赋值操作优化 (SBAS_node, SBAS_edge, SBAS_triangle)**：
+  - **问题**：在 `SBAS.h` 中，POD 结构体 `SBAS_edge` 和 `SBAS_triangle` 手写了冗余且低效的拷贝构造函数与赋值操作符（且赋值操作符未返回自身引用 `*this`，不符合 C++ 标准规范）；`SBAS_node` 的赋值操作符 `operator=` 返回了 `void` 而非 `SBAS_node&`，这不仅破坏了链式赋值的可能，还增加了编译器的优化难度。
+  - **解决方法**：
+    1. 修改 `SBAS_node::operator=` 的声明和实现，使其返回 `SBAS_node&`（即 `return *this;`），满足 C++ 标准赋值重载规范；
+    2. 删除 `SBAS_edge` 和 `SBAS_triangle` 声明中手写的拷贝构造函数和赋值操作符，允许编译器自动为这些 POD 结构体生成默认的、极其高效的拷贝构造函数与赋值操作符，精简了头文件定义并消除了潜在的浅拷贝实现开销。
+- **`Mat` 只读参数的 Const-Correctness 常量化改造**
+  - **问题**：SBAS 模块中多个成员函数在接收 `cv::Mat` 输入时，其参数在函数内部仅作为只读数据读取，但原声明使用了非 const 的引用类型 `Mat&`。这不符合 C++ 的常量正确性（Const-                                 
+  Correctness）原则，且导致调用端无法直接传入临时的（R-value）Mat 对象（例如 `cv::Mat()` 临时变量）。 
+  - **解决方法**：将 SBAS 模块中 12 个函数的只读 Mat 参数统一优化为 `const Mat&`，提升了接口的安全性和通用性。受影响的函数包括：
+  * `write_spatialTemporal_node`                                          
+  * `set_spatialTemporalBaseline`
+  * `write_high_coherence_node`
+  * `set_high_coherence_node_coordinate`
+  * `set_high_coherence_node_phase`
+  * `set_weight_by_coherence`
+  * `get_formation_matrix`
+  * `generate_interferograms`
+  * `saveGradientStack`
+  * `compute_temporal_coherence`
+  * `adaptive_multilooking`
+  * `refinement_and_reflattening`                                        
+- **`SBAS_node` 内存管理与原始指针清理**：
+  - **问题**：`SBAS_node` 的邻接边序号字段 `neigh_edges` 为原始 `int*` 指针，需要手写复杂的深拷贝构造函数、深拷贝赋值操作符 and 析构函数来管理堆内存。这不仅增加了代码维护成本，还容易在复制或异常发生时出现内存泄漏或 Double Free 问题。
+  - **解决方法**：将 `neigh_edges` 字段的类型从 `int*` 升级为 `std::vector<int>`。因此可以安全地完全删除拷贝构造函数、拷贝赋值操作符以及析构函数的定义，利用标准库容器实现自动且 100% 异常安全的生命周期管理，并以清晰的 `std::vector` 下标和引用语法替换原代码中所有的 C 风格指针解引用和指针偏移操作。
+- **`sprintf` 安全风险防范**：
+  - **问题**：`generate_interferograms` (两个重载) 和 `adaptive_multilooking` 共有 3 处使用固定大小栈缓冲区 `char str[256]` 配合 `sprintf` 格式化临时 H5 文件路径，存在理论上的缓冲区溢出安全隐患。
+  - **解决方法**：将这 3 处 `sprintf` 全部替换为 safe 版本的 `snprintf`，设置最大写入长度为 `sizeof(str)`，消除了越界写入隐患。
+
+  - **`error_head` 内存安全与现代化改造**                
+  - **问题**：`SBAS` 类中定义的 `char error_head[256]` 属于固定大小的 C 风格字符数组，利用 `memset` 和 `strcpy` 初始化，不仅存在缓冲区溢出隐患，且限制了未来对其进行动态拼接或异常追踪的灵活性。              
+  - **解决方法**                                                   
+  1. 将 `SBAS::error_head` 的类型从 `char[256]` 修改为 `std::string`，并在 `SBAS` 构造函数中使用标准 C++ 赋值，确保内存分配动态且安全；    
+  2. 在公共头文件 `include/Utils.h` 中，为 `return_check` 函数新增了支持 `const std::string&` 参数的内联重载，从而使 `SBAS` 模块中 60 
+  处以上的调用无需做任何改动即可直接通过编译，实现了完全的向下兼容与平滑重构。 
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

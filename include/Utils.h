@@ -327,6 +327,12 @@ inline bool return_check(int ret, const char* detail_info, const char* error_hea
 	}
 }
 
+inline bool return_check(int ret, const char* detail_info, const std::string& error_head)
+{
+	return return_check(ret, detail_info, error_head.c_str());
+}
+
+
 inline bool parallel_check(volatile bool parallel_flag, const char* detail_info,
 	const char* parallel_error_head)
 {

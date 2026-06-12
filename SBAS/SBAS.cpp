@@ -17,10 +17,10 @@
 
 #define GET_NEXT_LINE \
 { \
-    if( !fgets( instring, 256, fp ) ) \
-        ch = 0; \
-	    else \
-        ch = *instring; \
+	if( !fgets( instring, 256, fp ) ) \
+		ch = 0; \
+	else \
+		ch = *instring; \
 }
 
 
@@ -34,39 +34,8 @@ SBAS_node::SBAS_node()
 	this->y = 0;
 	this->deformation_vel = 0.0;
 	this->epsilon_height = 0.0;
-	this->neigh_edges = NULL;
 	this->num_neigh_edges = 0;
 	this->phase = 0.0;
-}
-
-SBAS_node::SBAS_node(const SBAS_node& cp)
-{
-	this->B_spatial = cp.B_spatial;
-	this->B_temporal = cp.B_temporal;
-	this->b_unwrapped = cp.b_unwrapped;
-	this->x = cp.x;
-	this->y = cp.y;
-	this->deformation_vel = cp.deformation_vel;
-	this->epsilon_height = cp.epsilon_height;
-	int num_node = cp.num_neigh_edges <= 0 ? 1 : cp.num_neigh_edges;
-	if (cp.neigh_edges == NULL)
-	{
-		this->neigh_edges = NULL;
-	}
-	else if (cp.neigh_edges == this->neigh_edges)
-	{
-
-	}
-	else
-	{
-		this->neigh_edges = (int*)malloc(sizeof(int) * num_node);
-		if (this->neigh_edges != NULL)
-		{
-			std::memcpy(this->neigh_edges, cp.neigh_edges, sizeof(int) * num_node);
-		}
-	}
-	this->num_neigh_edges = cp.num_neigh_edges;
-	this->phase = cp.phase;
 }
 
 SBAS_node::SBAS_node(int num_neigh_edge)
@@ -80,70 +49,12 @@ SBAS_node::SBAS_node(int num_neigh_edge)
 	this->epsilon_height = 0.0;
 	this->num_neigh_edges = num_neigh_edge;
 	this->phase = 0.0;
-	if (num_neigh_edge > 0)
-	{
-		this->neigh_edges = (int*)malloc(sizeof(int) * num_neigh_edge);
-	}
-	else
-	{
-		this->neigh_edges = NULL;
-	}
-	if (this->neigh_edges != NULL)
-	{
-		for (int i = 0; i < num_neigh_edge; i++)
-		{
-			*(this->neigh_edges + i) = -1;//初始化邻接边序号都为-1
-		}
-	}
-
-}
-
-SBAS_node::~SBAS_node()
-{
-	if (this->neigh_edges != NULL)
-	{
-		free(this->neigh_edges);
-		this->neigh_edges = NULL;
-	}
-}
-SBAS_node SBAS_node::operator=(const SBAS_node& src)
-{
-	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//两者相等
-	{
-		return *this;
-	}
-	else
-	{
-		if (this->neigh_edges)
-		{
-			free(this->neigh_edges);
-			this->neigh_edges = NULL;
-		}
-		if (src.num_neigh_edges > 0)
-		{
-			this->neigh_edges = (int*)malloc(src.num_neigh_edges * sizeof(int));
-			if (this->neigh_edges != NULL && src.neigh_edges != NULL)
-			{
-				memcpy(this->neigh_edges, src.neigh_edges, src.num_neigh_edges * sizeof(int));
-			}
-		}
-		this->B_spatial = src.B_spatial;
-		this->B_temporal = src.B_temporal;
-		this->b_unwrapped = src.b_unwrapped;
-		this->y = src.y;
-		this->x = src.x;
-		this->num_neigh_edges = src.num_neigh_edges;
-		this->phase = src.phase;
-		this->epsilon_height = src.epsilon_height;
-		this->deformation_vel = src.deformation_vel;
-		return *this;
-	}
+	this->neigh_edges.assign(num_neigh_edge, -1);
 }
 
 SBAS::SBAS()
 {
-	memset(this->error_head, 0, 256);
-	strcpy(this->error_head, "SBAS_DLL_ERROR: error happens when using ");
+	this->error_head = "SBAS_DLL_ERROR: error happens when using ";
 }
 
 SBAS::~SBAS()
@@ -152,8 +63,8 @@ SBAS::~SBAS()
 
 int SBAS::write_spatialTemporal_node(
 	const char* nodeFile, 
-	Mat& B_temporal,
-	Mat& B_effect
+	const Mat& B_temporal,
+	const Mat& B_effect
 )
 {
 	if (!nodeFile ||
@@ -211,8 +122,8 @@ int SBAS::write_spatialTemporal_node(
 
 int SBAS::set_spatialTemporalBaseline(
 	vector<SBAS_node>& nodes,
-	Mat& B_temporal,
-	Mat& B_effect
+	const Mat& B_temporal,
+	const Mat& B_effect
 )
 {
 	int num_nodes = static_cast<int>(nodes.size());
@@ -349,30 +260,26 @@ int SBAS::init_SBAS_node(
 		node_array.push_back(tmp);
 	}
 
-	int* neighbour_ptr = NULL;
-	// removed unused: dummy, ret (planned flow control, never implemented)
 	SBAS_edge tmp;
 	for (int i = 0; i < num_edges; i++)
 	{
 		tmp = edges[i];
-		neighbour_ptr = node_array[tmp.end1 - 1].neigh_edges;
-		int num_neigh_edges = node_array[tmp.end1 - 1].num_neigh_edges;
-		for (int j = 0; j < num_neigh_edges; j++)
+		auto& neigh1 = node_array[tmp.end1 - 1].neigh_edges;
+		for (size_t j = 0; j < neigh1.size(); j++)
 		{
-			if (*(neighbour_ptr + j) == -1)
+			if (neigh1[j] == -1)
 			{
-				*(neighbour_ptr + j) = i + 1;
+				neigh1[j] = i + 1;
 				break;
 			}
 		}
 
-		neighbour_ptr = node_array[tmp.end2 - 1].neigh_edges;
-		num_neigh_edges = node_array[tmp.end2 - 1].num_neigh_edges;
-		for (int j = 0; j < num_neigh_edges; j++)
+		auto& neigh2 = node_array[tmp.end2 - 1].neigh_edges;
+		for (size_t j = 0; j < neigh2.size(); j++)
 		{
-			if (*(neighbour_ptr + j) == -1)
+			if (neigh2[j] == -1)
 			{
-				*(neighbour_ptr + j) = i + 1;
+				neigh2[j] = i + 1;
 				break;
 			}
 		}
@@ -473,37 +380,32 @@ int SBAS::init_SBAS_triangle(
 		fp_neigh = NULL;
 	}
 	//获取三角形的边序号
-	int* ptr_neigh = NULL;
-	int num_neigh, count;
 	int edge[3];
 	memset(edge, 0, sizeof(int) * 3);
 	for (int j = 0; j < num_triangle; j++)
 	{
-		count = 0;
-		ptr_neigh = nodes[triangle[j].p1 - 1].neigh_edges;
-		num_neigh = nodes[triangle[j].p1 - 1].num_neigh_edges;
-		for (int i = 0; i < num_neigh; i++)
+		const auto& neigh1 = nodes[triangle[j].p1 - 1].neigh_edges;
+		for (size_t i = 0; i < neigh1.size(); i++)
 		{
-			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p2) ||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p2)
+			if ((edges[neigh1[i] - 1].end1 == triangle[j].p2) ||
+				(edges[neigh1[i] - 1].end2 == triangle[j].p2)
 				)
 			{
-				edge[0] = *(ptr_neigh + i);//确保edges1在p1和p2之间
+				edge[0] = neigh1[i];//确保edges1在p1和p2之间
 			}
-			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3))
+			if ((edges[neigh1[i] - 1].end1 == triangle[j].p3) ||
+				(edges[neigh1[i] - 1].end2 == triangle[j].p3))
 			{
-				edge[2] = *(ptr_neigh + i);//确保edges3在p1和p3之间
+				edge[2] = neigh1[i];//确保edges3在p1和p3之间
 			}
 		}
-		ptr_neigh = nodes[triangle[j].p2 - 1].neigh_edges;
-		num_neigh = nodes[triangle[j].p2 - 1].num_neigh_edges;
-		for (int i = 0; i < num_neigh; i++)
+		const auto& neigh2 = nodes[triangle[j].p2 - 1].neigh_edges;
+		for (size_t i = 0; i < neigh2.size(); i++)
 		{
-			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3))
+			if ((edges[neigh2[i] - 1].end1 == triangle[j].p3) ||
+				(edges[neigh2[i] - 1].end2 == triangle[j].p3))
 			{
-				edge[1] = *(ptr_neigh + i);//确保edges2在p2和p3之间
+				edge[1] = neigh2[i];//确保edges2在p2和p3之间
 			}
 		}
 		triangle[j].edge1 = edge[0];
@@ -511,6 +413,93 @@ int SBAS::init_SBAS_triangle(
 		triangle[j].edge3 = edge[2];
 	}
 
+	return 0;
+}
+
+static int compute_residue_common(
+	std::vector<SBAS_node>& nodes,
+	std::vector<SBAS_edge>& edges,
+	std::vector<SBAS_triangle>& triangles,
+	bool is_spatial_temporal
+)
+{
+	if (nodes.size() < 3 ||
+		edges.size() < 3 ||
+		triangles.size() < 1)
+	{
+		return -1;
+	}
+	int num_triangle = static_cast<int>(triangles.size());
+	for (int i = 0; i < num_triangle; i++)
+	{
+		int end1 = triangles[i].p1;
+		int end2 = triangles[i].p2;
+		int end3 = triangles[i].p3;
+		double x1 = nodes[end1 - 1].x;
+		double y1 = nodes[end1 - 1].y;
+		double x2 = nodes[end2 - 1].x;
+		double y2 = nodes[end2 - 1].y;
+		double x3 = nodes[end3 - 1].x;
+		double y3 = nodes[end3 - 1].y;
+
+		double x21 = x2 - x1;
+		double y21 = y2 - y1;
+		double x32 = x3 - x2;
+		double y32 = y3 - y2;
+
+		double direction = x21 * y32 - x32 * y21;
+
+		double res = 0.0;
+		if (is_spatial_temporal)
+		{
+			double delta = 0.0;
+			//由于edge1处于end1和end2之间
+			if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
+			{
+				delta += edges[triangles[i].edge1 - 1].phase_gradient;
+			}
+			else
+			{
+				delta -= edges[triangles[i].edge1 - 1].phase_gradient;
+			}
+			//由于edge1处于end2和end3之间
+			if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
+			{
+				delta += edges[triangles[i].edge2 - 1].phase_gradient;
+			}
+			else
+			{
+				delta -= edges[triangles[i].edge2 - 1].phase_gradient;
+			}
+			//edge3处于end1和end3之间
+			if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
+			{
+				delta += edges[triangles[i].edge3 - 1].phase_gradient;
+			}
+			else
+			{
+				delta -= edges[triangles[i].edge3 - 1].phase_gradient;
+			}
+
+			res = round(delta / 2.0 / PI);
+		}
+		else
+		{
+			res += atan2(sin(nodes[end2 - 1].phase - nodes[end1 - 1].phase), cos(nodes[end2 - 1].phase - nodes[end1 - 1].phase));
+			res += atan2(sin(nodes[end3 - 1].phase - nodes[end2 - 1].phase), cos(nodes[end3 - 1].phase - nodes[end2 - 1].phase));
+			res += atan2(sin(nodes[end1 - 1].phase - nodes[end3 - 1].phase), cos(nodes[end1 - 1].phase - nodes[end3 - 1].phase));
+			res = res / 2.0 / PI;
+		}
+
+		if (direction < 0.0)//在目标三角形中逆残差方向(残差积分方向定义为逆时针方向)
+		{
+			triangles[i].residue = -res;
+		}
+		else
+		{
+			triangles[i].residue = res;
+		}
+	}
 	return 0;
 }
 
@@ -527,244 +516,33 @@ int SBAS::compute_spatialTemporal_residue(
 		fprintf(stderr, "compute_spatialTemporal_residue(): input check failed!\n");
 		return -1;
 	}
-	int num_triangle = static_cast<int>(triangles.size());
-	int num_nodes = static_cast<int>(nodes.size());
-	// removed unused: tmp (copy-paste remnant from readDIMACS)
-	int end1, end2, end3;
-	// removed unused: residue (replaced by res below)
-	double x21, y21, x32, y32, direction, delta, x1, x2, x3, y1, y2, y3;
-	delta = 0.0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		end1 = triangles[i].p1;
-		end2 = triangles[i].p2;
-		end3 = triangles[i].p3;
-		x1 = nodes[end1 - 1].x;
-		y1 = nodes[end1 - 1].y;
-		x2 = nodes[end2 - 1].x;
-		y2 = nodes[end2 - 1].y;
-		x3 = nodes[end3 - 1].x;
-		y3 = nodes[end3 - 1].y;
-
-		x21 = x2 - x1;
-		y21 = y2 - y1;
-		x32 = x3 - x2;
-		y32 = y3 - y2;
-
-		direction = x21 * y32 - x32 * y21;
-
-		//由于edge1处于end1和end2之间
-		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		{
-			delta += edges[triangles[i].edge1 - 1].phase_gradient;
-		}
-		else
-		{
-			delta -= edges[triangles[i].edge1 - 1].phase_gradient;
-		}
-		//由于edge1处于end2和end2之间
-		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		{
-			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		}
-		else
-		{
-			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		}
-		//edge3处于end1和end3之间
-		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		{
-			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		}
-		else
-		{
-			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		}
-
-		//if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end2) ||
-		//	(edges[triangles[i].edge1 - 1].end1 == end2 && edges[triangles[i].edge1 - 1].end2 == end1)
-		//	)
-		//{
-		//	if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		//	{
-		//		delta += edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//	else
-		//	{
-		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//    //edge2处于end1和end3之间
-		//	if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
-		//	{
-		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end2和end3之间
-		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//	else//edge2处于end2和end3之间
-		//	{
-		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end1和end3之间
-		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//}
-		////edge1处于end1和end3之间
-		//else if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end3) ||
-		//	(edges[triangles[i].edge1 - 1].end1 == end3 && edges[triangles[i].edge1 - 1].end2 == end1)
-		//	)
-		//{
-		//	if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		//	{
-		//		delta += edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//	else
-		//	{
-		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//	//edge2处于end1和end2之间
-		//	if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
-		//	{
-		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end2和end3之间
-		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//	//edge2处于end2和end3之间
-		//	else
-		//	{
-		//		if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end1和end2之间
-		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//}
-		////edge1处于end2和end3之间
-		//else
-		//{
-		//	if (nodes[end3 - 1].B_temporal > nodes[end2 - 1].B_temporal)
-		//	{
-		//		delta += edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//	else
-		//	{
-		//		delta -= edges[triangles[i].edge1 - 1].phase_gradient;
-		//	}
-		//	//edge2处于end1和end3之间
-		//	if (edges[triangles[i].edge2 - 1].end1 == end3 || edges[triangles[i].edge2 - 1].end2 == end3)
-		//	{
-		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end1和end2之间
-		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//	//edge2处于end1和end2之间
-		//	else
-		//	{
-		//		if (nodes[end2 - 1].B_temporal > nodes[end1 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge2 - 1].phase_gradient;
-		//		}
-		//		//edge3处于end1和end3之间
-		//		if (nodes[end1 - 1].B_temporal > nodes[end3 - 1].B_temporal)
-		//		{
-		//			delta += edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//		else
-		//		{
-		//			delta -= edges[triangles[i].edge3 - 1].phase_gradient;
-		//		}
-		//	}
-		//}
-		
-
-		double res = round(delta / 2.0 / PI);
-		if (direction < 0.0)//在目标三角形中逆残差方向(残差积分方向定义为逆时针方向)
-		{
-			triangles[i].residue = -res;
-		}
-		else
-		{
-			triangles[i].residue = res;
-		}
-	}
-	return 0;
+	return compute_residue_common(nodes, edges, triangles, true);
 }
 
-int SBAS::writeDIMACS_temporal(
+static double get_boundary_edge_weight(const SBAS_triangle& t, const std::vector<SBAS_edge>& edges, bool is_spatial)
+{
+	if (!is_spatial) return 1.0;
+	if (edges[t.edge1 - 1].isBoundry) return edges[t.edge1 - 1].weight;
+	if (edges[t.edge2 - 1].isBoundry) return edges[t.edge2 - 1].weight;
+	return edges[t.edge3 - 1].weight;
+}
+
+static double get_neigh_edge_weight(const SBAS_triangle& t1, const SBAS_triangle& t2, const std::vector<SBAS_edge>& edges, bool is_spatial)
+{
+	if (!is_spatial) return 1.0;
+	if (t2.edge1 == t1.edge1 || t2.edge1 == t1.edge2 || t2.edge1 == t1.edge3)
+		return edges[t2.edge1 - 1].weight;
+	if (t2.edge2 == t1.edge1 || t2.edge2 == t1.edge2 || t2.edge2 == t1.edge3)
+		return edges[t2.edge2 - 1].weight;
+	return edges[t2.edge3 - 1].weight;
+}
+
+static int writeDIMACS_common(
 	const char* DIMACS_file,
-	vector<SBAS_node>& nodes,
-	vector<SBAS_edge>& edges,
-	vector<SBAS_triangle>& triangle
+	std::vector<SBAS_node>& nodes,
+	std::vector<SBAS_edge>& edges,
+	std::vector<SBAS_triangle>& triangle,
+	bool is_spatial
 )
 {
 	if (DIMACS_file == NULL ||
@@ -784,10 +562,7 @@ int SBAS::writeDIMACS_temporal(
 		return -1;
 	}
 
-	// removed unused: ret (planned error handling, never used in this function)
-	int num_nodes;
 	int num_triangle = static_cast<int>(triangle.size());
-	num_nodes = static_cast<int>(nodes.size());
 	int num_arcs = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -797,10 +572,8 @@ int SBAS::writeDIMACS_temporal(
 	}
 
 	//统计正负残差点并写入节点信息
-	// removed unused: total (planned statistic, never used)
-	int positive, negative;
-	positive = 0;
-	negative = 0;
+	int positive = 0;
+	int negative = 0;
 	double thresh = 0.7;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -833,8 +606,10 @@ int SBAS::writeDIMACS_temporal(
 			boundry_tri++;
 		}
 	}
+	
+	bool treat_unbalanced = is_spatial ? true : !b_balanced;
 	int n;
-	if (!b_balanced)
+	if (treat_unbalanced)
 	{
 		n = num_triangle + 1;
 		fprintf(fp, "p min %ld %ld\n", n, num_arcs + boundry_tri * 2);
@@ -845,10 +620,6 @@ int SBAS::writeDIMACS_temporal(
 		fprintf(fp, "p min %ld %ld\n", n, num_arcs);
 	}
 	fprintf(fp, "c Node descriptor lines\n");
-	positive = 0;
-	negative = 0;
-	int count = 0;
-	// removed unused: b_positive, b_negative, is_residue (planned residue classification, never implemented)
 	double sum = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
@@ -864,24 +635,34 @@ int SBAS::writeDIMACS_temporal(
 		}
 	}
 	//写入大地节点
-	if (!b_balanced)
+	if (treat_unbalanced)
 	{
 		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
 	}
 
 	//写入流费用
 	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
-	// removed unused: rows, cols (planned grid indexing, never used in this function)
 	int lower_bound = 0;
 	int upper_bound = 5;
-	double cost_mean = 1.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
-		if (triangle[i].neigh1 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh1, lower_bound, upper_bound, cost_mean);
-		if (triangle[i].neigh2 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh2, lower_bound, upper_bound, cost_mean);
-		if (triangle[i].neigh3 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh3, lower_bound, upper_bound, cost_mean);
+		if (triangle[i].neigh1 > 0)
+		{
+			double cost_mean = get_neigh_edge_weight(triangle[i], triangle[triangle[i].neigh1 - 1], edges, is_spatial);
+			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh1, lower_bound, upper_bound, cost_mean);
+		}
+		if (triangle[i].neigh2 > 0)
+		{
+			double cost_mean = get_neigh_edge_weight(triangle[i], triangle[triangle[i].neigh2 - 1], edges, is_spatial);
+			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh2, lower_bound, upper_bound, cost_mean);
+		}
+		if (triangle[i].neigh3 > 0)
+		{
+			double cost_mean = get_neigh_edge_weight(triangle[i], triangle[triangle[i].neigh3 - 1], edges, is_spatial);
+			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh3, lower_bound, upper_bound, cost_mean);
+		}
 	}
-	if (!b_balanced)
+	if (treat_unbalanced)
 	{
 		//写入边界流费用
 		for (int i = 0; i < num_triangle; i++)
@@ -890,6 +671,7 @@ int SBAS::writeDIMACS_temporal(
 				edges[triangle[i].edge2 - 1].isBoundry ||
 				edges[triangle[i].edge3 - 1].isBoundry)
 			{
+				double cost_mean = get_boundary_edge_weight(triangle[i], edges, is_spatial);
 				fprintf(fp, "a %d %d %d %d %lf\n", i + 1, num_triangle + 1, lower_bound, upper_bound, cost_mean);
 				fprintf(fp, "a %d %d %d %d %lf\n", num_triangle + 1, i + 1, lower_bound, upper_bound, cost_mean);
 			}
@@ -898,6 +680,16 @@ int SBAS::writeDIMACS_temporal(
 	if (fp) fclose(fp);
 	fp = NULL;
 	return 0;
+}
+
+int SBAS::writeDIMACS_temporal(
+	const char* DIMACS_file,
+	vector<SBAS_node>& nodes,
+	vector<SBAS_edge>& edges,
+	vector<SBAS_triangle>& triangle
+)
+{
+	return writeDIMACS_common(DIMACS_file, nodes, edges, triangle, false);
 }
 
 int SBAS::generate_interferograms(
@@ -956,7 +748,7 @@ int SBAS::generate_interferograms(
 		if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 		ret = util.Multilook(master, slave, multilook_rg, multilook_az, phase);
 		if (return_check(ret, "Multilook()", error_head)) return -1;
-		sprintf(str, "\\%d.h5", i + 1);
+		snprintf(str, sizeof(str), "\\%d.h5", i + 1);
 		h5file = path + str;
 		ret = conversion.creat_new_h5(h5file.c_str());
 		ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
@@ -1000,218 +792,12 @@ int SBAS::writeDIMACS_spatial(
 	vector<SBAS_triangle>& triangle
 )
 {
-	if (DIMACS_file == NULL ||
-		triangle.size() < 1 ||
-		nodes.size() < 3 ||
-		edges.size() < 3
-		)
-	{
-		fprintf(stderr, "writeDIMACS(): input check failed!\n\n");
-		return -1;
-	}
-	FILE* fp = NULL;
-	fp = fopen(DIMACS_file, "wt");
-	if (fp == NULL)
-	{
-		fprintf(stderr, "writeDIMACS(): can't open %s\n", DIMACS_file);
-		return -1;
-	}
-
-	// removed unused: ret (planned error handling, never used in this function)
-	int num_nodes;
-	int num_triangle = static_cast<int>(triangle.size());
-	num_nodes = static_cast<int>(nodes.size());
-	int num_arcs = 0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		if (triangle[i].neigh1 > 0) num_arcs++;
-		if (triangle[i].neigh2 > 0) num_arcs++;
-		if (triangle[i].neigh3 > 0) num_arcs++;
-	}
-
-	//统计正负残差点并写入节点信息
-	// removed unused: total (planned statistic, never used)
-	int positive, negative;
-	positive = 0;
-	negative = 0;
-	double thresh = 0.7;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		if (triangle[i].residue > thresh)
-		{
-			positive++;
-		}
-		if (triangle[i].residue < -thresh)
-		{
-			negative++;
-		}
-	}
-	bool b_balanced = (positive == negative);
-	if (negative == 0 && positive == 0)
-	{
-		if (fp) fclose(fp);
-		fprintf(stderr, "writeDIMACS(): no residue point!\n\n");
-		return -1;
-	}
-	fprintf(fp, "c This is MCF problem file.\n");
-	fprintf(fp, "c Problem line(nodes, links)\n");
-	//统计边缘三角形个数
-	int boundry_tri = 0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		if (edges[triangle[i].edge1 - 1].isBoundry ||
-			edges[triangle[i].edge2 - 1].isBoundry ||
-			edges[triangle[i].edge3 - 1].isBoundry)
-		{
-			boundry_tri++;
-		}
-	}
-	int n;
-	if (/*!b_balanced*/true)
-	{
-		n = num_triangle + 1;
-		fprintf(fp, "p min %ld %ld\n", n, num_arcs + boundry_tri * 2);
-	}
-	//else
-	//{
-	//	n = num_triangle;
-	//	fprintf(fp, "p min %ld %ld\n", n, num_arcs);
-	//}
-	fprintf(fp, "c Node descriptor lines\n");
-	positive = 0;
-	negative = 0;
-	int count = 0;
-	// removed unused: b_positive, b_negative, is_residue (planned residue classification, never implemented)
-	double sum = 0.0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		if (triangle[i].residue > thresh)
-		{
-			fprintf(fp, "n %d %lf\n", i + 1, triangle[i].residue);
-			sum += triangle[i].residue;
-		}
-		if (triangle[i].residue < -thresh)
-		{
-			fprintf(fp, "n %d %lf\n", i + 1, triangle[i].residue);
-			sum += triangle[i].residue;
-		}
-	}
-	//写入大地节点
-	if (/*!b_balanced*/true)
-	{
-		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
-	}
-
-	//写入流费用
-	fprintf(fp, "c Arc descriptor lines(from, to, minflow, maxflow, cost)\n");
-	// removed unused: rows, cols (planned grid indexing, never used in this function)
-	int lower_bound = 0;
-	int upper_bound = 5;
-	double cost_mean = 1.0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		if (triangle[i].neigh1 > 0)
-		{
-			if (triangle[triangle[i].neigh1 - 1].edge1 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh1 - 1].edge1 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh1 - 1].edge1 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh1 - 1].edge1 - 1].weight;
-			}
-			else if (triangle[triangle[i].neigh1 - 1].edge2 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh1 - 1].edge2 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh1 - 1].edge2 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh1 - 1].edge2 - 1].weight;
-			}
-			else
-			{
-				cost_mean = edges[triangle[triangle[i].neigh1 - 1].edge3 - 1].weight;
-			}
-			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh1, lower_bound, upper_bound, cost_mean);
-		}
-		if (triangle[i].neigh2 > 0)
-		{
-			if (triangle[triangle[i].neigh2 - 1].edge1 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh2 - 1].edge1 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh2 - 1].edge1 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh2 - 1].edge1 - 1].weight;
-			}
-			else if (triangle[triangle[i].neigh2 - 1].edge2 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh2 - 1].edge2 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh2 - 1].edge2 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh2 - 1].edge2 - 1].weight;
-			}
-			else
-			{
-				cost_mean = edges[triangle[triangle[i].neigh2 - 1].edge3 - 1].weight;
-			}
-			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh2, lower_bound, upper_bound, cost_mean);
-		}
-		if (triangle[i].neigh3 > 0)
-		{
-			if (triangle[triangle[i].neigh3 - 1].edge1 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh3 - 1].edge1 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh3 - 1].edge1 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh3 - 1].edge1 - 1].weight;
-			}
-			else if (triangle[triangle[i].neigh3 - 1].edge2 == triangle[i].edge1 ||
-				triangle[triangle[i].neigh3 - 1].edge2 == triangle[i].edge2 ||
-				triangle[triangle[i].neigh3 - 1].edge2 == triangle[i].edge3
-				)
-			{
-				cost_mean = edges[triangle[triangle[i].neigh3 - 1].edge2 - 1].weight;
-			}
-			else
-			{
-				cost_mean = edges[triangle[triangle[i].neigh3 - 1].edge3 - 1].weight;
-			}
-			fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh3, lower_bound, upper_bound, cost_mean);
-		}
-		
-	}
-	if (/*!b_balanced*/true)
-	{
-		//写入边界流费用
-		for (int i = 0; i < num_triangle; i++)
-		{
-			if (edges[triangle[i].edge1 - 1].isBoundry ||
-				edges[triangle[i].edge2 - 1].isBoundry ||
-				edges[triangle[i].edge3 - 1].isBoundry)
-			{
-				if (edges[triangle[i].edge1 - 1].isBoundry)
-				{
-					cost_mean = edges[triangle[i].edge1 - 1].weight;
-				}
-				else if (edges[triangle[i].edge2 - 1].isBoundry)
-				{
-					cost_mean = edges[triangle[i].edge2 - 1].weight;
-				}
-				else
-				{
-					cost_mean = edges[triangle[i].edge3 - 1].weight;
-				}
-				fprintf(fp, "a %d %d %d %d %lf\n", i + 1, num_triangle + 1, lower_bound, upper_bound, cost_mean);
-				fprintf(fp, "a %d %d %d %d %lf\n", num_triangle + 1, i + 1, lower_bound, upper_bound, cost_mean);
-			}
-		}
-	}
-	if (fp) fclose(fp);
-	fp = NULL;
-	return 0;
+	return writeDIMACS_common(DIMACS_file, nodes, edges, triangle, true);
 }
 
 int SBAS::saveGradientStack(
 	vector<string>& phaseFiles,
-	Mat& mask, 
+	const Mat& mask, 
 	vector<SBAS_node>& nodes, 
 	vector<SBAS_edge>& edges,
 	const char* dstH5File
@@ -1612,9 +1198,8 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 	}
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_edges = static_cast<int>(edges.size());
-	int node_ix, neighbouring_edges_num, end1, end2;
+	int node_ix, end1, end2;
 	double grad;
-	int* neigh_edges = NULL;
 	queue<int> node_que;
 	node_que.push(start);
 	if (b_zero_start) nodes[start - 1].phase = 0.0;
@@ -1623,13 +1208,12 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 		node_ix = node_que.front();
 		node_que.pop();
 		nodes[node_ix - 1].b_unwrapped = true;
-		neighbouring_edges_num = nodes[node_ix - 1].num_neigh_edges;
-		neigh_edges = nodes[node_ix - 1].neigh_edges;
-		for (int i = 0; i < neighbouring_edges_num; i++)
+		const auto& neigh = nodes[node_ix - 1].neigh_edges;
+		for (size_t i = 0; i < neigh.size(); i++)
 		{
-			end1 = edges[*(neigh_edges + i) - 1].end1;
-			end2 = edges[*(neigh_edges + i) - 1].end2;
-			grad = edges[*(neigh_edges + i) - 1].phase_gradient;
+			end1 = edges[neigh[i] - 1].end1;
+			end2 = edges[neigh[i] - 1].end2;
+			grad = edges[neigh[i] - 1].phase_gradient;
 			if (end1 == node_ix)
 			{
 				if (!nodes[end2 - 1].b_unwrapped)
@@ -1667,7 +1251,7 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 	return 0;
 }
 
-int SBAS::set_weight_by_coherence(Mat& coherence, vector<SBAS_node>& nodes, vector<SBAS_edge>& edges)
+int SBAS::set_weight_by_coherence(const Mat& coherence, vector<SBAS_node>& nodes, vector<SBAS_edge>& edges)
 {
 	if (coherence.type() != CV_64F ||
 		nodes.size() < 3 ||
@@ -1742,44 +1326,24 @@ int SBAS::compute_high_coherence_residue(
 		fprintf(stderr, "compute_high_coherence_residue(): input check failed!\n");
 		return -1;
 	}
-	int num_triangle = static_cast<int>(triangles.size());
-	int num_nodes = static_cast<int>(nodes.size());
-	// removed unused: tmp (copy-paste remnant from readDIMACS)
-	int end1, end2, end3;
-	double x21, y21, x32, y32, direction, delta, residue, x1, x2, x3, y1, y2, y3;
-	delta = residue = 0.0;
-	for (int i = 0; i < num_triangle; i++)
-	{
-		end1 = triangles[i].p1;
-		end2 = triangles[i].p2;
-		end3 = triangles[i].p3;
-		x1 = nodes[end1 - 1].x;
-		y1 = nodes[end1 - 1].y;
-		x2 = nodes[end2 - 1].x;
-		y2 = nodes[end2 - 1].y;
-		x3 = nodes[end3 - 1].x;
-		y3 = nodes[end3 - 1].y;
-		x21 = x2 - x1;
-		y21 = y2 - y1;
-		x32 = x3 - x2;
-		y32 = y3 - y2;
-		direction = x21 * y32 - x32 * y21;
-		residue = 0.0;
-		residue += atan2(sin(nodes[end2 - 1].phase - nodes[end1 - 1].phase), cos(nodes[end2 - 1].phase - nodes[end1 - 1].phase));
-		residue += atan2(sin(nodes[end3 - 1].phase - nodes[end2 - 1].phase), cos(nodes[end3 - 1].phase - nodes[end2 - 1].phase));
-		residue += atan2(sin(nodes[end1 - 1].phase - nodes[end3 - 1].phase), cos(nodes[end1 - 1].phase - nodes[end3 - 1].phase));
-		residue = residue / 2.0 / PI;
+	return compute_residue_common(nodes, edges, triangles, false);
+}
 
-		if (direction < 0.0)//在目标三角形中逆残差方向(残差方向定义为逆时针方向)
-		{
-			triangles[i].residue = -residue;
-		}
-		else
-		{
-			triangles[i].residue = residue;
-		}
-	}
-	return 0;
+static int find_connecting_edge(const SBAS_triangle& t, int u, int v, const std::vector<SBAS_edge>& edges)
+{
+	int e1 = t.edge1;
+	if ((edges[e1 - 1].end1 == u && edges[e1 - 1].end2 == v) || (edges[e1 - 1].end1 == v && edges[e1 - 1].end2 == u))
+		return e1;
+	int e2 = t.edge2;
+	if ((edges[e2 - 1].end1 == u && edges[e2 - 1].end2 == v) || (edges[e2 - 1].end1 == v && edges[e2 - 1].end2 == u))
+		return e2;
+	return t.edge3;
+}
+
+static double get_step_gradient(int u, int v, const SBAS_triangle& t, const std::vector<SBAS_edge>& edges)
+{
+	int e = find_connecting_edge(t, u, v, edges);
+	return (v > u ? 1.0 : -1.0) * edges[e - 1].phase_gradient;
 }
 
 int SBAS::compute_high_coherence_residue_by_gradient(
@@ -1799,8 +1363,8 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 	int num_nodes = static_cast<int>(nodes.size());
 	// removed unused: tmp (copy-paste remnant from readDIMACS)
 	int end1, end2, end3;
-	double x21, y21, x32, y32, direction, delta, residue, x1, x2, x3, y1, y2, y3;
-	delta = residue = 0.0;
+	double x21, y21, x32, y32, direction, residue, x1, x2, x3, y1, y2, y3;
+	residue = 0.0;
 	for (int i = 0; i < num_triangle; i++)
 	{
 		end1 = triangles[i].p1;
@@ -1818,178 +1382,9 @@ int SBAS::compute_high_coherence_residue_by_gradient(
 		y32 = y3 - y2;
 		direction = x21 * y32 - x32 * y21;
 		residue = 0.0;
-		//edge1处于end1和end2之间
-		if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end2) ||
-			(edges[triangles[i].edge1 - 1].end1 == end2 && edges[triangles[i].edge1 - 1].end2 == end1)
-			)
-		{
-			if (end1 > end2)
-			{
-				residue -= edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-			else
-			{
-				residue += edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-
-			//edge2处于end1和end3之间
-			if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
-			{
-				if (end1 > end3)
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-
-
-				//edge3处于end2和end3之间
-				if (end2 > end3)
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-			else//edge2处于end2和end3之间
-			{
-				if (end2 > end3)
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				//edge3处于end1和end3之间
-				if (end1 > end3)
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-		}
-		//edge1处于end1和end3之间
-		else if ((edges[triangles[i].edge1 - 1].end1 == end1 && edges[triangles[i].edge1 - 1].end2 == end3) ||
-			(edges[triangles[i].edge1 - 1].end1 == end3 && edges[triangles[i].edge1 - 1].end2 == end1)
-			)
-		{
-			if (end1 > end3)
-			{
-				residue += edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-			else
-			{
-				residue -= edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-			//edge2处于end1和end2之间
-			if (edges[triangles[i].edge2 - 1].end1 == end1 || edges[triangles[i].edge2 - 1].end2 == end1)
-			{
-				if (end1 > end2)
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				//edge3处于end2和end3之间
-				if (end2 > end3)
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-
-			//edge2处于end2和end3之间
-			else
-			{
-				if (end2 > end3)
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-
-				//edge3处于end1和end2之间
-				if (end1 > end3)
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-		}
-		//edge1处于end2和end3之间
-		else
-		{
-			if (end2 > end3)
-			{
-				residue -= edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-			else
-			{
-				residue += edges[triangles[i].edge1 - 1].phase_gradient;
-			}
-			//edge2处于end1和end3之间
-			if (edges[triangles[i].edge2 - 1].end1 == end3 || edges[triangles[i].edge2 - 1].end2 == end3)
-			{
-				if (end1 > end3)
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-
-				//edge3处于end1和end2之间
-				if (end1 > end2)
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-			//edge2处于end1和end2之间
-			else
-			{
-				if (end1 > end2)
-				{
-					residue -= edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-				else
-				{
-					residue += edges[triangles[i].edge2 - 1].phase_gradient;
-				}
-
-				//edge3处于end1和end3之间
-				if (end1 > end3)
-				{
-					residue += edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-				else
-				{
-					residue -= edges[triangles[i].edge3 - 1].phase_gradient;
-				}
-			}
-		}
+		residue += get_step_gradient(end1, end2, triangles[i], edges);
+		residue += get_step_gradient(end2, end3, triangles[i], edges);
+		residue += get_step_gradient(end3, end1, triangles[i], edges);
 		residue = round(residue / 2.0 / PI);
 
 		if (direction < 0.0)//在目标三角形中逆残差方向(残差方向定义为逆时针方向)
@@ -2021,8 +1416,8 @@ int SBAS::residue_num(vector<SBAS_triangle>& triangles, int* num)
 }
 
 int SBAS::get_formation_matrix(
-	Mat& spatial,
-	Mat& temporal, 
+	const Mat& spatial,
+	const Mat& temporal, 
 	double spatial_thresh,
 	double temporal_thresh_low,
 	double temporal_thresh,
@@ -2069,9 +1464,9 @@ int SBAS::get_formation_matrix(
 
 int SBAS::generate_interferograms(
 	vector<string>& SLCH5Files, 
-	Mat& formation_matrix, 
-	Mat& spatial_baseline,
-	Mat& temporal_baseline,
+	const Mat& formation_matrix, 
+	const Mat& spatial_baseline,
+	const Mat& temporal_baseline,
 	int multilook_az,
 	int multilook_rg,
 	const char* ifgSavePath,
@@ -2131,7 +1526,7 @@ int SBAS::generate_interferograms(
 				//计算相关系数
 				ret = util.phase_coherence(phase, coherence);
 				if (return_check(ret, "phase_coherence()", error_head)) return -1;
-				sprintf(str, "\\%d_%d.h5", i + 1, j + 1);
+				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
 				ret = conversion.creat_new_h5(h5file.c_str());
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
@@ -2177,7 +1572,7 @@ int SBAS::generate_interferograms(
 	return 0;
 }
 
-int SBAS::compute_temporal_coherence(Mat& estimated_phase_series, Mat& phase_series, double* temporal_coherence)
+int SBAS::compute_temporal_coherence(const Mat& estimated_phase_series, const Mat& phase_series, double* temporal_coherence)
 {
 	if (estimated_phase_series.size() != phase_series.size() ||
 		estimated_phase_series.cols != 1 ||
@@ -2203,9 +1598,9 @@ int SBAS::compute_temporal_coherence(Mat& estimated_phase_series, Mat& phase_ser
 int SBAS::adaptive_multilooking(
 	vector<string>& coregis_slc_files,
 	const char* ifgSavePath, 
-	Mat& formation_matrix, 
-	Mat& spatial_baseline, 
-	Mat& temporal_baseline,
+	const Mat& formation_matrix, 
+	const Mat& spatial_baseline, 
+	const Mat& temporal_baseline,
 	int blocksize_row, 
 	int blocksize_col,
 	Mat& out_mask,
@@ -2272,7 +1667,7 @@ int SBAS::adaptive_multilooking(
 				ret = conversion.read_int_from_h5(coregis_slc_files[master_ix - 1].c_str(), "offset_col", &offset_col);
 				if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
-				sprintf(str, "\\%d_%d.h5", i + 1, j + 1);
+				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
 				ret = conversion.creat_new_h5(h5file.c_str());
 				h5file_list.push_back(h5file);
@@ -2465,7 +1860,7 @@ int SBAS::adaptive_multilooking(
 	return 0;
 }
 
-int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, Mat& mask, Mat& coherence, double coh_thresh)
+int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, const Mat& coherence, double coh_thresh)
 {
 	if (unwrapped_phase.size() != mask.size() ||
 		unwrapped_phase.size() != coherence.size() ||
@@ -2527,16 +1922,15 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, Mat& mask, Mat& cohe
 	//	}
 	//}
 	//double phase_ref = unwrapped_phase.at<double>(ref_i, ref_j);
+	double coef_intercept = x.at<double>(0, 0);
+	double coef_row = x.at<double>(1, 0);
+	double coef_col = x.at<double>(2, 0);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
 		for (int j = 0; j < cols; j++)
 		{
-			double a, b, c;
-			a = x.at<double>(0, 0);
-			b = x.at<double>(1, 0);
-			c = x.at<double>(2, 0);
-			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) - (a + b * double(i) + c * double(j));
+			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) - (coef_intercept + coef_row * double(i) + coef_col * double(j));
 		}
 	}
 	//unwrapped_phase = unwrapped_phase - (unwrapped_phase.at<double>(ref_i, ref_j) - phase_ref);
@@ -2544,7 +1938,7 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, Mat& mask, Mat& cohe
 	return 0;
 }
 
-int SBAS::write_high_coherence_node(Mat& mask, const char* filename)
+int SBAS::write_high_coherence_node(const Mat& mask, const char* filename)
 {
 	if (filename == NULL ||
 		mask.rows < 2 ||
@@ -2605,7 +1999,7 @@ int SBAS::write_high_coherence_node(Mat& mask, const char* filename)
 }
 
 int SBAS::set_high_coherence_node_coordinate(
-	Mat& mask,
+	const Mat& mask,
 	vector<SBAS_node>& nodes
 )
 {
@@ -2643,10 +2037,10 @@ int SBAS::set_high_coherence_node_coordinate(
 }
 
 int SBAS::set_high_coherence_node_phase(
-	Mat& mask, 
+	const Mat& mask, 
 	vector<SBAS_node>& nodes, 
 	vector<SBAS_edge>& edges,
-	Mat& phase
+	const Mat& phase
 )
 {
 	if (mask.empty() ||
