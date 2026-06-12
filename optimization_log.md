@@ -8,6 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-12 | AI | Unwrap | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。 |
 | `工作区现场修改` | 2026-06-11 | AI | Deflat | 1. 修复 Orbit_Polyfit 中奇异矩阵检测条件永远为假的 Bug。<br>2. 修复 get_satellite_aztime_NEWTON 无法检测 Newton 迭代发散的 Bug。<br>3. 重构 getSRTMFileName 坐标文件名格式化逻辑，使用双重循环与 %02d 消除约 190 行冗余的 if-else 代码。<br>4. 提取 getTifPath 辅助函数，消除 getSRTMDEM 中 15 处重复的 tif 文件路径拼接代码。<br>5. 提取 findZeroDopplerTime 辅助函数，消除 7 处 zero-Doppler 查找的冗余代码。<br>6. 将 return_check 与 parallel_check 提取为 Utils.h 中的全局 inline 函数，并清理 Deflat 和 Utils 中的局部冗余定义及死代码 parallel_flag_change。<br>7. 提取 fillInvalidGaps 模板函数，消除 5 处 DEM 和经纬度投影图空白值搜索填充的冗余代码。<br>8. 消除 Deflat.cpp 中的魔数（Pi、光速），定义牛顿收敛常量，纠正 3 处函数报错名称及下载拼写错误，并移除 Deflat.h 中的冗余头文件包含保护。 |
 | `工作区现场修改` | 2026-06-11 | AI | Registration | 1. 提取 padBorder 辅助函数去重 4 处立方插值边界扩充逻辑。<br>2. 优化双线性重采样中的 OMP 循环，提前提取多项式系数，使用浮点乘加代替循环内 cv::Mat 创建与矩阵乘法。<br>3. 修复 WeightCalculation 中的自赋值死代码，采用 fabs 绝对值函数简化逻辑。<br>4. 纠正 13 处内部报错信息拼写错误与不匹配的函数名（如 coregistration_pixel 纠正为 coregistration_subpixel_sinc）。<br>5. 提取 bilinear_interp2d 统一插值函数，消除两处重采样中约 120 行冗余的类型分支双线性插值实现。<br>6. 清理 Registration.h 中冗余的传统防重包含宏保护，规范 include 头文件时的空格排版。 |
 | `工作区现场修改` | 2026-06-11 | AI | FormatConversion | 二次审计并补全 FormatConversion 的 6 项优化修复（包括 HDF5 内存泄露、多项式拟合去重、GDAL 线程安全、无操作语句及注释风格规范化等）。 |
@@ -168,6 +169,32 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **DEM 投影图及经纬度空白值搜索填充逻辑去重与重构**：
   - **问题**：在 `Deflat.cpp` 的多个地理映射函数（`demMapping` 的两个重载、`demMapping_float` 以及 `paraMapping_float`）中，存在 5 处完全重复的 2D 邻域搜寻与线性插值填充算法，用于填补离散投影后产生的数据空隙，造成了 500 行左右的代码极度冗余。
   - **解决方法**：在匿名命名空间中提取了通用类型和谓词的 `fillInvalidGaps` 模板函数。它支持对 `short`、`float` 和 `double` 等各类矩阵类型使用自定义的 Lambda 表达式来判定“无效像素”（如判定 `val == invalid` 或 `val <= -998.0`）。通过在 5 处对应位置直接调用该模板函数，使重复的向外辐射搜寻填充代码一并得以清除，极大地提高了代码库的内聚性、可维护性与整洁度。
+
+### 10. Unwrap 优化与重构 (Unwrap)
+- **`slave.convertTo` Bug 修复**：
+  - **问题**：在 `Unwrap::snaphu` 中，代码校验辅星 `slave` 的矩阵类型是否为 `CV_64F`，若不是，却误用了 `master.convertTo(slave, CV_64F);` 进行类型转换。这会导致主星（`master`）数据被转换并完全覆盖写入辅星 `slave` 矩阵，从而使后续对辅星幅度相关的处理读取到错误的主星数据。
+  - **解决方法**：将格式转换语句修正为 `slave.convertTo(slave, CV_64F);`。
+- **`CHECK_RETURN` 宏定义严重缺陷修复**：
+  - **问题**：在 `Unwrap.cpp` 顶部定义的 `CHECK_RETURN` 宏在 `if` 后缺少花括号，导致 `fprintf` 和 `return -1;` 语句无条件执行。一旦调用此宏，即便没有发生错误，也会无条件中止执行并返回 -1。
+  - **解决方法**：由于全局校验已统一为 `Utils.h` 中的 `return_check` 内联函数，且 `Unwrap.cpp` 中所有校验位置均已使用 `return_check` 替代该宏，因此直接将该死代码宏彻底删除，杜绝隐患。
+- **`quality.at<int>` 类型不匹配 Bug 修复**：
+  - **问题**：在 `Unwrap::quailtyGuidedFloodfill` 和 `Unwrap::qualityGuided` 函数中，对入参 `quality` 的类型进行了必须为 `CV_64F` 的强制校验。然而在寻优循环中，却使用了 `quality.at<int>(i, j)` 进行数值访问。由于 OpenCV 的 `at<T>` 是无转换强转，会导致将 8 字节的 `double` 错误地读取为 4 字节的整型，获取到垃圾数值，导致解缠种子点定位错误。
+  - **解决方法**：将这两处访问全部修正为 `quality.at<double>(i, j)`。
+- **外部进程创建重复代码与 szCommandLine 溢出/泄漏修复**：
+  - **问题**：在 `Unwrap.cpp` 中共有 5 处代码调用 `CreateProcess` 或 `CreateProcessA` 来执行 `mcf.exe` 或 `snaphu.exe`。每次调用都包含了大量的 Windows API 模板代码，且存在两个严重缺陷：一是用于存放命令行的 `szCommandLine` 缓冲区大小硬编码为 256/1024 字节，在长路径下可能发生缓冲区溢出；二是创建的 Job Object 句柄 `hd` 从未被 `CloseHandle` 关闭，造成句柄泄漏。
+  - **解决方法**：在匿名命名空间中定义了统一的 `runExternalProcess` 辅助函数，使用 `std::wstring` 动态处理命令行以消除溢出隐患，在进程等待结束时增加了 `CloseHandle(hd)` 从而解决了句柄泄漏问题。最后将 5 处冗长重复的代码全部简化为对该函数的调用。
+- **`parallel_flag_change` 死代码清理**：
+  - **问题**：在 `Unwrap.cpp` 中定义了 `parallel_flag_change` inline 函数，该函数试图修改按值传递的 `volatile bool parallel_flag`，存在逻辑错误，且在全模块中均未被实际调用，属于死代码。
+  - **解决方法**：彻底删除该函数定义，多线程错误控制已交由 `Utils.h` 中定义的全局 `parallel_check` 实现。
+- **硬编码调试路径注释屏蔽**：
+  - **问题**：在 `Unwrap.cpp` 中存在 5 处硬编码 `E:\` 盘的绝对路径用于输出中间矩阵（使用 `cvmat2bin` 导出）。这不仅增加了不必要的磁盘写开销，而且在不具备该具体路径的用户机器上运行时，会引发文件打开失败的错误。
+  - **解决方法**：这 5 处导出文件均没有在后续业务代码中被读取，仅供开发测试调试使用。已全部将其注释屏蔽，并添加了相应的注释说明，以便未来开发者本地调试时手工解开。
+- **`min`/`max` 局部变量重命名防止遮蔽**：
+  - **问题**：在 `Unwrap::MCF` (两处重载)、`Unwrap::QualityMap_MCF` 以及 `Unwrap::_QualityGuided_MCF_1` 中，声明了局部变量 `min`/`max` 用于保存相位数值极值。这会遮蔽 `<algorithm>` 头文件中的 `std::min`/`std::max` 模板函数，并在 MSVC 编译环境下容易和预处理宏发生冲突，具有编译隐患。
+  - **解决方法**：统一将上述 4 处函数的局部变量重命名为 `min_val` 和 `max_val`，消除潜在的标识符遮蔽冲突。
+- **`MCF_second` 中 `pass` 参数无实际作用 Bug 修复**：
+  - **问题**：在 `Unwrap::MCF_second` 中，无论传入的 `pass` 是 `true` 还是 `false`，阈值 `tt` 均被硬编码赋值为 `100000.0`，导致“绕过枝切线”的功能失效。
+  - **解决方法**：将赋值逻辑修正为 `if (pass) tt = 0.5; else tt = 100000.0;`，使得 `pass` 参数的行为与其他 MCF 函数相一致。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

@@ -315,15 +315,15 @@
 
 ### P0 — 必须修复
 
-- [ ] **`slave.convertTo` bug** — `Unwrap.cpp:2590`
+- [x] **`slave.convertTo` bug** — `Unwrap.cpp:2590`
   - `if (slave.type() != CV_64F) master.convertTo(slave, CV_64F);`
   - 检查的是 slave 类型，转换的却是 master，导致 slave 数据被 master 覆盖
   - 应改为 `slave.convertTo(slave, CV_64F);`
-- [ ] **`CHECK_RETURN` 宏有严重缺陷** — `Unwrap.cpp:10-16`
+- [x] **`CHECK_RETURN` 宏有严重缺陷** — `Unwrap.cpp:10-16`
   - 宏中 `if` 只控制 `strncpy` 一行，`fprintf` 和 `return -1` 无条件执行
   - 调用时函数会无条件返回 -1
   - 应立即删除（当前未被使用）
-- [ ] **`quality.at<int>` 类型不匹配** — `Unwrap.cpp:1067,2927`
+- [x] **`quality.at<int>` 类型不匹配** — `Unwrap.cpp:1067,2927`
   - `quality` 为 CV_64F 类型但用 `at<int>` 访问，会读取错误值
   - 应改为 `quality.at<double>(i, j)`
 
@@ -333,19 +333,19 @@
   - 建议按算法类型拆分：`MCF_Unwrap.cpp`、`QualityGuided_Unwrap.cpp`、`Snaphu_Unwrap.cpp`、`SPD_Unwrap.cpp`
 - [ ] **约 670 行 `#if 0` 死代码** — `Unwrap.cpp:386-1057`
   - 策略 1-5 全部被禁用但保留，应完全删除（Git 保留历史）
-- [ ] **外部进程创建代码重复 6 次** — `Unwrap.cpp:146-198,265-318,1757-1810,2692-2744,2829-2885`
+- [x] **外部进程创建代码重复 6 次** — `Unwrap.cpp:146-198,265-318,1757-1810,2692-2744,2829-2885`
   - 每处约 40-50 行 `CreateProcess`+Job Object+`WaitForSingleObject`+句柄关闭
   - 应提取为 `runExternalProcess()` 辅助函数
 - [ ] **MCF 系列函数 BFS 解缠核心逻辑重复 4 次** — `Unwrap.cpp:1255,1417,1581,1813`
   - BFS 遍历、邻居查找、相位梯度计算、解缠赋值代码几乎完全相同
   - 应提取核心 BFS 解缠循环为私有辅助方法
-- [ ] **硬编码调试路径** — `Unwrap.cpp:264,324-325,2297-2299`
+- [x] **硬编码调试路径** — `Unwrap.cpp:264,324-325,2297-2299`
   - `E:\zgb1\functions\mask.bin`、`E:\working_dir\projects\software\InSAR\bin\...`
   - 应立即删除
-- [ ] **`szCommandLine` 缓冲区溢出风险** — `Unwrap.cpp:146,1757,2692`
+- [x] **`szCommandLine` 缓冲区溢出风险** — `Unwrap.cpp:146,1757,2692`
   - `new TCHAR[256]`，路径较长时 `wcscpy`/`wcscat` 会溢出
   - 建议使用 `std::wstring` 动态构建命令行
-- [ ] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Unwrap.cpp:27-64`
+- [x] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Unwrap.cpp:27-64`
 
 ### P2 — 建议
 
@@ -354,9 +354,9 @@
   - 建议使用不同函数名：`MCF_regular`、`MCF_irregular`
 - [ ] **`tri_edge*` 裸指针配合 `int num_edges`** — `Unwrap.h:73`
   - 应改为 `vector<tri_edge>&`（第三个重载已迁移）
-- [ ] **`MCF_second` 中 `pass` 参数无实际作用** — `Unwrap.cpp:1599-1603`
+- [x] **`MCF_second` 中 `pass` 参数无实际作用** — `Unwrap.cpp:1599-1603`
   - 无论 `pass` 为何值，`tt` 都是 100000.0
-- [ ] **变量名遮蔽 `std::min`/`std::max`** — `Unwrap.cpp:1289-1290,1455-1456`
+- [x] **变量名遮蔽 `std::min`/`std::max`** — `Unwrap.cpp:1289-1290,1455-1456`
   - 使用 `min`/`max` 作为变量名
 - [ ] **未解缠像素填充值可能不合理** — `Unwrap.cpp:1402-1412`
   - `min - 0.1*(max - min)` 可能在后续处理中引入伪影，建议使用 NaN
@@ -369,7 +369,7 @@
   - 可使用方向偏移数组 `dx[]/dy[]` 简化为循环
 - [ ] **`globalparam.h` 使用相对路径不一致** — `Unwrap.h:7`
   - 其他头文件使用 `..\include\` 路径
-- [ ] **注释与代码不一致** — `Unwrap.cpp:1599`
+- [x] **注释与代码不一致** — `Unwrap.cpp:1599`
   - 注释说 `pass` 用于"绕过枝切线"，但实际行为相同
 
 ---

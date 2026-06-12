@@ -7,13 +7,7 @@
 #include<tchar.h>
 #include <atlconv.h>
 #include<queue>
-#define CHECK_RETURN(detail_info) \
-{ \
-	if (ret < 0) \
-	   strncpy( &message[40], detail_info, 150); \
-	   fprintf(stderr, "%s\n\n", message); \
-	   return -1; \
-}
+
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -25,19 +19,71 @@
 #endif // _DEBUG
 using namespace cv;
 
+#include <vector>
+#include <ctime>
+#include <string>
 
-inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
-{
-	if (ret < 0)
+namespace {
+	bool runExternalProcess(const std::wstring& cmdLine, const std::string& jobPrefix, const std::string& errorMsgPrefix)
 	{
-		parallel_flag = false;
+		STARTUPINFO si;
+		PROCESS_INFORMATION pi;
+		ZeroMemory(&si, sizeof(si));
+		si.cb = sizeof(si);
+		ZeroMemory(&pi, sizeof(pi));
+		si.dwFlags = STARTF_USESHOWWINDOW;
+		si.wShowWindow = FALSE;
+
+		std::vector<wchar_t> cmdLineCopy(cmdLine.begin(), cmdLine.end());
+		cmdLineCopy.push_back(L'\0');
+
+		BOOL bRet = ::CreateProcess(
+			NULL,
+			cmdLineCopy.data(),
+			NULL,
+			NULL,
+			FALSE,
+			CREATE_NEW_CONSOLE,
+			NULL,
+			NULL,
+			&si,
+			&pi);
+
+		if (!bRet)
+		{
+			fprintf(stderr, "%s: create process failed!\n\n", errorMsgPrefix.c_str());
+			return false;
+		}
+
+		char job_name[512];
+		sprintf_s(job_name, "%s_%lld", jobPrefix.c_str(), (long long)std::time(0));
+		HANDLE hd = CreateJobObjectA(NULL, job_name);
+		if (hd)
+		{
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
+			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
+			if (retval && pi.hProcess)
+			{
+				AssignProcessToJobObject(hd, pi.hProcess);
+			}
+		}
+
+		WaitForSingleObject(pi.hProcess, INFINITE);
+
+		::CloseHandle(pi.hThread);
+		::CloseHandle(pi.hProcess);
+		if (hd)
+		{
+			::CloseHandle(hd);
+		}
 		return true;
 	}
-	else
-	{
-		return false;
-	}
 }
+
+
+
+
 Unwrap::Unwrap()
 {
 	memset(this->error_head, 0, 256);
@@ -119,57 +165,9 @@ int Unwrap::MCF(
 	ret = util.write_DIMACS(MCF_problem_file, residue, coherence, 0.5);
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	LPWSTR szCommandLine = new TCHAR[256];
-	wcscpy(szCommandLine, A2W(MCF_EXE_PATH));
-	wcscat(szCommandLine, L"\\mcf.exe ");
-	wcscat(szCommandLine, A2W(MCF_problem_file));
-	STARTUPINFO si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
-	si.dwFlags = STARTF_USESHOWWINDOW;  
-	si.wShowWindow = FALSE;          
-	BOOL bRet = ::CreateProcess(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
+	if (!runExternalProcess(cmdLine, "MCF", "MCF(): create mcf.exe process failed!"))
 	{
-		char mcf_job_name[512]; mcf_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(mcf_job_name, "MCF_%lld", tt);
-		string mcf_job_name_string(mcf_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, mcf_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-	}
-	else
-	{
-		fprintf(stderr, "MCF(): create mcf.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
 	Mat k1, k2;
@@ -237,59 +235,12 @@ int Unwrap::MCF_improved(
 	ret = util.write_DIMACS(MCF_problem_file, residue, mask, cost);
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	Mat m; mask.convertTo(m, CV_64F);
-	util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
+	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
+	// util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	LPWSTR szCommandLine = new TCHAR[256];
-	wcscpy(szCommandLine, A2W(MCF_exe_path));
-	wcscat(szCommandLine, L"\\mcf.exe ");
-	wcscat(szCommandLine, A2W(MCF_problem_file));
-	STARTUPINFO si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
-	si.dwFlags = STARTF_USESHOWWINDOW;
-	si.wShowWindow = FALSE;
-	BOOL bRet = ::CreateProcess(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	std::wstring cmdLine = A2W(MCF_exe_path) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
+	if (!runExternalProcess(cmdLine, "MCF", "MCF_improved(): create mcf.exe process failed!"))
 	{
-		char mcf_job_name[512]; mcf_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(mcf_job_name, "MCF_%lld", tt);
-		string mcf_job_name_string(mcf_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, mcf_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-	}
-	else
-	{
-		fprintf(stderr, "MCF_improved(): create mcf.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
 	Mat k1, k2;
@@ -297,8 +248,9 @@ int Unwrap::MCF_improved(
 	solution.append(".sol");
 	ret = util.read_DIMACS(solution.c_str(), k1, k2, wrapped_phase.rows, wrapped_phase.cols);
 	if (return_check(ret, "read_DIMACS(*, *, *)", error_head)) return -1;
-	util.cvmat2bin("E:\\zgb1\\functions\\k1.bin", k1);
-	util.cvmat2bin("E:\\zgb1\\functions\\k2.bin", k2);
+	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
+	// util.cvmat2bin("E:\\zgb1\\functions\\k1.bin", k1);
+	// util.cvmat2bin("E:\\zgb1\\functions\\k2.bin", k2);
 	Mat quality;
 	ret = util.phase_derivatives_variance(wrapped_phase, quality);
 	if (return_check(ret, "phase_derivatives_variance()", error_head)) return -1;
@@ -1040,9 +992,9 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	{
 		for (int j = 0; j < nc; j++)
 		{
-			if (quality.at<int>(i, j) < max_quailty)
+			if (quality.at<double>(i, j) < max_quailty)
 			{
-				i_start = i; j_start = j; max_quailty = quality.at<int>(i, j);
+				i_start = i; j_start = j; max_quailty = quality.at<double>(i, j);
 			}
 		}
 	}
@@ -1261,9 +1213,9 @@ int Unwrap::MCF(
 	wrapped_phase.copyTo(unwrapped_phase);
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
-	double distance, grad, phi1, phi2, gain, tt, min, max;
-	min = 1000000000.0;
-	max = -1000000000.0;
+	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
+	min_val = 1000000000.0;
+	max_val = -1000000000.0;
 	if (pass) tt = 0.5;
 	else
 	{
@@ -1304,8 +1256,8 @@ int Unwrap::MCF(
 			grad = atan2(sin(grad), cos(grad));
 			gain = start > end2 ? 2 * PI * (edges + *(ptr_neigh + i) - 1)->gain : -2 * PI * (edges + *(ptr_neigh + i) - 1)->gain;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
-			min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-			max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_status(true);
 		}
 	}
@@ -1348,8 +1300,8 @@ int Unwrap::MCF(
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
 				gain = number > end2 ? 2 * PI * (edges + *(ptr_neigh + i) - 1)->gain : -2 * PI * (edges + *(ptr_neigh + i) - 1)->gain;
-				min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-				max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+				min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+				max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
 				nodes[end2 - 1].set_status(true);
 			}
@@ -1382,7 +1334,7 @@ int Unwrap::MCF(
 		{
 			if (_mask.at<int>(i, j) < 1)
 			{
-				unwrapped_phase.at<double>(i, j) = min - 0.1*(max - min);
+				unwrapped_phase.at<double>(i, j) = min_val - 0.1*(max_val - min_val);
 			}
 		}
 	}
@@ -1427,9 +1379,9 @@ int Unwrap::MCF(
 	}
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
-	double distance, grad, phi1, phi2, gain, tt, min, max;
-	min = 1000000000.0;
-	max = -1000000000.0;
+	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
+	min_val = 1000000000.0;
+	max_val = -1000000000.0;
 	if (pass) tt = 0.5;
 	else
 	{
@@ -1471,8 +1423,8 @@ int Unwrap::MCF(
 			grad = atan2(sin(grad), cos(grad));
 			gain = start < end2 ? 2 * PI * edges[*(ptr_neigh + i) - 1].gain : -2 * PI * edges[*(ptr_neigh + i) - 1].gain;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
-			min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-			max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_status(true);
 		}
 	}
@@ -1517,8 +1469,8 @@ int Unwrap::MCF(
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
 				gain = number < end2 ? 2 * PI * edges[*(ptr_neigh + i) - 1].gain : -2 * PI * edges[*(ptr_neigh + i) - 1].gain;
-				min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-				max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+				min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+				max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
 				nodes[end2 - 1].set_status(true);
 			}
@@ -1546,7 +1498,7 @@ int Unwrap::MCF(
 //		{
 //			if (_mask.at<int>(i, j) < 1)
 //			{
-//				unwrapped_phase.at<double>(i, j) = min - 0.01 * (max - min);
+//				unwrapped_phase.at<double>(i, j) = min_val - 0.01 * (max_val - min_val);
 //			}
 //		}
 //	}
@@ -1572,7 +1524,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	int num_neigh, number, ret, end2;
 	// removed unused: row_start, col_start (planned start position tracking, never implemented)
 	double distance, grad, phi1, phi2, gain, tt;
-	if (pass) tt = 100000.0;
+	if (pass) tt = 0.5;
 	else
 	{
 		tt = 100000.0;
@@ -1730,57 +1682,9 @@ int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH)
 	USES_CONVERSION;
 	Utils util;
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	LPWSTR szCommandLine = new TCHAR[256];
-	wcscpy(szCommandLine, A2W(MCF_EXE_PATH));
-	wcscat(szCommandLine, L"\\mcf.exe ");
-	wcscat(szCommandLine, A2W(MCF_problem_file));
-	STARTUPINFO si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
-	si.dwFlags = STARTF_USESHOWWINDOW;
-	si.wShowWindow = FALSE;
-	BOOL bRet = ::CreateProcess(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
+	if (!runExternalProcess(cmdLine, "MCF", "mcf_delaunay(): create mcf.exe process failed!"))
 	{
-		char mcf_job_name[512]; mcf_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(mcf_job_name, "MCF_%lld", tt);
-		string mcf_job_name_string(mcf_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, mcf_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-	}
-	else
-	{
-		fprintf(stderr, "MCF(): create mcf.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
 	return 0;
@@ -1809,9 +1713,9 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 	wrapped_phase.copyTo(unwrapped_phase);
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2;
-	double distance, grad, phi1, phi2, gain, tt, min, max;
-	min = 1000000000.0;
-	max = -1000000000.0;
+	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
+	min_val = 1000000000.0;
+	max_val = -1000000000.0;
 	if (pass) tt = 0.5;
 	else
 	{
@@ -1885,8 +1789,8 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 			grad = atan2(sin(grad), cos(grad));
 			gain = 0.0;
 			//gain = number > end2 ? 2 * PI * (edges + tmp_edge_index.num - 1)->gain : -2 * PI * (edges + tmp_edge_index.num - 1)->gain;
-			min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-			max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
 			nodes[end2 - 1].set_status(true);
 
@@ -1951,7 +1855,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		{
 			if (_mask.at<int>(i, j) < 1)
 			{
-				unwrapped_phase.at<double>(i, j) = min - 0.1 * (max - min);
+				unwrapped_phase.at<double>(i, j) = min_val - 0.1 * (max_val - min_val);
 			}
 		}
 	}
@@ -1984,9 +1888,9 @@ int Unwrap::_QualityGuided_MCF_1(
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_neigh, number, ret, end2, start;
 	// removed unused: tt (threshold logic removed from quality-guided MCF)
-	double distance, grad, phi1, phi2, gain, min, max;
-	min = 1000000000.0;
-	max = -1000000000.0;
+	double distance, grad, phi1, phi2, gain, min_val, max_val;
+	min_val = 1000000000.0;
+	max_val = -1000000000.0;
 	long* ptr_neigh = NULL;
 	priority_queue<edge_index> neighbour_que;
 	edge_index tmp_edge_index;
@@ -2051,8 +1955,8 @@ int Unwrap::_QualityGuided_MCF_1(
 			grad = phi2 - phi1;
 			grad = atan2(sin(grad), cos(grad));
 			gain = 0.0;
-			//min = min > (grad + phi1 + gain) ? (grad + phi1 + gain) : min;
-			//max = max < (grad + phi1 + gain) ? (grad + phi1 + gain) : max;
+			//min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
+			//max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
 			nodes[end2 - 1].set_status(true);
 
@@ -2106,7 +2010,7 @@ int Unwrap::_QualityGuided_MCF_1(
 //		{
 //			if (_mask.at<int>(i, j) < 1)
 //			{
-//				unwrapped_phase.at<double>(i, j) = min - 0.1 * (max - min);
+//				unwrapped_phase.at<double>(i, j) = min_val - 0.1 * (max_val - min_val);
 //			}
 //		}
 //	}
@@ -2270,9 +2174,10 @@ int Unwrap::QualityGuided_MCF(
 	if (return_check(ret, "residue()", error_head)) return -1;
 
 	out_mask.convertTo(mask, CV_64F);
-	util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\out_mask.bin", mask);
+	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
+	// util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\out_mask.bin", mask);
 	out_mask.convertTo(mask, CV_32S);
-	util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\unwrapped_phase1.bin", unwrapped_phase);
+	// util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\unwrapped_phase1.bin", unwrapped_phase);
 
 	Mat mask_2 = Mat::zeros(nr, nc, CV_32S);
 	count = 0;
@@ -2563,7 +2468,7 @@ int Unwrap::snaphu(
 		fclose(fp);
 		fp = NULL;
 
-		if (slave.type() != CV_64F) master.convertTo(slave, CV_64F);
+		if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 		amplitude1 = slave.GetMod();
 		amplitude1.convertTo(amplitude1, CV_32F);
 		fopen_s(&fp, ampfile2.c_str(), "wb");
@@ -2665,57 +2570,9 @@ int Unwrap::snaphu(
 
 	USES_CONVERSION;
 	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
-	LPWSTR szCommandLine = new TCHAR[256];
-	wcscpy(szCommandLine, A2W(EXE_path.c_str()));
-	wcscat(szCommandLine, L"\\snaphu.exe -f ");
-	wcscat(szCommandLine, A2W(config_file.c_str()));
-	STARTUPINFO si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
-	si.dwFlags = STARTF_USESHOWWINDOW;
-	si.wShowWindow = FALSE;
-	BOOL bRet = ::CreateProcess(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	std::wstring cmdLine = A2W(EXE_path.c_str()) + std::wstring(L"\\snaphu.exe -f ") + A2W(config_file.c_str());
+	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!"))
 	{
-		char snaphu_job_name[512]; snaphu_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(snaphu_job_name, "SNAPHU_%lld", tt);
-		string snaphu_job_name_string(snaphu_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, snaphu_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-	}
-	else
-	{
-		fprintf(stderr, "snaphu(): create snaphu.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
 
@@ -2809,54 +2666,10 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	string str(szFilePath);
 	str = str.substr(0, str.rfind("\\"));
 	string commandline = str + string("\\snaphu.exe -f ") + config_file;
-	char szCommandLine[1024];
-	strcpy(szCommandLine, commandline.c_str());
 
-	STARTUPINFOA si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
-	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
-	si.dwFlags = STARTF_USESHOWWINDOW;
-	si.wShowWindow = FALSE;
-	BOOL bRet = ::CreateProcessA(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	std::wstring cmdLine = A2W(commandline.c_str());
+	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!"))
 	{
-		char snaphu_job_name[512]; snaphu_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(snaphu_job_name, "SNAPHU_%lld", tt);
-		string snaphu_job_name_string(snaphu_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, snaphu_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-	}
-	else
-	{
-		fprintf(stderr, "snaphu(): create snaphu.exe process failed!\n\n");
 		return -1;
 	}
 
@@ -2900,9 +2713,9 @@ int Unwrap::qualityGuided(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& quality
 	{
 		for (int j = 0; j < nc; j++)
 		{
-			if (quality.at<int>(i, j) < max_quailty)
+			if (quality.at<double>(i, j) < max_quailty)
 			{
-				i_start = i; j_start = j; max_quailty = quality.at<int>(i, j);
+				i_start = i; j_start = j; max_quailty = quality.at<double>(i, j);
 			}
 		}
 	}
