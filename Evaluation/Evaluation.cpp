@@ -540,79 +540,12 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 			lon = lon > 180.0 ? (lon - 360.0) : lon;
 			height = GCPS.at<double>(i, 4);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
-			int numOrbitVec = stateVectors.newStateVectors.rows;
-			double firstVecTime = 0.0;
-			double secondVecTime = 0.0;
-			double firstVecFreq = 0.0;
-			double secondVecFreq = 0.0;
-			double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-			//检测标志点位于哪两个轨道点之间
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-					stateVectors.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-					stateVectors.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			double zeroDopplerTime, distance;
+			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 				fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 				return -1;
 			}
-
-			double lowerBoundTime = firstVecTime;
-			double upperBoundTime = secondVecTime;
-			double lowerBoundFreq = firstVecFreq;
-			double upperBoundFreq = secondVecFreq;
-			double midTime, midFreq;
-			double diffTime = fabs(upperBoundTime - lowerBoundTime);
-			double absLineTimeInterval = 1.0 / prf;
-
-			int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			int numIterations = 0; Position pos; Velocity vel;
-			//对两个点之间（相差10s）进行进一步插值检测找到标志点对应的具体卫星位置
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors.getPosition(midTime, pos);
-				stateVectors.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime = midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-			zeroDopplerTime = lowerBoundTime + lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-			stateVectors.getPosition(zeroDopplerTime, pos);
+			Position pos;
 			sate1.at<double>(0) = pos.x;
 			sate1.at<double>(1) = pos.y;
 			sate1.at<double>(2) = pos.z;
@@ -633,76 +566,10 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 
 			dopplerFrequency = 0.0;
 
-			numOrbitVec = stateVectors2.newStateVectors.rows;
-			firstVecTime = 0.0;
-			secondVecTime = 0.0;
-			firstVecFreq = 0.0;
-			secondVecFreq = 0.0;
-			distance = 1.0;
-			for (int ii = 0; ii < numOrbitVec; ii++) {
-				Position orb_pos(stateVectors2.newStateVectors.at<double>(ii, 1), stateVectors2.newStateVectors.at<double>(ii, 2),
-					stateVectors2.newStateVectors.at<double>(ii, 3));
-				Velocity orb_vel(stateVectors2.newStateVectors.at<double>(ii, 4), stateVectors2.newStateVectors.at<double>(ii, 5),
-					stateVectors2.newStateVectors.at<double>(ii, 6));
-				currentFreq = 0;
-				xdiff = groundPosition.x - orb_pos.x;
-				ydiff = groundPosition.y - orb_pos.y;
-				zdiff = groundPosition.z - orb_pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength2 * distance);
-				if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-					firstVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-					firstVecFreq = currentFreq;
-				}
-				else {
-					secondVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-					secondVecFreq = currentFreq;
-					break;
-				}
-			}
-
-			if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+			if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength2, 1.0 / prf2, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 				fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 				return -1;
 			}
-
-			lowerBoundTime = firstVecTime;
-			upperBoundTime = secondVecTime;
-			lowerBoundFreq = firstVecFreq;
-			upperBoundFreq = secondVecFreq;
-
-			diffTime = fabs(upperBoundTime - lowerBoundTime);
-			absLineTimeInterval = 1.0 / prf2;
-
-			totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-			numIterations = 0;
-			while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-				midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-				stateVectors2.getPosition(midTime, pos);
-				stateVectors2.getVelocity(midTime, vel);
-				xdiff = groundPosition.x - pos.x;
-				ydiff = groundPosition.y - pos.y;
-				zdiff = groundPosition.z - pos.z;
-				distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-				midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength2 * distance);
-				if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-					lowerBoundTime = midTime;
-					lowerBoundFreq = midFreq;
-				}
-				else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-					upperBoundTime = midTime;
-					upperBoundFreq = midFreq;
-				}
-				else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-					zeroDopplerTime = midTime;
-					break;
-				}
-
-				diffTime = fabs(upperBoundTime - lowerBoundTime);
-				numIterations++;
-			}
-			zeroDopplerTime = lowerBoundTime + lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 			double r2;
 			stateVectors2.getPosition(zeroDopplerTime, pos);

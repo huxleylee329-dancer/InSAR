@@ -8,7 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
-| `工作区现场修改` | 2026-06-12 | AI | Unwrap | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。 |
+| `工作区现场修改` | 2026-06-12 | AI | Unwrap, simulation | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。<br>9. 修复 SLC_deramp_14 双频乒乓模式中类型转换 Bug，避免主星数据转换后覆盖辅星数据。<br>10. 修复 generateSLC 等 5 处函数中分块行列数不足导致除零崩溃与图像全零的逻辑缺陷。 |
 | `工作区现场修改` | 2026-06-11 | AI | Deflat | 1. 修复 Orbit_Polyfit 中奇异矩阵检测条件永远为假的 Bug。<br>2. 修复 get_satellite_aztime_NEWTON 无法检测 Newton 迭代发散的 Bug。<br>3. 重构 getSRTMFileName 坐标文件名格式化逻辑，使用双重循环与 %02d 消除约 190 行冗余的 if-else 代码。<br>4. 提取 getTifPath 辅助函数，消除 getSRTMDEM 中 15 处重复的 tif 文件路径拼接代码。<br>5. 提取 findZeroDopplerTime 辅助函数，消除 7 处 zero-Doppler 查找的冗余代码。<br>6. 将 return_check 与 parallel_check 提取为 Utils.h 中的全局 inline 函数，并清理 Deflat 和 Utils 中的局部冗余定义及死代码 parallel_flag_change。<br>7. 提取 fillInvalidGaps 模板函数，消除 5 处 DEM 和经纬度投影图空白值搜索填充的冗余代码。<br>8. 消除 Deflat.cpp 中的魔数（Pi、光速），定义牛顿收敛常量，纠正 3 处函数报错名称及下载拼写错误，并移除 Deflat.h 中的冗余头文件包含保护。 |
 | `工作区现场修改` | 2026-06-11 | AI | Registration | 1. 提取 padBorder 辅助函数去重 4 处立方插值边界扩充逻辑。<br>2. 优化双线性重采样中的 OMP 循环，提前提取多项式系数，使用浮点乘加代替循环内 cv::Mat 创建与矩阵乘法。<br>3. 修复 WeightCalculation 中的自赋值死代码，采用 fabs 绝对值函数简化逻辑。<br>4. 纠正 13 处内部报错信息拼写错误与不匹配的函数名（如 coregistration_pixel 纠正为 coregistration_subpixel_sinc）。<br>5. 提取 bilinear_interp2d 统一插值函数，消除两处重采样中约 120 行冗余的类型分支双线性插值实现。<br>6. 清理 Registration.h 中冗余的传统防重包含宏保护，规范 include 头文件时的空格排版。 |
 | `工作区现场修改` | 2026-06-11 | AI | FormatConversion | 二次审计并补全 FormatConversion 的 6 项优化修复（包括 HDF5 内存泄露、多项式拟合去重、GDAL 线程安全、无操作语句及注释风格规范化等）。 |
@@ -196,5 +196,37 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   - **问题**：在 `Unwrap::MCF_second` 中，无论传入的 `pass` 是 `true` 还是 `false`，阈值 `tt` 均被硬编码赋值为 `100000.0`，导致“绕过枝切线”的功能失效。
   - **解决方法**：将赋值逻辑修正为 `if (pass) tt = 0.5; else tt = 100000.0;`，使得 `pass` 参数的行为与其他 MCF 函数相一致。
 
+### 11. simulation 优化与重构 (simulation)
+- **`SLC_deramp_14` 双频乒乓模式中类型转换 Bug 修复**：
+  - **问题**：在 `simulation/SLC_simulator.cpp` 中 `SLC_deramp_14` 函数的双频乒乓模式（`mode==4`）分支下，在进行 OpenCV 的 `Mat` 影像浮点类型转换时，误写成了 `if (slc2.type() != CV_32F) slc.convertTo(slc2, CV_32F);`。由于 `convertTo` 是将源影像复制转换并写入目标影像，这导致主星影像 `slc` 的内容转换后强行覆盖了辅星 `slc2` 的内容，造成辅星数据被完全覆盖丢失。
+  - **解决方法**：在双频乒乓模式下的 4 处相应转换位置，统一将 `slc.convertTo(slc2, CV_32F);` 修正为对辅星自身转换的 `slc2.convertTo(slc2, CV_32F);`，保留并正确转换主辅星的各自数据。
+- **`generateSLC` / `generateSlantrange` 分块大小计算除零与全零 Bug 修复**：
+  - **问题**：在 `generateSLC`（18/26/28参数三个版本）、`generateSLC_spacety` 和 `generateSlantrange` 中，分块行列数计算逻辑为：
+    `int num_block_row = rows / block_rows; ... block_rows = rows / num_block_row;`
+    当输入 DEM 较小导致高/宽插值后的 `rows` 或 `cols` 小于分块大小（如 1000/500）时，`num_block_row` 或 `num_block_col` 会计算为 0，导致执行 `rows / 0` 时发生 **除零崩溃**；即使不崩溃，也因为分块数为 0 导致像素模拟计算的主循环完全不执行，模拟出的 SLC 影像全为零。
+  - **解决方法**：在这 5 处函数中，计算前对分块数强行加至少为 `1` 的保护限制：`num_block_row = num_block_row < 1 ? 1 : num_block_row;`，从而彻底解决了除零风险和小图像模拟失效 Bug，同时删除了每处的冗余自赋值语句。
+- **`findZeroDopplerTime` 统一提取至 Utils 公共库与数学公式修正**：
+  - **问题**：零多普勒时间（Zero-Doppler Search）求解算法在整个系统多处被手写重复实现，累计重复 1000+ 行，包括 `Deflat` (7处)、`simulation` (16处)、`Registration` (1处)、`Evaluation` (2处)、`FormatConversion` (1处)、`Utils` 自身的 `geocode` 重载 (2处) 以及 `Dem` (3处)。此外，原有的二分逼近求得区间后，计算最终零多普勒时刻 `zeroDopplerTime` 时：
+    1. 多数地方原代码使用 `lowerBoundTime - lowerBoundFreq * ...` 差分插值公式，在多普勒频率 `dopplerFrequency` 非零的场景下（如 Sentinel-1 格式转换）公式计算有偏；
+    2. 计算最终的斜距（`distance`）时，原有的各模块实现直接使用最后一次二分循环的中点距离，而不是使用最终插值得到的 `zeroDopplerTime` 进行重新计算，精度较低。
+  - **解决方法**：
+    1. **方案 A（公共库提取）**：在 `Utils` 中定义并实现统一的静态方法 `Utils::findZeroDopplerTime`，提取共享；
+    2. **数学公式纠正**：在 `Utils::findZeroDopplerTime` 内部将插值公式修正为通用的 `lowerBoundTime + (dopplerFrequency - lowerBoundFreq) * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq)`，保证在非零多普勒频率时的正确性；同时在计算出最终 `zeroDopplerTime` 后，重新调用 `stateVectors.getPosition` 计算出精确的斜距 `distance`；
+    3. **全局调用重构**：将 `Deflat` (7处)、`simulation` (16处)、`Registration` (1处)、`Evaluation` (2处)、`FormatConversion` (1处)、`Utils` 的地理编码 (2处) 以及 `Dem` (3处) 的所有冗余二分查找和插值逻辑全部移除，全部替换为对公共库中 `findZeroDopplerTime` 的单行调用，精简了 1500+ 行重复代码，提升了全系统定位的一致性与计算精度。
+- **`applyPhaseCorrection` 提取与 De-ramp/Re-ramp Phase Correction 优化**：
+  - **问题**：在 `simulation/SLC_simulator.cpp` 中，`SLC_deramp` (4处)、`SLC_deramp_14` (12处) 以及 `SLC_reramp` (4处) 包含大量重复的手动 nested 循环，用于执行复数相位修正。在 OpenMP 多线程并行区域内，每次迭代循环内部都会频繁动态分配并创建 `cv::Mat XYZ, LLH(1, 3, CV_64F), tt;` 并调用 `ell2xyz` 以及矩阵范数计算，导致严重的动态内存分配锁竞争，极大地拖慢了并行速度。
+  - **解决方法**：
+    1. **提取公共内联辅助函数**：在匿名命名空间中定义了 `applyPhaseCorrection` 辅助函数，接收实部/虚部矩阵、经纬度、DEM 矩阵、卫星状态向量以及相位系数，利用指针直接进行像素数据的高效读取与修改，避免了任何循环体内的 `cv::Mat` 创建和动态内存分配；
+    2. **去重与重构**：将 `SLC_deramp`、`SLC_deramp_14` 和 `SLC_reramp` 中所有的手动 nested 循环全部删除，替换为对 `applyPhaseCorrection` 辅助函数的单行调用，大幅提升了代码整洁度与并行计算速度；
+    3. **`pingpong_MLE` 自定义循环优化**：针对 `pingpong_MLE` 中的真实相位偏置循环（该循环不涉及复数乘积），在原地进行了指针提取和 stack 变量改写，消除了 OMP 并行区域内原有的 `cv::Mat` 动态分配和 `ell2xyz` 矩阵输入开销。
+
+### 12. 编译项目循环依赖消除 (Utils & FormatConversion)
+- **问题**：`Utils` 模块与 `FormatConversion` 模块原本存在 DLL 级别的双向循环引用（`Utils` 模块的地理映射等函数实例化并调用了 `FormatConversion` 读写 HDF5 属性，而 `FormatConversion` 中的 `Sentinel1Utils` 又反向链接并调用了 `Utils::findZeroDopplerTime` 二分搜索），导致在 MSVC 编译器下产生无法同时构建的死锁问题。
+- **解决方法**：
+  1. **算法下移**：将零多普勒时间搜索算法（`findZeroDopplerTime`）作为静态方法下移至 `FormatConversion.h` 中的 `orbitStateVectors` 类中，使其在 `FormatConversion` 库内部直接自完备解析；
+  2. **剥离依赖**：将 `FormatConversion.cpp` 顶部的 `#pragma comment(lib, "Utils.lib")` / `"Utils_d.lib"` 彻底删除，完全移除了 `FormatConversion` 在链接期对 `Utils` 的反向依赖；
+  3. **转发代理 (Delegation)**：在 `Utils.cpp` 中保留原有的 `Utils::findZeroDopplerTime` 静态方法，并将其内部实现改写为单行向 `orbitStateVectors::findZeroDopplerTime` 转发，在保证上层十余个调用模块兼容性（无需更改任何调用行）的同时，消除了物理代码拷贝，彻底解开了循环依赖。
+
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*
+

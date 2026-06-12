@@ -16,6 +16,87 @@
 #pragma comment(lib, "Deflat.lib")
 #endif // _DEBUG
 
+namespace {
+	// 避免在 OMP 内层循环分配 cv::Mat 的高效相位修正计算函数
+	inline void applyPhaseCorrection(
+		Mat& slc_re,
+		Mat& slc_im,
+		const Mat& mappedLat,
+		const Mat& mappedLon,
+		const Mat& mappedDEM,
+		const Mat& sate1,
+		const Mat& sate2,
+		double wavelength,
+		double phaseCoeff,       // 相位系数
+		bool useSate2 = false,    // 是否同时使用双星距离和
+		Mat* R_out = nullptr      // 可选的输出斜距矩阵指针
+	) {
+		int rows = slc_re.rows;
+		int cols = slc_re.cols;
+		
+		#pragma omp parallel for schedule(guided)
+		for (int i = 0; i < rows; i++)
+		{
+			double s1x = 0.0, s1y = 0.0, s1z = 0.0;
+			if (!sate1.empty()) {
+				s1x = sate1.at<double>(i, 0);
+				s1y = sate1.at<double>(i, 1);
+				s1z = sate1.at<double>(i, 2);
+			}
+			
+			double s2x = 0.0, s2y = 0.0, s2z = 0.0;
+			if (useSate2 && !sate2.empty()) {
+				s2x = sate2.at<double>(i, 0);
+				s2y = sate2.at<double>(i, 1);
+				s2z = sate2.at<double>(i, 2);
+			}
+
+			float* re_ptr = slc_re.ptr<float>(i);
+			float* im_ptr = slc_im.ptr<float>(i);
+			const float* lat_ptr = mappedLat.ptr<float>(i);
+			const float* lon_ptr = mappedLon.ptr<float>(i);
+			const short* dem_ptr = mappedDEM.ptr<short>(i);
+			double* r_out_ptr = R_out ? R_out->ptr<double>(i) : nullptr;
+
+			for (int j = 0; j < cols; j++)
+			{
+				Position groundPosition;
+				double lat = lat_ptr[j];
+				double lon = lon_ptr[j];
+				double height = dem_ptr[j];
+				
+				Utils::ell2xyz(lon, lat, height, groundPosition);
+				
+				double dx1 = groundPosition.x - s1x;
+				double dy1 = groundPosition.y - s1y;
+				double dz1 = groundPosition.z - s1z;
+				double dist = sqrt(dx1 * dx1 + dy1 * dy1 + dz1 * dz1);
+				
+				if (useSate2) {
+					double dx2 = groundPosition.x - s2x;
+					double dy2 = groundPosition.y - s2y;
+					double dz2 = groundPosition.z - s2z;
+					dist += sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+				}
+				
+				if (r_out_ptr) {
+					r_out_ptr[j] = dist;
+				}
+				
+				double r = dist * phaseCoeff;
+				double real = cos(r);
+				double imagine = sin(r);
+				
+				double real2 = re_ptr[j];
+				double imagine2 = im_ptr[j];
+				
+				re_ptr[j] = static_cast<float>(real * real2 + imagine * imagine2);
+				im_ptr[j] = static_cast<float>(real * imagine2 - real2 * imagine);
+			}
+		}
+	}
+}
+
 enum ConvolutionType {
 	/* Return the full convolution, including border */
 	CONVOLUTION_FULL,
@@ -324,11 +405,11 @@ int SLC_simulator::generateSLC(
 	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
 	int num_block_row = rows / block_rows;
 	int num_block_col = cols / block_cols;
+	num_block_row = num_block_row < 1 ? 1 : num_block_row;
+	num_block_col = num_block_col < 1 ? 1 : num_block_col;
 	block_rows = rows / num_block_row;
 	block_cols = cols / num_block_col;
 	Utils util;
-	num_block_row = num_block_row;
-	num_block_col = num_block_col;
 	vector<double> GCPs;//控制点信息
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
@@ -390,75 +471,10 @@ int SLC_simulator::generateSLC(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors.newStateVectors.at<double>(iii, 1), stateVectors.newStateVectors.at<double>(iii, 2),
-							stateVectors.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors.newStateVectors.at<double>(iii, 4), stateVectors.newStateVectors.at<double>(iii, 5),
-							stateVectors.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.0001)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.01 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors.getPosition(midTime, pos);
-						stateVectors.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.0001) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range.at<double>(ii, jj) = distance;
 				}
@@ -636,11 +652,11 @@ int SLC_simulator::generateSLC_spacety(
 	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
 	int num_block_row = rows / block_rows;
 	int num_block_col = cols / block_cols;
+	num_block_row = num_block_row < 1 ? 1 : num_block_row;
+	num_block_col = num_block_col < 1 ? 1 : num_block_col;
 	block_rows = rows / num_block_row;
 	block_cols = cols / num_block_col;
 	Utils util;
-	num_block_row = num_block_row;
-	num_block_col = num_block_col;
 	vector<double> GCPs;//控制点信息
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVec, acquisitionStartTime, acquisitionStopTime);
@@ -702,84 +718,10 @@ int SLC_simulator::generateSLC_spacety(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors.newStateVectors.at<double>(iii, 1), stateVectors.newStateVectors.at<double>(iii, 2),
-							stateVectors.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors.newStateVectors.at<double>(iii, 4), stateVectors.newStateVectors.at<double>(iii, 5),
-							stateVectors.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.0001)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.01 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors.getPosition(midTime, pos);
-						stateVectors.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.0001) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-					// 用最终 zeroDopplerTime 重新计算卫星位置和斜距
-					stateVectors.getPosition(zeroDopplerTime, pos);
-					stateVectors.getVelocity(zeroDopplerTime, vel);
-
-					xdiff = groundPosition.x - pos.x;
-					ydiff = groundPosition.y - pos.y;
-					zdiff = groundPosition.z - pos.z;
-
-					distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
 					imaging_time.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range.at<double>(ii, jj) = distance;
 				}
@@ -1417,11 +1359,11 @@ int SLC_simulator::generateSLC(
 	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
 	int num_block_row = rows / block_rows;
 	int num_block_col = cols / block_cols;
+	num_block_row = num_block_row < 1 ? 1 : num_block_row;
+	num_block_col = num_block_col < 1 ? 1 : num_block_col;
 	block_rows = rows / num_block_row;
 	block_cols = cols / num_block_col;
 	Utils util;
-	num_block_row = num_block_row;
-	num_block_col = num_block_col;
 	vector<double> GCPs, GCPs2;//控制点信息
 	//初始化轨道类
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
@@ -1488,75 +1430,10 @@ int SLC_simulator::generateSLC(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors1.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors1.newStateVectors.at<double>(iii, 1), stateVectors1.newStateVectors.at<double>(iii, 2),
-							stateVectors1.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors1.newStateVectors.at<double>(iii, 4), stateVectors1.newStateVectors.at<double>(iii, 5),
-							stateVectors1.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors1, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors1.getPosition(midTime, pos);
-						stateVectors1.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time1.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range1.at<double>(ii, jj) = distance;
 				}
@@ -1575,75 +1452,10 @@ int SLC_simulator::generateSLC(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors2.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-							stateVectors2.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-							stateVectors2.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors2.getPosition(midTime, pos);
-						stateVectors2.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time2.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range2.at<double>(ii, jj) = distance;
 				}
@@ -1999,11 +1811,11 @@ int SLC_simulator::generateSLC(
 	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
 	int num_block_row = rows / block_rows;
 	int num_block_col = cols / block_cols;
+	num_block_row = num_block_row < 1 ? 1 : num_block_row;
+	num_block_col = num_block_col < 1 ? 1 : num_block_col;
 	block_rows = rows / num_block_row;
 	block_cols = cols / num_block_col;
 	Utils util;
-	num_block_row = num_block_row;
-	num_block_col = num_block_col;
 	vector<double> GCPs, GCPs2;//控制点信息
 	//初始化轨道类
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
@@ -2088,75 +1900,10 @@ int SLC_simulator::generateSLC(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors1.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors1.newStateVectors.at<double>(iii, 1), stateVectors1.newStateVectors.at<double>(iii, 2),
-							stateVectors1.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors1.newStateVectors.at<double>(iii, 4), stateVectors1.newStateVectors.at<double>(iii, 5),
-							stateVectors1.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors1, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors1.getPosition(midTime, pos);
-						stateVectors1.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time1.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range1.at<double>(ii, jj) = distance;
 				}
@@ -2175,75 +1922,10 @@ int SLC_simulator::generateSLC(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors2.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-							stateVectors2.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-							stateVectors2.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors2.getPosition(midTime, pos);
-						stateVectors2.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time2.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range2.at<double>(ii, jj) = distance;
 				}
@@ -2541,11 +2223,11 @@ int SLC_simulator::generateSlantrange(
 	cv::resize(dem_interp, dem_interp, cv::Size(cols, rows), 0, 0, cv::INTER_CUBIC);
 	int num_block_row = rows / block_rows;
 	int num_block_col = cols / block_cols;
+	num_block_row = num_block_row < 1 ? 1 : num_block_row;
+	num_block_col = num_block_col < 1 ? 1 : num_block_col;
 	block_rows = rows / num_block_row;
 	block_cols = cols / num_block_col;
 	Utils util;
-	num_block_row = num_block_row;
-	num_block_col = num_block_col;
 	vector<double> GCPs;//控制点信息
 	//初始化轨道类
 	orbitStateVectors stateVectors1(stateVec1, acquisitionStartTime1, acquisitionStopTime1);
@@ -2596,75 +2278,10 @@ int SLC_simulator::generateSlantrange(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors1.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors1.newStateVectors.at<double>(iii, 1), stateVectors1.newStateVectors.at<double>(iii, 2),
-							stateVectors1.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors1.newStateVectors.at<double>(iii, 4), stateVectors1.newStateVectors.at<double>(iii, 5),
-							stateVectors1.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors1.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors1, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors1.getPosition(midTime, pos);
-						stateVectors1.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time1.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range1.at<double>(ii, jj) = distance;
 				}
@@ -2683,75 +2300,10 @@ int SLC_simulator::generateSlantrange(
 					lon = lon > 180.0 ? (lon - 360.0) : lon;
 					height = dem_temp2.at<float>(ii, jj);
 					Utils::ell2xyz(lon, lat, height, groundPosition);
-					int numOrbitVec = stateVectors2.newStateVectors.rows;
-					double firstVecTime = 0.0;
-					double secondVecTime = 0.0;
-					double firstVecFreq = 0.0;
-					double secondVecFreq = 0.0;
-					double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-					for (int iii = 0; iii < numOrbitVec; iii++) {
-						Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-							stateVectors2.newStateVectors.at<double>(iii, 3));
-						Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-							stateVectors2.newStateVectors.at<double>(iii, 6));
-						currentFreq = 0;
-						xdiff = groundPosition.x - orb_pos.x;
-						ydiff = groundPosition.y - orb_pos.y;
-						zdiff = groundPosition.z - orb_pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-						if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-							firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							firstVecFreq = currentFreq;
-						}
-						else {
-							secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-							secondVecFreq = currentFreq;
-							break;
-						}
-					}
-
-					if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+					double zeroDopplerTime, distance;
+					if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 						continue;
 					}
-
-					double lowerBoundTime = firstVecTime;
-					double upperBoundTime = secondVecTime;
-					double lowerBoundFreq = firstVecFreq;
-					double upperBoundFreq = secondVecFreq;
-					double midTime, midFreq;
-					double diffTime = fabs(upperBoundTime - lowerBoundTime);
-					double absLineTimeInterval = time_interval;
-
-					int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-					int numIterations = 0; Position pos; Velocity vel;
-					while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-						midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-						stateVectors2.getPosition(midTime, pos);
-						stateVectors2.getVelocity(midTime, vel);
-						xdiff = groundPosition.x - pos.x;
-						ydiff = groundPosition.y - pos.y;
-						zdiff = groundPosition.z - pos.z;
-						distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-						midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-						if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-							lowerBoundTime = midTime;
-							lowerBoundFreq = midFreq;
-						}
-						else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-							upperBoundTime = midTime;
-							upperBoundFreq = midFreq;
-						}
-						else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-							zeroDopplerTime = midTime;
-							break;
-						}
-
-						diffTime = fabs(upperBoundTime - lowerBoundTime);
-						numIterations++;
-					}
-					zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 					imaging_time2.at<double>(ii, jj) = zeroDopplerTime;
 					slant_range2.at<double>(ii, jj) = distance;
 				}
@@ -2896,73 +2448,11 @@ int SLC_simulator::SLC_deramp(
 	int numOrbitVec = stateVectors.newStateVectors.rows;
 	double firstVecTime = 0.0;
 	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance; Position pos;
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight; i++)
 	{
@@ -2974,75 +2464,10 @@ int SLC_simulator::SLC_deramp(
 	}
 
 	//计算辅星成像位置
-	numOrbitVec = stateVectors2.newStateVectors.rows;
-	firstVecTime = 0.0;
-	secondVecTime = 0.0;
-	firstVecFreq = 0.0;
-	secondVecFreq = 0.0;
-	currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(ii, 1), stateVectors2.newStateVectors.at<double>(ii, 2),
-			stateVectors2.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(ii, 4), stateVectors2.newStateVectors.at<double>(ii, 5),
-			stateVectors2.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	lowerBoundTime = firstVecTime;
-	upperBoundTime = secondVecTime;
-	lowerBoundFreq = firstVecFreq;
-	upperBoundFreq = secondVecFreq;
-	diffTime = fabs(upperBoundTime - lowerBoundTime);
-	absLineTimeInterval = 1.0 / prf;
-
-	totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight2; i++)
 	{
@@ -3057,28 +2482,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			r = -r / wavelength * 4 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength);
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
@@ -3094,30 +2498,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r += cv::norm(tt, cv::NORM_L2);
-			r = -r / wavelength * 2.0 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true);
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
@@ -3133,28 +2514,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			r = -r / wavelength * 4 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength);
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
@@ -3170,30 +2530,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r += cv::norm(tt, cv::NORM_L2);
-			r = -r / wavelength * 2.0 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true);
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
@@ -3322,76 +2659,11 @@ int SLC_simulator::SLC_deramp_14(
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
-	int numOrbitVec = stateVectors.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance; Position pos;
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight; i++)
 	{
@@ -3403,75 +2675,10 @@ int SLC_simulator::SLC_deramp_14(
 	}
 
 	//计算辅星成像位置
-	numOrbitVec = stateVectors2.newStateVectors.rows;
-	firstVecTime = 0.0;
-	secondVecTime = 0.0;
-	firstVecFreq = 0.0;
-	secondVecFreq = 0.0;
-	currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(ii, 1), stateVectors2.newStateVectors.at<double>(ii, 2),
-			stateVectors2.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(ii, 4), stateVectors2.newStateVectors.at<double>(ii, 5),
-			stateVectors2.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	lowerBoundTime = firstVecTime;
-	upperBoundTime = secondVecTime;
-	lowerBoundFreq = firstVecFreq;
-	upperBoundFreq = secondVecFreq;
-	diffTime = fabs(upperBoundTime - lowerBoundTime);
-	absLineTimeInterval = 1.0 / prf;
-
-	totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight2; i++)
 	{
@@ -3482,37 +2689,15 @@ int SLC_simulator::SLC_deramp_14(
 		sate2.at<double>(i, 2) = pos.z;
 	}
 
-	if (mode == 1)//单发单收模式
+	if (mode == 1)
 	{
-		//主星图像去参考
+		//主星去参考
 		ret = conversion.read_slc_from_h5(slcH5File1, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3532,29 +2717,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_array_to_h5(slcH5FilesListOut[1].c_str(), "slantRange", R);
@@ -3576,29 +2739,7 @@ int SLC_simulator::SLC_deramp_14(
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3618,31 +2759,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r += cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -4.0 * PI / wavelength, true, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_array_to_h5(slcH5FilesListOut[1].c_str(), "slantRange", R);
@@ -3664,29 +2781,7 @@ int SLC_simulator::SLC_deramp_14(
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3707,31 +2802,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5FilesList[1].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r += cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3750,29 +2821,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5File3, slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3791,31 +2840,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5FilesList[2].c_str(), slc);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r += cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3838,40 +2863,12 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5FilesList[4].c_str(), slc2);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-		if (slc2.type() != CV_32F) slc.convertTo(slc2, CV_32F);
+		if (slc2.type() != CV_32F) slc2.convertTo(slc2, CV_32F);
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength2, -4.0 * PI / wavelength2);
 
-				r = -R.at<double>(i, j) / wavelength2 * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc2.re.at<float>(i, j);
-				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[4].c_str());
@@ -3908,40 +2905,11 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5FilesList[5].c_str(), slc2);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-		if (slc2.type() != CV_32F) slc.convertTo(slc2, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r += cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
+		if (slc2.type() != CV_32F) slc2.convertTo(slc2, CV_32F);
 
-				r = -R.at<double>(i, j) / wavelength2 * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc2.re.at<float>(i, j);
-				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
+		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength2, -2.0 * PI / wavelength2, true);
+
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[5].c_str());
@@ -3977,39 +2945,11 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.read_slc_from_h5(slcH5FilesList[7].c_str(), slc2);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-		if (slc2.type() != CV_32F) slc.convertTo(slc2, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
+		if (slc2.type() != CV_32F) slc2.convertTo(slc2, CV_32F);
 
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength2, -4.0 * PI / wavelength2);
 
-				r = -R.at<double>(i, j) / wavelength2 * 4 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc2.re.at<float>(i, j);
-				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[7].c_str());
@@ -4045,54 +2985,22 @@ int SLC_simulator::SLC_deramp_14(
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		ret = conversion.read_slc_from_h5(slcH5FilesList[6].c_str(), slc2);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
-		if (slc2.type() != CV_32F) slc.convertTo(slc2, CV_32F);
-	#pragma omp parallel for schedule(guided)
-		for (int i = 0; i < sceneHeight; i++)
-		{
-			for (int j = 0; j < sceneWidth; j++)
-			{
-				double r, real, imagine, real2, imagine2;
-				Mat XYZ, LLH(1, 3, CV_64F), tt;
-				LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-				LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-				LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-				util.ell2xyz(LLH, XYZ);
-				tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-				r = cv::norm(tt, cv::NORM_L2);
-				tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-				r += cv::norm(tt, cv::NORM_L2);
-				R.at<double>(i, j) = r;
-				r = -r / wavelength * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc.re.at<float>(i, j);
-				imagine2 = slc.im.at<float>(i, j);
-				slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
+		if (slc2.type() != CV_32F) slc2.convertTo(slc2, CV_32F);
 
-				r = -R.at<double>(i, j) / wavelength2 * 2.0 * PI;
-				real = cos(r);
-				imagine = sin(r);
-				real2 = slc2.re.at<float>(i, j);
-				imagine2 = slc2.im.at<float>(i, j);
-				slc2.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-				slc2.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-			}
-		}
+		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
+		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength2, -2.0 * PI / wavelength2, true);
+
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[6].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
-
 		ret = conversion.write_array_to_h5(slcH5FilesListOut[2].c_str(), "slantRange", R);
+		ret = conversion.write_array_to_h5(slcH5FilesListOut[6].c_str(), "slantRange", R);
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[2].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-		ret = conversion.write_array_to_h5(slcH5FilesListOut[6].c_str(), "slantRange", R);
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[6].c_str(), slc2);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-
-
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[2].c_str(), slcH5FilesListOut[2].c_str());
 		ret = conversion.read_int_from_h5(slcH5FilesList[2].c_str(), "offset_row", &offset_row);
@@ -4204,76 +3112,11 @@ int SLC_simulator::SLC_reramp(
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
-	int numOrbitVec = stateVectors.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance; Position pos;
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight; i++)
 	{
@@ -4285,75 +3128,10 @@ int SLC_simulator::SLC_reramp(
 	}
 
 	//计算辅星成像位置
-	numOrbitVec = stateVectors2.newStateVectors.rows;
-	firstVecTime = 0.0;
-	secondVecTime = 0.0;
-	firstVecFreq = 0.0;
-	secondVecFreq = 0.0;
-	currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(ii, 1), stateVectors2.newStateVectors.at<double>(ii, 2),
-			stateVectors2.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(ii, 4), stateVectors2.newStateVectors.at<double>(ii, 5),
-			stateVectors2.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	lowerBoundTime = firstVecTime;
-	upperBoundTime = secondVecTime;
-	lowerBoundFreq = firstVecFreq;
-	upperBoundFreq = secondVecFreq;
-	diffTime = fabs(upperBoundTime - lowerBoundTime);
-	absLineTimeInterval = 1.0 / prf;
-
-	totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight2; i++)
 	{
@@ -4368,28 +3146,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			r = r / wavelength * 4 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, 4.0 * PI / wavelength, false);
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
@@ -4405,30 +3162,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r += cv::norm(tt, cv::NORM_L2);
-			r = r / wavelength * 2.0 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true);
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
@@ -4444,28 +3178,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			r = r / wavelength * 4 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, 4.0 * PI / wavelength, false);
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
@@ -4481,30 +3194,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < sceneHeight; i++)
-	{
-		for (int j = 0; j < sceneWidth; j++)
-		{
-			double r, real, imagine, real2, imagine2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			r = cv::norm(tt, cv::NORM_L2);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			r += cv::norm(tt, cv::NORM_L2);
-			r = r / wavelength * 2.0 * PI;
-			real = cos(r);
-			imagine = sin(r);
-			real2 = slc.re.at<float>(i, j);
-			imagine2 = slc.im.at<float>(i, j);
-			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
-			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
-		}
-	}
+	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true);
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
@@ -4998,76 +3688,11 @@ int SLC_simulator::pingpong_MLE(
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
-	int numOrbitVec = stateVectors.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-			stateVectors.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-			stateVectors.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength_high * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance; Position pos;
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength_high, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = 1.0 / prf;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; Position pos; Velocity vel;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength_high * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight; i++)
 	{
@@ -5079,75 +3704,10 @@ int SLC_simulator::pingpong_MLE(
 	}
 
 	//计算辅星成像位置
-	numOrbitVec = stateVectors2.newStateVectors.rows;
-	firstVecTime = 0.0;
-	secondVecTime = 0.0;
-	firstVecFreq = 0.0;
-	secondVecFreq = 0.0;
-	currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int ii = 0; ii < numOrbitVec; ii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(ii, 1), stateVectors2.newStateVectors.at<double>(ii, 2),
-			stateVectors2.newStateVectors.at<double>(ii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(ii, 4), stateVectors2.newStateVectors.at<double>(ii, 5),
-			stateVectors2.newStateVectors.at<double>(ii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength_high * distance);
-		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(ii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength_high, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
-
-	lowerBoundTime = firstVecTime;
-	upperBoundTime = secondVecTime;
-	lowerBoundFreq = firstVecFreq;
-	upperBoundFreq = secondVecFreq;
-	diffTime = fabs(upperBoundTime - lowerBoundTime);
-	absLineTimeInterval = 1.0 / prf;
-
-	totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength_high * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 
 	for (int i = 0; i < sceneHeight; i++)
 	{
@@ -5163,23 +3723,49 @@ int SLC_simulator::pingpong_MLE(
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
 	{
+		double s1x = sate1.at<double>(i, 0);
+		double s1y = sate1.at<double>(i, 1);
+		double s1z = sate1.at<double>(i, 2);
+		double s2x = sate2.at<double>(i, 0);
+		double s2y = sate2.at<double>(i, 1);
+		double s2z = sate2.at<double>(i, 2);
+
+		const float* lat_ptr = mappedLat.ptr<float>(i);
+		const float* lon_ptr = mappedLon.ptr<float>(i);
+		const short* dem_ptr = mappedDEM.ptr<short>(i);
+
+		double* r1_ptr = R1.ptr<double>(i);
+		double* r2_ptr = R2.ptr<double>(i);
+		double* phase_ref_deflat_ptr = phase_reference_deflat.ptr<double>(i);
+		const double* phase_ref_ptr = phase_reference.ptr<double>(i);
+		double* wrapped_high_ptr = wrapped_phase_high.ptr<double>(i);
+		double* wrapped_low_ptr = wrapped_phase_low.ptr<double>(i);
+
 		for (int j = 0; j < sceneWidth; j++)
 		{
-			double r1, r2;
-			Mat XYZ, LLH(1, 3, CV_64F), tt;
-			LLH.at<double>(0, 0) = mappedLat.at<float>(i, j);
-			LLH.at<double>(0, 1) = mappedLon.at<float>(i, j);
-			LLH.at<double>(0, 2) = mappedDEM.at<short>(i, j);
-			util.ell2xyz(LLH, XYZ);
-			tt = XYZ - sate1(cv::Range(i, i + 1), cv::Range(0, 3));
-			R1.at<double>(i, j) = cv::norm(tt, cv::NORM_L2);
-			r1 = R1.at<double>(i, j);
-			tt = XYZ - sate2(cv::Range(i, i + 1), cv::Range(0, 3));
-			R2.at<double>(i, j) = cv::norm(tt, cv::NORM_L2);
-			r2 = R2.at<double>(i, j);
-			phase_reference_deflat.at<double>(i, j) = phase_reference.at<double>(i, j) + 4 * PI * (r1 - r2) / wavelength_high;
-			wrapped_phase_high.at<double>(i, j) = wrapped_phase_high.at<double>(i, j) + 4 * PI * (r1 - r2) / wavelength_high;
-			wrapped_phase_low.at<double>(i, j) = wrapped_phase_low.at<double>(i, j) + 4 * PI * (r1 - r2) / wavelength_low;
+			Position groundPosition;
+			double lat = lat_ptr[j];
+			double lon = lon_ptr[j];
+			double height = dem_ptr[j];
+
+			Utils::ell2xyz(lon, lat, height, groundPosition);
+
+			double dx1 = groundPosition.x - s1x;
+			double dy1 = groundPosition.y - s1y;
+			double dz1 = groundPosition.z - s1z;
+			double r1 = sqrt(dx1 * dx1 + dy1 * dy1 + dz1 * dz1);
+			r1_ptr[j] = r1;
+
+			double dx2 = groundPosition.x - s2x;
+			double dy2 = groundPosition.y - s2y;
+			double dz2 = groundPosition.z - s2z;
+			double r2 = sqrt(dx2 * dx2 + dy2 * dy2 + dz2 * dz2);
+			r2_ptr[j] = r2;
+
+			double diff_r = 4.0 * PI * (r1 - r2);
+			phase_ref_deflat_ptr[j] = phase_ref_ptr[j] + diff_r / wavelength_high;
+			wrapped_high_ptr[j] = wrapped_high_ptr[j] + diff_r / wavelength_high;
+			wrapped_low_ptr[j] = wrapped_low_ptr[j] + diff_r / wavelength_low;
 		}
 	}
 	util.wrap(wrapped_phase_high, wrapped_phase_high);

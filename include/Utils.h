@@ -8,6 +8,8 @@
 #include<string>
 #include"..\include\sar_comm.h"
 
+class orbitStateVectors;
+
 
 /*********************************************************/
 /*                Delaunay三角网 节点类                  */
@@ -348,6 +350,27 @@ class InSAR_API Utils
 public:
 	Utils();
 	~Utils();
+	/*@brief 寻找零多普勒时间与斜距
+	* @param stateVectors                      轨道状态向量
+	* @param groundPosition                    地面点三维坐标
+	* @param wavelength                        雷达波长
+	* @param time_interval                     采样时间间隔
+	* @param dopplerFrequency                  多普勒中心频率
+	* @param zeroDopplerTime                   输出零多普勒时刻
+	* @param distance                          输出零多普勒斜距
+	* @param dopplerThreshold                  多普勒收敛阈值限制，默认为 0.01
+	* @return 成功返回 true，否则返回 false
+	*/
+	static bool findZeroDopplerTime(
+		orbitStateVectors& stateVectors,
+		const Position& groundPosition,
+		double wavelength,
+		double time_interval,
+		double dopplerFrequency,
+		double& zeroDopplerTime,
+		double& distance,
+		double dopplerThreshold = 0.01
+	);
 	/*@brief 生成范德蒙矩阵
 	* @param inArray                           自变量序列
 	* @param vandermondeMatrix                 范德蒙矩阵

@@ -1305,6 +1305,27 @@ public:
 	*/
 	int applyOrbit();
 
+	/** @brief 零多普勒时间搜索算法（移自 Utils 以消除循环依赖）
+	* @param stateVectors                  轨道数据
+	* @param groundPosition                目标地心三维坐标
+	* @param wavelength                    雷达波长
+	* @param time_interval                 方位向时间间隔（脉冲重复间隔或行间隔时间）
+	* @param dopplerFrequency              目标多普勒频率（通常为 0.0）
+	* @param zeroDopplerTime               解算得到的零多普勒时刻（返回值）
+	* @param distance                      解算得到的传感器与地面点斜距（返回值）
+	* @param dopplerThreshold              搜索截止频偏阈值（Hz，默认 0.01）
+	* @return 成功返回 true，否则返回 false
+	*/
+	static bool findZeroDopplerTime(
+		orbitStateVectors& stateVectors,
+		const Position& groundPosition,
+		double wavelength,
+		double time_interval,
+		double dopplerFrequency,
+		double& zeroDopplerTime,
+		double& distance,
+		double dopplerThreshold = 0.01);
+
 public:
 	Mat stateVectors;
 	Mat newStateVectors;

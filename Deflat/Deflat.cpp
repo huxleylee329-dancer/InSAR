@@ -25,14 +25,6 @@ namespace {
 	const double NEWTON_CONVERGENCE_THRESHOLD = 0.0000454;
 }
 
-// Forward declarations
-bool findZeroDopplerTime(
-    orbitStateVectors& stateVectors,
-    const Position& groundPosition,
-    double wavelength, double time_interval,
-    double dopplerFrequency,
-    double& zeroDopplerTime, double& distance);
-
 
 template<typename T, typename Predicate>
 void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid);
@@ -945,7 +937,7 @@ int Deflat::demMapping(
 			height = DEM.at<short>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
 			double zeroDopplerTime, distance;
-			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
+			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
@@ -1057,7 +1049,7 @@ int Deflat::demMapping(
 			height = DEM.at<short>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
 			double zeroDopplerTime, distance;
-			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
+			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
 
@@ -1180,7 +1172,7 @@ int Deflat::demMapping_float(
 			height = DEM.at<float>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
 			double zeroDopplerTime, distance;
-			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
+			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
@@ -1281,7 +1273,7 @@ int Deflat::paraMapping_float(
 			height = DEM.at<float>(i, j);
 			Utils::ell2xyz(lon, lat, height, groundPosition);
 			double zeroDopplerTime, distance;
-			if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
+			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance)) {
 				continue;
 			}
 			int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
@@ -1379,7 +1371,7 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
 	double zeroDopplerTime, distance;
-	if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
 		fprintf(stderr, "SLC_deramp(): orbit mismatch!\n");
 		return -1;
 	}
@@ -1479,7 +1471,7 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 		height = mappedDEM.at<short>(i, (int)sceneWidth / 2);
 		Utils::ell2xyz(lon, lat, height, groundPosition);
 		double zeroDopplerTime, distance;
-		if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
+		if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
 			fprintf(stderr, "slantrange_compute_test(): orbit mismatch!\n");
 			return -1;
 		}
@@ -1571,7 +1563,7 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
 	double zeroDopplerTime, distance;
-	if (!findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
+	if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, 1.0 / prf, dopplerFrequency, zeroDopplerTime, distance)) {
 		fprintf(stderr, "slantrange_compute(): orbit mismatch!\n");
 		return -1;
 	}
@@ -1954,91 +1946,7 @@ void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid)
 		}
 }
 
-bool findZeroDopplerTime(
-	orbitStateVectors& stateVectors,
-	const Position& groundPosition,
-	double wavelength,
-	double time_interval,
-	double dopplerFrequency,
-	double& zeroDopplerTime,
-	double& distance)
-{
-		int numOrbitVec = stateVectors.newStateVectors.rows;
-		double firstVecTime = 0.0;
-		double secondVecTime = 0.0;
-		double firstVecFreq = 0.0;
-		double secondVecFreq = 0.0;
-		double currentFreq, xdiff, ydiff, zdiff;
 
-		for (int ii = 0; ii < numOrbitVec; ii++) {
-			Position orb_pos(stateVectors.newStateVectors.at<double>(ii, 1), stateVectors.newStateVectors.at<double>(ii, 2),
-				stateVectors.newStateVectors.at<double>(ii, 3));
-			Velocity orb_vel(stateVectors.newStateVectors.at<double>(ii, 4), stateVectors.newStateVectors.at<double>(ii, 5),
-				stateVectors.newStateVectors.at<double>(ii, 6));
-			xdiff = groundPosition.x - orb_pos.x;
-			ydiff = groundPosition.y - orb_pos.y;
-			zdiff = groundPosition.z - orb_pos.z;
-			double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-			currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * dist);
-			if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-				firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-				firstVecFreq = currentFreq;
-			}
-			else {
-				secondVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
-				secondVecFreq = currentFreq;
-				break;
-			}
-		}
-
-		if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
-			return false;
-		}
-
-		double lowerBoundTime = firstVecTime;
-		double upperBoundTime = secondVecTime;
-		double lowerBoundFreq = firstVecFreq;
-		double upperBoundFreq = secondVecFreq;
-		double midTime, midFreq;
-		double diffTime = fabs(upperBoundTime - lowerBoundTime);
-		double absLineTimeInterval = time_interval;
-
-		int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-		int numIterations = 0;
-		Position pos; Velocity vel;
-		while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-			midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-			stateVectors.getPosition(midTime, pos);
-			stateVectors.getVelocity(midTime, vel);
-			xdiff = groundPosition.x - pos.x;
-			ydiff = groundPosition.y - pos.y;
-			zdiff = groundPosition.z - pos.z;
-			double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-			midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * dist);
-			if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-				lowerBoundTime = midTime;
-				lowerBoundFreq = midFreq;
-			}
-			else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-				upperBoundTime = midTime;
-				upperBoundFreq = midFreq;
-			}
-			else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-				lowerBoundTime = midTime;
-				break;
-			}
-			diffTime = fabs(upperBoundTime - lowerBoundTime);
-			numIterations++;
-		}
-
-		zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-		stateVectors.getPosition(zeroDopplerTime, pos);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		return true;
-	}
 
 int Deflat::getSRTMDEM(
 	const char* filepath,

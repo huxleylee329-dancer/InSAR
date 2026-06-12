@@ -595,7 +595,7 @@
 
 ### P0 — 必须修复
 
-- [ ] **`SLC_deramp_14` mode==4 中类型转换 bug** — `SLC_simulator.cpp:3051,3121,3190`
+- [x] **`SLC_deramp_14` mode==4 中类型转换 bug** — `SLC_simulator.cpp:3051,3121,3190`
   - `if (slc2.type() != CV_32F) slc.convertTo(slc, CV_32F);`
   - 检查的是 slc2 类型，转换的却是 slc，复制粘贴导致的 bug
 - [ ] **第一个 `generateSLC` 函数未写入 SLC 像素（半成品）** — `SLC_simulator.cpp:269-550`
@@ -604,10 +604,10 @@
 
 ### P1 — 重要
 
-- [ ] **零多普勒搜索算法重复 13 处（~1000 行）** — `SLC_simulator.cpp` 多处
+- [x] **零多普勒搜索算法重复 13 处（~1000 行）** — `SLC_simulator.cpp` 多处
   - 第 384-468、694-778、781-865、1289-1373、1376-1460、1797-1881、1884-1968、2087-2175、2187-2264、2527-2613、2616-2693、3408-3495、3497-3575 行
   - 应提取为 `findZeroDopplerTime()` 辅助函数
-- [ ] **去参考/加参考相位操作重复 12+ 处** — `SLC_simulator.cpp` 多处
+- [x] **去参考/加参考相位操作重复 12+ 处** — `SLC_simulator.cpp` 多处
   - 应提取为 `applyPhaseCorrection()` 辅助函数
 - [ ] **文件过大：4400+ 行** — `SLC_simulator.cpp`
   - 建议按功能拆分
@@ -622,11 +622,11 @@
   - `string demPath` 应改为 `const string&`
 - [ ] **`SLC_deramp` 与 `SLC_reramp` 接口完全相同但功能相反** — `SLC_simulator.h:243,289`
   - 建议合并为一个函数，增加 `bool addPhase` 参数
-- [ ] **OMP 并行循环内创建临时 Mat 对象** — `SLC_simulator.cpp` 多处
+- [x] **OMP 并行循环内创建临时 Mat 对象** — `SLC_simulator.cpp` 多处
   - 每次迭代创建 `Mat XYZ, LLH(1,3,CV_64F), tt`，百万级像素时性能严重下降
 - [ ] **`conv2` 函数定义在 cpp 文件全局作用域** — `SLC_simulator.cpp:30-60`
   - 通用二维卷积函数应提取到 Utils 类中
-- [ ] **`Utils util` 在每个函数中重复实例化** — `SLC_simulator.cpp:2044,2447,3355`
+- [x] **`Utils util` 在每个函数中重复实例化** — `SLC_simulator.cpp:2044,2447,3355`
   - 实际只需调用 `ell2xyz()`，应使用 `Utils::ell2xyz()` 静态版本
 
 ### P3 — 优化
@@ -690,14 +690,14 @@
 
 ### P1 — 重要
 
-- [ ] **`findZeroDopplerTime()` 需提取为共享工具函数**
+- [x] **`findZeroDopplerTime()` 需提取为共享工具函数**
   - 消除 simulation(13处)、Deflat(5处)、Registration(1处)、Evaluation(2处) 共约 1600 行重复代码
   - 建议放在 Utils 中
 - [ ] **`newton_iter_core()` 需提取为共享方法**
   - 消除 Dem(4处)、Evaluation(1处) 共约 600 行重复代码
-- [ ] **`return_check()`/`parallel_check()` 需提取到 `include/ErrorCheck.h`**
+- [x] **`return_check()`/`parallel_check()` 需提取到 `include/ErrorCheck.h`**
   - 在 Utils、Filter、Unwrap、Registration、Deflat、SBAS 六个模块中重复定义
-- [ ] **删除 `parallel_flag_change()`（死代码）**
+- [x] **删除 `parallel_flag_change()`（死代码）**
   - 按值传递 volatile 修改无效，在所有模块中均未被实际调用
 - [ ] **`volatile bool` 改为 `std::atomic<bool>`**
   - 出现在 Filter、Unwrap、Dem、Utils 中
@@ -705,7 +705,7 @@
 
 ### P2 — 建议
 
-- [ ] **统一 `PI` 常量使用**
+- [x] **统一 `PI` 常量使用**
   - Filter.cpp、Unwrap.cpp、Deflat.cpp、Utils.cpp 中多处手写 `3.1415926535`（精度不足）
   - 应统一使用 `Package.h` 中的 `PI` 宏
 - [ ] **统一光速常量使用**

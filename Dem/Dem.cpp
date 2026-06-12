@@ -1085,75 +1085,10 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	longitude = longitude > 180.0 ? (longitude - 360.0) : longitude;
 	height = gcps.at<double>(i_gcp, 4);
 	Utils::ell2xyz(longitude, latitude, height, groundPosition);
-	int numOrbitVec = stateVectors2.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int iii = 0; iii < numOrbitVec; iii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-			stateVectors2.newStateVectors.at<double>(iii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-			stateVectors2.newStateVectors.at<double>(iii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance;
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval2, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = time_interval2;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0; 
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 	acquisitionStartTime2 = zeroDopplerTime - (row - 1) * time_interval2;
 	for (int i = 0; i < nr; i++)
 	{
@@ -1658,75 +1593,10 @@ int Dem::dem_newton_iter_14(
 	longitude = longitude > 180.0 ? (longitude - 360.0) : longitude;
 	height = gcps.at<double>(i_gcp, 4);
 	Utils::ell2xyz(longitude, latitude, height, groundPosition);
-	int numOrbitVec = stateVectors2.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int iii = 0; iii < numOrbitVec; iii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-			stateVectors2.newStateVectors.at<double>(iii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-			stateVectors2.newStateVectors.at<double>(iii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance;
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval2, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = time_interval2;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 	acquisitionStartTime2 = zeroDopplerTime - (row - 1) * time_interval2;
 	for (int i = 0; i < nr; i++)
 	{
@@ -2215,75 +2085,10 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	longitude = longitude > 180.0 ? (longitude - 360.0) : longitude;
 	height = gcps.at<double>(i_gcp, 4);
 	Utils::ell2xyz(longitude, latitude, height, groundPosition);
-	int numOrbitVec = stateVectors2.newStateVectors.rows;
-	double firstVecTime = 0.0;
-	double secondVecTime = 0.0;
-	double firstVecFreq = 0.0;
-	double secondVecFreq = 0.0;
-	double currentFreq, xdiff, ydiff, zdiff, distance = 1.0, zeroDopplerTime;
-	for (int iii = 0; iii < numOrbitVec; iii++) {
-		Position orb_pos(stateVectors2.newStateVectors.at<double>(iii, 1), stateVectors2.newStateVectors.at<double>(iii, 2),
-			stateVectors2.newStateVectors.at<double>(iii, 3));
-		Velocity orb_vel(stateVectors2.newStateVectors.at<double>(iii, 4), stateVectors2.newStateVectors.at<double>(iii, 5),
-			stateVectors2.newStateVectors.at<double>(iii, 6));
-		currentFreq = 0;
-		xdiff = groundPosition.x - orb_pos.x;
-		ydiff = groundPosition.y - orb_pos.y;
-		zdiff = groundPosition.z - orb_pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * distance);
-		if (iii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
-			firstVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			firstVecFreq = currentFreq;
-		}
-		else {
-			secondVecTime = stateVectors2.newStateVectors.at<double>(iii, 0);
-			secondVecFreq = currentFreq;
-			break;
-		}
-	}
-
-	if ((firstVecFreq - dopplerFrequency) * (secondVecFreq - dopplerFrequency) >= 0.0) {
+	double zeroDopplerTime, distance;
+	if (!Utils::findZeroDopplerTime(stateVectors2, groundPosition, wavelength, time_interval2, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
 		return -1;
 	}
-
-	double lowerBoundTime = firstVecTime;
-	double upperBoundTime = secondVecTime;
-	double lowerBoundFreq = firstVecFreq;
-	double upperBoundFreq = secondVecFreq;
-	double midTime, midFreq;
-	double diffTime = fabs(upperBoundTime - lowerBoundTime);
-	double absLineTimeInterval = time_interval2;
-
-	int totalIterations = (int)(diffTime / absLineTimeInterval) + 1;
-	int numIterations = 0;
-	while (diffTime > absLineTimeInterval * 0.1 && numIterations <= totalIterations) {
-
-		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors2.getPosition(midTime, pos);
-		stateVectors2.getVelocity(midTime, vel);
-		xdiff = groundPosition.x - pos.x;
-		ydiff = groundPosition.y - pos.y;
-		zdiff = groundPosition.z - pos.z;
-		distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * distance);
-		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
-			lowerBoundTime = midTime;
-			lowerBoundFreq = midFreq;
-		}
-		else if ((midFreq - dopplerFrequency) * (upperBoundFreq - dopplerFrequency) > 0.0) {
-			upperBoundTime = midTime;
-			upperBoundFreq = midFreq;
-		}
-		else if (fabs(midFreq - dopplerFrequency) < 0.01) {
-			zeroDopplerTime = midTime;
-			break;
-		}
-
-		diffTime = fabs(upperBoundTime - lowerBoundTime);
-		numIterations++;
-	}
-	zeroDopplerTime = lowerBoundTime - lowerBoundFreq * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
 	acquisitionStartTime2 = zeroDopplerTime - (row - 1) * time_interval2;
 	for (int i = 0; i < nr; i++)
 	{
