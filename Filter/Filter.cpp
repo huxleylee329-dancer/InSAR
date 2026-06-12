@@ -5,6 +5,7 @@
 #include"..\include\Filter.h"
 #include<tchar.h>
 #include <atlconv.h>
+#include <atomic>
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -14,17 +15,14 @@
 #endif // _DEBUG
 using namespace cv;
 
-
-inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
-{
-	if (ret < 0)
+namespace {
+	std::wstring toWString(const std::string& str)
 	{
-		parallel_flag = false;
-		return true;
-	}
-	else
-	{
-		return false;
+		if (str.empty()) return std::wstring();
+		int size_needed = MultiByteToWideChar(CP_ACP, 0, &str[0], (int)str.size(), NULL, 0);
+		std::wstring wstrTo(size_needed, 0);
+		MultiByteToWideChar(CP_ACP, 0, &str[0], (int)str.size(), &wstrTo[0], size_needed);
+		return wstrTo;
 	}
 }
 
@@ -231,7 +229,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	int nn, mm;
 	nn = getOptimalDFTSize(2 * wndsize_filter);
 	mm = nn;
-	double pi = 3.1415926535;
+	double pi = PI;
 	int Radius = (wndsize_filter - 1) / 2; /*窗半径*/
 	int nr_orig = phase.rows;/*原始尺寸rows*/
 	int nc_orig = phase.cols;/*原始尺寸cols*/
@@ -291,28 +289,30 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 
 	double phi0 = 2.0 * pi / ((double)mn); /*CZT变换参数*/
 	int ret;
-	volatile bool parallel_flag = true;
-//#pragma omp parallel for schedule(guided) \
-//	private(ret)
+	std::atomic<bool> parallel_flag(true);
+#pragma omp parallel for schedule(guided) private(ret)
 	for (int i = Radius; i < nr_new - Radius; i++)
 	{
-#pragma omp parallel for schedule(guided) \
-		private(ret)
-		//if (!parallel_flag) continue;
+		if (!parallel_flag) continue;
+
+		Mat phase_estimation(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));/*滤波窗口内相位*/
+		Mat window_mean;
+		Mat planes_dft[] = { Mat::zeros(nn, nn, CV_64F), Mat::zeros(nn, nn, CV_64F) };
+		Mat planes_czt[] = { Mat::zeros(3 * mm, 3 * mm, CV_64F), Mat::zeros(3 * mm, 3 * mm, CV_64F) };
+		Mat phase_czt1, phase_czt2, AA, phase_0_matrix;
+		Mat aa(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));
+		Mat phase_0(1, 1, CV_64FC2, Scalar::all(0));
+		Mat one(tempi.rows, tempi.cols, CV_64F, Scalar::all(1));
+		Mat one_t(tempj.rows, tempj.cols, CV_64F, Scalar::all(1));
+
 		for (int j = Radius; j < nc_new - Radius; j++)
 		{
 			if (!parallel_flag) continue;
 			int k, kk;
-			Mat phase_estimation(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));/*滤波窗口内相位*/
-			Mat window_mean;
-			Mat planes[] = { Mat::zeros(wndsize_filter, wndsize_filter, CV_64F),
-				Mat::zeros(wndsize_filter, wndsize_filter, CV_64F) };
 			Point peak_loc;
 			double fi, fj, fii, fjj;
 			double theta0_i, theta0_j;
-			Mat phase_czt1, phase_czt2, AA, phase_0_matrix;
-			Mat aa(wndsize_filter, wndsize_filter, CV_64FC2, Scalar::all(0));
-			Mat phase_0(1, 1, CV_64FC2, Scalar::all(0));
+			
 			phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)).copyTo(phase_estimation);
 			phase_estimation.copyTo(window_mean);
 			/*频率估计前预滤波*/
@@ -322,23 +322,19 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 				parallel_flag = false;
 				continue;
 			}
-			
-			//if (parallel_flag_change(parallel_flag, ret)) continue;
 
 			/*nn点傅里叶变换*/
 			copyMakeBorder(window_mean, window_mean, 0, nn - wndsize_filter, 0, nn - wndsize_filter, BORDER_CONSTANT, Scalar::all(0));
 			dft(window_mean, window_mean);
-			split(window_mean, planes);
-			magnitude(planes[0], planes[1], planes[0]);
-			ret = fftshift2(planes[0]);
+			split(window_mean, planes_dft);
+			magnitude(planes_dft[0], planes_dft[1], planes_dft[0]);
+			ret = fftshift2(planes_dft[0]);
 			if (ret < 0)
 			{
 				parallel_flag = false;
 				continue;
 			}
-			if (ret < 0) continue;
-			if (parallel_flag_change(parallel_flag, ret)) continue;
-			minMaxLoc(planes[0], NULL, NULL, NULL, &peak_loc);
+			minMaxLoc(planes_dft[0], NULL, NULL, NULL, &peak_loc);
 			fi = ((double)(peak_loc.y - nn / 2 - 1)) / ((double)nn);/*此处减2是为了扩大CZT变换的搜索范围*/
 			fj = ((double)(peak_loc.x - nn / 2 - 1)) / ((double)nn);
 
@@ -351,7 +347,6 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 				parallel_flag = false;
 				continue;
 			}
-			//if (parallel_flag_change(parallel_flag, ret)) continue;
 			transpose(phase_czt1, phase_czt1);
 			ret = czt2(phase_czt1, phase_czt2, 3 * mm, phase_czt1.rows, theta0_j, phi0);
 			if (ret < 0)
@@ -359,22 +354,16 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 				parallel_flag = false;
 				continue;
 			}
-			//if (parallel_flag_change(parallel_flag, ret)) continue;
 			transpose(phase_czt2, phase_czt2);
-			split(phase_czt2, planes);
-			magnitude(planes[0], planes[1], planes[0]);
-			minMaxLoc(planes[0], NULL, NULL, NULL, &peak_loc);
+			split(phase_czt2, planes_czt);
+			magnitude(planes_czt[0], planes_czt[1], planes_czt[0]);
+			minMaxLoc(planes_czt[0], NULL, NULL, NULL, &peak_loc);
 
 			fii = fi + ((double)(peak_loc.y) / (double)mn);
 			fjj = fj + ((double)(peak_loc.x) / (double)mn);/*频谱细化后峰值位置*/
 
 			theta0_i = 2.0 * pi * fii;
 			theta0_j = 2.0 * pi * fjj;/*更新细化值*/
-
-			/*tempi = tempi * theta0_i;
-			tempj = tempj * theta0_j;*/
-			Mat one(tempi.rows, tempi.cols, CV_64F, Scalar::all(1));
-			Mat one_t(tempj.rows, tempj.cols, CV_64F, Scalar::all(1));
 
 			AA = ((tempi * theta0_i) * one_t) + (one * (tempj * theta0_j));
 			for (k = 0; k < wndsize_filter; k++)
@@ -385,10 +374,8 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 					aa.at<Vec2d>(k, kk)[1] = sin(AA.at<double>(k, kk));/*虚部*/
 				}
 			}
-			//#pragma omp critical 
-			//{
-			mulSpectrums(phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)), aa, phase_0_matrix, 0, true);/*异常*/
-			//}
+			
+			mulSpectrums(phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)), aa, phase_0_matrix, 0, true);
 
 			phase_0.at<Vec2d>(0, 0)[0] = mean(phase_0_matrix)[0];
 			phase_0.at<Vec2d>(0, 0)[1] = mean(phase_0_matrix)[1];
@@ -400,7 +387,10 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			phase_filtered.at<double>(i, j) = atan2(phase_0.at<Vec2d>(0, 0)[1], phase_0.at<Vec2d>(0, 0)[0]);
 		}
 
-		fprintf(stdout, "process: %lf %%\n", double(i - Radius) / double(nr_new - 2 * Radius + 1) * 100);
+#pragma omp critical(stdout_print)
+		{
+			fprintf(stdout, "process: %lf %%\n", double(i - Radius) / double(nr_new - 2 * Radius) * 100);
+		}
 	}
 	//if (parallel_check(parallel_flag, "slope_adaptive_filter()", parallel_error_head)) return -1;
 	phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)).copyTo(phase_filter);
@@ -447,17 +437,16 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 	ret = util.cvmat2bin(sin_file.c_str(), sin);
 	if (return_check(ret, "util.cvmat2bin(*, *)", error_head)) return -1;
 	///////////////////////////创建并调用深度学习滤波进程//////////////////////
-	USES_CONVERSION;
-	LPWSTR szCommandLine = new TCHAR[512];
 	string Filter_dl_path(filter_dl_path);
 	std::replace(Filter_dl_path.begin(), Filter_dl_path.end(), '/', '\\');
-	wcscpy(szCommandLine, A2W(Filter_dl_path.c_str()));
-	wcscat(szCommandLine, L"\\filter_dl.exe ");
-	wcscat(szCommandLine, A2W(dl_model_file));
-	wcscat(szCommandLine, L" ");
-	wcscat(szCommandLine, A2W(cos_file.c_str()));
-	wcscat(szCommandLine, L" ");
-	wcscat(szCommandLine, A2W(sin_file.c_str()));
+	std::wstring cmdLine = toWString(Filter_dl_path) + L"\\filter_dl.exe " + 
+	                       toWString(dl_model_file) + L" " + 
+	                       toWString(cos_file) + L" " + 
+	                       toWString(sin_file);
+
+	std::vector<wchar_t> cmdLineCopy(cmdLine.begin(), cmdLine.end());
+	cmdLineCopy.push_back(L'\0');
+
 	STARTUPINFO si;
 	PROCESS_INFORMATION p_i;
 	ZeroMemory(&si, sizeof(si));
@@ -467,7 +456,7 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcess(
 		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
+		cmdLineCopy.data(), // 命令行参数
 		NULL,           // 默认进程安全性
 		NULL,           // 默认线程安全性
 		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
@@ -497,14 +486,16 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 			}
 		}
 		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
+		if (hd)
+		{
+			::CloseHandle(hd);
+		}
 		::CloseHandle(p_i.hThread);
 		::CloseHandle(p_i.hProcess);
 	}
 	else
 	{
 		fprintf(stderr, "filter_dl(): create filter_dl.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
 		return -1;
 	}
 	///////////////////////////创建并调用深度学习滤波进程//////////////////////
@@ -522,30 +513,32 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 	return 0;
 }
 
-int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
-{
+int Filter::goldstein_filter_impl(
+	Mat& phase,
+	Mat& phase_filter,
+	double alpha,
+	int n_win,
+	int n_pad,
+	bool parallel
+) {
 	if (phase.cols < 3 ||
 		phase.rows < 3 ||
 		phase.channels() != 1 ||
 		phase.type() != CV_64F ||
 		alpha <= 0 ||
 		n_win < 5 ||
-		n_pad < 0 
+		n_pad < 0
 		)
 	{
-		fprintf(stderr, "Goldstein_filter(): input check failed!\n\n");
+		fprintf(stderr, "%s(): input check failed!\n\n", parallel ? "Goldstein_filter_parallel" : "Goldstein_filter");
 		return -1;
 	}
 	int n_i = phase.rows;
 	int n_j = phase.cols;
 	ComplexMat ph;
-	Mat cos, sin;
-	int ret;
+	
 	Utils util;
-	ret = util.phase2cos(phase, ph.re, ph.im);
-	//if (return_check(ret, "util.phase2cos(*, *, *)", error_head)) return -1;
-	//ph.SetIm(sin);
-	//ph.SetRe(cos);
+	util.phase2cos(phase, ph.re, ph.im);
 
 	ComplexMat ph_out(n_i, n_j);
 	int n_inc = static_cast<int>(floor(n_win / 4));
@@ -566,146 +559,26 @@ int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_
 	hconcat(qua_wnd, fliped_wnd, qua_wnd);
 	flip(qua_wnd, fliped_wnd, 0);
 	vconcat(qua_wnd, fliped_wnd, qua_wnd);
-	Mat guasswin = Mat::zeros(7, 1, CV_64F);
+
+	Mat guasswin;
+	/*
+	// 历史遗留的 sigma = 1.2 手工高斯核计算（在原单线程版本中被下方的 GenerateGaussMask(..., 1.0) 覆盖而未生效，在此注释保留以备参考）
+	Mat guasswin_legacy = Mat::zeros(7, 1, CV_64F);
 	double val[] = { 0.0439369336234074, 0.249352208777296, 0.706648277857716, 1, 0.706648277857716, 0.249352208777296, 0.0439369336234074 };
-	memcpy(guasswin.data, val, sizeof(double) * 7);
+	memcpy(guasswin_legacy.data, val, sizeof(double) * 7);
 	Mat guasswin_t;
-	transpose(guasswin, guasswin_t);
-	guasswin = guasswin * guasswin_t;
+	transpose(guasswin_legacy, guasswin_t);
+	guasswin_legacy = guasswin_legacy * guasswin_t;
+	*/
 	GenerateGaussMask(guasswin, 7, 7, 1.0);
-	int n_win_ex = n_win + n_pad;
-	ComplexMat ph_bit(n_win_ex, n_win_ex);
-	ComplexMat temp, temp1, temp2, fft_out, ph_filt;
-	Mat wf, wf2, wind_func, tmp, tmp1, tmp2, H;
-	qua_wnd.copyTo(wind_func);
-	double median = 1.0;
-	int i1, i2, i_shift, j_shift, ix1, ix2, j1, j2;
-	for (ix1 = 1; ix1 <= n_win_i; ix1++)
-	{
-		wind_func.copyTo(wf);
-		i1 = (ix1 - 1) * n_inc + 1;
-		i2 = i1 + n_win - 1;
-		if (i2 > n_i)
-		{
-			i_shift = i2 - n_i;
-			i2 = n_i;
-			i1 = n_i - n_win + 1;
-			tmp1 = Mat::zeros(i_shift, n_win, CV_64F);
-			wf(Range(0, n_win - i_shift), Range(0, wf.cols)).copyTo(tmp2);
-			vconcat(tmp1, tmp2, wf);
-		}
-		for (ix2 = 1; ix2 <= n_win_j; ix2++)
-		{
-			wf.copyTo(wf2);
-			j1 = (ix2 - 1) * n_inc + 1;
-			j2 = j1 + n_win - 1;
-			if (j2 > n_j)
-			{
-				j_shift = j2 - n_j;
-				j2 = n_j;
-				j1 = n_j - n_win + 1;
-				tmp1 = Mat::zeros(n_win, j_shift, CV_64F);
-				wf2(Range(0, wf2.rows), Range(0, n_win - j_shift)).copyTo(tmp2);
-				hconcat(tmp1, tmp2, wf2);
-			}
-			if (wf2.cols != n_win || wf2.rows != n_win)
-			{
-				fprintf(stderr, "Goldstein_filter(): wf2.size and n_win mismatch, please check to make sure n_win is even!\n\n");
-				return -1;
-			}
-			temp = ph(cv::Range(i1 - 1, i2), cv::Range(j1 - 1, j2));
-			ret = ph_bit.SetValue(cv::Range(0, n_win), cv::Range(0, n_win), temp);
-			if (return_check(ret, "ComplexMat::SetValue(*, *, *)", error_head)) return -1;
-			ret = util.fft2(ph_bit, fft_out);
-			if (return_check(ret, "util.fft2(*, *)", error_head)) return -1;
-			H = fft_out.GetMod();
-			ret = fftshift2(H);
-			if (return_check(ret, "fftshift2(*, *)", error_head)) return -1;
-			GaussianFilter(H, H, guasswin);
-			//filter2D(H, H, -1, guasswin, Point(-1, -1), 0.0, BORDER_CONSTANT);
-			ret = util.ifftshift(H);
-			if (return_check(ret, "ifftshift(*, *)", error_head)) return -1;
-			H.copyTo(tmp);
-			tmp = tmp.reshape(0, 1);
-			cv::sort(tmp, tmp, SORT_ASCENDING + SORT_EVERY_ROW);
-			if (tmp.cols % 2 == 1)
-			{
-				median = tmp.at<double>(0, int((tmp.cols + 1) / 2) - 1);
-			}
-			else
-			{
-				median = tmp.at<double>(0, int(tmp.cols / 2) - 1) + tmp.at<double>(0, int(tmp.cols / 2));
-				median = median / 2.0;
-			}
-			if (fabs(median) > 1e-8)
-			{
-				H = H / median;
-			}
-			cv::pow(H, alpha, H);
-			fft_out = fft_out * H;
-			ret = util.ifft2(fft_out, temp);
-			if (return_check(ret, "util.ifft2(*, *)", error_head)) return -1;
-			Mat re, im;
-			re = temp.GetRe();
-			im = temp.GetIm();
-			temp1 = temp(Range(0, n_win), Range(0, n_win));
-			ph_filt = temp1 * wf2;
-			temp = ph_out(Range(i1 - 1, i2), Range(j1 - 1, j2)) + ph_filt;
-			ret = ph_out.SetValue(Range(i1 - 1, i2), Range(j1 - 1, j2), temp);
-			if (return_check(ret, "ph_out.SetValue(*, *, *)", error_head)) return -1;
-		}
-		fprintf(stdout, "Goldstein filtering process: %d / %d\n", ix1, n_win_i);
-	}
-	ph_out.GetPhase().copyTo(phase_filter);
-	return 0;
-}
 
-int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
-{
-	if (phase.cols < 3 ||
-		phase.rows < 3 ||
-		phase.channels() != 1 ||
-		phase.type() != CV_64F ||
-		alpha <= 0 ||
-		n_win < 5 ||
-		n_pad < 0
-		)
-	{
-		fprintf(stderr, "Goldstein_filter_parallel(): input check failed!\n\n");
-		return -1;
-	}
-	int n_i = phase.rows;
-	int n_j = phase.cols;
-	ComplexMat ph;
-	Mat cos, sin;
-	
-	Utils util;
-	util.phase2cos(phase, ph.re, ph.im);
-
-	ComplexMat ph_out(n_i, n_j);
-	int n_inc = static_cast<int>(floor(n_win / 4));
-	int n_win_i = static_cast<int>(ceil(n_i / n_inc)) - 1;
-	int n_win_j = static_cast<int>(ceil(n_j / n_inc)) - 1;
-	int x = static_cast<int>(floor(n_win / 2 - 1));
-	Mat qua_wnd = Mat::zeros(x + 1, x + 1, CV_64F);
-	for (int i = 0; i <= x; i++)
-	{
-		for (int j = 0; j <= x; j++)
-		{
-			qua_wnd.at<double>(i, j) = double(i + j);
-		}
-	}
-	qua_wnd.at<double>(0, 0) = 1e-6;
-	Mat fliped_wnd, guasswin;
-	flip(qua_wnd, fliped_wnd, 1);
-	hconcat(qua_wnd, fliped_wnd, qua_wnd);
-	flip(qua_wnd, fliped_wnd, 0);
-	vconcat(qua_wnd, fliped_wnd, qua_wnd);
-	GenerateGaussMask(guasswin, 7, 7, 1.0);
 	int n_win_ex = n_win + n_pad;
-	
+	std::atomic<bool> parallel_flag(true);
+
 	for (int ix1 = 1; ix1 <= n_win_i; ix1++)
 	{
+		if (!parallel_flag) break;
+
 		Mat wf, wind_func, tmp1, tmp2;
 		qua_wnd.copyTo(wind_func);
 		int i1, i2, i_shift;
@@ -721,14 +594,19 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 			wf(Range(0, n_win - i_shift), Range(0, wf.cols)).copyTo(tmp2);
 			vconcat(tmp1, tmp2, wf);
 		}
-#pragma omp parallel for schedule(guided)
+
+#pragma omp parallel for schedule(guided) if(parallel)
 		for (int ix2 = 1; ix2 <= n_win_j; ix2++)
 		{
+			if (!parallel_flag) continue;
+
 			ComplexMat ph_bit(n_win_ex, n_win_ex);
 			ComplexMat temp, temp1, temp2, fft_out, ph_filt;
 			Mat wf2, tmp, tmp11, tmp22, H;
-			int j_shift, j1, j2; int ret;
+			int j_shift, j1, j2; 
+			int ret;
 			double median = 1.0;
+
 			wf.copyTo(wf2);
 			j1 = (ix2 - 1) * n_inc + 1;
 			j2 = j1 + n_win - 1;
@@ -741,19 +619,31 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 				wf2(Range(0, wf2.rows), Range(0, n_win - j_shift)).copyTo(tmp22);
 				hconcat(tmp11, tmp22, wf2);
 			}
+
 			if (wf2.cols != n_win || wf2.rows != n_win)
 			{
-				fprintf(stderr, "Goldstein_filter_parallel(): wf2.size and n_win mismatch, please check to make sure n_win is even!\n\n");
-				//return -1;
+				fprintf(stderr, "%s(): wf2.size and n_win mismatch, please check to make sure n_win is even!\n\n", 
+					parallel ? "Goldstein_filter_parallel" : "Goldstein_filter");
+				parallel_flag = false;
+				continue;
 			}
+
 			temp = ph(cv::Range(i1 - 1, i2), cv::Range(j1 - 1, j2));
 			ret = ph_bit.SetValue(cv::Range(0, n_win), cv::Range(0, n_win), temp);
+			if (ret < 0) { parallel_flag = false; continue; }
+
 			ret = util.fft2(ph_bit, fft_out);
+			if (ret < 0) { parallel_flag = false; continue; }
+
 			H = fft_out.GetMod();
 			ret = fftshift2(H);
+			if (ret < 0) { parallel_flag = false; continue; }
+
 			GaussianFilter(H, H, guasswin);
-			//filter2D(H, H, -1, guasswin, Point(-1, -1), 0.0, BORDER_CONSTANT);
+
 			ret = util.ifftshift(H);
+			if (ret < 0) { parallel_flag = false; continue; }
+
 			H.copyTo(tmp);
 			tmp = tmp.reshape(0, 1);
 			cv::sort(tmp, tmp, SORT_ASCENDING + SORT_EVERY_ROW);
@@ -772,7 +662,9 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 			}
 			cv::pow(H, alpha, H);
 			fft_out = fft_out * H;
+
 			ret = util.ifft2(fft_out, temp);
+			if (ret < 0) { parallel_flag = false; continue; }
 			Mat re, im;
 			re = temp.GetRe();
 			im = temp.GetIm();
@@ -787,8 +679,18 @@ int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alph
 	return 0;
 }
 
+int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
+{
+	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, false);
+}
+
+int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
+{
+	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, true);
+}
+
 // 按二维高斯函数实现高斯滤波
-int Filter::GaussianFilter(cv::Mat& src, cv::Mat& dst, cv::Mat window) 
+int Filter::GaussianFilter(cv::Mat& src, cv::Mat& dst, const cv::Mat& window) 
 {
 	int hh = (window.rows - 1) / 2;
 	int hw = (window.cols - 1) / 2;
@@ -796,7 +698,7 @@ int Filter::GaussianFilter(cv::Mat& src, cv::Mat& dst, cv::Mat window)
 	//边界填充
 	cv::Mat Newsrc;
 	cv::copyMakeBorder(src, Newsrc, hh, hh, hw, hw, cv::BORDER_REPLICATE);//边界复制
-	Dst.zeros(src.size(), src.type());
+	Dst.setTo(0);
 	//高斯滤波
 	for (int i = hh; i < src.rows + hh; ++i) {
 		for (int j = hw; j < src.cols + hw; ++j) {

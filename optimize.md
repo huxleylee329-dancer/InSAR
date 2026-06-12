@@ -268,42 +268,42 @@
 
 ### P0 — 必须修复
 
-- [ ] **`Dst.zeros()` 静态方法误用为实例方法** — `Filter.cpp:823`
+- [x] **`Dst.zeros()` 静态方法误用为实例方法** — `Filter.cpp:823`
   - `Mat::zeros` 是静态工厂方法，不会修改已有对象 `Dst`
   - 应使用 `Dst.setTo(0)`
 
 ### P1 — 重要
 
-- [ ] **`Goldstein_filter` 与 `Goldstein_filter_parallel` 约 200 行重复代码** — `Filter.cpp:549-812`
+- [x] **`Goldstein_filter` 与 `Goldstein_filter_parallel` 约 200 行重复代码** — `Filter.cpp:549-812`
   - 两个函数约 80% 代码完全一致
   - 应重构为公共辅助函数，两个接口仅在并行策略上有差异
-- [ ] **`new TCHAR[512]` 裸分配存在泄漏风险** — `Filter.cpp:475`
+- [x] **`new TCHAR[512]` 裸分配存在泄漏风险** — `Filter.cpp:475`
   - 建议使用 `std::wstring` 或 `std::vector<wchar_t>`
-- [ ] **使用已废弃的 `USES_CONVERSION`/`A2W` 宏** — `Filter.cpp:474`
+- [x] **使用已废弃的 `USES_CONVERSION`/`A2W` 宏** — `Filter.cpp:474`
   - 使用线程局部栈空间进行编码转换，大循环中会导致栈溢出
   - 建议使用 `MultiByteToWideChar`
-- [ ] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Filter.cpp:16-53`
+- [x] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Filter.cpp:16-53`
   - 应提取到公共头文件
-- [ ] **`parallel_flag_change` 按值传递 volatile，修改无效** — `Filter.cpp:42-53`
+- [x] **`parallel_flag_change` 按值传递 volatile，修改无效** — `Filter.cpp:42-53`
   - 死代码，应删除
 
 ### P2 — 建议
 
-- [ ] **OMP 并行循环内 `fprintf(stdout, ...)` 输出交错** — `Filter.cpp:427`
+- [x] **OMP 并行循环内 `fprintf(stdout, ...)` 输出交错** — `Filter.cpp:427`
   - 多线程并发输出会导致交错混乱
   - 应使用 `#pragma omp critical` 或仅在主线程打印
-- [ ] **`slope_adaptive_filter` 并行循环内大量 Mat 对象创建** — `Filter.cpp:321-428`
+- [x] **`slope_adaptive_filter` 并行循环内大量 Mat 对象创建** — `Filter.cpp:321-428`
   - 每个像素创建多个 Mat 对象，百万级像素时性能严重下降
   - 应预分配工作缓冲区并在循环内复用
-- [ ] **`PI` 硬编码精度不足** — `Filter.cpp:258`
+- [x] **`PI` 硬编码精度不足** — `Filter.cpp:258`
   - `double pi = 3.1415926535;` 应使用 `Package.h` 中的 `PI` 宏
 
 ### P3 — 优化
 
-- [ ] **头文件 include guard 冗余** — `Filter.h:1-2`
+- [x] **头文件 include guard 冗余** — `Filter.h:1-2`
 - [ ] **注释风格不一致** — `Filter.h:15-86`
   - 部分 `/*...*/`，部分 `/** @brief`，部分 `//`，建议统一为 Doxygen
-- [ ] **`GaussianFilter` 参数缺少 const** — `Filter.h:82`
+- [x] **`GaussianFilter` 参数缺少 const** — `Filter.h:82`
   - `window` 参数不被修改，应为 `const Mat&`
 - [ ] **大量注释掉的代码未清理** — `Filter.cpp:121-131,319-320,350,363-364,429`
 - [ ] **`error_head` 使用裸 `char[]`** — `Filter.h:84-86`

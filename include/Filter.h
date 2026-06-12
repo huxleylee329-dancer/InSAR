@@ -1,7 +1,5 @@
 #pragma once
-#ifndef __FILTER__H__
-#define __FILTER__H__
-#include"..\include\Package.h"
+#include "..\include\Package.h"
 #include"..\include\Utils.h"
 
 
@@ -79,12 +77,17 @@ public:
 		int n_pad
 	);
 	// 按二维高斯函数实现高斯滤波
-	int GaussianFilter(Mat& src, Mat& dst, Mat window);
+	int GaussianFilter(Mat& src, Mat& dst, const Mat& window);
 	int GenerateGaussMask(Mat& Mask, int window_height, int win_width, double sigma);
 private:
+	int goldstein_filter_impl(
+		Mat& phase,
+		Mat& phase_filter,
+		double alpha,
+		int n_win,
+		int n_pad,
+		bool parallel
+	);
 	char error_head[256];
 	char parallel_error_head[256];
 };
-
-
-#endif // !__FILTER__H__

@@ -8,6 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
 | `工作区现场修改` | 2026-06-12 | AI | Unwrap, simulation | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。<br>9. 修复 SLC_deramp_14 双频乒乓模式中类型转换 Bug，避免主星数据转换后覆盖辅星数据。<br>10. 修复 generateSLC 等 5 处函数中分块行列数不足导致除零崩溃与图像全零的逻辑缺陷。 |
 | `工作区现场修改` | 2026-06-11 | AI | Deflat | 1. 修复 Orbit_Polyfit 中奇异矩阵检测条件永远为假的 Bug。<br>2. 修复 get_satellite_aztime_NEWTON 无法检测 Newton 迭代发散的 Bug。<br>3. 重构 getSRTMFileName 坐标文件名格式化逻辑，使用双重循环与 %02d 消除约 190 行冗余的 if-else 代码。<br>4. 提取 getTifPath 辅助函数，消除 getSRTMDEM 中 15 处重复的 tif 文件路径拼接代码。<br>5. 提取 findZeroDopplerTime 辅助函数，消除 7 处 zero-Doppler 查找的冗余代码。<br>6. 将 return_check 与 parallel_check 提取为 Utils.h 中的全局 inline 函数，并清理 Deflat 和 Utils 中的局部冗余定义及死代码 parallel_flag_change。<br>7. 提取 fillInvalidGaps 模板函数，消除 5 处 DEM 和经纬度投影图空白值搜索填充的冗余代码。<br>8. 消除 Deflat.cpp 中的魔数（Pi、光速），定义牛顿收敛常量，纠正 3 处函数报错名称及下载拼写错误，并移除 Deflat.h 中的冗余头文件包含保护。 |
 | `工作区现场修改` | 2026-06-11 | AI | Registration | 1. 提取 padBorder 辅助函数去重 4 处立方插值边界扩充逻辑。<br>2. 优化双线性重采样中的 OMP 循环，提前提取多项式系数，使用浮点乘加代替循环内 cv::Mat 创建与矩阵乘法。<br>3. 修复 WeightCalculation 中的自赋值死代码，采用 fabs 绝对值函数简化逻辑。<br>4. 纠正 13 处内部报错信息拼写错误与不匹配的函数名（如 coregistration_pixel 纠正为 coregistration_subpixel_sinc）。<br>5. 提取 bilinear_interp2d 统一插值函数，消除两处重采样中约 120 行冗余的类型分支双线性插值实现。<br>6. 清理 Registration.h 中冗余的传统防重包含宏保护，规范 include 头文件时的空格排版。 |
@@ -227,6 +228,23 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   2. **剥离依赖**：将 `FormatConversion.cpp` 顶部的 `#pragma comment(lib, "Utils.lib")` / `"Utils_d.lib"` 彻底删除，完全移除了 `FormatConversion` 在链接期对 `Utils` 的反向依赖；
   3. **转发代理 (Delegation)**：在 `Utils.cpp` 中保留原有的 `Utils::findZeroDopplerTime` 静态方法，并将其内部实现改写为单行向 `orbitStateVectors::findZeroDopplerTime` 转发，在保证上层十余个调用模块兼容性（无需更改任何调用行）的同时，消除了物理代码拷贝，彻底解开了循环依赖。
 
+### 13. Filter 模块优化与修复 (Filter)
+- **`Dst.zeros()` 静态方法误用修复**：
+  在 `Filter::GaussianFilter` 中，`Dst.zeros(src.size(), src.type());` 误将 `cv::Mat::zeros` 静态方法作为实例方法调用，该操作在运行时无 any 效果，未对 `Dst` 重置。已将其修改为 `Dst.setTo(0);`，确保对 `Dst` 对象的正确重置。
+- **`Goldstein_filter` 与 `Goldstein_filter_parallel` 重构去重**：
+  合并单线程和并行版本约 200 行高度重复代码，提取出 `goldstein_filter_impl` 私有核心实现。利用 `#pragma omp parallel for schedule(guided) if(parallel)` 机制动态根据参数控制是否启用多线程并行，并将原单线程版本中已失效被覆盖的手动拼凑 `sigma = 1.2` 遗留高斯核计算部分进行了注释保留（而非直接删除），以备后期开发参考；同时在并行分支中补全了原本缺失的返回值错误判定。
+- **`filter_dl` 进程创建及句柄泄漏修复**：
+  将 `filter_dl` 中原有的静态 `new TCHAR[512]` 缓冲区与已废弃 of ATL 宏 `USES_CONVERSION`/`A2W` 统一重构为使用 `std::wstring` 并调用 `MultiByteToWideChar` API 的宽字符安全转换方案。此举消了超长路径下缓冲区溢出的隐患及多线程栈溢出的风险；同时，在函数结束处正确调用了 `CloseHandle(hd)` 关闭 Job Object 句柄，消除了内核句柄泄漏。
+- **`parallel_flag_change` 死代码及无效校验清理**：
+  从 `Filter.cpp` 中彻底删除了未被调用的 `parallel_flag_change` 函数（该函数因使用值传递参数导致修改标志失效），并同步清理了 `slope_adaptive_filter` 中所有相关注释和失效调用行。
+- **`PI` 圆周率常数精度统一**：
+  将 `slope_adaptive_filter` 中低精度的硬编码 `double pi = 3.1415926535;` 替换为使用 `Package.h` 中的全局 20 位高精度 `PI` 宏，保证物理计算精度和常量定义的统一性。
+- **`slope_adaptive_filter` 并行优化与预分配**：
+  将 `slope_adaptive_filter` 的 OpenMP 并行化指令由内层 `j` 循环提升到外层 `i` 循环上，极大降低了 OMP 调度开销。同时将循环内各个临时 `cv::Mat` 对象（如 `phase_estimation`、`planes` 等）移至外层 `i` 循环开头，在每个线程内部实现“每一行只分配一次，在每列之间复用”，并针对 dft 和 czt 的不同尺寸进一步分离为 `planes_dft` 和 `planes_czt`，彻底消除了像素循环内百万次的堆内存动态分配锁竞争；此外，将 `fprintf` 进度输出使用 `#pragma omp critical(stdout_print)` 保护，解决了控制台多线程打印字符交错的乱序问题。
+- **`GaussianFilter` 参数 `const&` 保护与头文件宏冗余清理**：
+  将仅在模块内被引用的 `GaussianFilter` 参数 `window` 改为只读引用 `const Mat& window`，提升了数值安全性并避免不必要的对象拷贝开销；同时去除了 `Filter.h` 中传统宏包含保护（仅保留 `#pragma once`），规范了代码结构。
+- **`volatile bool` 升级为 `std::atomic<bool>`**：
+  将 `slope_adaptive_filter` 中用于 OpenMP 错误控制的 `volatile bool parallel_flag` 升级为 `std::atomic<bool> parallel_flag`，以保证多线程下的内存可见性与线程安全性，消除数据竞争隐患。
+
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*
-
