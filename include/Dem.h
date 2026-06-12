@@ -11,22 +11,24 @@ class InSAR_API Dem
 public:
 	Dem();
 	~Dem();
-	/*相位高程转换
-	* 参数1 解缠相位
-	* 参数2 平地相位
-	* 参数3 高程值（返回值）
-	* 参数4 主星辅助参数
-	* 参数5 辅星辅助参数
-	* 参数6 主星轨道参数
-	* 参数7 辅星轨道参数
-	* 参数8 多普勒中心频率
-	* 参数9 地面控制点
-	* 参数10 配准结果（包括配准偏移量和配准前图像尺寸）
-	* 参数11 主星成像间隔时间
-	* 参数12 辅星成像间隔时间
-	* 参数13 干涉多视倍数
-	* 参数14 收发模式（1：单发单收，2：单发双收）
-	* 参数15 牛顿迭代次数（默认30次）
+	/** @brief 相位高程转换
+	
+	@param unwrapped_phase                                 解缠相位
+	@param flat_phase                                      平地相位
+	@param dem                                             高程值（返回值）
+	@param auxi_m                                          主星辅助参数
+	@param auxi_s                                          辅星辅助参数
+	@param orbit_m                                         主星轨道参数
+	@param orbit_s                                         辅星轨道参数
+	@param doppler_frequency                               多普勒中心频率
+	@param gcps                                            地面控制点
+	@param regis_out                                       配准结果（包括配准偏移量和配准前图像尺寸）
+	@param delta_m                                         主星成像间隔时间
+	@param delta_s                                         辅星成像间隔时间
+	@param multilook_times                                 干涉多视倍数
+	@param mode                                            收发模式（1：单发单收，2：单发双收）
+	@param iters                                           牛顿迭代次数（默认30次）
+	@return  成功返回0，否则返回-1
 	*/
 	int phase2dem_newton_iter(
 		Mat unwrapped_phase,

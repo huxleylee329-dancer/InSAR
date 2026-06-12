@@ -8,6 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-12 | AI | Dem | 1. 提炼 static 辅助函数 newton_iter_core 以重构高程反演计算，消除了 phase2dem_newton_iter, dem_newton_iter, dem_newton_iter_test, dem_newton_iter_14, dem_newton_iter_14_dualfreqpingpong 五个函数中约 800 行冗余 of 牛顿迭代代码。<br>2. 注释屏蔽 3 处硬编码本机的绝对调试盘写路径（error.bin 和 KK2.h5），杜绝环境适配报错隐患。<br>3. 将用于 OpenMP 并行错误控制的 volatile bool parallel_flag 升级为 std::atomic<bool>，规避并发可见性与数据竞争风险。<br>4. 优化平地相位加回循环性能，提取拟合系数到循环外，使用标定代数表达式代替内层循环内重复创建 Mat 和矩阵乘法运算。<br>5. 重命名含义模糊且不规范的局部变量 xxxx 为 orbit_idx，提高轨道索引选取的可读性。<br>6. 规范 Dem.h 头文件中 phase2dem_newton_iter 的“参数N”数字编号注释为 Doxygen 标准的 @param 格式，提供 VS 智能感知提示。 |
 | `工作区现场修改` | 2026-06-12 | AI | SBAS | 1. 重构整合 writeDIMACS_temporal/spatial，提取静态辅助函数 writeDIMACS_common，去重约 400 行代码。<br>2. 合并 compute_spatialTemporal_residue 和 compute_high_coherence_residue，清理大段注释死代码并修正拼写错误。<br>3. 重构 compute_high_coherence_residue_by_gradient，消除 170 行嵌套判断，修复 edge3 判定 Bug。<br>4. 修复 GET_NEXT_LINE 宏缩进排版错位问题。<br>5. 提取 refinement_and_reflattening 像素循环中的拟合系数至循环外，消除百万次越界判定并提升性能。<br>6. 规范 POD 结构体拷贝与赋值操作，SBAS_node 返回自身引用，SBAS_edge/SBAS_triangle 使用默认拷贝赋值以符合标准。<br>7. 优化 12 处函数的只读 Mat 参数为 `const Mat&`，提升常量正确性并支持传入临时变量。<br>8. 将 SBAS_node::neigh_edges 从原始指针升级为 `std::vector<int>`，删除手写拷贝/赋值/析构，实现自动生命周期管理。<br>9. 替换 3 处路径拼接 `sprintf` 为安全的 `snprintf`，防范缓冲区溢出。<br>10. 重构私有成员 `char error_head[256]` 为 `std::string`，并在 `Utils.h` 中新增内联重载以兼容 60 余处原有调用，提升内存安全性。 |
 | `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效 of parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
 | `工作区现场修改` | 2026-06-12 | AI | Unwrap, simulation | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。<br>9. 修复 SLC_deramp_14 双频乒乓模式中类型转换 Bug，避免主星数据转换后覆盖辅星数据。<br>10. 修复 generateSLC 等 5 处函数中分块行列数不足导致除零崩溃与图像全零的逻辑缺陷。 |
@@ -177,13 +178,15 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
     * `saveGradientStack`
     * `compute_temporal_coherence`
     * `adaptive_multilooking`
-    * `refinement_and_reflattening`�并返回 -1。
-  - **解决方法**：由于全局校验已统一为 `Utils.h` 中的 `return_check` 内联函数，且 `Unwrap.cpp` 中所有校验位置均已使用 `return_check` 替代该宏，因此直接将该死代码宏彻底删除，杜绝隐患。
+    * `refinement_and_reflattening`
+
+### 10. Unwrap 模块优化与重构 (Unwrap)
+- **`CHECK_RETURN` 死代码清理**：删除已废弃的宏定义，确保一致性并防止编译隐患。
 - **`quality.at<int>` 类型不匹配 Bug 修复**：
   - **问题**：在 `Unwrap::quailtyGuidedFloodfill` 和 `Unwrap::qualityGuided` 函数中，对入参 `quality` 的类型进行了必须为 `CV_64F` 的强制校验。然而在寻优循环中，却使用了 `quality.at<int>(i, j)` 进行数值访问。由于 OpenCV 的 `at<T>` 是无转换强转，会导致将 8 字节的 `double` 错误地读取为 4 字节的整型，获取到垃圾数值，导致解缠种子点定位错误。
   - **解决方法**：将这两处访问全部修正为 `quality.at<double>(i, j)`。
 - **外部进程创建重复代码与 szCommandLine 溢出/泄漏修复**：
-  - **问题**：在 `Unwrap.cpp` 中共有 5 处代码调用 `CreateProcess` 或 `CreateProcessA` 来执行 `mcf.exe` 或 `snaphu.exe`。每次调用都包含了大量的 Windows API 模板代码，且存在两个严重缺陷：一是用于存放命令行的 `szCommandLine` 缓冲区大小硬编码为 256/1024 字节，在长路径下可能发生缓冲区溢出；二是创建的 Job Object 句柄 `hd` 从未被 `CloseHandle` 关闭，造成句柄泄漏。
+  - **问题**：在 `Unwrap.cpp` 中共有 5 处代码调用 `CreateProcess` 或 `CreateProcessA` 来执行 `mcf.exe` 或 `snaphu.exe`。每次调用都包含了大量的 Windows API 模板代码，且存在两个严重缺陷：一是用于存放命令行缓冲区大小硬编码为 256/1024 字节，在长路径下可能发生缓冲区溢出；二是创建的 Job Object 句柄 `hd` 从未被 `CloseHandle` 关闭，造成句柄泄漏。
   - **解决方法**：在匿名命名空间中定义了统一的 `runExternalProcess` 辅助函数，使用 `std::wstring` 动态处理命令行以消除溢出隐患，在进程等待结束时增加了 `CloseHandle(hd)` 从而解决了句柄泄漏问题。最后将 5 处冗长重复的代码全部简化为对该函数的调用。
 - **`parallel_flag_change` 死代码清理**：
   - **问题**：在 `Unwrap.cpp` 中定义了 `parallel_flag_change` inline 函数，该函数试图修改按值传递的 `volatile bool parallel_flag`，存在逻辑错误，且在全模块中均未被实际调用，属于死代码。
@@ -297,6 +300,26 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   1. 将 `SBAS::error_head` 的类型从 `char[256]` 修改为 `std::string`，并在 `SBAS` 构造函数中使用标准 C++ 赋值，确保内存分配动态且安全；    
   2. 在公共头文件 `include/Utils.h` 中，为 `return_check` 函数新增了支持 `const std::string&` 参数的内联重载，从而使 `SBAS` 模块中 60 
   处以上的调用无需做任何改动即可直接通过编译，实现了完全的向下兼容与平滑重构。 
+
+### 15. Dem 模块优化与重构 (Dem)
+- **牛顿迭代核心代码重构去重**：
+  - **问题**：`phase2dem_newton_iter()`、`dem_newton_iter()`、`dem_newton_iter_test()`、`dem_newton_iter_14()` 和 `dem_newton_iter_14_dualfreqpingpong()` 五个函数中均包含约 150-200 行高度重复的牛顿迭代计算及雅可比矩阵求解代码，导致代码维护极度臃肿，且有繁杂的手动 Mat 内存释放操作。
+  - **解决方法**：在 `Dem.cpp` 匿名/静态作用域中提取并实现了 `newton_iter_core` 静态辅助函数，将五处冗余代码统一替换为单行调用。消除约 800 行冗余代码，并利用 C++ 的 RAII 机制在函数返回时自动释放所有临时 `Mat` 变量，大幅提升了内存安全性、可读性与可维护性。
+- **清理硬编码调试写盘路径**：
+  - **问题**：在 `Dem::dem_newton_iter` 中存在向 `"G:\\tmp\\error.bin"` 导出的操作，且在 `Dem::dem_newton_iter_test` 中存在向 `"E:\\working_dir\\projects\\software\\InSAR\\bin\\KK2.h5"` 读写导出标定矩阵的操作。对于不具备相应物理盘符及开发路径的运行环境，会抛出写入错误或崩溃。
+  - **解决方法**：将这 3 处主动调试盘写操作全部进行注释屏蔽，杜绝了环境差异导致的报错隐患，同时也降低了发布版本的无用 IO 开销。
+- **OpenMP 错误标志线程安全升级**：
+  - **问题**：在 5 个函数的大地坐标转换 OpenMP 并行循环中，使用 `volatile bool parallel_flag` 做多线程错误标记，但 `volatile` 在 C++ 标准下不保证多线程内存屏障 and 可见性，易造成并发竞争隐患。
+  - **解决方法**：引入 `<atomic>` 并将 5 处声明全部升级为 `std::atomic<bool> parallel_flag(true)`，确保并行区域内的错误通知对各线程即时可见。
+- **平地相位加回循环性能优化**：
+  - **问题**：在 `Dem::dem_newton_iter` 和 `Dem::dem_newton_iter_test` 的平地相位加回并行双重循环中，旧代码在行级循环内每次迭代都会动态申请并创建 `Mat temp(1, 6)`，并在像素级循环内进行矩阵乘法与矩阵求和操作，造成了严重的内存分配开销与运算性能开销。
+  - **解决方法**：将 6 个拟合多项式系数预先提取为 `double` 常量，用标量代数公式直接累加平地相位。此举彻底消除了 OpenMP 循环体内的 `cv::Mat` 内存堆分配与高昂的矩阵操作开销，极大提升了相加效率。
+- **规范局部变量命名**：
+  - **问题**：在 `Dem::dem_newton_iter` 寻找最接近的轨道状态向量时，定义并使用了随意命名的局部变量 `int xxxx`，属于历史开发残留的草稿代码，影响可读性。
+  - **解决方法**：将其重命名为 `int orbit_idx`，清晰表达其表示卫星轨道索引的物理含义。
+- **接口注释规范化**：
+  - **问题**：`include/Dem.h` 中核心导出接口 `phase2dem_newton_iter` 仍使用旧式的数字编号注释（参数1~参数15），影响 VS 智能感知文档的识别展示。
+  - **解决方法**：将其修改为通用的 Doxygen 文档注释规范，利用 `@param` 精准匹配每个参数，提升开发提示的友好度。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

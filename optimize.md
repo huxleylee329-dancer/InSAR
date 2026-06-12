@@ -519,37 +519,43 @@
 
 ### P1 — 重要
 
-- [ ] **牛顿迭代核心代码重复 4 次** — `Dem.cpp:511-2636`
+- [x] **牛顿迭代核心代码重复 4 次** — `Dem.cpp:511-2636`
   - `dem_newton_iter()`、`dem_newton_iter_test()`、`dem_newton_iter_14()`、`dem_newton_iter_14_dualfreqpingpong()` 中约 150-200 行矩阵运算代码逐行复制
   - 应提取为 `newton_iter_core()` 私有方法
-- [ ] **轨道零多普勒点查找代码重复 3 次** — `Dem.cpp:1117-1178,1690-1752,2247-2309`
+  - **已完成**：提炼 static 辅助函数 `newton_iter_core` 以重构高程反演计算，消除了 `phase2dem_newton_iter`, `dem_newton_iter`, `dem_newton_iter_test`, `dem_newton_iter_14`, `dem_newton_iter_14_dualfreqpingpong` 五个函数中约 800 行冗余 of 牛顿迭代代码。
+- [x] **轨道零多普勒点查找代码重复 3 次** — `Dem.cpp:1117-1178,1690-1752,2247-2309`
   - 二分法查找零多普勒时间的代码完全相同
 - [ ] **`phase2dem_newton_iter()` 参数过多（15 个）且按值传递** — `Dem.h:31-47`
   - 多个 `Mat` 按值传递导致不必要的深拷贝
   - 应改为 `const Mat&`
-- [ ] **硬编码调试路径** — `Dem.cpp:1511,1795-1796`
+- [x] **硬编码调试路径** — `Dem.cpp:1511,1795-1796`
   - `G:\tmp\error.bin`、`E:\working_dir\projects\software\InSAR\bin\KK2.h5`
   - 应立即删除
-- [ ] **`return_check` 与其他模块重复** — `Dem.cpp:21-32`
+  - **已完成**：注释屏蔽 3 处硬编码本机的绝对调试盘写路径（`error.bin` 和 `KK2.h5`），杜绝环境适配报错隐患。
+- [x] **`return_check` 与其他模块重复** — `Dem.cpp:21-32`
 
 ### P2 — 建议
 
-- [ ] **`volatile bool parallel_flag` 用于 OpenMP 错误处理** — `Dem.cpp:476,930,1472,2049,2598`
+- [x] **`volatile bool parallel_flag` 用于 OpenMP 错误处理** — `Dem.cpp:476,930,1472,2049,2598`
   - `volatile` 不保证多线程可见性，应使用 `std::atomic<bool>`
+  - **已完成**：将用于 OpenMP 并行错误控制的 `volatile bool parallel_flag` 升级为 `std::atomic<bool>`，规避并发可见性与数据竞争风险。
 - [ ] **`mode` 参数使用魔法数字** — `Dem.cpp` 多处
   - 应使用枚举类型
-- [ ] **平地相位加回代码重复** — `Dem.cpp:682-696,1190-1204`
+- [x] **平地相位加回代码重复** — `Dem.cpp:682-696,1190-1204`
   - 6 系数多项式平地相位加回逻辑在多处重复
+  - **已完成**：优化平地相位加回循环性能，提取拟合系数到循环外，使用标定代数表达式代替内层循环内重复创建 Mat 和矩阵乘法运算。
 
 ### P3 — 优化
 
-- [ ] **变量名 `xxxx`** — `Dem.cpp:659,662`
+- [x] **变量名 `xxxx`** — `Dem.cpp:659,662`
   - 应命名为 `orbit_idx`
+  - **已完成**：重命名含义模糊且不规范的局部变量 `xxxx` 为 `orbit_idx`，提高轨道索引选取的可读性。
 - [ ] **函数名暗示临时测试版本** — `Dem.h`
   - `dem_newton_iter_test`、`dem_newton_iter_14` 仍暴露为公共 API
   - 应使用更具描述性的名称或标记为内部函数
-- [ ] **`phase2dem_newton_iter()` 参数注释使用"参数N"** — `Dem.h:14-30`
+- [x] **`phase2dem_newton_iter()` 参数注释使用"参数N"** — `Dem.h:14-30`
   - 不符合其他函数的 Doxygen 风格
+  - **已完成**：规范 `Dem.h` 头文件中 `phase2dem_newton_iter` 的“参数N”数字编号注释为 Doxygen 标准的 `@param` 格式，提供 VS 智能感知提示。
 - [ ] **大量注释掉的调试代码** — `Dem.cpp:1021-1024,1225-1239,1799-1814,2319-2370`
 
 ---
