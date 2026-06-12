@@ -377,6 +377,36 @@ public:
 		double& distance,
 		double dopplerThreshold = 0.01
 	);
+	/*@brief 牛顿迭代核心高程反演计算
+	* @param iter_times                        迭代次数
+	* @param P1                                待求解的点位置 X 矩阵
+	* @param P2                                待求解的点位置 Y 矩阵
+	* @param P3                                待求解的点位置 Z 矩阵
+	* @param Satellite_M_T_Position            主星发射位置
+	* @param Satellite_S_T_Position            辅星发射位置
+	* @param Satellite_S_R_Position            辅星接收位置
+	* @param Satellite_M_R_Position            主星接收位置
+	* @param Satellite_M                       双基中点位置
+	* @param Vs                                卫星速度矩阵
+	* @param R_M                               主星斜距
+	* @param R_F                               辅星斜距
+	* @param fd                                多普勒频率
+	* @param lambda                            雷达波长
+	*/
+	static void newton_iter_core(
+		int iter_times,
+		cv::Mat& P1, cv::Mat& P2, cv::Mat& P3,
+		const cv::Mat& Satellite_M_T_Position,
+		const cv::Mat& Satellite_S_T_Position,
+		const cv::Mat& Satellite_S_R_Position,
+		const cv::Mat& Satellite_M_R_Position,
+		const cv::Mat& Satellite_M,
+		const cv::Mat& Vs,
+		const cv::Mat& R_M,
+		const cv::Mat& R_F,
+		const cv::Mat& fd,
+		double lambda
+	);
 	/*@brief 生成范德蒙矩阵
 	* @param inArray                           自变量序列
 	* @param vandermondeMatrix                 范德蒙矩阵

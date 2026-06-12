@@ -8,6 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-12 | AI | Evaluation, Dem, Utils | 1. 提炼公用静态辅助函数 `Utils::newton_iter_core` 并声明在 `Utils.h` 中。<br>2. 移除 `Dem.cpp` 中的局部 `newton_iter_core` 静态定义，并将所有 5 处调用重定向为 `Utils::newton_iter_core`。<br>3. 重构 `Evaluation::Pos()`，将 180 多行的冗余牛顿迭代矩阵计算替换为对公用静态 `Utils::newton_iter_core` 的单行调用。<br>4. 修复 `Evaluation::Unwrap()` 中计算主卫星斜距时缺失 getPosition 调用导致使用未初始化 Position 变量的严重 Bug。<br>5. 提炼 `readSatelliteParams` 内部静态辅助函数，消除 `PhasePreserve()` 和 `Unwrap()` 内部主/辅星数据读取的高重复代码约 50 行。<br>6. 纠正 `Evaluation::Unwrap()` 校验失败输出错误信息中函数名称不匹配的问题。<br>7. 注释屏蔽 `Evaluation::FFT2()` 中声明但从未被读取过的未引用局部变量 `slave_max`。<br>8. 规范 `Evaluation.h` 头文件的防重复包含宏，补充传统的 include guard 宏保护。<br>9. 将 `Evaluation::FFT2` 移至 `private` 作用域下，防止外部依赖。<br>10. 为 `Evaluation::Pos` 补全 Doxygen 参数说明，并将其头文件参数命名修改为与实现一致。 |
 | `工作区现场修改` | 2026-06-12 | AI | Dem | 1. 提炼 static 辅助函数 newton_iter_core 以重构高程反演计算，消除了 phase2dem_newton_iter, dem_newton_iter, dem_newton_iter_test, dem_newton_iter_14, dem_newton_iter_14_dualfreqpingpong 五个函数中约 800 行冗余 of 牛顿迭代代码。<br>2. 注释屏蔽 3 处硬编码本机的绝对调试盘写路径（error.bin 和 KK2.h5），杜绝环境适配报错隐患。<br>3. 将用于 OpenMP 并行错误控制的 volatile bool parallel_flag 升级为 std::atomic<bool>，规避并发可见性与数据竞争风险。<br>4. 优化平地相位加回循环性能，提取拟合系数到循环外，使用标定代数表达式代替内层循环内重复创建 Mat 和矩阵乘法运算。<br>5. 重命名含义模糊且不规范的局部变量 xxxx 为 orbit_idx，提高轨道索引选取的可读性。<br>6. 规范 Dem.h 头文件中 phase2dem_newton_iter 的“参数N”数字编号注释为 Doxygen 标准的 @param 格式，提供 VS 智能感知提示。 |
 | `工作区现场修改` | 2026-06-12 | AI | SBAS | 1. 重构整合 writeDIMACS_temporal/spatial，提取静态辅助函数 writeDIMACS_common，去重约 400 行代码。<br>2. 合并 compute_spatialTemporal_residue 和 compute_high_coherence_residue，清理大段注释死代码并修正拼写错误。<br>3. 重构 compute_high_coherence_residue_by_gradient，消除 170 行嵌套判断，修复 edge3 判定 Bug。<br>4. 修复 GET_NEXT_LINE 宏缩进排版错位问题。<br>5. 提取 refinement_and_reflattening 像素循环中的拟合系数至循环外，消除百万次越界判定并提升性能。<br>6. 规范 POD 结构体拷贝与赋值操作，SBAS_node 返回自身引用，SBAS_edge/SBAS_triangle 使用默认拷贝赋值以符合标准。<br>7. 优化 12 处函数的只读 Mat 参数为 `const Mat&`，提升常量正确性并支持传入临时变量。<br>8. 将 SBAS_node::neigh_edges 从原始指针升级为 `std::vector<int>`，删除手写拷贝/赋值/析构，实现自动生命周期管理。<br>9. 替换 3 处路径拼接 `sprintf` 为安全的 `snprintf`，防范缓冲区溢出。<br>10. 重构私有成员 `char error_head[256]` 为 `std::string`，并在 `Utils.h` 中新增内联重载以兼容 60 余处原有调用，提升内存安全性。 |
 | `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效 of parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
@@ -320,6 +321,26 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **接口注释规范化**：
   - **问题**：`include/Dem.h` 中核心导出接口 `phase2dem_newton_iter` 仍使用旧式的数字编号注释（参数1~参数15），影响 VS 智能感知文档的识别展示。
   - **解决方法**：将其修改为通用的 Doxygen 文档注释规范，利用 `@param` 精准匹配每个参数，提升开发提示的友好度。
+
+### 16. Evaluation 模块优化与重构 (Evaluation, Dem & Utils)
+- **跨模块牛顿迭代代码去重与公共库抽取**：
+  - **问题**：`Evaluation::Pos()` 中在进行高程反演时，包含约 180 行高度冗余的牛顿迭代定位求解计算。这段逻辑与 `Dem` 模块高程反演的牛顿迭代部分完全一致，造成跨模块的代码高度冗余与维护困难。
+  - **解决方案**：在公共接口库 `Utils` 的类 `Utils` ([Utils.h](file:///D:/SRC/insar/include/Utils.h), [Utils.cpp](file:///D:/SRC/insar/Utils/Utils.cpp)) 中新增了静态公有辅助方法 `Utils::newton_iter_core()`。将原来位于 `Dem.cpp` 的 static 局部 `newton_iter_core()` 函数转移到该公共方法中。随后，彻底删除了 `Dem.cpp` 里的局部定义，并分别在 `Dem.cpp` (5处调用) 和 `Evaluation.cpp` 中将原先的冗余逻辑统一替换为对公用静态 `Utils::newton_iter_core` 的单行调用。消除了 `Evaluation` 模块内 180 余行冗余代码，并依靠 C++ 临时变量的析构函数（RAII）优雅地代替了 `Evaluation.cpp` 末尾多处手动的 `release()` 调用。
+- **H5 卫星参数读取冗余代码去重**：
+  - **问题**：`Evaluation::PhasePreserve()` 与 `Evaluation::Unwrap()` 中分别对主星和辅星执行了从 H5 文件读取轨道及成像参数的逻辑。由于两处各需对主辅两颗卫星分别处理，导致存在 4 个高度相同的代码块（每个约 13 行），严重降低了文件的可读性。
+  - **解决方案**：在 `Evaluation.cpp` 文件中抽取了 `static int readSatelliteParams()` 内部辅助函数，封装了 H5 参数读取及 `utc2gps` 转换，将原先 4 处重复性代码全部替换为对该辅助函数的单行调用，消除冗余代码约 50 行。
+- **错误消息函数名不匹配修复**：
+  - **问题**：在 `Evaluation::Unwrap()` 函数入口的参数有效性验证分支中，错误将提示信息打印为 `"PhasePreserve(): input check failed!"`，会误导调试人员去排查 `PhasePreserve` 模块。
+  - **解决方案**：将其修改为正确的对应函数名称 `"Unwrap(): input check failed!"`。
+- **未引用局部变量注释屏蔽**：
+  - **问题**：在 `Evaluation::FFT2()` 的局部变量声明中，包含已声明但从未在后续代码中被使用、赋值或读取的变量 `slave_max`，属于冗余定义。
+  - **解决方案**：将变量进行注释屏蔽（`Point master_max; // Point slave_max; (unused)`），符合本项目的警告清理规范。
+- **头文件防重复包含宏保护规范化**：
+  - **问题**：`include/Evaluation.h` 仅使用了 `#pragma once` 机制，与其他模块统一使用 `#pragma once` 和传统 include guard 宏保护的风格不一致。
+  - **解决方案**：在 `Evaluation.h` 中补充了 `#ifndef __EVALUATION_H__` / `#define __EVALUATION_H__` / `#endif` 传统宏保护机制，增强了代码风格的一致性。
+- **`FFT2` 接口可见性收缩与 `Pos()` 参数命名规范及 Doxygen 注释补全**：
+  - **问题**：`Evaluation::FFT2` 声明为公有成员函数，但仅在模块内部被调用，暴露了不必要的内部细节；`Evaluation::Pos` 缺少 Doxygen 参数描述，且其头文件声明中的参数命名（`lon_Output`/`height_Output`）与实现文件（`lon_abs`/`height_abs`）不一致，不便于理解。
+  - **解决方案**：将 `FFT2` 函数移动到 `Evaluation.h` 的 `private:` 作用域下，防止外部依赖；在 `Evaluation.h` 中为 `Pos` 补充详尽的 Doxygen 格式 `@param` 说明，并将参数命名同步修改为与实现一致的 `lon_abs` 和 `height_abs`。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

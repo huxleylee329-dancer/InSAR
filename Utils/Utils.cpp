@@ -97,6 +97,214 @@ bool Utils::findZeroDopplerTime(
 	return orbitStateVectors::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, dopplerThreshold);
 }
 
+void Utils::newton_iter_core(
+	int iter_times,
+	Mat& P1, Mat& P2, Mat& P3,
+	const Mat& Satellite_M_T_Position,
+	const Mat& Satellite_S_T_Position,
+	const Mat& Satellite_S_R_Position,
+	const Mat& Satellite_M_R_Position,
+	const Mat& Satellite_M,
+	const Mat& Vs,
+	const Mat& R_M,
+	const Mat& R_F,
+	const Mat& fd,
+	double lambda)
+{
+	int nr = P1.rows;
+	int nc = P1.cols;
+
+	Mat M_T, S_T, S_R;
+	Mat f1, f2, f3;
+	Mat det_Df, Df_ni11, Df_ni12, Df_ni13, Df_ni21, Df_ni22, Df_ni23;
+	Mat Df11, Df12, Df13, Df21, Df22, Df23, Df31, Df32, Df33, Df_ni31, Df_ni32, Df_ni33;
+	Mat delta_Rt1, delta_Rt2, delta_Rt3;
+
+	Mat ones = Mat::ones(1, nc, CV_64F);
+	Mat temp_var, temp_var1;
+
+	for (int i = 0; i < iter_times; i++)
+	{
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
+		temp_var = temp_var.mul(temp_var);
+		temp_var.copyTo(M_T);
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(1, 2)) * ones - P2;
+		temp_var = temp_var.mul(temp_var);
+		M_T = M_T + temp_var;
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(2, 3)) * ones - P3;
+		temp_var = temp_var.mul(temp_var);
+		M_T = M_T + temp_var;
+		cv::sqrt(M_T, f1);
+		f1 = f1 * 2 - 2 * R_M;
+
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
+		temp_var = temp_var.mul(temp_var);
+		temp_var.copyTo(S_T);
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(1, 2)) * ones - P2;
+		temp_var = temp_var.mul(temp_var);
+		S_T = S_T + temp_var;
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(2, 3)) * ones - P3;
+		temp_var = temp_var.mul(temp_var);
+		S_T = S_T + temp_var;
+
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(0, 1)) * ones - P1;
+		temp_var = temp_var.mul(temp_var);
+		temp_var.copyTo(S_R);
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(1, 2)) * ones - P2;
+		temp_var = temp_var.mul(temp_var);
+		S_R = S_R + temp_var;
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(2, 3)) * ones - P3;
+		temp_var = temp_var.mul(temp_var);
+		S_R = S_R + temp_var;
+
+		cv::sqrt(S_T, f2);
+		cv::sqrt(S_R, temp_var);
+		f2 = f2 + temp_var - R_F;
+
+		temp_var = Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
+		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(0, 1)) * ones - P1;
+		f3 = temp_var.mul(temp_var1);
+		temp_var = Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
+		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(1, 2)) * ones - P2;
+		f3 = f3 + temp_var.mul(temp_var1);
+		temp_var = Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
+		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(2, 3)) * ones - P3;
+		f3 = f3 + temp_var.mul(temp_var1);
+
+		Mat ones_col = Mat::ones(nr, 1, CV_64F);
+		temp_var = ones_col * fd;
+		temp_var1 = R_M * lambda / 2.0;
+		f3 = f3 + temp_var.mul(temp_var1);
+
+		//Dff
+		//第一行：f(1)的x，y，z的导数
+		ones = Mat::ones(1, nc, CV_64F);
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df11 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(0, 1)) * ones - P1;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df11 = Df11 + temp_var.mul(temp_var1);
+
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(1, 2)) * ones - P2;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df12 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(1, 2)) * ones - P2;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df12 = Df12 + temp_var.mul(temp_var1);
+
+		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(2, 3)) * ones - P3;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df13 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(2, 3)) * ones - P3;
+		cv::sqrt(M_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df13 = Df13 + temp_var.mul(temp_var1);
+
+
+		//第二行：f(2)的x，y，z的导数
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
+		cv::sqrt(S_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df21 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(0, 1)) * ones - P1;
+		cv::sqrt(S_R, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df21 = Df21 + temp_var.mul(temp_var1);
+
+
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(1, 2)) * ones - P2;
+		cv::sqrt(S_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df22 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(1, 2)) * ones - P2;
+		cv::sqrt(S_R, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df22 = Df22 + temp_var.mul(temp_var1);
+
+
+		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(2, 3)) * ones - P3;
+		cv::sqrt(S_T, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df23 = temp_var.mul(temp_var1);
+
+		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(2, 3)) * ones - P3;
+		cv::sqrt(S_R, temp_var1);
+		temp_var1 = 1 / temp_var1;
+		temp_var1 = -temp_var1;
+		Df23 = Df23 + temp_var.mul(temp_var1);
+
+		//第三行：f(3)的x，y，z的导数
+		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
+		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
+		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
+
+		temp_var = Df11.mul(Df22);
+		temp_var = temp_var.mul(Df33);
+		temp_var.copyTo(det_Df);
+
+		temp_var = Df12.mul(Df23);
+		temp_var = temp_var.mul(Df31);
+		det_Df = det_Df + temp_var;
+
+		temp_var = Df13.mul(Df21);
+		temp_var = temp_var.mul(Df32);
+		det_Df = det_Df + temp_var;
+
+		temp_var = Df31.mul(Df22);
+		temp_var = temp_var.mul(Df13);
+		det_Df = det_Df - temp_var;
+
+		temp_var = Df32.mul(Df23);
+		temp_var = temp_var.mul(Df11);
+		det_Df = det_Df - temp_var;
+
+		temp_var = Df33.mul(Df21);
+		temp_var = temp_var.mul(Df12);
+		det_Df = det_Df - temp_var;
+
+		Df_ni11 = (Df22.mul(Df33) - Df32.mul(Df23)) / det_Df;
+		Df_ni12 = -(Df12.mul(Df33) - Df32.mul(Df13)) / det_Df;
+		Df_ni13 = (Df12.mul(Df23) - Df22.mul(Df13)) / det_Df;
+		delta_Rt1 = Df_ni11.mul(f1) + Df_ni12.mul(f2) + Df_ni13.mul(f3);
+
+		Df_ni21 = -(Df21.mul(Df33) - Df31.mul(Df23)) / det_Df;
+		Df_ni22 = (Df11.mul(Df33) - Df31.mul(Df13)) / det_Df;
+		Df_ni23 = -(Df11.mul(Df23) - Df21.mul(Df13)) / det_Df;
+		delta_Rt2 = Df_ni21.mul(f1) + Df_ni22.mul(f2) + Df_ni23.mul(f3);
+
+		Df_ni31 = (Df21.mul(Df32) - Df31.mul(Df22)) / det_Df;
+		Df_ni32 = -(Df11.mul(Df32) - Df31.mul(Df12)) / det_Df;
+		Df_ni33 = (Df22.mul(Df11) - Df21.mul(Df12)) / det_Df;
+		delta_Rt3 = Df_ni31.mul(f1) + Df_ni32.mul(f2) + Df_ni33.mul(f3);
+
+		P1 = P1 - delta_Rt1;
+		P2 = P2 - delta_Rt2;
+		P3 = P3 - delta_Rt3;
+	}
+}
+
 int Utils::createVandermondeMatrix(Mat& inArray, Mat& vandermondeMatrix, int degree)
 {
 	if (inArray.cols != 1 || inArray.rows < 1 || degree < 1)

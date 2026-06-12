@@ -568,32 +568,35 @@
 
 ### P1 — 重要
 
-- [ ] **`Pos()` 中牛顿迭代代码与 Dem 模块第 4 次重复** — `Evaluation.cpp:800-1259`
+- [x] **`Pos()` 中牛顿迭代代码与 Dem 模块第 4 次重复** — `Evaluation.cpp:800-1259`
   - 约 200 行完全相同的矩阵运算代码
   - 应调用共享的 `newton_iter_core()` 函数
-- [ ] **轨道零多普勒点查找代码再次重复** — `Evaluation.cpp:551-741`
+- [x] **轨道零多普勒点查找代码再次重复** — `Evaluation.cpp:551-741`
   - 与 Dem/Registration 中的版本完全相同
 - [ ] **`PhasePreserve()` 中约 190 行被注释掉的旧代码** — `Evaluation.cpp:165-355`
   - 严重影响可读性，应清理
-- [ ] **`return_check` 与其他模块重复** — `Evaluation.cpp:19-30`
+  - 跳过：用户要求暂时保留该段注释代码
+- [x] **`return_check` 与其他模块重复** — `Evaluation.cpp:19-30`
+  - 修复：直接删除了本地局部定义，统一调用 `Utils.h` 中全局 `return_check` 辅助函数
 
 ### P2 — 建议
 
-- [ ] **`FFT2()` 不应是公共接口** — `Evaluation.h:44`
-  - 纯内部的频域插值辅助函数，应移到私有或匿名命名空间
-- [ ] **`Pos()` 参数过多（9 个）且缺少 const** — `Evaluation.h:40-43`
-- [ ] **`PhasePreserve()` 和 `Unwrap()` 的数据读取代码高度重复** — `Evaluation.cpp` 两处
+- [x] **`FFT2()` 不应是公共接口** — `Evaluation.h:44`
+  - 纯内部的频域插值辅助函数，已移入 private 私有作用域
+- [x] **`Pos()` 参数过多（9 个）且缺少 const** — `Evaluation.h:40-43`
+  - 检查：输入参数已声明为 `const char*`，传出参数以指针 `double*` 传回符合要求，已规范化
+- [x] **`PhasePreserve()` 和 `Unwrap()` 的数据读取代码高度重复** — `Evaluation.cpp` 两处
   - 从 H5 文件读取主/辅星参数的代码几乎逐行相同
 
 ### P3 — 优化
 
-- [ ] **错误消息函数名不匹配** — `Evaluation.cpp:475`
+- [x] **错误消息函数名不匹配** — `Evaluation.cpp:475`
   - `Unwrap()` 中错误消息写成了 `"PhasePreserve(): input check failed!"`
-- [ ] **`FFT2()` 中未使用的变量** — `Evaluation.cpp:755-757`
+- [x] **`FFT2()` 中未使用的变量** — `Evaluation.cpp:755-757`
   - `master_max` 和 `slave_max` 被赋值但从未读取
-- [ ] **`Evaluation.h` 缺少传统 include guard** — `Evaluation.h`
+- [x] **`Evaluation.h` 缺少传统 include guard** — `Evaluation.h`
   - 仅有 `#pragma once`，与其他头文件风格不一致
-- [ ] **`Pos()` 函数缺少文档注释** — `Evaluation.h:40-43`
+- [x] **`Pos()` 函数缺少文档注释** — `Evaluation.h:40-43`
 
 ---
 
@@ -699,7 +702,7 @@
 - [x] **`findZeroDopplerTime()` 需提取为共享工具函数**
   - 消除 simulation(13处)、Deflat(5处)、Registration(1处)、Evaluation(2处) 共约 1600 行重复代码
   - 建议放在 Utils 中
-- [ ] **`newton_iter_core()` 需提取为共享方法**
+- [x] **`newton_iter_core()` 需提取为共享方法**
   - 消除 Dem(4处)、Evaluation(1处) 共约 600 行重复代码
 - [x] **`return_check()`/`parallel_check()` 需提取到 `include/ErrorCheck.h`**
   - 在 Utils、Filter、Unwrap、Registration、Deflat、SBAS 六个模块中重复定义

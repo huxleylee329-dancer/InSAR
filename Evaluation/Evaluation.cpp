@@ -18,6 +18,34 @@
 
 
 
+static int readSatelliteParams(
+	FormatConversion& conversion,
+	const char* h5_file,
+	double& prf,
+	double& wavelength,
+	double& start,
+	double& end,
+	cv::Mat& statevec,
+	const char* error_head)
+{
+	int ret = 0;
+	std::string start_time, end_time;
+	ret = conversion.read_double_from_h5(h5_file, "prf", &prf);
+	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
+	ret = conversion.read_double_from_h5(h5_file, "carrier_frequency", &wavelength);
+	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
+	wavelength = VEL_C / wavelength;
+	ret = conversion.read_str_from_h5(h5_file, "acquisition_start_time", start_time);
+	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
+	ret = conversion.utc2gps(start_time.c_str(), &start);
+	ret = conversion.read_str_from_h5(h5_file, "acquisition_stop_time", end_time);
+	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
+	conversion.utc2gps(end_time.c_str(), &end);
+	ret = conversion.read_array_from_h5(h5_file, "state_vec", statevec);
+	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	return 0;
+}
+
 Evaluation::Evaluation()
 {
 	memset(this->error_head, 0, 256);
@@ -69,33 +97,11 @@ int Evaluation::PhasePreserve(const char* master_h5,
 	string start_time, start_time2, end_time, end_time2;
 	//if (GCPS.cols == 6) RealPhaseIsExisted = true;
 		//主星参数
-		ret = conversion.read_double_from_h5(master_h5, "prf", &prf);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		ret = conversion.read_double_from_h5(master_h5, "carrier_frequency", &wavelength);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		wavelength = VEL_C / wavelength;
-		ret = conversion.read_str_from_h5(master_h5, "acquisition_start_time", start_time);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time.c_str(), &start);
-		ret = conversion.read_str_from_h5(master_h5, "acquisition_stop_time", end_time);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		conversion.utc2gps(end_time.c_str(), &end);
-		ret = conversion.read_array_from_h5(master_h5, "state_vec", statevec);
-		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		ret = readSatelliteParams(conversion, master_h5, prf, wavelength, start, end, statevec, error_head);
+		if (ret < 0) return -1;
 		//辅星参数
-		ret = conversion.read_double_from_h5(slave_h5, "prf", &prf2);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		ret = conversion.read_double_from_h5(slave_h5, "carrier_frequency", &wavelength2);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		wavelength2 = VEL_C / wavelength2;
-		ret = conversion.read_str_from_h5(slave_h5, "acquisition_start_time", start_time2);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time2.c_str(), &start2);
-		ret = conversion.read_str_from_h5(slave_h5, "acquisition_stop_time", end_time2);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		conversion.utc2gps(end_time2.c_str(), &end2);
-		ret = conversion.read_array_from_h5(slave_h5, "state_vec", statevec2);
-		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		ret = readSatelliteParams(conversion, slave_h5, prf2, wavelength2, start2, end2, statevec2, error_head);
+		if (ret < 0) return -1;
 		
 	int interp_times = 32;
 	int win_size = 16;
@@ -449,7 +455,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 		phase_unwrapped_h5 == NULL ||
 		Output == NULL)
 	{
-		fprintf(stderr, "PhasePreserve(): input check failed!\n\n");
+		fprintf(stderr, "Unwrap(): input check failed!\n\n");
 		return -1;
 	}
 	FormatConversion conversion; Deflat flat; Utils util;
@@ -483,33 +489,11 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 	{
 		GCPS.copyTo(GCPS_New(Range(0, Gcps_number), Range(0, 5)));
 		//主星参数
-		ret = conversion.read_double_from_h5(master_h5, "prf", &prf);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		ret = conversion.read_double_from_h5(master_h5, "carrier_frequency", &wavelength);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		wavelength = VEL_C / wavelength;
-		ret = conversion.read_str_from_h5(master_h5, "acquisition_start_time", start_time);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time.c_str(), &start);
-		ret = conversion.read_str_from_h5(master_h5, "acquisition_stop_time", end_time);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		conversion.utc2gps(end_time.c_str(), &end);
-		ret = conversion.read_array_from_h5(master_h5, "state_vec", statevec);
-		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		ret = readSatelliteParams(conversion, master_h5, prf, wavelength, start, end, statevec, error_head);
+		if (ret < 0) return -1;
 		//辅星参数
-		ret = conversion.read_double_from_h5(slave_regis_h5, "prf", &prf2);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		ret = conversion.read_double_from_h5(slave_regis_h5, "carrier_frequency", &wavelength2);
-		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-		wavelength2 = VEL_C / wavelength2;
-		ret = conversion.read_str_from_h5(slave_regis_h5, "acquisition_start_time", start_time2);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time2.c_str(), &start2);
-		ret = conversion.read_str_from_h5(slave_regis_h5, "acquisition_stop_time", end_time2);
-		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		conversion.utc2gps(end_time2.c_str(), &end2);
-		ret = conversion.read_array_from_h5(slave_regis_h5, "state_vec", statevec2);
-		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		ret = readSatelliteParams(conversion, slave_regis_h5, prf2, wavelength2, start2, end2, statevec2, error_head);
+		if (ret < 0) return -1;
 	}
 
 	for (int i = 0; i < Gcps_number; i++)
@@ -546,6 +530,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 				return -1;
 			}
 			Position pos;
+			stateVectors.getPosition(zeroDopplerTime, pos);
 			sate1.at<double>(0) = pos.x;
 			sate1.at<double>(1) = pos.y;
 			sate1.at<double>(2) = pos.z;
@@ -596,7 +581,7 @@ int Evaluation::Unwrap(const char* master_h5, const char* slave_regis_h5, const 
 
 int Evaluation::FFT2(ComplexMat src, ComplexMat& dst, int win_size, int interp_times)
 {
-	Point master_max, slave_max;
+	Point master_max; // Point slave_max; (unused)
 	// removed unused: max2 (never read after assignment)
 	double max1 = 0;
 	Utils util;
@@ -856,198 +841,10 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	Mat P1 = ones * xyz_ground.at<double>(0, 0);
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
-	Mat M_T, M_R, S_T, S_R;
-	Mat f1, f2, f3;
-	Mat det_Df, Df_ni11, Df_ni12, Df_ni13, Df_ni21, Df_ni22, Df_ni23;
-	Mat Df11, Df12, Df13, Df21, Df22, Df23, Df31, Df32, Df33, Df_ni31, Df_ni32, Df_ni33;
-	Mat delta_Rt1, delta_Rt2, delta_Rt3;
-	ones = Mat::ones(1, nc, CV_64F);
-	Mat temp_var, temp_var1;
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	for (int i = 0; i < 15; i++)
-	{
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
-		temp_var = temp_var.mul(temp_var);
-		temp_var.copyTo(M_T);
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(1, 2)) * ones - P2;
-		temp_var = temp_var.mul(temp_var);
-		M_T = M_T + temp_var;
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(2, 3)) * ones - P3;
-		temp_var = temp_var.mul(temp_var);
-		M_T = M_T + temp_var;
-		cv::sqrt(M_T, f1);
-		f1 = f1 * 2 - 2 * R_M;
-
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
-		temp_var = temp_var.mul(temp_var);
-		temp_var.copyTo(S_T);
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(1, 2)) * ones - P2;
-		temp_var = temp_var.mul(temp_var);
-		S_T = S_T + temp_var;
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(2, 3)) * ones - P3;
-		temp_var = temp_var.mul(temp_var);
-		S_T = S_T + temp_var;
-
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(0, 1)) * ones - P1;
-		temp_var = temp_var.mul(temp_var);
-		temp_var.copyTo(S_R);
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(1, 2)) * ones - P2;
-		temp_var = temp_var.mul(temp_var);
-		S_R = S_R + temp_var;
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(2, 3)) * ones - P3;
-		temp_var = temp_var.mul(temp_var);
-		S_R = S_R + temp_var;
-
-		cv::sqrt(S_T, f2);
-		cv::sqrt(S_R, temp_var);
-		f2 = f2 + temp_var - R_F;
-
-
-		temp_var = Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
-		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(0, 1)) * ones - P1;
-		f3 = temp_var.mul(temp_var1);
-		temp_var = Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
-		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(1, 2)) * ones - P2;
-		f3 = f3 + temp_var.mul(temp_var1);
-		temp_var = Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
-		temp_var1 = Satellite_M(Range(0, Satellite_M.rows), Range(2, 3)) * ones - P3;
-		f3 = f3 + temp_var.mul(temp_var1);
-		ones = Mat::ones(nr, 1, CV_64F);
-		temp_var = ones * fd;
-		temp_var1 = R_M * lambda / 2.0;
-		f3 = f3 + temp_var.mul(temp_var1);
-
-		//Dff
-		//第一行：f(1)的x，y，z的导数
-		ones = Mat::ones(1, nc, CV_64F);
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df11 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(0, 1)) * ones - P1;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df11 = Df11 + temp_var.mul(temp_var1);
-
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(1, 2)) * ones - P2;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df12 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(1, 2)) * ones - P2;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df12 = Df12 + temp_var.mul(temp_var1);
-
-		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(2, 3)) * ones - P3;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df13 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(2, 3)) * ones - P3;
-		cv::sqrt(M_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df13 = Df13 + temp_var.mul(temp_var1);
-
-
-		//第二行：f(2)的x，y，z的导数
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(0, 1)) * ones - P1;
-		cv::sqrt(S_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df21 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(0, 1)) * ones - P1;
-		cv::sqrt(S_R, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df21 = Df21 + temp_var.mul(temp_var1);
-
-
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(1, 2)) * ones - P2;
-		cv::sqrt(S_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df22 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(1, 2)) * ones - P2;
-		cv::sqrt(S_R, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df22 = Df22 + temp_var.mul(temp_var1);
-
-
-		temp_var = Satellite_S_T_Position(Range(0, Satellite_S_T_Position.rows), Range(2, 3)) * ones - P3;
-		cv::sqrt(S_T, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df23 = temp_var.mul(temp_var1);
-
-		temp_var = Satellite_S_R_Position(Range(0, Satellite_S_R_Position.rows), Range(2, 3)) * ones - P3;
-		cv::sqrt(S_R, temp_var1);
-		temp_var1 = 1 / temp_var1;
-		temp_var1 = -temp_var1;
-		Df23 = Df23 + temp_var.mul(temp_var1);
-
-		//第三行：f(3)的x，y，z的导数
-		Df31 = -Vs(Range(0, Vs.rows), Range(0, 1)) * ones;
-		Df32 = -Vs(Range(0, Vs.rows), Range(1, 2)) * ones;
-		Df33 = -Vs(Range(0, Vs.rows), Range(2, 3)) * ones;
-
-		temp_var = Df11.mul(Df22);
-		temp_var = temp_var.mul(Df33);
-		temp_var.copyTo(det_Df);
-
-		temp_var = Df12.mul(Df23);
-		temp_var = temp_var.mul(Df31);
-		det_Df = det_Df + temp_var;
-
-		temp_var = Df13.mul(Df21);
-		temp_var = temp_var.mul(Df32);
-		det_Df = det_Df + temp_var;
-
-		temp_var = Df31.mul(Df22);
-		temp_var = temp_var.mul(Df13);
-		det_Df = det_Df - temp_var;
-
-		temp_var = Df32.mul(Df23);
-		temp_var = temp_var.mul(Df11);
-		det_Df = det_Df - temp_var;
-
-		temp_var = Df33.mul(Df21);
-		temp_var = temp_var.mul(Df12);
-		det_Df = det_Df - temp_var;
-
-		Df_ni11 = (Df22.mul(Df33) - Df32.mul(Df23)) / det_Df;
-		Df_ni12 = -(Df12.mul(Df33) - Df32.mul(Df13)) / det_Df;
-		Df_ni13 = (Df12.mul(Df23) - Df22.mul(Df13)) / det_Df;
-		delta_Rt1 = Df_ni11.mul(f1) + Df_ni12.mul(f2) + Df_ni13.mul(f3);
-
-
-		Df_ni21 = -(Df21.mul(Df33) - Df31.mul(Df23)) / det_Df;
-		Df_ni22 = (Df11.mul(Df33) - Df31.mul(Df13)) / det_Df;
-		Df_ni23 = -(Df11.mul(Df23) - Df21.mul(Df13)) / det_Df;
-		delta_Rt2 = Df_ni21.mul(f1) + Df_ni22.mul(f2) + Df_ni23.mul(f3);
-
-		Df_ni31 = (Df21.mul(Df32) - Df31.mul(Df22)) / det_Df;
-		Df_ni32 = -(Df11.mul(Df32) - Df31.mul(Df12)) / det_Df;
-		Df_ni33 = (Df22.mul(Df11) - Df21.mul(Df12)) / det_Df;
-		delta_Rt3 = Df_ni31.mul(f1) + Df_ni32.mul(f2) + Df_ni33.mul(f3);
-
-		P1 = P1 - delta_Rt1;
-		P2 = P2 - delta_Rt2;
-		P3 = P3 - delta_Rt3;
-	}
-	delta_Rt1.release(); delta_Rt2.release(); delta_Rt3.release(); Df_ni31.release(); Df_ni32.release();
-	Df_ni33.release(); Df_ni21.release(); Df_ni22.release(); Df_ni23.release(); Df_ni11.release(); Df_ni12.release();
-	Df_ni13.release();
+	Utils::newton_iter_core(15, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	                        Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
+	                        R_M, R_F, fd, lambda);
 	Mat GCPs;
 	ret = conversion.read_array_from_h5(GCP_path, "GCP", GCPs);
 	int GCP_count = GCPs.rows;
