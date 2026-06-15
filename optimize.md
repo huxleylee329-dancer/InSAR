@@ -243,8 +243,8 @@
   - 建议封装为结构体
 - [ ] **`mode` 参数使用魔法数字** — `Deflat.cpp` 多处
   - 1/2/4 分别对应"单发单收"/"单发双收"/"双频乒乓"，应使用枚举
-- [ ] **变量命名混乱** — `Deflat.cpp:490,718`
-  - `int xxxx` 作为轨道索引，应命名为 `orbitIdx`
+- [x] **变量命名混乱** — `Deflat.cpp:490,718`
+  - 已将 4 处不规范的局部变量名 `xxxx` 重命名为 `orbit_idx`
   - `a0,a1,a2,a3,a4,a5,offset_inc,scale_inc` 应定义结构体
 - [x] **`demMapping` 中 DEM 插值搜索填充算法重复** — `Deflat.cpp:1050-1149` vs `1323-1561`
   - 两个重载中约 100 行搜索填充逻辑完全相同
@@ -397,20 +397,19 @@
 - [ ] **传感器读取器类字段重复** — `FormatConversion.cpp:1364-1592`
   - `CSK_reader`、`HTHT_reader`、`LUTAN_reader`、`Spacety_reader` 成员变量几乎完全相同
   - 应提取公共基类 `SARDataReader`
-- [ ] **H5 类型映射 if-else 链重复** — `FormatConversion.cpp:179-198,249-268,278-297`
-  - CV 类型到 H5 类型的映射逻辑重复 3 次
-  - 应提取为 `cvTypeToH5Type()` 辅助函数
+- [x] **H5 类型映射 if-else 链重复** — `FormatConversion.cpp:179-198,249-268,278-297`
+  - 已在匿名空间提取 `cvTypeToH5TypeForWrite()`, `cvTypeToH5TypeForRead()`, `h5TypeToCvType()` 三个辅助方法，重构并精简了 5 处 HDF5 读写函数的类型映射链，保证 100% 数据兼容性与高维护性
 - [ ] **HDF5 资源清理代码重复** — `FormatConversion.cpp` 多处
   - 每个 H5 函数都有手动 `H5Dclose`/`H5Sclose`/`H5Fclose`/`H5Tclose`
   - 建议使用 RAII 包装器或 `goto cleanup` 模式
 
 ### P2 — 建议
 
-- [ ] **`read_POD` 中 OSV 分量读取重复 6 次** — `FormatConversion.cpp:1828-1899`
+- [x] **`read_POD` 中 OSV 分量读取重复 6 次** — `FormatConversion.cpp:1828-1899`
   - 读取 X/Y/Z/VX/VY/VZ 的代码结构完全相同
-  - 应提取为 `readOsvComponent()` 辅助函数
-- [ ] **SRTM 文件名格式化代码重复 12+ 次** — `FormatConversion.cpp:10500-10693`
-  - 应提取为 `formatSrtmFileName()` 辅助函数
+  - 已在匿名命名空间定义 `readDoubleNode()` 辅助函数以完美去重
+- [x] **SRTM 文件名格式化代码重复 12+ 次** — `FormatConversion.cpp:10500-10693`
+  - 已在匿名命名空间提取 `formatSRTMName()` 辅助函数并使用 `%02d` 格式化符号代替所有冗长 if-else 块
 - [ ] **`XMLFile` 类职责过重** — `include/FormatConversion.h`
   - 同时承担通用 XML 读写和传感器特定数据解析
   - 应将 `get_gcps_from_TSX` 等移至对应传感器读取器类
@@ -497,8 +496,8 @@
 
 - [ ] **`SBAS_edge::isBoundry` 拼写错误** — `SBAS.h:57`
   - 应为 `isBoundary`
-- [ ] **变量名 `xxxx`** — `SBAS.cpp:659`
-  - 应命名为 `orbit_idx` 或 `clamped_idx`
+- [x] **变量名 `xxxx`** — `SBAS.cpp:659` (实际位于 `Evaluation.cpp` 和 `Utils.cpp`)
+  - 已将 `Evaluation.cpp` (2处) 和 `Utils.cpp` (6处) 中的不规范变量名 `xxxx` 全部重命名为 `orbit_idx`
 - [x] **变量名 `a, b, c` 含义不清** — `SBAS.cpp:2546-2549`
   - 建议使用 `coef_intercept`, `coef_row`, `coef_col`
 - [x] **`GET_NEXT_LINE` 宏缩进误导** — `SBAS.cpp:18-24`

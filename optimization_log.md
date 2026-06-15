@@ -8,6 +8,7 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-15 | AI | FormatConversion, Deflat, Evaluation, Utils | 1. 提炼 readDoubleNode 辅助函数，精简 read_POD 中 6 处 OSV 分量解析代码。<br>2. 提炼 formatSRTMName 辅助函数并使用 %02d，消灭 getSRTMFileName 中冗长 if-else 块约 160 行。<br>3. 全局重命名局部草稿变量 xxxx 为 orbit_idx（共 12 处），消除技术债务。<br>4. 提取 H5 类型映射辅助函数 cvTypeToH5TypeForWrite/Read 和 h5TypeToCvType，精简并重构 5 处 HDF5 读写函数的类型映射判定链，保障 100% 行为等价与类型安全。 |
 | `工作区现场修改` | 2026-06-15 | AI | Registration, Unwrap, Evaluation, Utils, FormatConversion | 1. 将 OMP 并行错误控制的 volatile bool 升级为 std::atomic<bool>，规范 parallel_check 形参为 bool 并清理 Registration 遗留的死代码。<br>2. 屏蔽 Evaluation (D:\Test) 和 Utils (E:\working_dir) 的硬编码调试写盘路径。<br>3. 统一 tri_node, triangle, tri_edge, node_index, BurstIndices 的赋值运算符返回引用（T&），消除不必要的对象拷贝开销。 |
 | `b38f5f54` | 2026-06-15 | lewis | globalparam.h, Package.h, ComplexMat.h, Utils.h, SLC_simulator.h | 1. 修复 Heap 类内存泄漏与初始分配约 2GB 的问题，改用 std::vector 动态管理内存并纠正 empty() 语义。<br>2. 清理 Position/Velocity/OSV 冗余的手写拷贝构造与赋值操作符。<br>3. 统一清理公共头文件中冗余的 include guard，保留 #pragma once。 |
 | `工作区现场修改` | 2026-06-12 | AI | Evaluation, Dem, Utils | 1. 提炼公用静态辅助函数 `Utils::newton_iter_core` 并声明在 `Utils.h` 中。<br>2. 移除 `Dem.cpp` 中的局部 `newton_iter_core` 静态定义，并将所有 5 处调用重定向为 `Utils::newton_iter_core`。<br>3. 重构 `Evaluation::Pos()`，将 180 多行的冗余牛顿迭代矩阵计算替换为对公用静态 `Utils::newton_iter_core` 的单行调用。<br>4. 修复 `Evaluation::Unwrap()` 中计算主卫星斜距时缺失 getPosition 调用导致使用未初始化 Position 变量的严重 Bug。<br>5. 提炼 `readSatelliteParams` 内部静态辅助函数，消除 `PhasePreserve()` 和 `Unwrap()` 内部主/辅星数据读取的高重复代码约 50 行。<br>6. 纠正 `Evaluation::Unwrap()` 校验失败输出错误信息中函数名称不匹配的问题。<br>7. 注释屏蔽 `Evaluation::FFT2()` 中声明但从未被读取过的未引用局部变量 `slave_max`。<br>8. 规范 `Evaluation.h` 头文件的防重复包含宏，补充传统的 include guard 宏保护。<br>9. 将 `Evaluation::FFT2` 移至 `private` 作用域下，防止外部依赖。<br>10. 为 `Evaluation::Pos` 补全 Doxygen 参数说明，并将其头文件参数命名修改为与实现一致。 |
@@ -365,6 +366,20 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **公共头文件 Guard 冗余清理**：
   - **问题**：`Package.h`、`ComplexMat.h`、`Utils.h`、`SLC_simulator.h` 中同时使用了 `#pragma once` 编译器指令和 `#ifndef ...` 的宏 Guard。这种多重包含保护没有实际必要，且破坏了现代 C++ 头文件的简洁性。
   - **解决方法**：统一清除了上述 4 个头文件中的 `#ifndef` / `#define` / `#endif` 传统宏，统一使用更现代且高效的单个 `#pragma once` 指令作为包含保护。
+
+### 19. 代码重构、局部去重与变量命名规范化 (FormatConversion, Deflat, Evaluation, Utils)
+- **`read_POD` 轨道数据读取去重**：
+  - **问题**：在 `FormatConversion.cpp` 的 `read_POD()` 中，解析精密轨道 X, Y, Z, VX, VY, VZ 六个分量时存在 6 段高度雷同的 XML 查找和 sscanf 解析代码，产生 70 余行冗余代码。
+  - **解决方法**：在匿名命名空间定义 inline 辅助函数 `readDoubleNode()`，利用 `double&` 引用直接读写局部变量，并将 6 处重复的查找解析逻辑统一替换为对该辅助函数的单行调用，净减小 LOC ~50 行。
+- **SRTM 文件名格式化重构**：
+  - **问题**：在 `FormatConversion.cpp` 的 `getSRTMFileName()` 中，为使生成的行列号补零至两位宽以匹配 `srtm_XX_YY.zip` 命名规范，手工编写了 9 组冗长的 if-else 条件判断链并重复调用 `sprintf`，代码极度臃肿。
+  - **解决方法**：在匿名命名空间定义 `formatSRTMName()`，使用标准的 `%02d` 占位符格式化符号直接完成“不足两位自动补零”的处理，消灭了 160 余行冗长 if-else 分支，使逻辑极致精简，行为 100% 保持一致。
+- **全局重命名局部变量 `xxxx` 为 `orbit_idx`**：
+  - **问题**：在 `Deflat.cpp`（4处）、`Evaluation.cpp`（2处）以及 `Utils.cpp`（6处）查找零多普勒时刻或成像点卫星轨道状态向量索引时，仍残存草稿性质的不规范命名变量 `xxxx`，严重影响可读性。
+  - **解决方法**：将全工程中这 12 处局部变量统一重命名为 `orbit_idx`，消除技术债务，并与 `Dem.cpp` 中的既有重命名规范对齐。
+- **H5 类型映射判定链重构与去重**：
+  - **问题**：在 `FormatConversion.cpp` 的多处 HDF5 读写接口（`write_zero_array_to_h5`、`write_array_to_h5` (2处)、`read_array_from_h5`、`read_subarray_from_h5`、`write_subarray_to_h5`）中，重复编写了 OpenCV 类型代码到 HDF5 类型宏之间的 if-else 转换链，多处零散类型宏的拼写容易引起维护不一致。
+  - **解决方法**：在匿名空间提取 `cvTypeToH5TypeForWrite()`、`cvTypeToH5TypeForRead()` 及 `h5TypeToCvType()` 辅助函数，将 5 处类型校验与读写逻辑全部使用转换器改写。重构方案精细保留了原代码在读写通道对 `H5T_NATIVE_INT32` / `H5T_NATIVE_INT` 的差异以实现 100% 字节兼容，大幅提升了未来的“单一维护性”。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

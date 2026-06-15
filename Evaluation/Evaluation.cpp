@@ -761,12 +761,12 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	}
 	Point peak_loc;
 	cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-	int xxxx;
+	int orbit_idx;
 	for (int j = 0; j < nr; j++)
 	{
-		xxxx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-		sate1_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
-		sate1_v(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
+		orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
+		sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
+		sate1_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
 	}
 	//卫星2
 	dop = Mat::zeros(sate2_xyz.rows, 1, CV_64F);
@@ -778,8 +778,8 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
 	for (int j = 0; j < nr; j++)
 	{
-		xxxx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-		sate2_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
+		orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
+		sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 	}
 	//加回平地相位
 	//Mat coef;

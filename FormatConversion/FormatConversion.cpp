@@ -255,6 +255,67 @@ namespace
 		// 归一化，避免有限窗截断导致幅度偏移
 		return sum_val / sum_w;
 	}
+
+	inline int readDoubleNode(XMLFile& xmldoc, TiXmlElement* pParent, const char* name, double& val, const char* err_filename)
+	{
+		TiXmlElement* pchild = NULL;
+		int ret = xmldoc._find_node(pParent, name, pchild);
+		if (ret < 0)
+		{
+			fprintf(stderr, "read_POD(): node %s not found!\n", name);
+			return -1;
+		}
+		ret = sscanf(pchild->GetText(), "%lf", &val);
+		if (ret != 1)
+		{
+			fprintf(stderr, "read_POD(): %s: unknown data format!\n", err_filename);
+			return -1;
+		}
+		return 0;
+	}
+
+	inline std::string formatSRTMName(int col, int row)
+	{
+		char tmp[64];
+		sprintf_s(tmp, "srtm_%02d_%02d.zip", col, row);
+		return std::string(tmp);
+	}
+
+	inline hid_t cvTypeToH5TypeForWrite(int cv_type)
+	{
+		switch (cv_type)
+		{
+		case CV_16S: return H5T_NATIVE_INT16;
+		case CV_64F: return H5T_NATIVE_DOUBLE;
+		case CV_32S: return H5T_NATIVE_INT32;
+		case CV_8U:  return H5T_NATIVE_UINT8;
+		case CV_32F: return H5T_NATIVE_FLOAT;
+		default:     return H5I_INVALID_HID;
+		}
+	}
+
+	inline hid_t cvTypeToH5TypeForRead(int cv_type)
+	{
+		switch (cv_type)
+		{
+		case CV_16S: return H5T_NATIVE_INT16;
+		case CV_64F: return H5T_NATIVE_DOUBLE;
+		case CV_32S: return H5T_NATIVE_INT;
+		case CV_8U:  return H5T_NATIVE_UINT8;
+		case CV_32F: return H5T_NATIVE_FLOAT;
+		default:     return H5I_INVALID_HID;
+		}
+	}
+
+	inline int h5TypeToCvType(hid_t h5_type)
+	{
+		if (H5Tequal(h5_type, H5T_NATIVE_INT16) > 0)  return CV_16S;
+		if (H5Tequal(h5_type, H5T_NATIVE_DOUBLE) > 0) return CV_64F;
+		if (H5Tequal(h5_type, H5T_NATIVE_FLOAT) > 0)  return CV_32F;
+		if (H5Tequal(h5_type, H5T_NATIVE_INT) > 0 || H5Tequal(h5_type, H5T_NATIVE_INT32) > 0) return CV_32S;
+		if (H5Tequal(h5_type, H5T_NATIVE_UINT8) > 0)  return CV_8U;
+		return -1;
+	}
 }
 
 
@@ -409,26 +470,8 @@ int FormatConversion::write_zero_array_to_h5(const char* filename, const char* d
 		dims[0] = rows;
 		dims[1] = cols;
 		hid_t dataspace_id = H5Screate_simple(2, dims, NULL);
-		if (type == CV_16S)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_INT16, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if (type == CV_64F)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if (type == CV_32S)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_INT32, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if (type == CV_8U)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_UINT8, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_FLOAT, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
+		hid_t h5_type = cvTypeToH5TypeForWrite(type);
+		dataset_id = H5Dcreate(file_id, s.c_str(), h5_type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 
 		if (dataset_id < 0)
 		{
@@ -480,26 +523,8 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 		dims[0] = input_array.rows;
 		dims[1] = input_array.cols;
 		hid_t dataspace_id = H5Screate_simple(2, dims, NULL);
-		if (input_array.type() == CV_16S)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_INT16, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if(input_array.type() == CV_64F)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_DOUBLE, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if(input_array.type() == CV_32S)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_INT32, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else if (input_array.type() == CV_8U)
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_UINT8, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
-		else
-		{
-			dataset_id = H5Dcreate(file_id, s.c_str(), H5T_NATIVE_FLOAT, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-		}
+		hid_t h5_type = cvTypeToH5TypeForWrite(input_array.type());
+		dataset_id = H5Dcreate(file_id, s.c_str(), h5_type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
 		
 		if (dataset_id < 0)
 		{
@@ -509,26 +534,7 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 			return -1;
 		}
 		herr_t status;
-		if (input_array.type() == CV_16S)
-		{
-			status = H5Dwrite(dataset_id, H5T_NATIVE_INT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
-		}
-		else if(input_array.type() == CV_64F)
-		{
-			status = H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
-		}
-		else if(input_array.type() == CV_32S)
-		{
-			status = H5Dwrite(dataset_id, H5T_NATIVE_INT32, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
-		}
-		else if (input_array.type() == CV_8U)
-		{
-			status = H5Dwrite(dataset_id, H5T_NATIVE_UINT8, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
-		}
-		else
-		{
-			status = H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
-		}
+		status = H5Dwrite(dataset_id, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
 		if (status < 0)
 		{
 			fprintf(stderr, "write_array_to_h5(): failed to write to dataset %s !\n", dataset_name);
@@ -618,25 +624,12 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
 	hid_t type = H5Dget_type(dataset_id);
 	herr_t status = -1;
-	if (H5Tequal(type, H5T_NATIVE_INT16) > 0)
+	int cv_type = h5TypeToCvType(type);
+	if (cv_type != -1)
 	{
-		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_16S);
-		status = H5Dread(dataset_id, H5T_NATIVE_INT16, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
-	}
-	else if(H5Tequal(type, H5T_NATIVE_DOUBLE) > 0)
-	{
-		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_64F);
-		status = H5Dread(dataset_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
-	}
-	else if (H5Tequal(type, H5T_NATIVE_FLOAT) > 0)
-	{
-		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F);
-		status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
-	}
-	else if (H5Tequal(type, H5T_NATIVE_INT) > 0)
-	{
-		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32S);
-		status = H5Dread(dataset_id, H5T_NATIVE_INT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
+		out_array.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), cv_type);
+		hid_t mem_type = cvTypeToH5TypeForRead(cv_type);
+		status = H5Dread(dataset_id, mem_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
 	if (status < 0)
 	{
@@ -732,17 +725,10 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 		return -1;
 	}
 	hid_t type = H5Dget_type(dataset_id);
-	if (0 < H5Tequal(type, H5T_NATIVE_INT16))
+	int cv_type = h5TypeToCvType(type);
+	if (cv_type == CV_16S || cv_type == CV_64F || cv_type == CV_32F)
 	{
-		out_array.create(rows_subarray, cols_subarray, CV_16S);
-	}
-	else if(0 < H5Tequal(type, H5T_NATIVE_DOUBLE))
-	{
-		out_array.create(rows_subarray, cols_subarray, CV_64F);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_FLOAT))
-	{
-		out_array.create(rows_subarray, cols_subarray, CV_32F);
+		out_array.create(rows_subarray, cols_subarray, cv_type);
 	}
 	else
 	{
@@ -778,22 +764,8 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 	hid_t memspace_id;
 	memspace_id = H5Screate_simple(2, dimsm, NULL);
 	H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
-	if (0 < H5Tequal(type, H5T_NATIVE_INT16))
-	{
-		H5Dread(dataset_id, H5T_NATIVE_INT16, memspace_id, dataspace_id, H5P_DEFAULT, out_array.data);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_DOUBLE))
-	{
-		H5Dread(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, out_array.data);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_FLOAT))
-	{
-		H5Dread(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id, H5P_DEFAULT, out_array.data);
-	}
-	else
-	{
-
-	}
+	hid_t mem_type = cvTypeToH5TypeForRead(cv_type);
+	H5Dread(dataset_id, mem_type, memspace_id, dataspace_id, H5P_DEFAULT, out_array.data);
 	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
@@ -851,57 +823,19 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		return -1;
 	}
 	hid_t type = H5Dget_type(dataset_id);
-	if (0 < H5Tequal(type, H5T_NATIVE_INT16))
-	{
-		if (subarray.type() != CV_16S)
-		{
-			fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
-			H5Fclose(file_id);
-			H5Dclose(dataset_id);
-			H5Sclose(dataspace_id);
-			H5Tclose(type);
-			return -1;
-		}
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_DOUBLE))
-	{
-		if (subarray.type() != CV_64F)
-		{
-			fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
-			H5Fclose(file_id);
-			H5Dclose(dataset_id);
-			H5Sclose(dataspace_id);
-			H5Tclose(type);
-			return -1;
-		}
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_FLOAT))
-	{
-		if (subarray.type() != CV_32F)
-		{
-			fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
-			H5Fclose(file_id);
-			H5Dclose(dataset_id);
-			H5Sclose(dataspace_id);
-			H5Tclose(type);
-			return -1;
-		}
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_INT))
-	{
-		if (subarray.type() != CV_32S)
-		{
-			fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
-			H5Fclose(file_id);
-			H5Dclose(dataset_id);
-			H5Sclose(dataspace_id);
-			H5Tclose(type);
-			return -1;
-		}
-	}
-	else
+	int expected_cv_type = h5TypeToCvType(type);
+	if (expected_cv_type == -1 || expected_cv_type == CV_8U)
 	{
 		fprintf(stderr, "write_subarray_to_h5(): datatype not support yet!\n");
+		H5Fclose(file_id);
+		H5Dclose(dataset_id);
+		H5Sclose(dataspace_id);
+		H5Tclose(type);
+		return -1;
+	}
+	else if (subarray.type() != expected_cv_type)
+	{
+		fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
 		H5Fclose(file_id);
 		H5Dclose(dataset_id);
 		H5Sclose(dataspace_id);
@@ -933,26 +867,8 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 	hid_t memspace_id;
 	memspace_id = H5Screate_simple(2, dimsm, NULL);
 	H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
-	if (0 < H5Tequal(type, H5T_NATIVE_INT16))
-	{
-		H5Dwrite(dataset_id, H5T_NATIVE_INT16, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_DOUBLE))
-	{
-		H5Dwrite(dataset_id, H5T_NATIVE_DOUBLE, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_FLOAT))
-	{
-		H5Dwrite(dataset_id, H5T_NATIVE_FLOAT, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
-	}
-	else if (0 < H5Tequal(type, H5T_NATIVE_INT))
-	{
-		H5Dwrite(dataset_id, H5T_NATIVE_INT, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
-	}
-	else
-	{
-
-	}
+	hid_t mem_type = cvTypeToH5TypeForRead(expected_cv_type);
+	H5Dwrite(dataset_id, mem_type, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
 	H5Sclose(memspace_id);
 	H5Fclose(file_id);
 	H5Dclose(dataset_id);
@@ -1953,78 +1869,12 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 
 		if (start && !stop)//开始记录
 		{
-			ret = xmldoc._find_node(pnode, "X", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node X not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &x);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
-			ret = xmldoc._find_node(pnode, "Y", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node Y not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &y);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
-			ret = xmldoc._find_node(pnode, "Z", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node Z not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &z);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
-			ret = xmldoc._find_node(pnode, "VX", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node VX not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &vx);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
-			ret = xmldoc._find_node(pnode, "VY", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node VY not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &vy);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
-			ret = xmldoc._find_node(pnode, "VZ", pchild);
-			if (ret < 0)
-			{
-				fprintf(stderr, "read_POD(): node VZ not found!\n");
-				return -1;
-			}
-			ret = sscanf(pchild->GetText(), "%lf", &vz);
-			if (ret != 1)
-			{
-				fprintf(stderr, "read_POD(): %s: unknown data format!\n", POD_filename);
-				return -1;
-			}
+			if (readDoubleNode(xmldoc, pnode, "X", x, POD_filename) < 0) return -1;
+			if (readDoubleNode(xmldoc, pnode, "Y", y, POD_filename) < 0) return -1;
+			if (readDoubleNode(xmldoc, pnode, "Z", z, POD_filename) < 0) return -1;
+			if (readDoubleNode(xmldoc, pnode, "VX", vx, POD_filename) < 0) return -1;
+			if (readDoubleNode(xmldoc, pnode, "VY", vy, POD_filename) < 0) return -1;
+			if (readDoubleNode(xmldoc, pnode, "VZ", vz, POD_filename) < 0) return -1;
 
 			tmp.at<double>(count, 0) = gps_time;
 			tmp.at<double>(count, 1) = x;
@@ -10700,8 +10550,7 @@ int DigitalElevationModel::getSRTMFileName(
 		return -1;
 	}
 	name.clear();
-	char tmp[512];
-	int maxRows = 24; int maxCols = 72; int startRow, endRow, startCol, endCol;
+	int startRow, endRow, startCol, endCol;
 	double spacing = 5.0;
 	startRow = (int)((60.0 - latMax) / spacing) + 1;
 	endRow = (int)((60.0 - latMin) / spacing) + 1;
@@ -10711,188 +10560,27 @@ int DigitalElevationModel::getSRTMFileName(
 	{
 		if (startCol == endCol)
 		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
+			name.push_back(formatSRTMName(startCol, startRow));
 		}
 		else
 		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, startRow);
-			}
-			name.push_back(string(tmp));
+			name.push_back(formatSRTMName(startCol, startRow));
+			name.push_back(formatSRTMName(endCol, startRow));
 		}
 	}
 	else
 	{
 		if (startCol == endCol)
 		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-			memset(tmp, 0, 512);
-			if (startCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, endRow);
-			}
-			name.push_back(string(tmp));
+			name.push_back(formatSRTMName(startCol, startRow));
+			name.push_back(formatSRTMName(startCol, endRow));
 		}
 		else
 		{
-			memset(tmp, 0, 512);
-			if (startCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, startRow);
-			}
-			else if (startCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, startRow);
-			}
-			else if (endCol >= 10 && startRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, startRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, startRow);
-			}
-			name.push_back(string(tmp));
-
-
-			memset(tmp, 0, 512);
-			if (endCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", endCol, endRow);
-			}
-			else if (endCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", endCol, endRow);
-			}
-			else if (endCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", endCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", endCol, endRow);
-			}
-			name.push_back(string(tmp));
-
-			memset(tmp, 0, 512);
-			if (startCol < 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_0%d_0%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow >= 10)
-			{
-				sprintf(tmp, "srtm_%d_%d.zip", startCol, endRow);
-			}
-			else if (startCol >= 10 && endRow < 10)
-			{
-				sprintf(tmp, "srtm_%d_0%d.zip", startCol, endRow);
-			}
-			else
-			{
-				sprintf(tmp, "srtm_0%d_%d.zip", startCol, endRow);
-			}
-			name.push_back(string(tmp));
+			name.push_back(formatSRTMName(startCol, startRow));
+			name.push_back(formatSRTMName(endCol, startRow));
+			name.push_back(formatSRTMName(endCol, endRow));
+			name.push_back(formatSRTMName(startCol, endRow));
 		}
 	}
 	

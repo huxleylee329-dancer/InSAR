@@ -463,11 +463,11 @@ int Deflat::deflat(
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
 		//sate1_xyz(Range(peak_loc.y, peak_loc.y + 1), Range(0, 3)).copyTo(sate1(Range(i, i + 1), Range(0, 3)));
-		int xxxx;
+		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			xxxx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-			sate1_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
+			orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
+			sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
 		}
 	}
 
@@ -494,11 +494,11 @@ int Deflat::deflat(
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
 		//sate2_xyz(Range(peak_loc.y, peak_loc.y + 1), Range(0, 3)).copyTo(sate2(Range(i, i + 1), Range(0, 3)));
-		int xxxx;
+		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			xxxx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-			sate2_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
+			orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
+			sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 		}
 	}
 
@@ -691,11 +691,11 @@ int Deflat::topo_removal(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int xxxx;
+		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			xxxx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-			sate1_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
+			orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
+			sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
 		}
 	}
 
@@ -721,11 +721,11 @@ int Deflat::topo_removal(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int xxxx;
+		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			xxxx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-			sate2_xyz(Range(xxxx, xxxx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
+			orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
+			sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 		}
 	}
 
