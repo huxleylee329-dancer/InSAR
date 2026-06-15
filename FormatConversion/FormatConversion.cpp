@@ -12777,9 +12777,12 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 	herr_t status;
 	slc.re.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); slc.re = 0.0;
 	slc.im.create(static_cast<int>(dims[0]), static_cast<int>(dims[1]), CV_32F); slc.im = 0.0;
-	float* data = (float*)malloc(sizeof(float) * 2 * dims[0] * dims[1]);
-	
-	if (!data)
+	std::vector<float> data_vec;
+	try
+	{
+		data_vec.resize(static_cast<size_t>(2) * dims[0] * dims[1]);
+	}
+	catch (const std::bad_alloc&)
 	{
 		fprintf(stderr, "read_slc(): out of memory!\n");
 		H5Dclose(dataset_id);
@@ -12788,6 +12791,7 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 		H5Tclose(type);
 		return -1;
 	}
+	float* data = data_vec.data();
 	status = H5Dread(dataset_id, H5T_NATIVE_FLOAT, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)data);
 
 	if (status < 0)
@@ -12812,10 +12816,6 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 	H5Sclose(space_id);
 	H5Fclose(file_id);
 	H5Tclose(type);
-	if (data) {
-		free(data);
-		data = NULL;
-	}
 	return 0;
 }
 

@@ -15182,7 +15182,7 @@ int Utils::read_grille(
 		fprintf(stderr, "read_grille(): cannot open grille file!\n");
 		return -1;
 	}
-	char* data = (char*)malloc(1024);
+	char data[1024];
 	char* ptr;
 	// removed unused: val (grille parsing uses strtol directly)
 	fgets(data, 1024, fp);
@@ -15223,7 +15223,6 @@ int Utils::read_grille(
 		}
 	}
 	fclose(fp);
-	free(data);
 	return 0;
 }
 

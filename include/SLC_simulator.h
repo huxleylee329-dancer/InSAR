@@ -1,6 +1,4 @@
 #pragma once
-#ifndef __SLC_SIMULATOR__H__
-#define __SLC_SIMULATOR__H__
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include <atomic>
@@ -480,5 +478,4 @@ private:
 
 
 
-
-#endif // !__SLC_SIMULATOR__H__
+

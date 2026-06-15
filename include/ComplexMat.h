@@ -1,6 +1,4 @@
 #pragma once
-#ifndef __COMPLEXMAT__H__
-#define __COMPLEXMAT__H__
 #include"..\include\Package.h"
 #include<complex>
 
@@ -74,5 +72,5 @@ private:
 
 
 #pragma warning(pop)
-#endif // !__COMPLEXMAT__H__
+
 

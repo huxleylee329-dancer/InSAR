@@ -662,7 +662,7 @@
 
 ### P1 — 重要
 
-- [ ] **`Heap` 类严重内存问题** — `globalparam.h:7-9`
+- [x] **`Heap` 类严重内存问题** — `globalparam.h:7-9`
   - 构造时立即 `malloc` 3 个 1 亿元素数组（约 2GB）
   - 析构函数为空，不释放内存（内存泄漏）
   - `empty()` 返回 `size`，语义与 `std::vector::empty()` 完全相反
@@ -680,7 +680,7 @@
   - 或改用 `constexpr` 常量
 - [ ] **结构体命名不一致** — `Package.h:19,58,97`
   - `Position`、`Velocity`(PascalCase) vs `OSV`(全大写缩写)
-- [ ] **Position/Velocity/OSV 手写的拷贝构造和赋值运算符冗余** — `Package.h:19-144`
+- [x] **Position/Velocity/OSV 手写的拷贝构造和赋值运算符冗余** — `Package.h:19-144`
   - 对仅含 POD 类型的结构体，编译器默认版本已足够
   - `operator=` 应返回引用而非值
 
@@ -688,7 +688,7 @@
 
 - [ ] **`globalparam.h` 毫无内容** — `include/globalparam.h`
   - 仅一行空文件，建议删除或补充实际内容
-- [ ] **头文件 include guard 冗余** — `Package.h`、`ComplexMat.h`、`Utils.h`、`SLC_simulator.h`
+- [x] **头文件 include guard 冗余** — `Package.h`、`ComplexMat.h`、`Utils.h`、`SLC_simulator.h`
   - 同时使用 `#pragma once` 和 `#ifndef`，建议统一保留 `#pragma once`
 
 ---

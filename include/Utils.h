@@ -1,6 +1,4 @@
 #pragma once
-#ifndef __UTILS__H__
-#define __UTILS__H__
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include<fstream>
@@ -2109,5 +2107,4 @@ private:
 
 };
 
-
-#endif
+

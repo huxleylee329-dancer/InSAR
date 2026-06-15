@@ -1,25 +1,27 @@
 #pragma once
-#include<stdio.h>
-#include<stdlib.h>
+#include <vector>
+#include <stdio.h>
+#include <stdlib.h>
+
 struct Heap //创建小顶堆以储存解缠邻接点序列
 {
 	int size;
-	int* x = (int*)malloc(sizeof(int) * 100000000);
-	int* y = (int*)malloc(sizeof(int) * 100000000);
-	double* queue = (double*)malloc(sizeof(double) * 100000000);
+	std::vector<int> x;
+	std::vector<int> y;
+	std::vector<double> queue;
+
 public:
 	Heap()         //初始化 
 	{
 		size = 0;
-		/*for (int i = 0; i < 1000000; i++)
-		{
-			queue[i] = 0;
-			x[i] = 0;
-			y[i] = 0;
-		}*/
+		// 初始预分配 1,000,000 空间，约占 16MB 内存，满足绝大多数解缠场景，且避免频繁重分配
+		x.resize(1000000);
+		y.resize(1000000);
+		queue.resize(1000000);
 	}
 	~Heap()
 	{
+		// 析构时 std::vector 会自动释放内存，避免任何早期返回导致的内存泄漏
 	}
 
 	void shift_up(int i)  //上浮 
@@ -73,7 +75,16 @@ public:
 			fprintf(stderr, "Heap::push(): input check failed!\n\n");
 			return -1;
 		}
-		queue[++size] = v;
+		size++;
+		// 动态检测是否需要扩容
+		if (size >= (int)queue.size())
+		{
+			int new_cap = (int)queue.size() * 2;
+			x.resize(new_cap);
+			y.resize(new_cap);
+			queue.resize(new_cap);
+		}
+		queue[size] = v;
 		x[size] = map_x;
 		y[size] = map_y;
 		shift_up(size);
@@ -110,8 +121,8 @@ public:
 		*y0 = y[1];
 		return 1;
 	}
-	bool empty()
+	bool empty() const
 	{
-		return size;
+		return size == 0;
 	}
 };

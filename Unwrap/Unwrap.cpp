@@ -3021,8 +3021,5 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
 			count++;
 	}
 	tmp.copyTo(unwrapped_phase);
-	free(Heap.x);
-	free(Heap.y);
-	free(Heap.queue);
 	return 0;
 }

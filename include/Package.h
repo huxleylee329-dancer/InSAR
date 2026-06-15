@@ -1,6 +1,4 @@
 #pragma once
-#ifndef __PACKAGE__H__
-#define __PACKAGE__H__
 
 // C4251: 导出类的成员使用了无DLL导出接口的类型(std::string, cv::Mat等)，对本项目无实际影响
 #pragma warning(disable: 4251)
@@ -34,21 +32,6 @@ struct Position
 		this->y = y;
 		this->z = z;
 	}
-	/*拷贝构造函数*/
-	Position(const Position& cp)
-	{
-		this->x = cp.x;
-		this->y = cp.y;
-		this->z = cp.z;
-	}
-	/*赋值函数(深拷贝)*/
-	Position operator=(const Position& cp)
-	{
-		this->x = cp.x;
-		this->y = cp.y;
-		this->z = cp.z;
-		return *this;
-	}
 
 };
 
@@ -72,21 +55,6 @@ struct Velocity
 		this->vx = vx;
 		this->vy = vy;
 		this->vz = vz;
-	}
-	/*拷贝构造函数*/
-	Velocity(const Velocity& cp)
-	{
-		this->vx = cp.vx;
-		this->vy = cp.vy;
-		this->vz = cp.vz;
-	}
-	/*赋值函数(深拷贝)*/
-	Velocity operator=(const Velocity& cp)
-	{
-		this->vx = cp.vx;
-		this->vy = cp.vy;
-		this->vz = cp.vz;
-		return *this;
 	}
 
 };
@@ -117,29 +85,6 @@ struct OSV
 		this->vy = vy;
 		this->vz = vz;
 	}
-	/*拷贝构造函数*/
-	OSV(const OSV& osv)
-	{
-		this->time = osv.time;
-		this->x = osv.x;
-		this->y = osv.y;
-		this->z = osv.z;
-		this->vx = osv.vx;
-		this->vy = osv.vy;
-		this->vz = osv.vz;
-	}
-	/*赋值函数*/
-	OSV operator=(const OSV& osv)
-	{
-		this->time = osv.time;
-		this->x = osv.x;
-		this->y = osv.y;
-		this->z = osv.z;
-		this->vx = osv.vx;
-		this->vy = osv.vy;
-		this->vz = osv.vz;
-		return *this;
-	}
 
 };
 
@@ -157,5 +102,5 @@ struct OSV
 #endif // DEBUG
 
 
-#endif // !__PACKAGE__H__
+
 
