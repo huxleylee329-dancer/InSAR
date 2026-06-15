@@ -2,6 +2,7 @@
 #ifndef __FORMATCONVERSION__H__
 #define __FORMATCONVERSION__H__
 #include<string>
+#include<memory>
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include"hdf5.h"
@@ -599,7 +600,7 @@ public:
 
 private:
 	struct Impl;
-	Impl* impl_;
+	std::unique_ptr<Impl> impl_;
 
 };
 

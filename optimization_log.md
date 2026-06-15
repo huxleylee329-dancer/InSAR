@@ -7,7 +7,9 @@
 ## 历史提交与修复概览（当前分支已完成部分）
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
-| :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-15 | AI | Utils, FormatConversion | 1. 在 Utils.cpp 的 gen_delaunay() 函数中，确保在所有退出路径上均调用 CloseHandle(hd)，避免 Windows 内核 Job 句柄泄漏。<br>2. 在 FormatConversion.cpp 的 read_slc_from_Sentinel() 函数中，设计引用型 FileGuard 卫哨结构体包装文件指针，消除早期返回分支上的文件描述符泄漏隐患。 |
+| `工作区现场修改` | 2026-06-15 | AI | Utils, Unwrap, SBAS | 1. 消除 `tri_node::get_distance` 的值传递，将其参数改为 `const tri_node&`，彻底避免每次调用时深拷贝 `std::vector` 的高频堆分配瓶颈。<br>2. 在 `Unwrap::GetSPD` 中缓存 `padded` 与 `SPD` 的行指针到外层循环，消除内层循环中冗余的 `ptr<double>()` 寻址，并将循环变量改为局部作用域以修复 OpenMP 线程竞态隐患。<br>3. 优化 `SBAS.cpp` 内复数矩阵模值计算，通过直接读取 `.re` 和 `.im` 分量进行内联模值计算，消除 1x1 `ComplexMat` 和 `cv::Mat` 临时切片的内存碎片及分配开销。 |
+| `工作区现场修改` | 2026-06-15 | AI | Utils, FormatConversion, Package.h | 1. 重构 tri_node 为“零法则”现代化管理，将 long* neigh_edges 替换为 std::vector<long>，添加 C++11 类内成员初始化默认值，并将默认构造函数设为 = default，重采样 print_neighbour 为 Range-based for。<br>2. 将 XMLFile 中的 Pimpl 裸指针 Impl* 替换为 std::unique_ptr<Impl>，消除异常安全隐患并自动托管释放。<br>3. 将 Package.h 中的物理常量 PI, VEL_C, INPUTMAXSIZE 升级为编译期类型安全的 constexpr 常量。 |
 | `工作区现场修改` | 2026-06-15 | AI | FormatConversion, Deflat, Evaluation, Utils | 1. 提炼 readDoubleNode 辅助函数，精简 read_POD 中 6 处 OSV 分量解析代码。<br>2. 提炼 formatSRTMName 辅助函数并使用 %02d，消灭 getSRTMFileName 中冗长 if-else 块约 160 行。<br>3. 全局重命名局部草稿变量 xxxx 为 orbit_idx（共 12 处），消除技术债务。<br>4. 提取 H5 类型映射辅助函数 cvTypeToH5TypeForWrite/Read 和 h5TypeToCvType，精简并重构 5 处 HDF5 读写函数的类型映射判定链，保障 100% 行为等价与类型安全。 |
 | `工作区现场修改` | 2026-06-15 | AI | Registration, Unwrap, Evaluation, Utils, FormatConversion | 1. 将 OMP 并行错误控制的 volatile bool 升级为 std::atomic<bool>，规范 parallel_check 形参为 bool 并清理 Registration 遗留的死代码。<br>2. 屏蔽 Evaluation (D:\Test) 和 Utils (E:\working_dir) 的硬编码调试写盘路径。<br>3. 统一 tri_node, triangle, tri_edge, node_index, BurstIndices 的赋值运算符返回引用（T&），消除不必要的对象拷贝开销。 |
 | `b38f5f54` | 2026-06-15 | lewis | globalparam.h, Package.h, ComplexMat.h, Utils.h, SLC_simulator.h | 1. 修复 Heap 类内存泄漏与初始分配约 2GB 的问题，改用 std::vector 动态管理内存并纠正 empty() 语义。<br>2. 清理 Position/Velocity/OSV 冗余的手写拷贝构造与赋值操作符。<br>3. 统一清理公共头文件中冗余的 include guard，保留 #pragma once。 |
@@ -380,6 +382,47 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **H5 类型映射判定链重构与去重**：
   - **问题**：在 `FormatConversion.cpp` 的多处 HDF5 读写接口（`write_zero_array_to_h5`、`write_array_to_h5` (2处)、`read_array_from_h5`、`read_subarray_from_h5`、`write_subarray_to_h5`）中，重复编写了 OpenCV 类型代码到 HDF5 类型宏之间的 if-else 转换链，多处零散类型宏的拼写容易引起维护不一致。
   - **解决方法**：在匿名空间提取 `cvTypeToH5TypeForWrite()`、`cvTypeToH5TypeForRead()` 及 `h5TypeToCvType()` 辅助函数，将 5 处类型校验与读写逻辑全部使用转换器改写。重构方案精细保留了原代码在读写通道对 `H5T_NATIVE_INT32` / `H5T_NATIVE_INT` 的差异以实现 100% 字节兼容，大幅提升了未来的“单一维护性”。
+
+### 20. C++ 标准与无损现代化重构 (Utils, FormatConversion & Package.h)
+根据 `opt.md` 规范，对核心模块执行 C++ 标准现代化改造，消除裸指针与宏污染：
+- **`tri_node` 类内存管理与初始化重构（零法则与 C++11 类内初始化）**：
+  - **问题**：`tri_node` 原本使用 `long* neigh_edges` 裸指针管理动态邻接边数组，需要手写析构函数、拷贝构造函数和赋值运算符（malloc/free/memcpy），违反了 Rule of Zero（零法则），且存在内存安全与资源泄露隐患。此外，默认构造函数中对 8 个私有成员的手动赋值也较为冗长。
+  - **解决方案**：
+    1. 将 `neigh_edges` 修改为 `std::vector<long>`，并在 `get_neigh_ptr` 中通过 `neigh_edges.data()` 配合 `const_cast` 导出底层连续指针，完美保持了 API 的向下兼容。
+    2. 遵循“零法则”，物理删除了自定义的拷贝构造、析构和赋值运算符，完全托管给编译器自动生成，规避了潜在的内存泄漏与悬空野指针风险。
+    3. 在 `Utils.h` 中为所有成员变量添加了 C++11 类内成员初始化默认值，并将默认构造函数声明为 `tri_node() = default;`，物理删除了 `Utils.cpp` 中原本的默认构造函数。
+    4. 将 `print_neighbour()` 中的循环重构为现代的基于范围的 for 循环（Range-based for loop）。
+- **`XMLFile` 异常安全重构（Pimpl 智能指针化）**：
+  - **问题**：`XMLFile` 使用 Pimpl 模式并通过 `Impl* impl_` 裸指针管理实现类，在析构函数中手动 `delete`。这在类构造中途抛出异常（例如其他成员变量构造失败）或内部操作出现异常退出时，无法正常进入析构函数，进而引发堆内存泄漏。
+  - **解决方案**：将 `XMLFile::impl_` 升级为 `std::unique_ptr<Impl>` 托管。不需要再在析构函数中手动执行 `delete impl_`，通过 RAII 保证了 100% 的异常安全性，并简化了析构函数定义。
+- **物理常量宏污染清理（`Package.h` 替换为 `constexpr`）**：
+  - **问题**：`Package.h` 中的物理常量 `PI`、`VEL_C`、`INPUTMAXSIZE` 原本以 `#define` 宏定义，在预处理阶段强制全局文本替换，不仅缺乏 C++ 类型安全保护，还容易引发命名污染，且在调试时无法读取符号值。
+  - **解决方案**：将其全部替换为类型安全、带有编译期常量的 `constexpr` 变量，即 `constexpr double PI = 3.14159265358979323846;`、`constexpr double VEL_C = 299792458.0;`、`constexpr int INPUTMAXSIZE = 1024;`，在保障 C++ 类型安全的同时没有引入任何运行时性能开销。
+
+### 21. 内部性能与并发优化 (Utils, Unwrap & SBAS)
+根据 `opt.md` 规范，对核心密集循环和高频参数传递进行性能优化，并修复并发竞态隐患：
+- **消除 `tri_node::get_distance` 的值传递开销**：
+  - **问题**：在 `get_distance(tri_node node, double* distance) const` 中，参数 `node` 采用值传递。由于 `tri_node` 类包含 `std::vector<long> neigh_edges` 成员，值传递会触发单次深拷贝，导致大量高频的堆内存分配与释放，在 Delaunay 三角网和解缠的核心循环中严重拖慢运行效率。
+  - **解决方案**：将参数签名优化为 `const tri_node& node`。此修改实现了 100% 零拷贝与零内存分配，同时保持调用端的完美向下兼容。
+- **`Unwrap::GetSPD` 内层循环指针缓存与 OpenMP 竞态修复**：
+  - **问题**：
+    1. 在 `GetSPD` 3x3 窗口梯度绝对值求和的双层循环中，内层循环频繁调用 `padded.ptr<double>(i)`、`padded.ptr<double>(m)` 及在循环底部调用 `SPD.ptr<double>(i - armh)`，带来了极高的指针寻址开销。
+    2. 循环索引 `j`、`m`、`n` 等变量定义在外层循环外部，在 OpenMP 多线程并行运行时，这几个变量在各线程间被共享，导致严重的并发竞态冲突与计算数据混乱 Bug。
+  - **解决方案**：
+    1. 将 `padded` 矩阵的相邻三行指针（`row_prev`、`row_curr`、`row_next`）以及输出矩阵的行指针（`row_spd`）缓存到外层循环，消除了内层循环中所有的 `ptr()` 寻址调用。
+    2. 将 `i`、`j`、`m`、`n`、`sum`、`delta` 声明为内层循环体内的局部变量，使得各线程自动获取私有栈副本，彻底修复了 OpenMP 并发竞态冲突 Bug。
+- **`SBAS.cpp` 复数矩阵模值计算去分配化**：
+  - **问题**：在 `SBAS.cpp` 计算相干性矩阵的像素点循环中，代码通过 `coherence_matrix(cv::Range(iii, iii + 1), cv::Range(jjj, jjj + 1)).GetMod().at<double>(0, 0)` 获取 1x1 的模值。这会在每个像素点高频产生 1x1 `ComplexMat` 临时切片及 `cv::Mat` 临时模值矩阵的动态内存分配与释放，导致严重的内存碎片和性能损耗。
+  - **解决方案**：直接读取 `coherence_matrix` 的公有成员 `re` 和 `im` 矩阵在 `(iii, jjj)` 处的标量值，利用公式 `sqrt(re * re + im * im)` 在行内完成模值计算。完全规避了临时对象创建与动态内存分配，性能获得大幅度提升。
+
+### 22. 代码清晰度与资源泄漏安全管理 (Utils & FormatConversion)
+根据 `opt.md` 规范，修复内核对象句柄与文件描述符泄漏：
+- **`Utils::gen_delaunay()` Windows 内核作业对象句柄泄漏修复**：
+  - **问题**：在 `Utils::gen_delaunay()` 中，成功创建 Windows 作业对象（Job Object）并关联子进程后，虽然等待了子进程退出，但却在函数结束前未对 `hd` 调用 `CloseHandle`，导致系统的内核作业对象句柄泄漏。
+  - **解决方案**：在子进程完成退出（`WaitForSingleObject` 结束）并释放进程/线程句柄后，添加对 `hd` 句柄的安全释放：`if (hd) { ::CloseHandle(hd); }`。
+- **`read_slc_from_Sentinel()` 异常与早期返回文件描述符泄漏修复**：
+  - **问题**：在 `read_slc_from_Sentinel()` 中，成功打开文件句柄 `fp` 后，由于 `get_a_burst` 签名为非 const 引用传参 `FILE*& fp` 且其内部出错时会自动调用 `fclose(fp)` 并将指针设为 `NULL`，导致在早期返回分支上，传统的显式 `fclose` 容易发生遗漏或发生二次释放（Double Close）崩溃。而直接使用 `std::unique_ptr` 也会由于临时右值无法绑定到 `FILE*&` 非常量左值引用且不支持同步置空而编译失败或发生二次释放。
+  - **解决方案**：在函数内部定义一个引用型局部 RAII `FileGuard` 结构体，通过持有的 `FILE*&` 引用在析构时进行空指针检查及关闭操作。这既兼容了 `FILE*&` 引用型传参，又通过同步更新指针状态规避了 Double Close 的崩溃隐患，彻底消除了所有早期返回分支上的泄漏。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

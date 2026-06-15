@@ -16,9 +16,7 @@ class InSAR_API tri_node
 {
 public:
 	/*默认构造函数*/
-	tri_node();
-	/*拷贝构造函数*/
-	tri_node(const tri_node& node);
+	tri_node() = default;
 	/*构造函数
 	* 参数1 节点行数
 	* 参数2 节点列数
@@ -26,9 +24,6 @@ public:
 	* 参数4 节点相位
 	*/
 	tri_node(int, int, int, double);
-	~tri_node();
-	/*赋值函数（深拷贝赋值）*/
-	tri_node& operator = (const tri_node& src);
 	/*获取节点相位
 	* 参数1 相位指针（返回值）
 	*/
@@ -67,7 +62,7 @@ public:
 	* 参数1 另一节点
 	* 参数2 距离
 	*/
-	int get_distance(tri_node node, double* distance) const;
+	int get_distance(const tri_node& node, double* distance) const;
 	/*获取解缠状态
 	* 返回值（是否已解缠）
 	*/
@@ -96,28 +91,26 @@ private:
 	/*****************InSAR处理变量*******************/
 
 	/*是否已解缠(默认未解缠)*/
-	bool b_unwrapped;
+	bool b_unwrapped = false;
 	/*是否属于残差节点*/
-	bool b_residue;
+	bool b_residue = false;
 	/*是否属于平衡三角形的顶点（默认为是），同时在PS-InSAR中充当是否节点被丢弃的标志(为true表示不被丢弃， 为false表示被丢弃)*/
-	bool b_balanced;
+	bool b_balanced = true;
 	/*节点行数（起始值为0）*/
-	int rows;
+	int rows = 0;
 	/*节点列数（起始值为0）*/
-	int cols;
-	/*节点邻接边数*/
-	int num_neigh_edges;
+	int cols = 0;
 	/*节点相位*/
-	double phase;
+	double phase = 0.0;
 	/*节点邻接边序号*/
-	long* neigh_edges;
+	std::vector<long> neigh_edges;
 
 	/*****************PS-InSAR处理变量*******************/
 	
 	/*形变速率*/
-	double vel;
+	double vel = 0.0;
 	/*高程误差*/
-	double epsilon_height;
+	double epsilon_height = 0.0;
 };
 
 /*********************************************************/

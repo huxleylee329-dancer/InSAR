@@ -2,9 +2,9 @@
 
 // C4251: 导出类的成员使用了无DLL导出接口的类型(std::string, cv::Mat等)，对本项目无实际影响
 #pragma warning(disable: 4251)
-#define PI 3.14159265358979323846
-#define VEL_C 299792458.0
-#define INPUTMAXSIZE 1024
+constexpr double PI = 3.14159265358979323846;
+constexpr double VEL_C = 299792458.0;
+constexpr int INPUTMAXSIZE = 1024;
 #include"opencv2\core\core.hpp"
 #include"opencv2\highgui\highgui.hpp"
 #include"opencv2\imgproc\imgproc.hpp"

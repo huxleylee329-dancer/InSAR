@@ -4678,6 +4678,10 @@ int Utils::gen_delaunay(const char* filename, const char* exe_path)
 		if (szCommandLine != NULL) delete[] szCommandLine;
 		::CloseHandle(p_i.hThread);
 		::CloseHandle(p_i.hProcess);
+		if (hd)
+		{
+			::CloseHandle(hd);
+		}
 	}
 	else
 	{
@@ -15613,57 +15617,11 @@ double Utils::getGeoidHeight(const std::string& geoidFilePath, double lon, doubl
 
 
 
-tri_node::tri_node()
-{
-	this->rows = 0;
-	this->cols = 0;
-	this->num_neigh_edges = 0;
-	this->phase = 0;
-	this->b_unwrapped = false;
-	this->b_balanced = true;
-	this->neigh_edges = NULL;
-	this->b_residue = false;
-	this->epsilon_height = 0.0;
-	this->vel = 0.0;
-	//std::cout << "constructor1" << "\n";
-}
-
-tri_node::tri_node(const tri_node& node)
-{
-	this->b_unwrapped = node.b_unwrapped;
-	this->b_balanced = node.b_balanced;
-	this->cols = node.cols;
-	this->b_residue = node.b_residue;
-	int num_node = node.num_neigh_edges <= 0 ? 1 : node.num_neigh_edges;
-	if (node.neigh_edges == NULL)
-	{
-		this->neigh_edges = NULL;
-	}
-	else
-	{
-		this->neigh_edges = (long*)malloc(sizeof(long) * num_node);
-		long* ptr = NULL;
-		int num;
-		node.get_neigh_ptr(&ptr, &num);
-		if (this->neigh_edges != NULL || num > 0 || ptr != NULL)
-		{
-			std::memcpy(this->neigh_edges, ptr, sizeof(long) * num_node);
-		}
-	}
-	
-	this->num_neigh_edges = node.num_neigh_edges;
-	this->phase = node.phase;
-	this->rows = node.rows;
-	this->epsilon_height = node.epsilon_height;
-	this->vel = node.vel;
-	//std::cout << "constructor2" << "\n";
-}
 
 tri_node::tri_node(int row, int col, int num_neigh_edge, double phi)
 {
 	this->rows = row;
 	this->cols = col;
-	this->num_neigh_edges = num_neigh_edge;
 	this->phase = phi;
 	this->b_unwrapped = false;
 	this->b_residue = false;
@@ -15672,64 +15630,7 @@ tri_node::tri_node(int row, int col, int num_neigh_edge, double phi)
 	this->vel = 0.0;
 	if (num_neigh_edge > 0)
 	{
-		this->neigh_edges = (long*)malloc(sizeof(long) * num_neigh_edge);
-	}
-	else
-	{
-		this->neigh_edges = NULL;
-	}
-	if (this->neigh_edges != NULL)
-	{
-		for (int i = 0; i < num_neigh_edge; i++)
-		{
-			*(this->neigh_edges + i) = -1;//初始化邻接边序号都为-1
-		}
-	}
-	
-	//std::cout << "constructor3" << "\n";
-}
-
-tri_node::~tri_node()
-{
-	if (this->neigh_edges != NULL)
-	{
-		free(this->neigh_edges);
-		this->neigh_edges = NULL;
-	}
-	//std::cout << "destructor" << "\n";
-}
-
-tri_node& tri_node::operator=(const tri_node& src)
-{
-	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//两者相等
-	{
-		return *this;
-	}
-	else
-	{
-		if (this->neigh_edges)
-		{
-			free(this->neigh_edges);
-			this->neigh_edges = NULL;
-		}
-		if (src.num_neigh_edges > 0)
-		{
-			this->neigh_edges = (long*)malloc(src.num_neigh_edges * sizeof(long));
-			if (this->neigh_edges != NULL && src.neigh_edges != NULL)
-			{
-				memcpy(this->neigh_edges, src.neigh_edges, src.num_neigh_edges * sizeof(long));
-			}
-		}
-		this->b_balanced = src.b_balanced;
-		this->b_residue = src.b_residue;
-		this->b_unwrapped = src.b_unwrapped;
-		this->cols = src.cols;
-		this->rows = src.rows;
-		this->num_neigh_edges = src.num_neigh_edges;
-		this->phase = src.phase;
-		this->epsilon_height = src.epsilon_height;
-		this->vel = src.vel;
-		return *this;
+		this->neigh_edges.assign(num_neigh_edge, -1);
 	}
 }
 
@@ -15770,8 +15671,8 @@ int tri_node::get_neigh_ptr(long** ptr2ptr, int* num) const
 		fprintf(stderr, "get_neigh_ptr(): input check failed!\n\n");
 		return -1;
 	}
-	*ptr2ptr = this->neigh_edges;
-	*num = this->num_neigh_edges;
+	*ptr2ptr = const_cast<long*>(this->neigh_edges.empty() ? NULL : this->neigh_edges.data());
+	*num = static_cast<int>(this->neigh_edges.size());
 	return 0;
 }
 
@@ -15789,14 +15690,14 @@ int tri_node::set_balance(bool b_balanced)
 
 int tri_node::print_neighbour() const
 {
-	if (this->num_neigh_edges <= 0)
+	if (this->neigh_edges.empty())
 	{
 		fprintf(stdout, "no neighbour edges!\n");
 		return 0;
 	}
-	for (int i = 0; i < this->num_neigh_edges; i++)
+	for (long edge : this->neigh_edges)
 	{
-		fprintf(stdout, "%ld ", *(this->neigh_edges + i));
+		fprintf(stdout, "%ld ", edge);
 	}
 	fprintf(stdout, "\n");
 	return 0;
@@ -15804,11 +15705,15 @@ int tri_node::print_neighbour() const
 
 int tri_node::get_num_neigh(int* num_neigh) const
 {
-	*num_neigh = this->num_neigh_edges;
+	if (num_neigh == NULL)
+	{
+		return -1;
+	}
+	*num_neigh = static_cast<int>(this->neigh_edges.size());
 	return 0;
 }
 
-int tri_node::get_distance(tri_node node, double* distance) const
+int tri_node::get_distance(const tri_node& node, double* distance) const
 {
 	*distance = sqrt(((double)node.rows - (double)this->rows) * ((double)node.rows - (double)this->rows) +
 		((double)node.cols - (double)this->cols) * ((double)node.cols - (double)this->cols));

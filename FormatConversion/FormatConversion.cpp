@@ -1961,6 +1961,15 @@ int FormatConversion::read_slc_from_Sentinel(
 		fprintf(stderr, "read_slc_from_Sentinel(): failed to open %s!\n", filename);
 		return -1;
 	}
+	struct FileGuard {
+		FILE*& fp_ref;
+		~FileGuard() {
+			if (fp_ref) {
+				fclose(fp_ref);
+				fp_ref = NULL;
+			}
+		}
+	} guard{ fp };
 	Mat gcps_merged_line_num = Mat::zeros(1, burst_count + 1, CV_32S);
 	ComplexMat last_burst, this_burst;
 	ret = get_a_burst(pchild, xmldoc, fp, linesPerBurst, samplesPerBurst, slc);
@@ -1980,7 +1989,6 @@ int FormatConversion::read_slc_from_Sentinel(
 		gcps_merged_line_num.at<int>(0, i + 1) = slc.GetRows();
 		pchild = pchild->NextSiblingElement();
 	}
-	if (fp)fclose(fp);
 	gcps_merged_line_num.copyTo(gcps_line);
 	return 0;
 }
@@ -3907,7 +3915,6 @@ XMLFile& XMLFile::operator=(const XMLFile& other)
 
 XMLFile::~XMLFile()
 {
-	delete impl_;
 }
 
 int XMLFile::XMLFile_creat_new_project(const char* project_path, const char* project_name, const char* project_version)

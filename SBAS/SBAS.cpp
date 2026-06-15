@@ -1781,9 +1781,9 @@ int SBAS::adaptive_multilooking(
 										{
 											if (formation_matrix.at<int>(iii, jjj) == 1)
 											{
-												coherence_series[count_parallel].at<double>(ii, jj) = coherence_matrix(
-													cv::Range(iii, iii + 1),
-													cv::Range(jjj, jjj + 1)).GetMod().at<double>(0, 0);
+												double real_val = coherence_matrix.re.at<double>(iii, jjj);
+												double imag_val = coherence_matrix.im.at<double>(iii, jjj);
+												coherence_series[count_parallel].at<double>(ii, jj) = sqrt(real_val * real_val + imag_val * imag_val);
 												count_parallel++;
 											}
 										}

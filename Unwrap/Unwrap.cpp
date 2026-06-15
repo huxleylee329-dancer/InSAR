@@ -2794,25 +2794,30 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 	copyMakeBorder(wrapped_phase, padded, armh, armh, armw, armw, BORDER_REFLECT_101);//镜像翻转边缘
 	int width = padded.cols;
 	int height = padded.rows;
-	int i, j;
 	std::atomic<bool> parallel_flag(true);
 	int ret = 0;
 #pragma omp parallel for schedule(guided) \
 	private(ret)
-	for (i = armh; i < height - armh; i++)
+	for (int i = armh; i < height - armh; i++)
 	{
 		if (!parallel_flag) continue;
-		for (j = armw; j < width - armw; j++)
+		const double* row_prev = padded.ptr<double>(i - 1);
+		const double* row_curr = padded.ptr<double>(i);
+		const double* row_next = padded.ptr<double>(i + 1);
+		double* row_spd = SPD.ptr<double>(i - armh);
+
+		for (int j = armw; j < width - armw; j++)
 		{
 			if (!parallel_flag) continue;
-			int m, n;
 			double sum = 0;
-			double delta = 0;
+			double val_center = row_curr[j];
 			/*在3*3的窗口内计算与中心像素的梯度绝对值和*/
-			for (m = i - 1; m < i + 2; m++)
-				for (n = j - 1; n < j + 2; n++)
+			for (int m = i - 1; m < i + 2; m++)
+			{
+				const double* row_m = (m == i - 1) ? row_prev : ((m == i) ? row_curr : row_next);
+				for (int n = j - 1; n < j + 2; n++)
 				{
-					delta = padded.ptr<double>(i)[j] - padded.ptr<double>(m)[n];
+					double delta = val_center - row_m[n];
 					/*梯度取主值*/
 					if (delta <= -PI)
 						sum += abs(delta + 2 * PI);
@@ -2821,21 +2826,8 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 					else
 						sum += abs(delta - 2 * PI);
 				}
-			///*PSD*/
-			//double k = mean(padded(Range(i - 1, i + 2), Range(i - 1, i + 2)))[0];
-			//for (m = i - 1; m < i + 2; m++)
-			//	for (n = j - 1; n < j + 2; n++)
-			//	{
-			//		sum += pow((padded.ptr<double>(i)[j] - k), 2);
-			//		/*梯度取主值*/
-			//		/*if (delta <= -PI)
-			//			sum += abs(delta + 2 * PI);
-			//		else if (delta > -PI && delta < PI)
-			//			sum += abs(delta);
-			//		else
-			//			sum += abs(delta - 2 * PI);*/
-			//	}
-			SPD.ptr<double>(i - armh)[j - armw] = sqrt(sum / 8);
+			}
+			row_spd[j - armw] = sqrt(sum / 8);
 		}
 	}
 	if (parallel_check(parallel_flag, "GetSPD()", parallel_error_head)) return -1;
