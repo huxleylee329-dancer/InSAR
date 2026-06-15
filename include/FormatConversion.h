@@ -6,6 +6,106 @@
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include"hdf5.h"
+
+// 轻量级 RAII 包装器，用于自动管理 HDF5 句柄的生命周期
+class H5UniqueId
+{
+private:
+	hid_t m_id;
+
+public:
+	H5UniqueId(hid_t id = -1) : m_id(id) {}
+
+	~H5UniqueId()
+	{
+		close();
+	}
+
+	// 禁用拷贝以防双重释放
+	H5UniqueId(const H5UniqueId&) = delete;
+	H5UniqueId& operator=(const H5UniqueId&) = delete;
+
+	// 支持所有权转移的移动操作
+	H5UniqueId(H5UniqueId&& other) noexcept : m_id(other.m_id)
+	{
+		other.m_id = -1;
+	}
+
+	H5UniqueId& operator=(H5UniqueId&& other) noexcept
+	{
+		if (this != &other)
+		{
+			close();
+			m_id = other.m_id;
+			other.m_id = -1;
+		}
+		return *this;
+	}
+
+	// 支持直接赋值 raw hid_t
+	H5UniqueId& operator=(hid_t new_id)
+	{
+		if (m_id != new_id)
+		{
+			close();
+			m_id = new_id;
+		}
+		return *this;
+	}
+
+	// 隐式转换为原始 hid_t 句柄，便于与原有 API 兼容
+	operator hid_t() const
+	{
+		return m_id;
+	}
+
+	hid_t get() const
+	{
+		return m_id;
+	}
+
+	hid_t release()
+	{
+		hid_t temp = m_id;
+		m_id = -1;
+		return temp;
+	}
+
+	void close()
+	{
+		if (m_id >= 0)
+		{
+			H5I_type_t type = H5Iget_type(m_id);
+			switch (type)
+			{
+			case H5I_FILE:
+				H5Fclose(m_id);
+				break;
+			case H5I_GROUP:
+				H5Gclose(m_id);
+				break;
+			case H5I_DATASET:
+				H5Dclose(m_id);
+				break;
+			case H5I_DATASPACE:
+				H5Sclose(m_id);
+				break;
+			case H5I_DATATYPE:
+				H5Tclose(m_id);
+				break;
+			case H5I_ATTR:
+				H5Aclose(m_id);
+				break;
+			case H5I_GENPROP_LST:
+				H5Pclose(m_id);
+				break;
+			default:
+				break;
+			}
+			m_id = -1;
+		}
+	}
+};
 #define Big2Little64(A) ((uint64_t)(A&0xff00000000000000)>>56|(A&0x00ff000000000000)>>40|(A&0x0000ff0000000000)>>24|(A&0x000000ff00000000)>>8|(A&0x00000000ff000000)<<8|(A&0x0000000000ff0000)<<24|(A&0x000000000000ff00)<<40|(A&0x00000000000000ff)<<56)
 #define Big2Little32(A) ((uint32_t)(A&0xff000000)>>24|(uint32_t)(A&0x00ff0000)>>8 | (uint32_t)(A&0x0000ff00)<<8|(uint32_t)(A&0x000000ff)<<24)
 #define Big2Little16(A) ((uint16_t)(A&0xff00)>>8 | (uint16_t)(A&0x00ff)<<8)
@@ -1342,10 +1442,47 @@ private:
 };
 
 
+class InSAR_API SARDataReader
+{
+public:
+	SARDataReader();
+	virtual ~SARDataReader();
+
+	int write_to_h5(const char* dst_h5);
+
+	virtual int init() = 0;
+
+protected:
+	virtual int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) = 0;
+	int write_common_coordinates(FormatConversion& conversion, const char* dst_h5);
+
+protected:
+	bool b_initialized;
+	string acquisition_start_time;
+	string acquisition_stop_time;
+	double azimuth_resolution;
+	double azimuth_spacing;
+	double carrier_frequency;
+	double prf;
+	double range_resolution;
+	double range_spacing;
+	double slant_range_first_pixel;
+	double slant_range_last_pixel;
+	Mat state_vec;
+	string sensor;
+	ComplexMat slc;
+	string polarization;
+
+	double inc_center;
+	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon;
+	double topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
+};
+
+
 /*------------------------------------------------*/
 /*             COSMO-SkyMed数据读取工具           */
 /*------------------------------------------------*/
-class InSAR_API CSK_reader
+class InSAR_API CSK_reader : public SARDataReader
 {
 public:
 	CSK_reader(const char* csk_data_file);
@@ -1355,14 +1492,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int init();
-	
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1408,30 +1540,16 @@ private:
 
 private:
 	string csk_data_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
 	Mat topleft, topright, bottomleft, bottomright;
-	Mat state_vec, inc_coefficient, lon_coefficient, lat_coefficient, row_coefficient, col_coefficient;
+	Mat inc_coefficient, lon_coefficient, lat_coefficient, row_coefficient, col_coefficient;
 	string lookside;
-	string sensor;
-	string polarization, orbit_direction;
-	ComplexMat slc;
-
+	string orbit_direction;
 };
 
 /*------------------------------------------------*/
 /*               航天宏图数据读取工具             */
 /*------------------------------------------------*/
-class InSAR_API HTHT_reader
+class InSAR_API HTHT_reader : public SARDataReader
 {
 public:
 	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0为单星模式,mode=1为多星干涉模式
@@ -1441,13 +1559,8 @@ public:
 	*/
 	int init();
 
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1472,23 +1585,6 @@ private:
 	);
 private:
 	string HT_data_file, HT_xml_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double inc_center;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
-	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
-		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
-	Mat state_vec;
-	string sensor;
-	ComplexMat slc;
 	int mode = 0;
 
 };
@@ -1496,7 +1592,7 @@ private:
 /*------------------------------------------------*/
 /*            中科卫星Ku-SAR数据读取工具          */
 /*------------------------------------------------*/
-class InSAR_API AIRSAT_reader
+class InSAR_API AIRSAT_reader : public SARDataReader
 {
 public:
 	AIRSAT_reader(const char* data_file, const char* xml_file);
@@ -1506,13 +1602,8 @@ public:
 	*/
 	int init();
 
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1544,30 +1635,13 @@ private:
 	);
 private:
 	string AIRSAT_data_file, AIRSAT_xml_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double inc_center;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
-	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
-		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
-	Mat state_vec;
-	string sensor;
-	ComplexMat slc;
 };
 
 
 /*------------------------------------------------*/
 /*                Biomass L1A reader              */
 /*------------------------------------------------*/
-class InSAR_API Biomass1A_reader
+class InSAR_API Biomass1A_reader : public SARDataReader
 {
 public:
 	Biomass1A_reader(const char* amp_file, const char* phase_file, const char* xml_file, const char* orbit_file, const char* polarization);
@@ -1577,13 +1651,8 @@ public:
 	*/
 	int init();
 
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1621,31 +1690,13 @@ private:
 	);
 private:
 	string Biomass1A_reader_amp_file, Biomass1A_reader_phase_file, Biomass1A_reader_orbit_file, Biomass1A_reader_xml_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double inc_center;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
-	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
-		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
-	Mat state_vec;
-	string sensor;
-	ComplexMat slc;
-	string polarization;
 };
 
 
 /*------------------------------------------------*/
 /*               陆探1号数据读取工具              */
 /*------------------------------------------------*/
-class InSAR_API LUTAN_reader
+class InSAR_API LUTAN_reader : public SARDataReader
 {
 public:
 	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1为单星模式,mode=2为双星干涉模式
@@ -1655,13 +1706,8 @@ public:
 	*/
 	int init();
 
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1686,23 +1732,6 @@ private:
 	);
 private:
 	string LT_data_file, LT_xml_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double inc_center;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
-	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
-		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
-	Mat state_vec;
-	string sensor;
-	ComplexMat slc;
 	int mode = 1;
 
 };
@@ -1712,7 +1741,7 @@ private:
 /*------------------------------------------------*/
 /*             天仪涪城一号数据读取工具           */
 /*------------------------------------------------*/
-class InSAR_API Spacety_reader
+class InSAR_API Spacety_reader : public SARDataReader
 {
 public:
 	Spacety_reader(const char* data_file, const char* xml_file);
@@ -1726,13 +1755,8 @@ public:
 	*/
 	int init_test();
 
-	/** @brief 将数据写入到指定h5文件
-	* @param dst_h5                          指定hdf5文件
-	* @return 成功返回0，否则返回-1
-	*/
-	int write_to_h5(
-		const char* dst_h5
-	);
+protected:
+	int write_custom_h5_data(FormatConversion& conversion, const char* dst_h5) override;
 
 private:
 
@@ -1766,24 +1790,6 @@ private:
 	);
 private:
 	string Spacety_data_file, Spacety_xml_file;
-	bool b_initialized;
-	string acquisition_start_time;
-	string acquisition_stop_time;
-	double azimuth_resolution;
-	double azimuth_spacing;
-	double carrier_frequency;
-	double inc_center;
-	double prf;
-	double range_resolution;
-	double range_spacing;
-	double slant_range_first_pixel;
-	double slant_range_last_pixel;
-	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
-		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
-	Mat state_vec;
-	string sensor;
-	ComplexMat slc;
-
 };
 
 /*------------------------------------------------*/

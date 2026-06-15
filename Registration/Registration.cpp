@@ -719,6 +719,8 @@ double Registration::WeightCalculation(double offset)
 
 int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, int blocksize, int interp_times)
 {
+	constexpr double COHERENCE_THRESH = 0.4;
+
 	if (Master.GetRows() < 1 ||
 		Master.GetCols() < 1 ||
 		Master.GetRows() != Slave.GetRows() ||
@@ -820,7 +822,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 				parallel_flag = false;
 				continue;
 			}
-			if (mean(coherence)[0] > 0.4)
+			if (mean(coherence)[0] > COHERENCE_THRESH)
 			{
 				indx.at<int>(i * nsubr + j, 0) = 1;
 			}
@@ -871,6 +873,11 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
 	int* offset_col)
 {
+	constexpr int MAX_CROP_SIZE = 10000;
+	constexpr double COHERENCE_THRESH = 0.05;
+	constexpr int COH_WIN_SIZE = 7;
+	constexpr double ZERO_TOLERANCE = 1e-7;
+
 	if (master.isempty() ||
 		slave.isempty() ||
 		//blocksize * 5 > (slave.GetCols() < slave.GetRows() ? slave.GetCols() : slave.GetRows()) ||
@@ -887,8 +894,8 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	ComplexMat slave_r, master_small, slave_small;
 	slave_r = master;
 	slave_r.re = 0.0; slave_r.im = 0.0;
-	int nr0 = master.GetRows() > 10000 ? 10000 : master.GetRows();
-	int nc0 = master.GetCols() > 10000 ? 10000 : master.GetCols();
+	int nr0 = master.GetRows() > MAX_CROP_SIZE ? MAX_CROP_SIZE : master.GetRows();
+	int nc0 = master.GetCols() > MAX_CROP_SIZE ? MAX_CROP_SIZE : master.GetCols();
 	nr0 = slave.GetRows() > nr0 ? nr0 : slave.GetRows();
 	nc0 = slave.GetCols() > nc0 ? nc0 : slave.GetCols();
 
@@ -973,7 +980,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		ComplexMat master_sub, slave_sub, master_sub_interp, slave_sub_interp, master1, slave1;
 		Mat amplitude_slave, sign, coh1;
 		int offset_row, offset_col;
-		double mean_coh, coh_thresh = 0.05;
+		double mean_coh;
 		for (int j = 0; j < n; j++)
 		{
 			//计算相关系数判断是否是有效数据
@@ -984,9 +991,9 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			slave.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave1.im);
 			if (slave1.type() != CV_64F) slave1.convertTo(slave1, CV_64F);
 			registration_pixel(master1, slave1);
-			util.complex_coherence(master1, slave1, 7, 7, coh1);
+			util.complex_coherence(master1, slave1, COH_WIN_SIZE, COH_WIN_SIZE, coh1);
 			mean_coh = cv::mean(coh1)[0];
-			if (mean_coh < coh_thresh)
+			if (mean_coh < COHERENCE_THRESH)
 			{
 				sentinel0.at<double>(i, j) = 1.0;
 				continue;
@@ -1006,10 +1013,10 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			{
 				for (int jj = 0; jj < amplitude_slave.cols; jj++)
 				{
-					if (fabs(amplitude_slave.at<double>(ii, jj)) < 0.0000001) count_zero++;
+					if (fabs(amplitude_slave.at<double>(ii, jj)) < ZERO_TOLERANCE) count_zero++;
 				}
 			}
-			//sign = amplitude_slave < 0.0000001;
+			//sign = amplitude_slave < ZERO_TOLERANCE;
 			int thresh = blocksize * blocksize / 4;
 			if (count_zero > thresh)
 			{
@@ -1251,6 +1258,10 @@ int Registration::every_subpixel_move(int i, int j, Mat& coefficient, double* of
 int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
 	int* offset_col, double coh_thresh)
 {
+	constexpr int MAX_CROP_SIZE = 10000;
+	constexpr int COH_WIN_SIZE = 7;
+	constexpr double ZERO_TOLERANCE = 1e-7;
+
 	if (master.isempty() ||
 		slave.isempty() ||
 		//blocksize * 5 > (slave.GetCols() < slave.GetRows() ? slave.GetCols() : slave.GetRows()) ||
@@ -1267,8 +1278,8 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	ComplexMat slave_r, master_small, slave_small;
 	slave_r = master;
 	slave_r.re = 0.0; slave_r.im = 0.0;
-	int nr0 = master.GetRows() > 10000 ? 10000 : master.GetRows();
-	int nc0 = master.GetCols() > 10000 ? 10000 : master.GetCols();
+	int nr0 = master.GetRows() > MAX_CROP_SIZE ? MAX_CROP_SIZE : master.GetRows();
+	int nc0 = master.GetCols() > MAX_CROP_SIZE ? MAX_CROP_SIZE : master.GetCols();
 	nr0 = slave.GetRows() > nr0 ? nr0 : slave.GetRows();
 	nc0 = slave.GetCols() > nc0 ? nc0 : slave.GetCols();
 
@@ -1364,7 +1375,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 			slave.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(slave1.im);
 			if (slave1.type() != CV_64F) slave1.convertTo(slave1, CV_64F);
 			registration_pixel(master1, slave1);
-			util.complex_coherence(master1, slave1, 7, 7, coh1);
+			util.complex_coherence(master1, slave1, COH_WIN_SIZE, COH_WIN_SIZE, coh1);
 			mean_coh = cv::mean(coh1)[0];
 			if (mean_coh < coh_thresh)
 			{
@@ -1386,10 +1397,10 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 			{
 				for (int jj = 0; jj < amplitude_slave.cols; jj++)
 				{
-					if (fabs(amplitude_slave.at<double>(ii, jj)) < 0.0000001) count_zero++;
+					if (fabs(amplitude_slave.at<double>(ii, jj)) < ZERO_TOLERANCE) count_zero++;
 				}
 			}
-			//sign = amplitude_slave < 0.0000001;
+			//sign = amplitude_slave < ZERO_TOLERANCE;
 			int thresh = blocksize * blocksize / 4;
 			if (count_zero > thresh)
 			{

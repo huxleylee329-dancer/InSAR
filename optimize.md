@@ -129,8 +129,9 @@
 - [x] **`bin2cvmat` 中不必要的 `malloc`+`memcpy`** — `Utils.cpp:2703-2712`
   - 可直接 `fread` 到 `Mat::data` 指针
   - 修复：移除 `malloc`/`memcpy`/`free`，`fread` 直接读入 `Mat::data`
-- [ ] **赋值运算符返回值而非引用** — `Utils.h` 多处
+- [x] **赋值运算符返回值而非引用** — `Utils.h` 多处
   - `tri_node`、`triangle`、`tri_edge`、`node_index` 的 `operator=` 应返回引用
+  - 修复：在 `Utils.h` / `Utils.cpp` 中统一将自定义的赋值运算符修改为返回引用（`T&`）。
 - [x] **`PI` 精度不一致** — `Utils.cpp:1523,3025,3080,3117`
   - 部分手写 `3.1415926535`（11 位），部分 `3.14159265358979323846`（21 位）
   - 应统一使用 `Package.h` 中的 `PI` 宏
@@ -138,9 +139,9 @@
 - [x] **`volatile int count` 在 OpenMP 并行区域中使用** — `Utils.cpp:12658,12950`
   - `volatile` 不保证原子性，应使用 `std::atomic<int>`
   - 修复：添加 `#include <atomic>`，两处 `volatile int count` 替换为 `std::atomic<int> count(0)`
-- [ ] **`gen_mask` 系列函数中每次循环创建临时 Mat** — `Utils.cpp:1409,1721` 等
-  - 在 OMP 并行的双层循环内每次迭代调用 `cv::mean()`，有性能开销
-  - 跳过：`cv::mean()` 本身不创建大 Mat（ROI 仅创建轻量头部），真正瓶颈是每个像素 O(wnd_size²) 的均值计算；建议改用积分图（`cv::integral`）或 `cv::boxFilter` 降至 O(1)，但属算法层面重构，改动较大
+- [x] **`gen_mask` 系列与 `phase_derivatives_variance` 性能优化** — `Utils.cpp`
+  - 在 OMP 并行的双层循环内每次迭代调用 `cv::mean()`，以及 `phase_derivatives_variance` 内部的 `cv::mean`、`sum` 和矩阵乘法，有极高计算与动态内存分配开销。
+  - 修复：使用 `cv::boxFilter` 将复杂度降至 O(1)，并规避了循环内所有的 Mat 动态分配和 sum 遍历累加，使计算效率极大提升。
 
 ### P3 — 优化
 
@@ -206,7 +207,7 @@
 - [x] **函数名与错误信息不匹配** — `Registration.cpp:775,837,991`
   - `coregistration_subpixel` 中错误消息写的是 `"coregistration_pixel()"`
 - [ ] **注释掉的调试代码未清理** — `Registration.cpp:661,756-757,876-877,896-900,914-954`
-- [ ] **魔数散布** — `Registration.cpp:859`（0.65 相干性阈值）、`784`（10000 裁剪尺寸）
+- [x] **魔数散布** — `Registration.cpp:859`（0.65 相干性阈值）、`784`（10000 裁剪尺寸）
 
 ---
 
@@ -365,7 +366,7 @@
 
 - [ ] **函数名拼写错误** — `Unwrap.h`
   - `quailtyGuidedFloodfill` → `qualityGuidedFloodfill`
-- [ ] **四方向邻居处理代码重复** — `Unwrap.cpp:1079-1136`
+- [x] **四方向邻居处理代码重复** — `Unwrap.cpp:1079-1136`
   - 可使用方向偏移数组 `dx[]/dy[]` 简化为循环
 - [ ] **`globalparam.h` 使用相对路径不一致** — `Unwrap.h:7`
   - 其他头文件使用 `..\include\` 路径
@@ -394,12 +395,12 @@
   - 必须拆分：`FormatConversion_h5.cpp`、`FormatConversion_TSX.cpp`、`FormatConversion_Sentinel.cpp`、`FormatConversion_ALOS.cpp`、`XMLFile.cpp`、`Sentinel1Reader.cpp` 等
 - [ ] **头文件过大：2213 行，11 个类** — `include/FormatConversion.h`
   - 建议各类拆分到独立头文件，在 FormatConversion.h 中用 `#include` 聚合
-- [ ] **传感器读取器类字段重复** — `FormatConversion.cpp:1364-1592`
+- [x] **传感器读取器类字段重复** — `FormatConversion.cpp:1364-1592`
   - `CSK_reader`、`HTHT_reader`、`LUTAN_reader`、`Spacety_reader` 成员变量几乎完全相同
   - 应提取公共基类 `SARDataReader`
 - [x] **H5 类型映射 if-else 链重复** — `FormatConversion.cpp:179-198,249-268,278-297`
   - 已在匿名空间提取 `cvTypeToH5TypeForWrite()`, `cvTypeToH5TypeForRead()`, `h5TypeToCvType()` 三个辅助方法，重构并精简了 5 处 HDF5 读写函数的类型映射链，保证 100% 数据兼容性与高维护性
-- [ ] **HDF5 资源清理代码重复** — `FormatConversion.cpp` 多处
+- [x] **HDF5 资源清理代码重复** — `FormatConversion.cpp` 多处
   - 每个 H5 函数都有手动 `H5Dclose`/`H5Sclose`/`H5Fclose`/`H5Tclose`
   - 建议使用 RAII 包装器或 `goto cleanup` 模式
 
@@ -417,9 +418,8 @@
   - `XMLFile_add_interferometric_phase` 14 个参数、`XMLFile_add_denoise_14` 15 个参数
 - [ ] **冗余的函数重载** — `FormatConversion.h:783-831`
   - `TSX2h5` 有 6 个重载，建议使用默认参数值代替
-- [ ] **`read_slc_from_TSXcos` 中 `malloc` 分配大块内存** — `FormatConversion.cpp:913`
-  - 对大图像可能分配数百 MB，且逐像素处理效率低
-  - 建议使用 GDAL RasterIO 直接读取到目标 Mat
+- [x] **`read_slc_from_TSXcos` 中 `malloc` 分配大块内存** — `FormatConversion.cpp:913`
+  - 已优化：使用 2通道 `cv::Mat temp(ysize, xsize, CV_16SC2)` 并利用 `temp.elemSize()` 和 `temp.step[0]` 作为步长直接调用 `GDALRasterIO` 读取。再通过 `cv::split` 分离通道到预先分配内存的 `slc.re` 与 `slc.im`，用 C++ RAII 避免了手动内存分配与泄漏隐患，消除了原本的低效双重 `for` 循环和移位运算。
 - [x] **`GDALAllRegister`/`GDALDestroyDriverManager` 调用不当** — `FormatConversion.cpp:888,944`
   - 每次调用都注册和销毁驱动管理器，应只调用一次
   - 修复：在 FormatConversion.cpp 中引入 std::call_once 进行线程安全懒加载注册，并彻底移除了所有的 GDALDestroyDriverManager() 销毁调用。
@@ -606,7 +606,7 @@
 - [x] **`SLC_deramp_14` mode==4 中类型转换 bug** — `SLC_simulator.cpp:3051,3121,3190`
   - `if (slc2.type() != CV_32F) slc.convertTo(slc, CV_32F);`
   - 检查的是 slc2 类型，转换的却是 slc，复制粘贴导致的 bug
-- [ ] **第一个 `generateSLC` 函数未写入 SLC 像素（半成品）** — `SLC_simulator.cpp:269-550`
+- [x] **第一个 `generateSLC` 函数未写入 SLC 像素（半成品）** — `SLC_simulator.cpp:269-550`
   - 计算了 `imaging_time` 和 `slant_range`，但从未将结果累加到 `slc.re`/`slc.im`
   - SLC 图像全是零
 
@@ -639,7 +639,7 @@
 
 ### P3 — 优化
 
-- [ ] **冗余的自赋值** — `SLC_simulator.cpp:333-334,638-639,1215-1216,1757-1758`
+- [x] **冗余的自赋值** — `SLC_simulator.cpp:333-334,638-639,1215-1216,1757-1758`
   - `num_block_row = num_block_row;` 无效，应删除
 - [ ] **变量命名不规范** — `SLC_simulator.cpp` 多处
   - 大量单字母变量名 `ii`/`jj`/`iii`/`bb`/`aa` 在嵌套 3-4 层循环中极易混淆

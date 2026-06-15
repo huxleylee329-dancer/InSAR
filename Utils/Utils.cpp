@@ -1602,30 +1602,29 @@ int Utils::gen_mask(Mat& coherence, Mat& phase_derivatives, Mat& mask, int wnd_s
 	}
 	int nr = coherence.rows;
 	int nc = coherence.cols;
-	Mat temp_coh, temp_phase_derivatives;
-	coherence.copyTo(temp_coh);
-	phase_derivatives.copyTo(temp_phase_derivatives);
 	int radius = (wnd_size - 1) / 2;
-	cv::copyMakeBorder(temp_coh, temp_coh, radius, radius, radius, radius, cv::BORDER_DEFAULT);
-	cv::copyMakeBorder(temp_phase_derivatives, temp_phase_derivatives, radius, radius, radius, radius, cv::BORDER_DEFAULT);
+	int kernel_size = 2 * radius + 1;
+
+	Mat mean_coh, mean_phase_derivatives;
+	cv::boxFilter(coherence, mean_coh, CV_64F, cv::Size(kernel_size, kernel_size), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+	cv::boxFilter(phase_derivatives, mean_phase_derivatives, CV_64F, cv::Size(kernel_size, kernel_size), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+
 	Mat tmp = Mat::zeros(nr, nc, CV_32S);
 	tmp.copyTo(mask);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
-		double mean, mean1;
 		for (int j = 0; j < nc; j++)
 		{
-			mean = cv::mean(temp_coh(cv::Range(i, i + 2 * radius + 1), cv::Range(j, j + 2 * radius + 1)))[0];
-			mean1 = cv::mean(temp_phase_derivatives(cv::Range(i, i + 2 * radius + 1), cv::Range(j, j + 2 * radius + 1)))[0];
+			double mean = mean_coh.at<double>(i, j);
+			double mean1 = mean_phase_derivatives.at<double>(i, j);
 			if (mean > coh_thresh && 
-				coherence.at<double>(i, j) > coh_thresh&&
+				coherence.at<double>(i, j) > coh_thresh &&
 				mean1 < phase_derivative_thresh &&
 				phase_derivatives.at<double>(i, j) < phase_derivative_thresh)
 			{
 				mask.at<int>(i, j) = 1;
 			}
-				
 		}
 	}
 	return 0;
@@ -1915,19 +1914,20 @@ int Utils::gen_mask(Mat& coherence, Mat& mask, int wnd_size, double thresh)
 	}
 	int nr = coherence.rows;
 	int nc = coherence.cols;
-	Mat temp_coh;
-	coherence.copyTo(temp_coh);
 	int radius = (wnd_size + 1) / 2;
-	cv::copyMakeBorder(temp_coh, temp_coh, radius, radius, radius, radius, cv::BORDER_REFLECT);
+	int kernel_size = 2 * radius + 1;
+
+	Mat mean_coh;
+	cv::boxFilter(coherence, mean_coh, CV_64F, cv::Size(kernel_size, kernel_size), cv::Point(-1, -1), true, cv::BORDER_REFLECT);
+
 	Mat tmp = Mat::zeros(nr, nc, CV_32S);
 	tmp.copyTo(mask);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
-		double mean;
 		for (int j = 0; j < nc; j++)
 		{
-			mean = cv::mean(temp_coh(cv::Range(i, i + 2 * radius + 1), cv::Range(j, j + 2 * radius + 1)))[0];
+			double mean = mean_coh.at<double>(i, j);
 			if (mean > thresh && coherence.at<double>(i, j) > thresh) mask.at<int>(i, j) = 1;
 		}
 	}
@@ -1951,19 +1951,20 @@ int Utils::gen_mask_pdv(Mat& phase_derivatives_variance, Mat& mask, int wndsize,
 	}
 	int nr = phase_derivatives_variance.rows;
 	int nc = phase_derivatives_variance.cols;
-	Mat temp_coh;
-	phase_derivatives_variance.copyTo(temp_coh);
 	int radius = (wndsize + 1) / 2;
-	cv::copyMakeBorder(temp_coh, temp_coh, radius, radius, radius, radius, cv::BORDER_REFLECT);
+	int kernel_size = 2 * radius + 1;
+
+	Mat mean_pdv;
+	cv::boxFilter(phase_derivatives_variance, mean_pdv, CV_64F, cv::Size(kernel_size, kernel_size), cv::Point(-1, -1), true, cv::BORDER_REFLECT);
+
 	Mat tmp = Mat::zeros(nr, nc, CV_32S);
 	tmp.copyTo(mask);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
-		double mean;
 		for (int j = 0; j < nc; j++)
 		{
-			mean = cv::mean(temp_coh(cv::Range(i, i + 2 * radius + 1), cv::Range(j, j + 2 * radius + 1)))[0];
+			double mean = mean_pdv.at<double>(i, j);
 			if (mean < thresh && phase_derivatives_variance.at<double>(i, j) < thresh) mask.at<int>(i, j) = 1;
 		}
 	}
@@ -2342,25 +2343,39 @@ int Utils::phase_derivatives_variance(Mat& phase, Mat& phase_derivatives_varianc
 	if (return_check(ret, "wrap(*, *)", error_head)) return -1;
 	copyMakeBorder(derivative_col, derivative_col, 0, 1, 0, 1, BORDER_DEFAULT);
 	copyMakeBorder(derivative_row, derivative_row, 0, 1, 0, 1, BORDER_DEFAULT);
-	copyMakeBorder(derivative_col, derivative_col, wndsize, wndsize, wndsize, wndsize, BORDER_DEFAULT);
-	copyMakeBorder(derivative_row, derivative_row, wndsize, wndsize, wndsize, wndsize, BORDER_DEFAULT);
-	//cv::meanStdDev()
+
+	int N = 2 * wndsize + 1;
+	double M = N * N;
+	double sqrt_M = sqrt(M);
+
+	Mat derivative_row_sq = derivative_row.mul(derivative_row);
+	Mat derivative_col_sq = derivative_col.mul(derivative_col);
+
+	Mat mean_row, mean_row_sq;
+	Mat mean_col, mean_col_sq;
+
+	cv::boxFilter(derivative_row, mean_row, CV_64F, cv::Size(N, N), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+	cv::boxFilter(derivative_row_sq, mean_row_sq, CV_64F, cv::Size(N, N), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+	cv::boxFilter(derivative_col, mean_col, CV_64F, cv::Size(N, N), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+	cv::boxFilter(derivative_col_sq, mean_col_sq, CV_64F, cv::Size(N, N), cv::Point(-1, -1), true, cv::BORDER_DEFAULT);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
-		double std1, std2, mean1, mean2;
-		Mat tmp1, tmp2;
 		for (int j = 0; j < nc; j++)
 		{
-			mean1 = cv::mean(derivative_row(Range(i, i + 2*wndsize + 1), Range(j, j + 2 * wndsize + 1)))[0];
-			mean2 = cv::mean(derivative_col(Range(i, i + 2 * wndsize + 1), Range(j, j + 2 * wndsize + 1)))[0];
-			tmp1 = derivative_row(Range(i, i + 2 * wndsize + 1), Range(j, j + 2 * wndsize + 1)) - mean1;
-			tmp2 = derivative_col(Range(i, i + 2 * wndsize + 1), Range(j, j + 2 * wndsize + 1)) - mean2;
-			tmp1 = tmp1.mul(tmp1);
-			tmp2 = tmp2.mul(tmp2);
-			std1 = sum(tmp1)[0];
-			std2 = sum(tmp2)[0];
-			phase_derivatives_variance.at<double>(i, j) = (sqrt(std1) + sqrt(std2)) / ((2 * wndsize + 1) * (2 * wndsize + 1));
+			double m_r = mean_row.at<double>(i, j);
+			double m_r2 = mean_row_sq.at<double>(i, j);
+			double m_c = mean_col.at<double>(i, j);
+			double m_c2 = mean_col_sq.at<double>(i, j);
+
+			double var_r = m_r2 - m_r * m_r;
+			double var_c = m_c2 - m_c * m_c;
+
+			double std1 = (var_r > 0.0) ? sqrt(var_r) : 0.0;
+			double std2 = (var_c > 0.0) ? sqrt(var_c) : 0.0;
+
+			phase_derivatives_variance.at<double>(i, j) = (std1 + std2) / sqrt_M;
 		}
 	}
 	return 0;

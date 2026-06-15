@@ -80,6 +80,31 @@ namespace {
 		}
 		return true;
 	}
+
+	// 质量引导解缠专用：包含 4 邻域的梯度与相位更新控制参数
+	struct QualityGuidedDirection {
+		int dr, dc;
+		bool is_horizontal;  // true 表示使用 k2 (水平)，false 表示使用 k1 (垂直)
+		int k_row_offset;    // 相对于 node.row 的 k 矩阵行偏移
+		int k_col_offset;    // 相对于 node.col 的 k 矩阵列偏移
+		double sign;         // 2 * PI * k 积分时的正负符号 (+1.0 或 -1.0)
+	};
+
+	// 4 邻域方向数组：按 [左, 右, 上, 下] 顺序排列，严格对应原硬编码公式
+	const QualityGuidedDirection QUALITY_GUIDED_DIRS[4] = {
+		{0, -1, true,  0, -1,  1.0}, // 左: 使用 k2(row, col-1), 符号为 +
+		{0,  1, true,  0,  0, -1.0}, // 右: 使用 k2(row, col), 符号为 -
+		{-1, 0, false, -1, 0,  1.0}, // 上: 使用 k1(row-1, col), 符号为 +
+		{ 1, 0, false,  0, 0, -1.0}  // 下: 使用 k1(row, col), 符号为 -
+	};
+
+	// 基础 4 方向偏移量 (左, 右, 上, 下)
+	const int DIR_DR[4] = {0, 0, -1, 1}; // 行 (y) 偏移
+	const int DIR_DC[4] = {-1, 1, 0, 0}; // 列 (x) 偏移
+
+	// 队列初始化方向优先级：下, 上, 左, 右
+	const int INIT_DR[4] = {1, -1, 0, 0};
+	const int INIT_DC[4] = {0, 0, -1, 1};
 }
 
 
@@ -1010,56 +1035,31 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		node = que.top();
 		que.pop();
 		unwrapped_status.at<int>(node.row, node.col) = 1;
-		ii = node.row; jj = node.col - 1;
-		if (jj > 0 && unwrapped_status.at<int>(ii, jj) == 0)
+		for (int d = 0; d < 4; ++d)
 		{
-			if (fabs(k2.at<double>(node.row, jj)) < 0.1)
+			ii = node.row + QUALITY_GUIDED_DIRS[d].dr;
+			jj = node.col + QUALITY_GUIDED_DIRS[d].dc;
+			bool in_bounds = false;
+			if (d == 0) in_bounds = (jj > 0);
+			else if (d == 1) in_bounds = (jj < nc);
+			else if (d == 2) in_bounds = (ii > 0);
+			else if (d == 3) in_bounds = (ii < nr);
+
+			if (in_bounds && unwrapped_status.at<int>(ii, jj) == 0)
 			{
-				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-				que.push(node2);
-				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-				grad = atan2(sin(grad), cos(grad));
-				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + 2 * PI * k2.at<double>(node.row, jj);
-				unwrapped_status.at<int>(ii, jj) = 1;
-			}
-		}
-		ii = node.row; jj = node.col + 1;
-		if (jj < nc && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			if (fabs(k2.at<double>(node.row, node.col)) < 0.1)
-			{
-				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-				que.push(node2);
-				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-				grad = atan2(sin(grad), cos(grad));
-				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad - 2 * PI * k2.at<double>(node.row, node.col);
-				unwrapped_status.at<int>(ii, jj) = 1;
-			}
-		}
-		ii = node.row - 1; jj = node.col;
-		if (ii > 0 && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			if (fabs(k1.at<double>(ii, node.col)) < 0.1)
-			{
-				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-				que.push(node2);
-				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-				grad = atan2(sin(grad), cos(grad));
-				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + 2 * PI * k1.at<double>(ii, node.col);
-				unwrapped_status.at<int>(ii, jj) = 1;
-			}
-		}
-		ii = node.row + 1; jj = node.col;
-		if (ii < nr && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			if (fabs(k1.at<double>(node.row, node.col)) < 0.1)
-			{
-				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-				que.push(node2);
-				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-				grad = atan2(sin(grad), cos(grad));
-				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad - 2 * PI * k1.at<double>(node.row, node.col);
-				unwrapped_status.at<int>(ii, jj) = 1;
+				double k_val = QUALITY_GUIDED_DIRS[d].is_horizontal ?
+					k2.at<double>(node.row + QUALITY_GUIDED_DIRS[d].k_row_offset, node.col + QUALITY_GUIDED_DIRS[d].k_col_offset) :
+					k1.at<double>(node.row + QUALITY_GUIDED_DIRS[d].k_row_offset, node.col + QUALITY_GUIDED_DIRS[d].k_col_offset);
+
+				if (fabs(k_val) < 0.1)
+				{
+					node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
+					que.push(node2);
+					grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
+					grad = atan2(sin(grad), cos(grad));
+					unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + QUALITY_GUIDED_DIRS[d].sign * 2 * PI * k_val;
+					unwrapped_status.at<int>(ii, jj) = 1;
+				}
 			}
 		}
 	}
@@ -1071,61 +1071,26 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	{
 		for (int j = 0; j < nc; j++)
 		{
-			ii = i + 1 > nr - 1 ? nr - 1 : i + 1; jj = j;
-			if ((unwrapped_status.at<int>(ii, jj) + unwrapped_status.at<int>(i, j)) == 1)
+			for (int d = 0; d < 4; ++d)
 			{
-				if (unwrapped_status.at<int>(ii, jj) == 1)
+				ii = i + INIT_DR[d];
+				jj = j + INIT_DC[d];
+				if (ii >= 0 && ii < nr && jj >= 0 && jj < nc)
 				{
-					node.row = ii; node.col = jj;
+					if ((unwrapped_status.at<int>(ii, jj) + unwrapped_status.at<int>(i, j)) == 1)
+					{
+						if (unwrapped_status.at<int>(ii, jj) == 1)
+						{
+							node.row = ii; node.col = jj;
+						}
+						else
+						{
+							node.row = i; node.col = j;
+						}
+						que2.push(node);
+						break;
+					}
 				}
-				else
-				{
-					node.row = i; node.col = j;
-				}
-				que2.push(node);
-				continue;
-			}
-			ii = i - 1 < 0 ? 0 : i - 1; jj = j;
-			if ((unwrapped_status.at<int>(ii, jj) + unwrapped_status.at<int>(i, j)) == 1)
-			{
-				if (unwrapped_status.at<int>(ii, jj) == 1)
-				{
-					node.row = ii; node.col = jj;
-				}
-				else
-				{
-					node.row = i; node.col = j;
-				}
-				que2.push(node);
-				continue;
-			}
-			ii = i; jj = j - 1 < 0 ? 0 : j - 1;
-			if ((unwrapped_status.at<int>(ii, jj) + unwrapped_status.at<int>(i, j)) == 1)
-			{
-				if (unwrapped_status.at<int>(ii, jj) == 1)
-				{
-					node.row = ii; node.col = jj;
-				}
-				else
-				{
-					node.row = i; node.col = j;
-				}
-				que2.push(node);
-				continue;
-			}
-			ii = i; jj = j + 1 > nc - 1 ? nc - 1 : j + 1;
-			if ((unwrapped_status.at<int>(ii, jj) + unwrapped_status.at<int>(i, j)) == 1)
-			{
-				if (unwrapped_status.at<int>(ii, jj) == 1)
-				{
-					node.row = ii; node.col = jj;
-				}
-				else
-				{
-					node.row = i; node.col = j;
-				}
-				que2.push(node);
-				continue;
 			}
 		}
 	}
@@ -1134,45 +1099,28 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		node = que2.front();
 		que2.pop();
 		unwrapped_status.at<int>(node.row, node.col) = 1;
-		ii = node.row; jj = node.col - 1;
-		if (jj > 0 && unwrapped_status.at<int>(ii, jj) == 0)
+		for (int d = 0; d < 4; ++d)
 		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que2.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + 2 * PI * k2.at<double>(node.row, jj);
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row; jj = node.col + 1;
-		if (jj < nc && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que2.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad - 2 * PI * k2.at<double>(node.row, node.col);
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row - 1; jj = node.col;
-		if (ii > 0 && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que2.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + 2 * PI * k1.at<double>(ii, node.col);
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row + 1; jj = node.col;
-		if (ii < nr && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que2.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad - 2 * PI * k1.at<double>(node.row, node.col);
-			unwrapped_status.at<int>(ii, jj) = 1;
+			ii = node.row + QUALITY_GUIDED_DIRS[d].dr;
+			jj = node.col + QUALITY_GUIDED_DIRS[d].dc;
+			bool in_bounds = false;
+			if (d == 0) in_bounds = (jj > 0);
+			else if (d == 1) in_bounds = (jj < nc);
+			else if (d == 2) in_bounds = (ii > 0);
+			else if (d == 3) in_bounds = (ii < nr);
+
+			if (in_bounds && unwrapped_status.at<int>(ii, jj) == 0)
+			{
+				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
+				que2.push(node2);
+				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
+				grad = atan2(sin(grad), cos(grad));
+				double k_val = QUALITY_GUIDED_DIRS[d].is_horizontal ?
+					k2.at<double>(node.row + QUALITY_GUIDED_DIRS[d].k_row_offset, node.col + QUALITY_GUIDED_DIRS[d].k_col_offset) :
+					k1.at<double>(node.row + QUALITY_GUIDED_DIRS[d].k_row_offset, node.col + QUALITY_GUIDED_DIRS[d].k_col_offset);
+				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad + QUALITY_GUIDED_DIRS[d].sign * 2 * PI * k_val;
+				unwrapped_status.at<int>(ii, jj) = 1;
+			}
 		}
 	}
 #endif 
@@ -2731,45 +2679,25 @@ int Unwrap::qualityGuided(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& quality
 		node = que.top();
 		que.pop();
 		unwrapped_status.at<int>(node.row, node.col) = 1;
-		ii = node.row; jj = node.col - 1;
-		if (jj > 0 && unwrapped_status.at<int>(ii, jj) == 0)
+		for (int d = 0; d < 4; ++d)
 		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad;
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row; jj = node.col + 1;
-		if (jj < nc && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad;
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row - 1; jj = node.col;
-		if (ii > 0 && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad;
-			unwrapped_status.at<int>(ii, jj) = 1;
-		}
-		ii = node.row + 1; jj = node.col;
-		if (ii < nr && unwrapped_status.at<int>(ii, jj) == 0)
-		{
-			node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
-			que.push(node2);
-			grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
-			grad = atan2(sin(grad), cos(grad));
-			unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad;
-			unwrapped_status.at<int>(ii, jj) = 1;
+			ii = node.row + DIR_DR[d];
+			jj = node.col + DIR_DC[d];
+			bool in_bounds = false;
+			if (d == 0) in_bounds = (jj > 0);
+			else if (d == 1) in_bounds = (jj < nc);
+			else if (d == 2) in_bounds = (ii > 0);
+			else if (d == 3) in_bounds = (ii < nr);
+
+			if (in_bounds && unwrapped_status.at<int>(ii, jj) == 0)
+			{
+				node2.col = jj; node2.row = ii; node2.quality = quality.at<double>(ii, jj);
+				que.push(node2);
+				grad = wrapped_phase.at<double>(ii, jj) - wrapped_phase.at<double>(node.row, node.col);
+				grad = atan2(sin(grad), cos(grad));
+				unwrapped_phase.at<double>(ii, jj) = unwrapped_phase.at<double>(node.row, node.col) + grad;
+				unwrapped_status.at<int>(ii, jj) = 1;
+			}
 		}
 	}
 
@@ -2863,40 +2791,21 @@ int Unwrap::unwrap(Mat& src, Mat& dst, int x0, int y0, int x1, int y1, Mat& flag
 	flag.ptr<double>(y1)[x1] = 0;
 	adjoin.ptr<double>(y1)[x1] = 0;
 	int ret;
-	if (x1 > 0)
-		if ((flag.ptr<double>(y1)[x1 - 1] == 1) && (adjoin.ptr<double>(y1)[x1 - 1] == 0))
+	for (int d = 0; d < 4; ++d)
+	{
+		int nx = x1 + DIR_DC[d];
+		int ny = y1 + DIR_DR[d];
+		if (nx >= 0 && nx < width && ny >= 0 && ny < height)
 		{
-			adjoin.ptr<double>(y1)[x1 - 1] = 1;
-			ret = Q.push(SPD.ptr<double>(y1)[x1 - 1], x1 - 1, y1);
-			if (ret < 0)
-				return -1;
+			if ((flag.ptr<double>(ny)[nx] == 1) && (adjoin.ptr<double>(ny)[nx] == 0))
+			{
+				adjoin.ptr<double>(ny)[nx] = 1;
+				ret = Q.push(SPD.ptr<double>(ny)[nx], nx, ny);
+				if (ret < 0)
+					return -1;
+			}
 		}
-
-	if (x1 < width - 1)
-		if ((flag.ptr<double>(y1)[x1 + 1] == 1) && (adjoin.ptr<double>(y1)[x1 + 1] == 0))
-		{
-			adjoin.ptr<double>(y1)[x1 + 1] = 1;
-			ret = Q.push(SPD.ptr<double>(y1)[x1 + 1], x1 + 1, y1);
-			if (ret < 0)
-				return -1;
-		}
-	if (y1 > 0)
-		if ((flag.ptr<double>(y1 - 1)[x1] == 1) && (adjoin.ptr<double>(y1 - 1)[x1] == 0))
-		{
-			adjoin.ptr<double>(y1 - 1)[x1] = 1;
-			ret = Q.push(SPD.ptr<double>(y1 - 1)[x1], x1, y1 - 1);
-			if (ret < 0)
-				return -1;
-		}
-
-	if (y1 < height - 1)
-		if ((flag.ptr<double>(y1 + 1)[x1] == 1) && (adjoin.ptr<double>(y1 + 1)[x1] == 0))
-		{
-			adjoin.ptr<double>(y1 + 1)[x1] = 1;
-			ret = Q.push(SPD.ptr<double>(y1 + 1)[x1], x1, y1 + 1);
-			if (ret < 0)
-				return -1;
-		}
+	}
 	return 0;
 }
 
@@ -2929,35 +2838,17 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
 	tmp.ptr<double>(y)[x] = tmp.ptr<double>(y)[x];
 	count++;
 	flag.ptr<double>(y)[x] = 0;
-	if (x > 0)
+	for (int d = 0; d < 4; ++d)
 	{
-		ret = unwrap(wrapped_phase, tmp, x, y, x - 1, y, flag, adjoin, SPD, Heap);
-		if (ret < 0)
-			return -1;
-		count++;
-	}
-
-	if (x < width - 1)
-	{
-		ret = unwrap(wrapped_phase, tmp, x, y, x + 1, y, flag, adjoin, SPD, Heap);
-		if (ret < 0)
-			return -1;
-		count++;
-	}
-	if (y > 0)
-	{
-		ret = unwrap(wrapped_phase, tmp, x, y, x, y - 1, flag, adjoin, SPD, Heap);
-		if (ret < 0)
-			return -1;
-		count++;
-	}
-
-	if (y < height - 1)
-	{
-		ret = unwrap(wrapped_phase, tmp, x, y, x, y + 1, flag, adjoin, SPD, Heap);
-		if (ret < 0)
-			return -1;
-		count++;
+		int nx = x + DIR_DC[d];
+		int ny = y + DIR_DR[d];
+		if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+		{
+			ret = unwrap(wrapped_phase, tmp, x, y, nx, ny, flag, adjoin, SPD, Heap);
+			if (ret < 0)
+				return -1;
+			count++;
+		}
 	}
 	int top = height * width;
 	while (count < top)
@@ -2970,44 +2861,22 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
 				return -1;
 			Heap.pop();
 		}
-		if (y > 0)
+		const int prop_dr[4] = {-1, 1, 0, 0};
+		const int prop_dc[4] = {0, 0, -1, 1};
+		for (int d = 0; d < 4; ++d)
 		{
-			if (flag.ptr<double>(y - 1)[x] == 0)
+			int nx = x + prop_dc[d];
+			int ny = y + prop_dr[d];
+			if (nx >= 0 && nx < width && ny >= 0 && ny < height)
 			{
-				ret = unwrap(wrapped_phase, tmp, x, y - 1, x, y, flag, adjoin, SPD, Heap);
-				if (ret < 0)
-					return -1;
-				mark = 1;
-			}
-		}
-		if (y < height - 1 && mark == 0)
-		{
-			if (flag.ptr<double>(y + 1)[x] == 0)
-			{
-				ret = unwrap(wrapped_phase, tmp, x, y + 1, x, y, flag, adjoin, SPD, Heap);
-				if (ret < 0)
-					return -1;
-				mark = 1;
-			}
-		}
-		if (x > 0 && mark == 0)
-		{
-			if (flag.ptr<double>(y)[x - 1] == 0)
-			{
-				ret = unwrap(wrapped_phase, tmp, x - 1, y, x, y, flag, adjoin, SPD, Heap);
-				if (ret < 0)
-					return -1;
-				mark = 1;
-			}
-		}
-		if (x < width - 1 && mark == 0)
-		{
-			if (flag.ptr<double>(y)[x + 1] ==0)
-			{
-				ret = unwrap(wrapped_phase, tmp, x + 1, y, x, y, flag, adjoin, SPD, Heap);
-				if (ret < 0)
-					return -1;
-				mark = 1;
+				if (flag.ptr<double>(ny)[nx] == 0)
+				{
+					ret = unwrap(wrapped_phase, tmp, nx, ny, x, y, flag, adjoin, SPD, Heap);
+					if (ret < 0)
+						return -1;
+					mark = 1;
+					break;
+				}
 			}
 		}
 		if (mark == 1)

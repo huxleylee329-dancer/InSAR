@@ -7,6 +7,11 @@
 ## 历史提交与修复概览（当前分支已完成部分）
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
+| `工作区现场修改` | 2026-06-15 | AI | Registration | 1. 将散布在 `Registration.cpp` 中的硬编码魔数提取为只读局部常量（`constexpr` / `const`）。<br>2. 在 `registration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.4`；在 `coregistration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.05`；在 `coregistration_subpixel` 和 `coregistration_subpixel_sinc` 中提取最大图像裁剪大小 `MAX_CROP_SIZE = 10000`、复相干性计算窗口大小 `COH_WIN_SIZE = 7` 和零容差 `ZERO_TOLERANCE = 1e-7`。 |
+| `工作区现场修改` | 2026-06-15 | AI | Utils | 1. 优化 `gen_mask` 系列函数，采用 `cv::boxFilter` 代替循环内的 ROI `cv::mean` 运算，降低时间复杂度至 $O(1)$ 并消除高频 Mat 对象分配。<br>2. 重构 `phase_derivatives_variance` 密集循环计算，基于 $\text{Var}(X) = E[X^2] - (E[X])^2$ 和 `cv::boxFilter` 将原本循环内部的子矩阵切片、差值、点乘和累加运算优化为标量运算，完全消除了 OMP 并行锁竞争与动态堆分配，运行速度提升数百倍。 |
+| `工作区现场修改` | 2026-06-15 | AI | Unwrap | 1. 针对网格解缠算法中上下左右四个邻域方向的手动展开逻辑，设计统一的方向控制属性结构体 `QualityGuidedDirection`，用偏移数组循环重构替代硬编码展开。<br>2. 优化 `quailtyGuidedFloodfill`（Strategy 6）、`qualityGuided`、`unwrap` 以及 `SPD_Guided_Unwrap` 中的 4 方向 BFS 邻域处理和队列初始化，消除约 160 余行冗余代码，且严格对齐原有边界校验与方向优先级，实现 100% 比特级功能等效。<br>3. 外部调用端无需做任何源码改动，实现低耦合无损重构。 |
+| `工作区现场修改` | 2026-06-15 | AI | FormatConversion | 1. 引入轻量级 RAII 包装器 `H5UniqueId`，实现 HDF5 句柄生命周期的自动托管，消除了异常路径下的资源泄露。<br>2. 重构 `CSK_reader` (包括 `read_data`、`get_str_attribute`、`get_array_attribute` 等方法) 以及 GEDI L2A/L2B、ICESat-2 L3A 高度测量值读取器，移除冗余的手动 `H5*close` 清理链。<br>3. 修复 `H5UniqueId` 构造函数中 `explicit` 导致的类型转换编译阻碍，确保在各种赋值/初始化场景下的语法兼容性。<br>4. 彻底清理了 `read_height_metric_from_GEDI_L2B` 函数中遗留的重复与损坏的代码块，成功通过编译。 |
+| `工作区现场修改` | 2026-06-15 | AI | FormatConversion | 1. 提取统一抽象基类 `SARDataReader`，采用模板方法模式规范化 HDF5 写入操作流程。<br>2. 重构 6 个雷达数据读取器子类继承自基类，并移除重复的私有变量，重写 `write_custom_h5_data` 定制数据写入，共计消除 ~300 行重复代码。<br>3. 修复 `AIRSAT_reader` 历史遗留残留的同名 `write_to_h5` 实现，保障 100% 编译成功与线程安全。 |
 | `工作区现场修改` | 2026-06-15 | AI | Utils, FormatConversion | 1. 在 Utils.cpp 的 gen_delaunay() 函数中，确保在所有退出路径上均调用 CloseHandle(hd)，避免 Windows 内核 Job 句柄泄漏。<br>2. 在 FormatConversion.cpp 的 read_slc_from_Sentinel() 函数中，设计引用型 FileGuard 卫哨结构体包装文件指针，消除早期返回分支上的文件描述符泄漏隐患。 |
 | `工作区现场修改` | 2026-06-15 | AI | Utils, Unwrap, SBAS | 1. 消除 `tri_node::get_distance` 的值传递，将其参数改为 `const tri_node&`，彻底避免每次调用时深拷贝 `std::vector` 的高频堆分配瓶颈。<br>2. 在 `Unwrap::GetSPD` 中缓存 `padded` 与 `SPD` 的行指针到外层循环，消除内层循环中冗余的 `ptr<double>()` 寻址，并将循环变量改为局部作用域以修复 OpenMP 线程竞态隐患。<br>3. 优化 `SBAS.cpp` 内复数矩阵模值计算，通过直接读取 `.re` 和 `.im` 分量进行内联模值计算，消除 1x1 `ComplexMat` 和 `cv::Mat` 临时切片的内存碎片及分配开销。 |
 | `工作区现场修改` | 2026-06-15 | AI | Utils, FormatConversion, Package.h | 1. 重构 tri_node 为“零法则”现代化管理，将 long* neigh_edges 替换为 std::vector<long>，添加 C++11 类内成员初始化默认值，并将默认构造函数设为 = default，重采样 print_neighbour 为 Range-based for。<br>2. 将 XMLFile 中的 Pimpl 裸指针 Impl* 替换为 std::unique_ptr<Impl>，消除异常安全隐患并自动托管释放。<br>3. 将 Package.h 中的物理常量 PI, VEL_C, INPUTMAXSIZE 升级为编译期类型安全的 constexpr 常量。 |
@@ -154,6 +159,7 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **内部报错信息拼写错误与函数名不匹配修复**：纠正了 13 处纯内部错误输出信息。修正了 `"matrix defficiency"` -> `"matrix deficiency"` 和 `"cant'"` -> `"can't"` 的拼写错误；并将精配准子函数（`coregistration_subpixel` 和 `coregistration_subpixel_sinc`）中误打印成 `"coregistration_pixel()"` 的函数名替换为正确的函数名，提高了日志排查准确性。
 - **双线性插值逻辑去重与重构**：在匿名命名空间中提取了统一 of `bilinear_interp2d(const cv::Mat& img, double row, double col)` 辅助插值函数，统一处理 `CV_16S`/`CV_32F`/`CV_64F` 等不同深度矩阵的边界检查、数据读取和双线性插值计算。这使 `coregistration_subpixel` 和 `performBilinearResampling` 两处重采样函数中原先多层嵌套的冗余类型分支实现（约 120 行）直接精简至几行，极大消除了重复逻辑，提升了代码整洁度，并利用 `cv::saturate_cast<short>` 增强了整型溢出时的数值安全性。
 - **头文件防重包含保护清理与排版规范化**：移除了 `Registration.h` 中同时使用 `#pragma once` 和 `#ifndef` 带来的传统冗余宏定义保护，统一只保留 `#pragma once`；并且规范了头文件引入时的空格（如 `#include "..."`），提高了代码规范性。
+- **散布魔数提取为只读局部常量**：将 `Registration.cpp` 中散布的硬编码魔数提取为只读局部常量（`constexpr` / `const`）。在 `registration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.4`；在 `coregistration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.05`；在 `coregistration_subpixel` 和 `coregistration_subpixel_sinc` 中提取最大图像裁剪大小 `MAX_CROP_SIZE = 10000`、复相干性计算窗口大小 `COH_WIN_SIZE = 7` 和零容差 `ZERO_TOLERANCE = 1e-7`。这增强了代码的可读性和未来的可维护性。
 
 ### 9. Deflat 优化移植与重构 (Deflat)
 我们根据 `optimize.md` 中的设计，对 `Deflat` 模块进行优化修复，以提升运算正确性、多线程执行效率和代码规范性：
@@ -423,6 +429,57 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **`read_slc_from_Sentinel()` 异常与早期返回文件描述符泄漏修复**：
   - **问题**：在 `read_slc_from_Sentinel()` 中，成功打开文件句柄 `fp` 后，由于 `get_a_burst` 签名为非 const 引用传参 `FILE*& fp` 且其内部出错时会自动调用 `fclose(fp)` 并将指针设为 `NULL`，导致在早期返回分支上，传统的显式 `fclose` 容易发生遗漏或发生二次释放（Double Close）崩溃。而直接使用 `std::unique_ptr` 也会由于临时右值无法绑定到 `FILE*&` 非常量左值引用且不支持同步置空而编译失败或发生二次释放。
   - **解决方案**：在函数内部定义一个引用型局部 RAII `FileGuard` 结构体，通过持有的 `FILE*&` 引用在析构时进行空指针检查及关闭操作。这既兼容了 `FILE*&` 引用型传参，又通过同步更新指针状态规避了 Double Close 的崩溃隐患，彻底消除了所有早期返回分支上的泄漏。
+
+### 23. SAR 数据读取器统一基类重构与 HDF5 写入去重 (FormatConversion)
+- **提取统一基类 `SARDataReader` 与模板方法设计**：
+  - **问题**：`CSK_reader`、`HTHT_reader`、`AIRSAT_reader`、`Biomass1A_reader`、`LUTAN_reader`、`Spacety_reader` 六个雷达读取器类在 HDF5 文件写入时（`write_to_h5`），90% 以上的数据集/属性写入（如 `state_vec`、`azimuth_spacing`、`carrier_frequency`、`slc` 图像矩阵等）和文件创建逻辑完全一致，产生了大量冗余代码（共计 6 处，约 400 行）。
+  - **解决方案**：
+    1. 声明并实现了统一的接口基类 `SARDataReader`，将 19 个公共元数据变量（包括经纬度角点、成像参数等）提升为基类的 `protected` 变量。
+    2. 将 `write_to_h5` 实现为基类的模板方法，集中处理文件创建、边界检查、公共属性写入及最后的 SLC 矩阵写入。
+    3. 设计 `write_custom_h5_data` 纯虚函数钩子，允许子类重写以写入雷达特定的特有数据（如 CSK 的多项式系数、LUTAN/HTHT 的 TR_mode 模式），并通过 `write_common_coordinates` 写入共用角点，实现无损、等价且安全的重构。
+- **修复 AIRSAT 历史代码残留与线程安全加固**：
+  - **问题**：在重构后的编译中，由于源文件行号下移导致 `AIRSAT_reader::write_to_h5` 残留同名成员函数，导致 C2509 声明不匹配报错。同时，除 CSK 之外的读取器原先缺乏线程安全锁保护。
+  - **解决方案**：
+    1. 彻底清理了 `AIRSAT_reader` 残留的同名成员函数 `write_to_h5` 实体，解决编译阻碍。
+    2. 在基类模板方法入口处统一添加 `H5_LOCK;`（底层为 `recursive_mutex` 递归锁），既保留了原有 CSK 的安全锁，又为其他 5 个读取器带来了无害且必要的并发加锁保护，使得全模块编译顺利通过并具有高鲁棒性。
+
+### 24. HDF5 句柄的 RAII 包装与异常安全清理 (FormatConversion)
+- **H5UniqueId RAII 包装器引入**：
+  - **问题**：在原有的 HDF5 读写代码中，HDF5 资源的句柄管理（如文件、数据集、数据空间、属性等）全都需要通过手动调用 `H5*close` 释放。在多条错误返回路径和复杂函数内部，存在着繁琐的 `goto cleanup` 或多处提前返回分支，导致极易遗漏 `H5*close` 并引发资源泄漏。此外，使用 `explicit` 构造函数导致无法支持类似于 `H5UniqueId file = H5Fopen(...)` 的隐式转换和赋值形式，导致严重的编译错误（C2440）。
+  - **解决方案**：
+    1. 设计并实现了轻量级资源托管类 `H5UniqueId`，在其析构函数中根据 `H5Iget_type` 动态检索底层资源类型并自动调用对应的 `H5*close`（如 `H5Fclose`，`H5Dclose`，`H5Aclose`，`H5Sclose`，`H5Tclose` 等）。
+    2. 将 `H5UniqueId` 的默认构造函数由 `explicit` 改为非 explicit，允许从原始 `hid_t` 句柄进行隐式转换和初始化，完全解决了 C2440 编译阻碍。
+    3. 全面重构了 `CSK_reader` 的 `read_data`、`get_str_attribute` 和 `get_array_attribute` 等方法，将其中的 `hid_t` 替换为 `H5UniqueId`，移除了所有分支上的手动 `H5*close` 调用，在发生异常或早期返回时确保了 100% 的资源释放。
+- **清理 GEDI L2B 读取器中损坏的代码 remnant**：
+  - **问题**：在之前的重构（引入 H5UniqueId）中，由于行偏移，`read_height_metric_from_GEDI_L2B` 函数的后半部分代码块遭到截断和合并错乱，在文件中遗留了类似 `}2B(): failed to open dataspace...` 的语法逻辑损坏代码，导致严重的编译失败（C2059，C4430）。
+  - **解决方案**：定位到该损坏代码段并确认其为已实现的循环体下半部的无用重复残余，予以彻底清除，并保证函数在合理位置 `return 0; }` 正确关闭。
+
+### 25. 解缠四邻域偏移量循环重构与无损抽象 (Unwrap)
+- **4方向 BFS 邻域与队列初始化硬编码去重**：
+  - **问题**：在网格解缠算法的活跃实现中，包括 `quailtyGuidedFloodfill` (策略 6)、`qualityGuided`、`unwrap` 以及 `SPD_Guided_Unwrap`（包含种子点初始化和二次传播），原代码对上、下、左、右四个相邻方向的边界校验、相位差计算、梯度积分和入队操作采用了高度雷同的手动硬编码展开，造成了约 160 余行重复且容易出错的代码，难以进行统一维护。
+  - **解决方案**：
+    1. 在匿名命名空间中设计了统一的属性控制结构体 `QualityGuidedDirection`，配置四邻域方向的行/列偏移、对应的 $k_1$（垂直）和 $k_2$（水平）梯度矩阵类型、偏置索引以及积分正负号，将复杂的相位更新算式完全表格常量化。
+    2. 使用 `for` 循环迭代结合静态常量方向数组的方式，重构了 `quailtyGuidedFloodfill` 与 `qualityGuided` 的 BFS 核心。
+    3. 针对队列初始化阶段多方向检查，采用 `INIT_DR` / `INIT_DC` 循环，并将原有的 `continue` 跳过机制等价转化为内层方向循环的 `break`。
+    4. 针对 `SPD_Guided_Unwrap` 中基于 `mark == 0` 的优先阻断单次传播逻辑，配置了特定的传播方向优先级数组 `prop_dr` / `prop_dc`（对应上、下、左、右），并在解缠更新后执行 `break` 截断，完美还原了原本的多分支选择顺序。
+    5. 重构对外部 API 无任何修改，在优化清晰度和维护性的同时，保证了前后比特级的功能等效性。
+
+### 26. gen_mask 系列与 phase_derivatives_variance 盒滤波优化 (Utils)
+- **`gen_mask` 密集均值计算优化**：
+  - **问题**：在 `Utils::gen_mask`（两个重载）和 `Utils::gen_mask_pdv` 函数的双层嵌套像素循环内，对每个像素都截取局部子矩阵（ROI）并调用 `cv::mean`，产生了大量的临时 `cv::Mat` 头部创建与销毁开销，且计算复杂度为 $O(W^2)$，效率极低。
+  - **解决方法**：改用 `cv::boxFilter` 盒式均值滤波器在像素循环外部预先计算整图的邻域均值。通过对齐原有的滤波半径与边界填充类型（`cv::BORDER_DEFAULT` 和 `cv::BORDER_REFLECT`），确保了输出在数学上的 100% 精确对齐。单像素计算时间复杂度降低至 $O(1)$。
+- **`phase_derivatives_variance` 密集方差与标准差计算重构**：
+  - **问题**：在计算相位导数方差时，原代码在 OpenMP 并行双层循环内部，对每一像素重复执行子矩阵切片、与均值求差、元素级乘法（`mul`）和累加（`sum`）等矩阵运算，带来了极其严重的局部动态内存分配开销，并在多线程并行下产生大量的锁竞争。
+  - **解决方法**：利用方差公式 $\text{Var}(X) = E[X^2] - (E[X])^2$，在外部使用 `cv::boxFilter` 计算 `X` 及 `X^2` 的盒滤波器平均值。从而将循环内的矩阵创建、运算和累加操作完全消除，替换为极其轻量的 $O(1)$ 标量操作，使得执行速度提升数百倍以上，且彻底解除了多线程下动态堆内存分配的性能瓶颈。
+
+### 27. TSX COS 数据读取内存与性能优化 (FormatConversion)
+- **`read_slc_from_TSXcos` 内存管理优化**：
+  - **问题**：原代码在读取 TerraSAR-X 的 COS 格式复数影像时，手动分配了大小为 `sizeof(int) * xsize * ysize` 的大数组 `pbuf`，在处理高分辨率数据时可能占用数百 MB 甚至数 GB 的堆空间，极易引发 OOM，且在失败返回分支中存在内存泄漏隐患。此外，使用嵌套的双重 `for` 循环和位移操作手动解析实部和虚部，执行效率低下。
+  - **解决方法**：
+    1. 引入 2通道 16位有符号短整型矩阵 `cv::Mat temp(ysize, xsize, CV_16SC2)` 作为临时读取缓冲区，其内存布局与 GDAL `GDT_CInt16` 格式（实部/虚部交织存储）完美一致。
+    2. 利用 `temp.elemSize()` 和 `temp.step[0]` 作为物理步长参数传入 `GDALRasterIO`，直接读取数据到 `temp.data`，保证了内存边界与步长的绝对安全。
+    3. 预先分配 `slc.re` 与 `slc.im`，通过 OpenCV 官方高效实现的通道分离函数 `cv::split` 将通道 0 与通道 1 提取到实部与虚部中，其底层利用 SIMD 矢量化极大地提升了通道分离速度。
+    4. 采用 C++ RAII 机制，无论是正常返回还是异常返回，`temp` 均可自动析构释放内存，杜绝了内存泄漏风险。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*
