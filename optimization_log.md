@@ -7,6 +7,8 @@
 ## 历史提交与修复概览（当前分支已完成部分）
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
+| `工作区现场修改` | 2026-06-15 | AI | ComplexMat, Utils, Registration, FormatConversion | 1. 将 `ComplexMat.h` 中的 `isempty()` 变更为符合驼峰法的 `isEmpty()`，并同步更新 `ComplexMat.cpp`、`FormatConversion.cpp`、`Registration.cpp` 和 `Utils.cpp` 中的相关引用。<br>2. 将 `Utils.h` 中的 `ployFit` 更正为 `polyFit`，同步更新 `Utils.cpp` 中的定义与报错信息。<br>3. 将 `Utils.cpp` 中的错误日志及注释中遗留的 `defficiency` 统一更正为 `deficiency`。 |
+| `工作区现场修改` | 2026-06-15 | AI | Unwrap, SBAS, Utils | 1. 重构并更名 `quailtyGuidedFloodfill` 为 `qualityGuidedFloodfill`，直接删除旧拼写接口声明。<br>2. 全面修正结构体属性中的拼写错误，将 `SBAS_edge` (SBAS.h) 和 `tri_edge` (Utils.h) 中的 `isBoundry` 更名为 `isBoundary`，并同步更新 Unwrap.cpp、SBAS.cpp 和 Utils.cpp 中的全部算法逻辑引用。 |
 | `工作区现场修改` | 2026-06-15 | AI | Registration | 1. 将散布在 `Registration.cpp` 中的硬编码魔数提取为只读局部常量（`constexpr` / `const`）。<br>2. 在 `registration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.4`；在 `coregistration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.05`；在 `coregistration_subpixel` 和 `coregistration_subpixel_sinc` 中提取最大图像裁剪大小 `MAX_CROP_SIZE = 10000`、复相干性计算窗口大小 `COH_WIN_SIZE = 7` 和零容差 `ZERO_TOLERANCE = 1e-7`。 |
 | `工作区现场修改` | 2026-06-15 | AI | Utils | 1. 优化 `gen_mask` 系列函数，采用 `cv::boxFilter` 代替循环内的 ROI `cv::mean` 运算，降低时间复杂度至 $O(1)$ 并消除高频 Mat 对象分配。<br>2. 重构 `phase_derivatives_variance` 密集循环计算，基于 $\text{Var}(X) = E[X^2] - (E[X])^2$ 和 `cv::boxFilter` 将原本循环内部的子矩阵切片、差值、点乘和累加运算优化为标量运算，完全消除了 OMP 并行锁竞争与动态堆分配，运行速度提升数百倍。 |
 | `工作区现场修改` | 2026-06-15 | AI | Unwrap | 1. 针对网格解缠算法中上下左右四个邻域方向的手动展开逻辑，设计统一的方向控制属性结构体 `QualityGuidedDirection`，用偏移数组循环重构替代硬编码展开。<br>2. 优化 `quailtyGuidedFloodfill`（Strategy 6）、`qualityGuided`、`unwrap` 以及 `SPD_Guided_Unwrap` 中的 4 方向 BFS 邻域处理和队列初始化，消除约 160 余行冗余代码，且严格对齐原有边界校验与方向优先级，实现 100% 比特级功能等效。<br>3. 外部调用端无需做任何源码改动，实现低耦合无损重构。 |

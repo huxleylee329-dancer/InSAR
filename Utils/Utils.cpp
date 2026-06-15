@@ -324,14 +324,14 @@ int Utils::createVandermondeMatrix(Mat& inArray, Mat& vandermondeMatrix, int deg
 	return 0;
 }
 
-int Utils::ployFit(Mat& a, Mat& B, Mat& x)
+int Utils::polyFit(Mat& a, Mat& B, Mat& x)
 {
 	Mat A, b;
 	a.copyTo(A);
 	B.copyTo(b);
 	if (A.rows != b.rows || A.cols > A.rows || A.empty())
 	{
-		fprintf(stderr, "ployFit(): input check failed!\n");
+		fprintf(stderr, "polyFit(): input check failed!\n");
 		return -1;
 	}
 	if (A.type() != CV_64F) A.convertTo(A, CV_64F);
@@ -342,7 +342,7 @@ int Utils::ployFit(Mat& a, Mat& B, Mat& x)
 	b = A_t * b;
 	if (!cv::solve(A, b, x, cv::DECOMP_LU))
 	{
-		fprintf(stderr, "ployFit(): matrix defficiency!\n");
+		fprintf(stderr, "polyFit(): matrix deficiency!\n");
 		return -1;
 	}
 	return 0;
@@ -532,9 +532,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	{
 		if ((tri + i) != NULL)
 		{
-			if ((edges + (tri + i)->edge1 - 1)->isBoundry ||
-				(edges + (tri + i)->edge2 - 1)->isBoundry ||
-				(edges + (tri + i)->edge3 - 1)->isBoundry)
+			if ((edges + (tri + i)->edge1 - 1)->isBoundary ||
+				(edges + (tri + i)->edge2 - 1)->isBoundary ||
+				(edges + (tri + i)->edge3 - 1)->isBoundary)
 			{
 				boundry_tri++;
 			}
@@ -614,9 +614,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 		for (int i = 0; i < num_triangle; i++)
 		{
 			if ((tri + i) != NULL &&
-				(((edges + (tri + i)->edge1 - 1)->isBoundry) ||
-					((edges + (tri + i)->edge2 - 1)->isBoundry) ||
-					((edges + (tri + i)->edge3 - 1)->isBoundry)
+				(((edges + (tri + i)->edge1 - 1)->isBoundary) ||
+					((edges + (tri + i)->edge2 - 1)->isBoundary) ||
+					((edges + (tri + i)->edge3 - 1)->isBoundary)
 					))
 			{
 				cost_mean = 0.0;
@@ -708,9 +708,9 @@ int Utils::write_DIMACS(
 	long boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
-		if (edges[triangle[i].edge1 - 1].isBoundry ||
-			edges[triangle[i].edge2 - 1].isBoundry ||
-			edges[triangle[i].edge3 - 1].isBoundry)
+		if (edges[triangle[i].edge1 - 1].isBoundary ||
+			edges[triangle[i].edge2 - 1].isBoundary ||
+			edges[triangle[i].edge3 - 1].isBoundary)
 		{
 			boundry_tri++;
 		}
@@ -787,9 +787,9 @@ int Utils::write_DIMACS(
 		//写入边界流费用
 		for (int i = 0; i < num_triangle; i++)
 		{
-			if (edges[triangle[i].edge1 - 1].isBoundry ||
-				edges[triangle[i].edge2 - 1].isBoundry ||
-				edges[triangle[i].edge3 - 1].isBoundry)
+			if (edges[triangle[i].edge1 - 1].isBoundary ||
+				edges[triangle[i].edge2 - 1].isBoundary ||
+				edges[triangle[i].edge3 - 1].isBoundary)
 			{
 				cost_mean = 0.0;
 				nodes[triangle[i].p1 - 1].get_pos(&rows, &cols);
@@ -2793,8 +2793,8 @@ int Utils::read_DIMACS(
 		{
 			if (from == num_triangle + 1)
 			{
-				if (edges[triangle[to - 1].edge1 - 1].isBoundry)target_edges = triangle[to - 1].edge1;
-				else if (edges[triangle[to - 1].edge2 - 1].isBoundry) target_edges = triangle[to - 1].edge2;
+				if (edges[triangle[to - 1].edge1 - 1].isBoundary)target_edges = triangle[to - 1].edge1;
+				else if (edges[triangle[to - 1].edge2 - 1].isBoundary) target_edges = triangle[to - 1].edge2;
 				else target_edges = triangle[to - 1].edge3;
 
 
@@ -2832,8 +2832,8 @@ int Utils::read_DIMACS(
 			}
 			else
 			{
-				if (edges[triangle[from - 1].edge1 - 1].isBoundry)target_edges = triangle[from - 1].edge1;
-				else if (edges[triangle[from - 1].edge2 - 1].isBoundry) target_edges = triangle[from - 1].edge2;
+				if (edges[triangle[from - 1].edge1 - 1].isBoundary)target_edges = triangle[from - 1].edge1;
+				else if (edges[triangle[from - 1].edge2 - 1].isBoundary) target_edges = triangle[from - 1].edge2;
 				else target_edges = triangle[from - 1].edge3;
 
 
@@ -3952,7 +3952,7 @@ int Utils::read_edges(const char* filename, tri_edge** edges, long* num_edges, i
 		(*edges + i)->num = i + 1;
 		(*edges + i)->gain = 0;
 		(*edges + i)->isResidueEdge = false;
-		(*edges + i)->isBoundry = (boundry_marker == 1);
+		(*edges + i)->isBoundary = (boundry_marker == 1);
 		if (end1 < 1 ||
 			end1 > num_nodes ||
 			end2 < 1 ||
@@ -4039,7 +4039,7 @@ int Utils::read_edges(const char* edge_file, vector<tri_edge>& edges, std::vecto
 		edges[i].gain = 0;
 		edges[i].isResidueEdge = false;
 		edges[i].phase_diff = 0.0;
-		edges[i].isBoundry = (boundry_marker == 1);
+		edges[i].isBoundary = (boundry_marker == 1);
 		if (end1 < 1 ||
 			end1 > num_nodes ||
 			end2 < 1 ||
@@ -5700,12 +5700,12 @@ int Utils::std(const Mat& input, double* std)
 //		}
 //		if (!cv::solve(A, b_r, coef_r, cv::DECOMP_NORMAL))
 //		{
-//			fprintf(stderr, "stack_coregistration(): matrix defficiency!\n");
+//			fprintf(stderr, "stack_coregistration(): matrix deficiency!\n");
 //			return -1;
 //		}
 //		if (!cv::solve(A, b_c, coef_c, cv::DECOMP_NORMAL))
 //		{
-//			fprintf(stderr, "stack_coregistration(): matrix defficiency!\n");
+//			fprintf(stderr, "stack_coregistration(): matrix deficiency!\n");
 //			return -1;
 //		}
 //
@@ -5960,7 +5960,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, x, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -5981,7 +5981,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, y, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -6003,7 +6003,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, z, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -6025,7 +6025,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, vx, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -6047,7 +6047,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, vy, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -6069,7 +6069,7 @@ int Utils::stateVec_interp(Mat& stateVec, double time_interval, Mat& stateVec_in
 	A = temp * A;
 	if (!cv::solve(A, b, vz, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "stateVec_interp(): matrix defficiency!\n");
+		fprintf(stderr, "stateVec_interp(): matrix deficiency!\n");
 		return -1;
 	}
 
@@ -7370,7 +7370,7 @@ int Utils::SKP_decomposition(
 	vector<ComplexMat>& outputMat2
 )
 {
-	assert(!inputMat.isempty() &&
+	assert(!inputMat.isEmpty() &&
 		inputMat.type() == CV_64F &&
 		(nr1 * nr2 == inputMat.GetRows()) &&
 		(nc1 * nc2 == inputMat.GetCols()));
@@ -7880,7 +7880,7 @@ int Utils::coherence_matrix_estimation(const vector<ComplexMat>& slc_series, Com
 		fprintf(stderr, "coherence_estimation(): input check failed!\n");
 		return -1;
 	}
-	if (slc_series[0].type() != CV_64F || slc_series[0].isempty() || ref_row > slc_series[0].GetRows() - 1 || ref_col > slc_series[0].GetCols() - 1
+	if (slc_series[0].type() != CV_64F || slc_series[0].isEmpty() || ref_row > slc_series[0].GetRows() - 1 || ref_col > slc_series[0].GetCols() - 1
 		)
 	{
 		fprintf(stderr, "coherence_estimation(): input check failed!\n");

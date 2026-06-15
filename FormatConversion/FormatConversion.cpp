@@ -907,7 +907,7 @@ int FormatConversion::write_slc_to_h5(const char* filename, const ComplexMat& sl
 {
 	H5_LOCK;
 	if (filename == NULL ||
-		slc.isempty()/*||
+		slc.isEmpty()/*||
 		slc.type() != CV_64F*/
 		)
 	{
@@ -1130,7 +1130,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
 	// 拟合经度
-	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
 	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
@@ -1145,7 +1145,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	// 拟合纬度
-	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
 	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
@@ -1890,7 +1890,7 @@ int FormatConversion::read_slc_from_Sentinel(
 int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc, Mat& Sentinel)
 {
 	if (xml_filename == NULL ||
-		slc.isempty() ||
+		slc.isEmpty() ||
 		slc.type() != CV_16S
 		)
 	{
@@ -2110,7 +2110,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
 	// 拟合经度
-	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
 	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
@@ -2125,7 +2125,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	// 拟合纬度
-	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
 	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
@@ -2996,8 +2996,8 @@ int FormatConversion::get_burst_sentinel(
 
 int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& this_burst, int* overlapSize)
 {
-	if (last_burst.isempty() ||
-		this_burst.isempty() ||
+	if (last_burst.isEmpty() ||
+		this_burst.isEmpty() ||
 		last_burst.GetCols() != this_burst.GetCols() ||
 		overlapSize == NULL
 		)
@@ -3066,8 +3066,8 @@ int FormatConversion::burst_stitch(
 	const char* stitch_type
 )
 {
-	if (src_burst.isempty() ||
-		dst_burst.isempty() ||
+	if (src_burst.isEmpty() ||
+		dst_burst.isEmpty() ||
 		src_burst.GetCols() != dst_burst.GetCols() ||
 		overlapSize < 0||
 		overlapSize > dst_burst.GetRows()||
@@ -8480,14 +8480,14 @@ int FormatConversion::createVandermondeMatrix(Mat& inArray, Mat& vandermondeMatr
 	return 0;
 }
 
-int FormatConversion::ployFit(Mat& a, Mat& B, Mat& x)
+int FormatConversion::polyFit(Mat& a, Mat& B, Mat& x)
 {
 	Mat A, b;
 	a.copyTo(A);
 	B.copyTo(b);
 	if (A.rows != b.rows || A.cols > A.rows || A.empty())
 	{
-		fprintf(stderr, "ployFit(): input check failed!\n");
+		fprintf(stderr, "polyFit(): input check failed!\n");
 		return -1;
 	}
 	if (A.type() != CV_64F) A.convertTo(A, CV_64F);
@@ -8498,7 +8498,7 @@ int FormatConversion::ployFit(Mat& a, Mat& B, Mat& x)
 	b = A_t * b;
 	if (!cv::solve(A, b, x, cv::DECOMP_LU))
 	{
-		fprintf(stderr, "ployFit(): matrix defficiency!\n");
+		fprintf(stderr, "polyFit(): matrix deficiency!\n");
 		return -1;
 	}
 	return 0;
@@ -9082,7 +9082,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
 	// 拟合经度
-	if (polyFit(A, lon, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
 	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
@@ -9096,7 +9096,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	temp.copyTo(lon_coefficient);
 
 	// 拟合纬度
-	if (polyFit(A, lat, coefficient, &rms) != 0) return -1;
+	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
 	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
@@ -11511,7 +11511,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	b = A_t * offset;
 	if (!cv::solve(A, b, coef, cv::DECOMP_NORMAL))
 	{
-		fprintf(stderr, "fitSlaveOffset(): matrix defficiency!\n");
+		fprintf(stderr, "fitSlaveOffset(): matrix deficiency!\n");
 		return -1;
 	}
 	if (a0) *a0 = coef.at<double>(0, 0);
@@ -11528,7 +11528,7 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 	double a0Az, double a1Az, double a2Az
 )
 {
-	if (slave.isempty() || dstHeight < 2 || dstWidth < 2)
+	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2)
 	{
 		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
 		return -1;
@@ -11604,7 +11604,7 @@ int Sentinel1BackGeocoding::performSincResampling(
 	double a0Az, double a1Az, double a2Az
 )
 {
-	if (slave.isempty() || dstHeight < 2 || dstWidth < 2)
+	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2)
 	{
 		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
 		return -1;
@@ -12018,17 +12018,17 @@ int orbitStateVectors::getOrbitData(double time, OSV* osv)
 	}
 	Mat A, xPosCoeff, yPosCoeff, zPosCoeff, xVelCoeff, yVelCoeff, zVelCoeff;
 	FormatConversion::createVandermondeMatrix(timeArray, A, polyDegree);
-	ret = FormatConversion::ployFit(A, xPosArray, xPosCoeff);
+	ret = FormatConversion::polyFit(A, xPosArray, xPosCoeff);
 	if (ret < 0) return -1;
-	ret = FormatConversion::ployFit(A, yPosArray, yPosCoeff);
+	ret = FormatConversion::polyFit(A, yPosArray, yPosCoeff);
 	if (ret < 0) return -1;
-	ret = FormatConversion::ployFit(A, zPosArray, zPosCoeff);
+	ret = FormatConversion::polyFit(A, zPosArray, zPosCoeff);
 	if (ret < 0) return -1;
-	ret = FormatConversion::ployFit(A, xVelArray, xVelCoeff);
+	ret = FormatConversion::polyFit(A, xVelArray, xVelCoeff);
 	if (ret < 0) return -1;
-	ret = FormatConversion::ployFit(A, yVelArray, yVelCoeff);
+	ret = FormatConversion::polyFit(A, yVelArray, yVelCoeff);
 	if (ret < 0) return -1;
-	ret = FormatConversion::ployFit(A, zVelArray, zVelCoeff);
+	ret = FormatConversion::polyFit(A, zVelArray, zVelCoeff);
 	if (ret < 0) return -1;
 	double normalizedTime = time - t0;
 

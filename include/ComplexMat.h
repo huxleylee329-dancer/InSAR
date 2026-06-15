@@ -60,7 +60,7 @@ public:
 	/// @brief 计算非零元素个数
 	int countNonzero() const;
 	/// @brief 数组是否为空
-	bool isempty()const;
+	bool isEmpty()const;
 	/// @brief 转换类型
 	void convertTo(ComplexMat& out, int type) const;
 	/// @brief 拷贝复制

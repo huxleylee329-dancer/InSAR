@@ -1197,7 +1197,7 @@ public:
 	* @param x
 	* @return 成功返回0，否则返回-1
 	*/
-	static int ployFit(
+	static int polyFit(
 		Mat& A,
 		Mat& b,
 		Mat& x

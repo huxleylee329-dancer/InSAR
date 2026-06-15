@@ -51,7 +51,7 @@ public:
 	* @param k2                           相位模糊梯度（水平方向）
 	* @return 成功返回0，否则返回-1
 	*/
-	int quailtyGuidedFloodfill(
+	int qualityGuidedFloodfill(
 		Mat& wrapped_phase,
 		Mat& unwrapped_phase,
 		Mat& mask,

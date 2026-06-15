@@ -212,7 +212,7 @@ int SBAS::read_edges(
 		edges[i].end1 = end1;
 		edges[i].end2 = end2;
 		edges[i].num = i + 1;
-		edges[i].isBoundry = (boundry_marker == 1);
+		edges[i].isBoundary = (boundry_marker == 1);
 		if (end1 < 1 ||
 			end1 > num_nodes ||
 			end2 < 1 ||
@@ -522,8 +522,8 @@ int SBAS::compute_spatialTemporal_residue(
 static double get_boundary_edge_weight(const SBAS_triangle& t, const std::vector<SBAS_edge>& edges, bool is_spatial)
 {
 	if (!is_spatial) return 1.0;
-	if (edges[t.edge1 - 1].isBoundry) return edges[t.edge1 - 1].weight;
-	if (edges[t.edge2 - 1].isBoundry) return edges[t.edge2 - 1].weight;
+	if (edges[t.edge1 - 1].isBoundary) return edges[t.edge1 - 1].weight;
+	if (edges[t.edge2 - 1].isBoundary) return edges[t.edge2 - 1].weight;
 	return edges[t.edge3 - 1].weight;
 }
 
@@ -599,9 +599,9 @@ static int writeDIMACS_common(
 	int boundry_tri = 0;
 	for (int i = 0; i < num_triangle; i++)
 	{
-		if (edges[triangle[i].edge1 - 1].isBoundry ||
-			edges[triangle[i].edge2 - 1].isBoundry ||
-			edges[triangle[i].edge3 - 1].isBoundry)
+		if (edges[triangle[i].edge1 - 1].isBoundary ||
+			edges[triangle[i].edge2 - 1].isBoundary ||
+			edges[triangle[i].edge3 - 1].isBoundary)
 		{
 			boundry_tri++;
 		}
@@ -667,9 +667,9 @@ static int writeDIMACS_common(
 		//写入边界流费用
 		for (int i = 0; i < num_triangle; i++)
 		{
-			if (edges[triangle[i].edge1 - 1].isBoundry ||
-				edges[triangle[i].edge2 - 1].isBoundry ||
-				edges[triangle[i].edge3 - 1].isBoundry)
+			if (edges[triangle[i].edge1 - 1].isBoundary ||
+				edges[triangle[i].edge2 - 1].isBoundary ||
+				edges[triangle[i].edge3 - 1].isBoundary)
 			{
 				double cost_mean = get_boundary_edge_weight(triangle[i], edges, is_spatial);
 				fprintf(fp, "a %d %d %d %d %lf\n", i + 1, num_triangle + 1, lower_bound, upper_bound, cost_mean);
@@ -1017,8 +1017,8 @@ int SBAS::readDIMACS(
 		{
 			if (from == num_triangle + 1)
 			{
-				if (edges[triangle[to - 1].edge1 - 1].isBoundry)target_edges = triangle[to - 1].edge1;
-				else if (edges[triangle[to - 1].edge2 - 1].isBoundry) target_edges = triangle[to - 1].edge2;
+				if (edges[triangle[to - 1].edge1 - 1].isBoundary)target_edges = triangle[to - 1].edge1;
+				else if (edges[triangle[to - 1].edge2 - 1].isBoundary) target_edges = triangle[to - 1].edge2;
 				else target_edges = triangle[to - 1].edge3;
 				end1 = edges[target_edges - 1].end1;
 				end2 = edges[target_edges - 1].end2;
@@ -1063,8 +1063,8 @@ int SBAS::readDIMACS(
 			}
 			else
 			{
-				if (edges[triangle[from - 1].edge1 - 1].isBoundry)target_edges = triangle[from - 1].edge1;
-				else if (edges[triangle[from - 1].edge2 - 1].isBoundry) target_edges = triangle[from - 1].edge2;
+				if (edges[triangle[from - 1].edge1 - 1].isBoundary)target_edges = triangle[from - 1].edge1;
+				else if (edges[triangle[from - 1].edge2 - 1].isBoundary) target_edges = triangle[from - 1].edge2;
 				else target_edges = triangle[from - 1].edge3;
 				end1 = edges[target_edges - 1].end1;
 				end2 = edges[target_edges - 1].end2;

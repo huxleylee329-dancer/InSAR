@@ -196,7 +196,7 @@ struct tri_edge
 	/*残差边标志*/
 	bool isResidueEdge;
 	/*网络边界标志*/
-	bool isBoundry;
+	bool isBoundary;
 
 
 	/**********PS_InSAR变量**********/
@@ -221,7 +221,7 @@ struct tri_edge
 		num = 0;
 		end1 = 0; end2 = 0;
 		isResidueEdge = false;
-		isBoundry = false;
+		isBoundary = false;
 		delta_vel = 0.0;
 		delta_height = 0.0; MC = 0.0; phase_diff = 0.0;
 	}
@@ -233,7 +233,7 @@ struct tri_edge
 		num = cp.num;
 		end1 = cp.end1; end2 = cp.end2;
 		isResidueEdge = cp.isResidueEdge;
-		isBoundry = cp.isBoundry;
+		isBoundary = cp.isBoundary;
 		delta_vel = cp.delta_vel;
 		delta_height = cp.delta_height; MC = cp.MC; phase_diff = cp.phase_diff;
 	}
@@ -245,7 +245,7 @@ struct tri_edge
 		num = cp.num;
 		end1 = cp.end1; end2 = cp.end2;
 		isResidueEdge = cp.isResidueEdge;
-		isBoundry = cp.isBoundry;
+		isBoundary = cp.isBoundary;
 		delta_vel = cp.delta_vel;
 		delta_height = cp.delta_height; MC = cp.MC; phase_diff = cp.phase_diff;
 		return *this;
@@ -414,7 +414,7 @@ public:
 	* @param x
 	* @return 成功返回0，否则返回-1
 	*/
-	static int ployFit(
+	static int polyFit(
 		Mat& A,
 		Mat& b,
 		Mat& x

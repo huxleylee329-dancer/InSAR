@@ -878,8 +878,8 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	constexpr int COH_WIN_SIZE = 7;
 	constexpr double ZERO_TOLERANCE = 1e-7;
 
-	if (master.isempty() ||
-		slave.isempty() ||
+	if (master.isEmpty() ||
+		slave.isEmpty() ||
 		//blocksize * 5 > (slave.GetCols() < slave.GetRows() ? slave.GetCols() : slave.GetRows()) ||
 		blocksize < 8||interp_times < 1 ||
 		master.type() != slave.type() ||
@@ -1262,8 +1262,8 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	constexpr int COH_WIN_SIZE = 7;
 	constexpr double ZERO_TOLERANCE = 1e-7;
 
-	if (master.isempty() ||
-		slave.isempty() ||
+	if (master.isEmpty() ||
+		slave.isEmpty() ||
 		//blocksize * 5 > (slave.GetCols() < slave.GetRows() ? slave.GetCols() : slave.GetRows()) ||
 		blocksize < 8 || interp_times < 1 ||
 		master.type() != slave.type() ||
@@ -2045,7 +2045,7 @@ int Registration::performBilinearResampling(
 	int* offset_col
 )
 {
-	if (slave.isempty() || dstHeight < 2 || dstWidth < 2 ||
+	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
 		(slave.type() != CV_16S && slave.type() != CV_64F && slave.type() != CV_32F)
 		)
 	{
@@ -2135,7 +2135,7 @@ int Registration::performSincResampling(
 	int* offset_col
 )
 {
-	if (slave.isempty() || dstHeight < 2 || dstWidth < 2 ||
+	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
 		(slave.type() != CV_16S && slave.type() != CV_64F && slave.type() != CV_32F)
 		)
 	{

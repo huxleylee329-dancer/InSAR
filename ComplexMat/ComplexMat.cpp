@@ -281,8 +281,8 @@ int ComplexMat::GetCols() const
 
 int ComplexMat::mul(const ComplexMat& Src, ComplexMat& Dst, bool bConj)
 {
-	if (Src.isempty() ||
-		this->isempty() ||
+	if (Src.isEmpty() ||
+		this->isEmpty() ||
 		Src.type() != this->type() ||
 		this->GetCols() != Src.GetRows()
 		)
@@ -543,7 +543,7 @@ int ComplexMat::countNonzero() const
 	return count;
 }
 
-bool ComplexMat::isempty() const
+bool ComplexMat::isEmpty() const
 {
 	if (this->GetRows() < 1 || this->GetCols() < 1) return true;
 	return false;

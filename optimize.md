@@ -64,7 +64,7 @@
 
 - [x] **私有成员 `mod`/`Phase` 从未使用** — `ComplexMat.h:73-74`
   - 应移除以减少内存占用
-- [ ] **`isempty()` 命名不符合驼峰规范** — `ComplexMat.h:66`
+- [x] **`isempty()` 命名不符合驼峰规范** — `ComplexMat.h:66`
   - 应改为 `isEmpty()`
   - 跳过：改名影响 4 个文件 12 处调用，待统一处理
 - [x] **头文件注释风格不统一** — `ComplexMat.h`
@@ -364,7 +364,7 @@
 
 ### P3 — 优化
 
-- [ ] **函数名拼写错误** — `Unwrap.h`
+- [x] **函数名拼写错误** — `Unwrap.h`
   - `quailtyGuidedFloodfill` → `qualityGuidedFloodfill`
 - [x] **四方向邻居处理代码重复** — `Unwrap.cpp:1079-1136`
   - 可使用方向偏移数组 `dx[]/dy[]` 简化为循环
@@ -494,7 +494,7 @@
 
 ### P3 — 优化
 
-- [ ] **`SBAS_edge::isBoundry` 拼写错误** — `SBAS.h:57`
+- [x] **`SBAS_edge::isBoundry` 拼写错误** — `SBAS.h:57`
   - 应为 `isBoundary`
 - [x] **变量名 `xxxx`** — `SBAS.cpp:659` (实际位于 `Evaluation.cpp` 和 `Utils.cpp`)
   - 已将 `Evaluation.cpp` (2处) 和 `Utils.cpp` (6处) 中的不规范变量名 `xxxx` 全部重命名为 `orbit_idx`
@@ -726,13 +726,13 @@
 ### P3 — 优化
 
 - [ ] **统一函数名拼写修正**
-  - `Boundry` → `Boundary`（Utils.h、SBAS.h）
-  - `creat` → `create`（FormatConversion.h）
-  - `quailty` → `quality`（Unwrap.h）
-  - `ployFit` → `polyFit`（Utils.h、FormatConversion.h）
-  - `defficiency` → `deficiency`（Utils.cpp、Registration.cpp）
-  - `invalide` → `invalid`（FormatConversion.cpp）
-  - `failded` → `failed`（Deflat.cpp）
+  - [x] `Boundry` → `Boundary`（Utils.h、SBAS.h）
+  - [ ] `creat` → `create`（FormatConversion.h）
+  - [x] `quailty` → `quality`（Unwrap.h）
+  - [x] `ployFit` → `polyFit`（Utils.h、FormatConversion.h）
+  - [x] `defficiency` → `deficiency`（Utils.cpp、Registration.cpp）
+  - [ ] `invalide` → `invalid`（FormatConversion.cpp）
+  - [ ] `failded` → `failed`（Deflat.cpp）
 - [x] **统一赋值运算符返回引用**
   - ComplexMat、tri_node、triangle、tri_edge、node_index、SBAS_node、SBAS_edge、SBAS_triangle、Position、Velocity、OSV、BurstIndices
 - [ ] **统一注释风格为 Doxygen**

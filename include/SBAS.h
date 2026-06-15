@@ -48,7 +48,7 @@ private:
 struct SBAS_edge
 {
 	/*是否为边界(默认为否)*/
-	bool isBoundry;
+	bool isBoundary;
 	/*边序号*/
 	int num;
 	/*端点1序号*/
@@ -71,7 +71,7 @@ struct SBAS_edge
 	/*默认构造函数*/
 	SBAS_edge()
 	{
-		isBoundry = false;
+		isBoundary = false;
 		end1 = end2 = num = -1;
 		phase_gradient = delta_deformation_vel = delta_epsilon_height = gain = 0.0;
 		weight = 1.0;

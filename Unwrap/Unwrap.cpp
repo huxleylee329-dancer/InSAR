@@ -280,8 +280,8 @@ int Unwrap::MCF_improved(
 	Mat quality;
 	ret = util.phase_derivatives_variance(wrapped_phase, quality);
 	if (return_check(ret, "phase_derivatives_variance()", error_head)) return -1;
-	ret = quailtyGuidedFloodfill(wrapped_phase, unwrapped_phase, mask, quality, k1, k2);
-	if (return_check(ret, "quailtyGuidedFloodfill()", error_head)) return -1;
+	ret = qualityGuidedFloodfill(wrapped_phase, unwrapped_phase, mask, quality, k1, k2);
+	if (return_check(ret, "qualityGuidedFloodfill()", error_head)) return -1;
 	/*Mat diff_1, diff_2;
 	ret = util.diff(wrapped_phase, diff_1, diff_2, false);
 	if (return_check(ret, "diff(*, *, *, *)", error_head)) return -1;
@@ -310,7 +310,7 @@ int Unwrap::MCF_improved(
 	return 0;
 }
 
-int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, Mat& quality, Mat& k1, Mat& k2)
+int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, Mat& quality, Mat& k1, Mat& k2)
 {
 	if (wrapped_phase.type() != CV_64F ||
 		quality.type() != CV_64F ||
@@ -328,7 +328,7 @@ int Unwrap::quailtyGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 		k2.empty()
 		)
 	{
-		fprintf(stderr, "quailtyGuidedFloodfill(): input check failed!\n");
+		fprintf(stderr, "qualityGuidedFloodfill(): input check failed!\n");
 		return -1;
 	}
 	int nr = wrapped_phase.rows;
@@ -1191,7 +1191,7 @@ int Unwrap::MCF(
 			distance <= thresh &&
 			fabs((edges + edge_val - 1)->gain) < tt &&
 			nodes[end2 - 1].get_balance() &&
-			!((edges + edge_val - 1)->isBoundry && fabs((edges + edge_val - 1)->gain) > 0.5)
+			!((edges + edge_val - 1)->isBoundary && fabs((edges + edge_val - 1)->gain) > 0.5)
 			)
 		{
 			que.push(end2);
@@ -1235,7 +1235,7 @@ int Unwrap::MCF(
 				distance <= thresh &&
 				fabs((edges + edge_val - 1)->gain) < tt &&
 				nodes[end2 - 1].get_balance()&&
-				!((edges + edge_val - 1)->isBoundry && fabs((edges + edge_val - 1)->gain) > 0.5)
+				!((edges + edge_val - 1)->isBoundary && fabs((edges + edge_val - 1)->gain) > 0.5)
 				)
 			{
 				que.push(end2);
@@ -1351,8 +1351,8 @@ int Unwrap::MCF(
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= thresh &&
-			/*!edges[edge_val - 1].isBoundry &&*/
-			!(edges[edge_val - 1].isBoundry && fabs(edges[edge_val - 1].gain) > 0.5) &&
+			/*!edges[edge_val - 1].isBoundary &&*/
+			!(edges[edge_val - 1].isBoundary && fabs(edges[edge_val - 1].gain) > 0.5) &&
 			fabs(edges[edge_val - 1].gain) < tt /*&&
 			nodes[end2 - 1].get_balance()*/
 			)
@@ -1397,8 +1397,8 @@ int Unwrap::MCF(
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= thresh &&
-				/*!edges[edge_val - 1].isBoundry &&*/
-				!(edges[edge_val - 1].isBoundry && fabs(edges[edge_val - 1].gain) > 0.5) &&
+				/*!edges[edge_val - 1].isBoundary &&*/
+				!(edges[edge_val - 1].isBoundary && fabs(edges[edge_val - 1].gain) > 0.5) &&
 				fabs(edges[edge_val - 1].gain) < tt/* &&
 				nodes[end2 - 1].get_balance() */
 				)
@@ -1848,7 +1848,7 @@ int Unwrap::_QualityGuided_MCF_1(
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= distance_thresh &&
-			!edges[edge_val - 1].isBoundry &&
+			!edges[edge_val - 1].isBoundary &&
 			nodes[end2 - 1].get_balance() &&
 			!edges[edge_val - 1].isResidueEdge
 			)
@@ -1874,7 +1874,7 @@ int Unwrap::_QualityGuided_MCF_1(
 			end2 = edges[tmp_edge_index.num - 1].end1;
 		}
 		if (!nodes[end2 - 1].get_status() &&
-			!edges[tmp_edge_index.num - 1].isBoundry &&
+			!edges[tmp_edge_index.num - 1].isBoundary &&
 			nodes[end2 - 1].get_balance() && 
 			!edges[tmp_edge_index.num - 1].isResidueEdge
 			)
@@ -1897,7 +1897,7 @@ int Unwrap::_QualityGuided_MCF_1(
 				nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 				if (!nodes[end2 - 1].get_status() &&
 					distance <= distance_thresh &&
-					!edges[edge_val - 1].isBoundry &&
+					!edges[edge_val - 1].isBoundary &&
 					nodes[end2 - 1].get_balance()&&
 					!edges[edge_val - 1].isResidueEdge
 					)
@@ -1993,7 +1993,7 @@ int Unwrap::_QualityGuided_MCF_2(
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= distance_thresh &&
-				!edges[edge_val - 1].isBoundry
+				!edges[edge_val - 1].isBoundary
 				)
 			{
 				que.push(end2);
