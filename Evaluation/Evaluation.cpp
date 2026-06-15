@@ -857,17 +857,17 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		int col1 = static_cast<int>(GCPs.at<double>(i, 1));
 		if (row1 >= offset_row && row1 < offset_row + nr && col1 >= offset_col && col1 < offset_col + nc)
 		{
-			Mat xyz, llh, llh2;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = P1.at<double>(row1 - offset_row, col1 - offset_col);
-			xyz.at<double>(0, 1) = P2.at<double>(row1 - offset_row, col1 - offset_col);
-			xyz.at<double>(0, 2) = P3.at<double>(row1 - offset_row, col1 - offset_col);
-
-			ret = util.xyz2ell(xyz, llh);
-			height_offset = llh.at<double>(0, 2);
-			lat_1 += GCPs.at<double>(i, 3) - llh.at<double>(0, 0);
-			lon_1 += GCPs.at<double>(i, 2) - llh.at<double>(0, 1);
-			height_1 += GCPs.at<double>(i, 4) - llh.at<double>(0, 2);
+			double lat_val = 0, lon_val = 0, h_val = 0;
+			ret = Utils::xyz2ell(
+				P1.at<double>(row1 - offset_row, col1 - offset_col),
+				P2.at<double>(row1 - offset_row, col1 - offset_col),
+				P3.at<double>(row1 - offset_row, col1 - offset_col),
+				lat_val, lon_val, h_val
+			);
+			height_offset = h_val;
+			lat_1 += GCPs.at<double>(i, 3) - lat_val;
+			lon_1 += GCPs.at<double>(i, 2) - lon_val;
+			height_1 += GCPs.at<double>(i, 4) - h_val;
 			count++;
 			for (int j = i; j < GCP_count; j++)
 			{
@@ -875,14 +875,16 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 				int col2 = static_cast<int>(GCPs.at<double>(j, 1));
 				if (row2 >= offset_row && row2 < offset_row + nr && col2 >= offset_col && col2 < offset_col + nc)
 				{
-					xyz.at<double>(0, 0) = P1.at<double>(row2 - offset_row, col2 - offset_col);
-					xyz.at<double>(0, 1) = P2.at<double>(row2 - offset_row, col2 - offset_col);
-					xyz.at<double>(0, 2) = P3.at<double>(row2 - offset_row, col2 - offset_col);
-
-					ret = util.xyz2ell(xyz, llh2);
-					lat_2 += GCPs.at<double>(i, 3) - llh.at<double>(0, 0) - (GCPs.at<double>(j, 3) - llh2.at<double>(0, 0));
-					lon_2 += GCPs.at<double>(i, 2) - llh.at<double>(0, 1) - (GCPs.at<double>(j, 2) - llh2.at<double>(0, 1));
-					height_2 += GCPs.at<double>(i, 4) - llh.at<double>(0, 2) - (GCPs.at<double>(j, 4) - llh2.at<double>(0, 2));
+					double lat_val2 = 0, lon_val2 = 0, h_val2 = 0;
+					ret = Utils::xyz2ell(
+						P1.at<double>(row2 - offset_row, col2 - offset_col),
+						P2.at<double>(row2 - offset_row, col2 - offset_col),
+						P3.at<double>(row2 - offset_row, col2 - offset_col),
+						lat_val2, lon_val2, h_val2
+					);
+					lat_2 += GCPs.at<double>(i, 3) - lat_val - (GCPs.at<double>(j, 3) - lat_val2);
+					lon_2 += GCPs.at<double>(i, 2) - lon_val - (GCPs.at<double>(j, 2) - lon_val2);
+					height_2 += GCPs.at<double>(i, 4) - h_val - (GCPs.at<double>(j, 4) - h_val2);
 					count2++;
 				}
 				else continue;

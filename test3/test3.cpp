@@ -1,4 +1,4 @@
-﻿// test3.cpp : 此文件包含 "main" 函数。程序执行将在此处开始并结束。
+// test3.cpp : 此文件包含 "main" 函数。程序执行将在此处开始并结束。
 //
 #include<Windows.h>
 #include<complex.h>
@@ -1680,15 +1680,11 @@ using cv::Range;
 ////		Utils util;
 ////		for (int j = 0; j < sceneWidth; j++)
 ////		{
-////			Mat xyz, llh;
-////			xyz = Mat::zeros(1, 3, CV_64F);
-////			xyz.at<double>(0, 0) = dem_x.at<double>(i, j);
-////			xyz.at<double>(0, 1) = dem_y.at<double>(i, j);
-////			xyz.at<double>(0, 2) = dem_z.at<double>(i, j);
-////			ret = util.xyz2ell(xyz, llh);
-////			dem.at<double>(i, j) = llh.at<double>(0, 2);
-////			lat.at<double>(i, j) = llh.at<double>(0, 0);
-////			lon.at<double>(i, j) = llh.at<double>(0, 1);
+////			double lat_val, lon_val, h_val;
+////			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+////			dem.at<double>(i, j) = h_val;
+////			lat.at<double>(i, j) = lat_val;
+////			lon.at<double>(i, j) = lon_val;
 ////		}
 ////	}
 ////	conversion.creat_new_h5("D:\\data\\HTHT_data\\inversion_result_A_D2.h5");
@@ -2411,15 +2407,11 @@ int main(int argc, char* argv[])
 	//		Utils util;
 	//		for (int j = 0; j < sceneWidth; j++)
 	//		{
-	//			Mat xyz, llh;
-	//			xyz = Mat::zeros(1, 3, CV_64F);
-	//			xyz.at<double>(0, 0) = dem_x.at<double>(i, j);
-	//			xyz.at<double>(0, 1) = dem_y.at<double>(i, j);
-	//			xyz.at<double>(0, 2) = dem_z.at<double>(i, j);
-	//			ret = util.xyz2ell(xyz, llh);
-	//			dem.at<double>(i, j) = llh.at<double>(0, 2);
-	//			lat.at<double>(i, j) = llh.at<double>(0, 0);
-	//			lon.at<double>(i, j) = llh.at<double>(0, 1);
+	//			double lat_val, lon_val, h_val;
+	//			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+	//			dem.at<double>(i, j) = h_val;
+	//			lat.at<double>(i, j) = lat_val;
+	//			lon.at<double>(i, j) = lon_val;
 	//		}
 	//	}
 	//	conversion.creat_new_h5("D:\\data\\HTHT_data\\inversion_result_A_D2.h5");

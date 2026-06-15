@@ -277,31 +277,29 @@ int Dem::phase2dem_newton_iter(
 	for (int i = 0; i < fine_size_rows; i++)
 	{
 		if (!parallel_flag) continue;
-		Utils util;
 		for (int j = 0; j < fine_size_cols; j++)
 		{
 			if (!parallel_flag) continue;
-			Mat xyz, llh;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = P1.at<double>(i, j);
-			xyz.at<double>(0, 1) = P2.at<double>(i, j);
-			xyz.at<double>(0, 2) = P3.at<double>(i, j);
-			
-			ret = util.xyz2ell(xyz, llh);
+			double lat, lon, h;
+			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat, lon, h);
 			if (ret < 0)
 			{
 				parallel_flag = false;
 				continue;
 			}
-			DEM_height.at<double>(i, j) = llh.at<double>(0, 2);
+			DEM_height.at<double>(i, j) = h;
 		}
 	}
 	if (parallel_check(parallel_flag, "phase2dem_newton_iter()", parallel_error_head)) return -1;
-	Mat xyz, llh;
-	Utils util;
-	ret = util.xyz2ell(Control_Point_Position, llh);
-	if (return_check(ret, "util.xyz2ell(*, *)", error_head)) return -1;
-	DEM_height = DEM_height + llh.at<double>(0, 2) - DEM_height.at<double>(row - 1, col - 1);
+	double lat, lon, h;
+	ret = Utils::xyz2ell(
+		Control_Point_Position.at<double>(0, 0),
+		Control_Point_Position.at<double>(0, 1),
+		Control_Point_Position.at<double>(0, 2),
+		lat, lon, h
+	);
+	if (return_check(ret, "Utils::xyz2ell(*, *)", error_head)) return -1;
+	DEM_height = DEM_height + h - DEM_height.at<double>(row - 1, col - 1);
 	return 0;
 }
 
@@ -544,23 +542,17 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	for (int i = 0; i < nr; i++)
 	{
 		if (!parallel_flag) continue;
-		Utils util;
 		for (int j = 0; j < nc; j++)
 		{
 			if (!parallel_flag) continue;
-			Mat xyz, llh;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = P1.at<double>(i, j);
-			xyz.at<double>(0, 1) = P2.at<double>(i, j);
-			xyz.at<double>(0, 2) = P3.at<double>(i, j);
-
-			ret = util.xyz2ell(xyz, llh);
+			double lat, lon, h;
+			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat, lon, h);
 			if (ret < 0)
 			{
 				parallel_flag = false;
 				continue;
 			}
-			dem.at<double>(i, j) = llh.at<double>(0, 2);
+			dem.at<double>(i, j) = h;
 		}
 	}
 	if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
@@ -837,18 +829,13 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		Utils util;
 		for (int j = 0; j < nc; j++)
 		{
-			Mat xyz, llh;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = P1.at<double>(i, j);
-			xyz.at<double>(0, 1) = P2.at<double>(i, j);
-			xyz.at<double>(0, 2) = P3.at<double>(i, j);
-			ret = util.xyz2ell(xyz, llh);
-			dem.at<double>(i, j) = llh.at<double>(0, 2);
-			lat.at<double>(i, j) = llh.at<double>(0, 0);
-			lon.at<double>(i, j) = llh.at<double>(0, 1);
+			double lat_val, lon_val, h_val;
+			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat_val, lon_val, h_val);
+			dem.at<double>(i, j) = h_val;
+			lat.at<double>(i, j) = lat_val;
+			lon.at<double>(i, j) = lon_val;
 		}
 	}
 	//if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
@@ -1160,18 +1147,13 @@ int Dem::dem_newton_iter_14(
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		Utils util;
 		for (int j = 0; j < nc; j++)
 		{
-			Mat xyz, llh;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = dem_x.at<double>(i, j);
-			xyz.at<double>(0, 1) = dem_y.at<double>(i, j);
-			xyz.at<double>(0, 2) = dem_z.at<double>(i, j);
-			ret = util.xyz2ell(xyz, llh);
-			dem.at<double>(i, j) = llh.at<double>(0, 2);
-			lat.at<double>(i, j) = llh.at<double>(0, 0);
-			lon.at<double>(i, j) = llh.at<double>(0, 1);
+			double lat_val, lon_val, h_val;
+			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+			dem.at<double>(i, j) = h_val;
+			lat.at<double>(i, j) = lat_val;
+			lon.at<double>(i, j) = lon_val;
 		}
 	}
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
@@ -1456,18 +1438,13 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		Utils util;
 		for (int j = 0; j < nc; j++)
 		{
-			Mat xyz, llh;
-			xyz = Mat::zeros(1, 3, CV_64F);
-			xyz.at<double>(0, 0) = dem_x.at<double>(i, j);
-			xyz.at<double>(0, 1) = dem_y.at<double>(i, j);
-			xyz.at<double>(0, 2) = dem_z.at<double>(i, j);
-			ret = util.xyz2ell(xyz, llh);
-			dem.at<double>(i, j) = llh.at<double>(0, 2);
-			lat.at<double>(i, j) = llh.at<double>(0, 0);
-			lon.at<double>(i, j) = llh.at<double>(0, 1);
+			double lat_val, lon_val, h_val;
+			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+			dem.at<double>(i, j) = h_val;
+			lat.at<double>(i, j) = lat_val;
+			lon.at<double>(i, j) = lon_val;
 		}
 	}
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);

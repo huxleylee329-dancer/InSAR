@@ -2443,8 +2443,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 	bool flag;
 	int x[3];
 	int y[3];
-	long* ptr_neigh = NULL;
-	int num_neigh, target_edges;
+	int target_edges;
 	int num_nodes = static_cast<int>(nodes.size());
 	/////////////////////读取注释///////////////////////////
 	GET_NEXT_LINE;
@@ -2565,14 +2564,15 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 			if (end1 > 0 && end1 <= num_nodes && end2 > 0 && end2 <= num_nodes && end3 > 0 && end3 <= num_nodes)
 			{
 				//找到边序号target_edges
-				nodes[end1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-				for (i = 0; i < num_neigh; i++)
+				const std::vector<long>& neigh_edges = nodes[end1 - 1].get_neigh_edges();
+				for (i = 0; i < neigh_edges.size(); i++)
 				{
-					if ((ptr_neigh + i) != NULL && *(ptr_neigh + i) > 0 && *(ptr_neigh + i) <= num_edges)
+					long edge_val = neigh_edges[i];
+					if (edge_val > 0 && edge_val <= num_edges)
 					{
-						if ((edges + *(ptr_neigh + i) - 1)->end1 == end2 || (edges + *(ptr_neigh + i) - 1)->end2 == end2)
+						if ((edges + edge_val - 1)->end1 == end2 || (edges + edge_val - 1)->end2 == end2)
 						{
-							target_edges = *(ptr_neigh + i);
+							target_edges = edge_val;
 						}
 					}
 				}
@@ -2641,8 +2641,7 @@ int Utils::read_DIMACS(
 	bool flag;
 	int x[3];
 	int y[3];
-	long* ptr_neigh = NULL;
-	int num_neigh, target_edges;
+	int target_edges;
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_triangle = static_cast<int>(triangle.size()); int num_edges = static_cast<int>(edges.size());
 	/////////////////////读取注释///////////////////////////
@@ -2758,14 +2757,15 @@ int Utils::read_DIMACS(
 			if (end1 > 0 && end1 <= num_nodes && end2 > 0 && end2 <= num_nodes && end3 > 0 && end3 <= num_nodes)
 			{
 				//找到边序号target_edges
-				nodes[end1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-				for (i = 0; i < num_neigh; i++)
+				const std::vector<long>& neigh_edges = nodes[end1 - 1].get_neigh_edges();
+				for (i = 0; i < neigh_edges.size(); i++)
 				{
-					if ((ptr_neigh + i) != NULL && *(ptr_neigh + i) > 0 && *(ptr_neigh + i) <= num_edges)
+					long edge_val = neigh_edges[i];
+					if (edge_val > 0 && edge_val <= num_edges)
 					{
-						if (edges[*(ptr_neigh + i) - 1].end1 == end2 || edges[*(ptr_neigh + i) - 1].end2 == end2)
+						if (edges[edge_val - 1].end1 == end2 || edges[edge_val - 1].end2 == end2)
 						{
-							target_edges = *(ptr_neigh + i);
+							target_edges = edge_val;
 						}
 					}
 				}
@@ -3231,17 +3231,8 @@ int Utils::phase2cos(const Mat& phase, Mat& cos, Mat& sin)
 	return 0;
 }
 
-int Utils::xyz2ell(const Mat& xyz, Mat& llh)
+int Utils::xyz2ell(double x, double y, double z, double& lat, double& lon, double& h)
 {
-	if (xyz.rows != 1 ||
-		xyz.cols != 3 ||
-		xyz.type() != CV_64F ||
-		xyz.channels() != 1)
-	{
-		fprintf(stderr, "xyz2ell(): input check failed!\n\n");
-		return -1;
-	}
-
 	const double epsilon = 0.000000000000001;
 	const double d2r = PI / 180;
 	const double r2d = 180 / PI;
@@ -3252,10 +3243,6 @@ int Utils::xyz2ell(const Mat& xyz, Mat& llh)
 	//const double b = 6356752.314245;			//椭球短半轴
 
 	const double e = sqrt(a * a - b * b) / a;
-
-	double x = xyz.at<double>(0, 0);
-	double y = xyz.at<double>(0, 1);
-	double z = xyz.at<double>(0, 2);
 
 	double tmpX = x;
 	double temY = y;
@@ -3274,14 +3261,9 @@ int Utils::xyz2ell(const Mat& xyz, Mat& llh)
 		counter++;
 	}
 
-	x = atan2(temY, tmpX) * r2d;
-	y = curB * r2d;
-	z = temZ / sin(curB) - N * (1 - e * e);
-
-	llh = Mat::zeros(1, 3, CV_64F);
-	llh.at<double>(0, 0) = y;
-	llh.at<double>(0, 1) = x;
-	llh.at<double>(0, 2) = z;
+	lon = atan2(temY, tmpX) * r2d;
+	lat = curB * r2d;
+	h = temZ / sin(curB) - N * (1 - e * e);
 	return 0;
 }
 
@@ -4132,8 +4114,7 @@ int Utils::init_tri_node(vector<tri_node>& node_array, Mat& phase, Mat& mask, tr
 		}
 	}
 
-	long* neighbour_ptr = NULL;
-	int dummy, ret;
+
 	tri_edge tmp;
 	for (int i = 0; i < num_edges; i++)
 	{
@@ -4146,21 +4127,8 @@ int Utils::init_tri_node(vector<tri_node>& node_array, Mat& phase, Mat& mask, tr
 			fprintf(stderr, "init_tri_node(): edges' endpoint exceed legal value!\n\n");
 			return -1;
 		}
-		ret = node_array[tmp.end1 - 1].get_neigh_ptr(&neighbour_ptr, &dummy);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		while (neighbour_ptr != NULL && *neighbour_ptr != -1)
-		{
-			neighbour_ptr = neighbour_ptr + 1;
-		}
-		*neighbour_ptr = i + 1;
-
-		ret = node_array[tmp.end2 - 1].get_neigh_ptr(&neighbour_ptr, &dummy);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		while (neighbour_ptr != NULL && *neighbour_ptr != -1)
-		{
-			neighbour_ptr = neighbour_ptr + 1;
-		}
-		*neighbour_ptr = i + 1;
+		node_array[tmp.end1 - 1].add_neigh_edge(i + 1);
+		node_array[tmp.end2 - 1].add_neigh_edge(i + 1);
 	}
 	return 0;
 }
@@ -4224,8 +4192,7 @@ int Utils::init_tri_node(
 		}
 	}
 
-	long* neighbour_ptr = NULL;
-	int dummy, ret;
+
 	tri_edge tmp;
 	for (int i = 0; i < num_edges; i++)
 	{
@@ -4238,21 +4205,8 @@ int Utils::init_tri_node(
 			fprintf(stderr, "init_tri_node(): edges' endpoint exceed legal value!\n\n");
 			return -1;
 		}
-		ret = node_array[tmp.end1 - 1].get_neigh_ptr(&neighbour_ptr, &dummy);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		while (neighbour_ptr != NULL && *neighbour_ptr != -1)
-		{
-			neighbour_ptr = neighbour_ptr + 1;
-		}
-		*neighbour_ptr = i + 1;
-
-		ret = node_array[tmp.end2 - 1].get_neigh_ptr(&neighbour_ptr, &dummy);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		while (neighbour_ptr != NULL && *neighbour_ptr != -1)
-		{
-			neighbour_ptr = neighbour_ptr + 1;
-		}
-		*neighbour_ptr = i + 1;
+		node_array[tmp.end1 - 1].add_neigh_edge(i + 1);
+		node_array[tmp.end2 - 1].add_neigh_edge(i + 1);
 	}
 	return 0;
 }
@@ -4452,33 +4406,30 @@ int Utils::read_triangle(
 		fp_neigh = NULL;
 	}
 	//获取三角形的边序号
-	long* ptr_neigh = NULL;
-	int num_neigh, count;
+	int count;
 	int edge[3];
 	memset(edge, 0, sizeof(int) * 3);
 	for (int j = 0; j < *num_triangle; j++)
 	{
 		count = 0;
-		nodes[(*tri + j)->p1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[(*tri + j)->p1 - 1].get_neigh_edges())
 		{
-			if ((edges + *(ptr_neigh + i) - 1)->end1 == (*tri + j)->p2 ||
-				(edges + *(ptr_neigh + i) - 1)->end1 == (*tri + j)->p3 ||
-				(edges + *(ptr_neigh + i) - 1)->end2 == (*tri + j)->p2 ||
-				(edges + *(ptr_neigh + i) - 1)->end2 == (*tri + j)->p3
+			if ((edges + edge_val - 1)->end1 == (*tri + j)->p2 ||
+				(edges + edge_val - 1)->end1 == (*tri + j)->p3 ||
+				(edges + edge_val - 1)->end2 == (*tri + j)->p2 ||
+				(edges + edge_val - 1)->end2 == (*tri + j)->p3
 				)
 			{
-				edge[count] = *(ptr_neigh + i);
+				edge[count] = edge_val;
 				count++;
 			}
 		}
-		nodes[(*tri + j)->p2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[(*tri + j)->p2 - 1].get_neigh_edges())
 		{
-			if ((edges + *(ptr_neigh + i) - 1)->end1 == (*tri + j)->p3 ||
-				(edges + *(ptr_neigh + i) - 1)->end2 == (*tri + j)->p3)
+			if ((edges + edge_val - 1)->end1 == (*tri + j)->p3 ||
+				(edges + edge_val - 1)->end2 == (*tri + j)->p3)
 			{
-				edge[count] = *(ptr_neigh + i);
+				edge[count] = edge_val;
 				//count++;
 			}
 		}
@@ -4586,33 +4537,30 @@ int Utils::read_triangle(
 		fp_neigh = NULL;
 	}
 	//获取三角形的边序号
-	long* ptr_neigh = NULL;
-	int num_neigh, count;
+	int count;
 	int edge[3];
 	memset(edge, 0, sizeof(int) * 3);
 	for (int j = 0; j < num_triangle; j++)
 	{
 		count = 0;
-		nodes[triangle[j].p1 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[triangle[j].p1 - 1].get_neigh_edges())
 		{
-			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p2) ||
-				(edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p2)||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3)
+			if ((edges[edge_val - 1].end1 == triangle[j].p2) ||
+				(edges[edge_val - 1].end1 == triangle[j].p3) ||
+				(edges[edge_val - 1].end2 == triangle[j].p2)||
+				(edges[edge_val - 1].end2 == triangle[j].p3)
 				)
 			{
-				edge[count] = *(ptr_neigh + i);
+				edge[count] = edge_val;
 				count++;
 			}
 		}
-		nodes[triangle[j].p2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[triangle[j].p2 - 1].get_neigh_edges())
 		{
-			if ((edges[*(ptr_neigh + i) - 1].end1 == triangle[j].p3) ||
-				(edges[*(ptr_neigh + i) - 1].end2 == triangle[j].p3))
+			if ((edges[edge_val - 1].end1 == triangle[j].p3) ||
+				(edges[edge_val - 1].end2 == triangle[j].p3))
 			{
-				edge[count] = *(ptr_neigh + i);
+				edge[count] = edge_val;
 				//count++;
 			}
 		}
@@ -8481,22 +8429,20 @@ int Utils::unwrap_region_growing(
 	//nodes[start - 1].set_vel(0.0);//起始点形变速率和高程误差设置为0，后续可根据参考点进行校正
 	//nodes[start - 1].set_height(0.0);
 	nodes[start - 1].set_status(true);
-	long* ptr_neigh = NULL;
-	int num_neigh, end2, number, row1, col1, row2, col2;
+	int end2, number, row1, col1, row2, col2;
 	double distance, phase, MC_total, phase_total, delta_phase;
 
-	nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-	for (int i = 0; i < num_neigh; i++)
+	for (long edge_val : nodes[start - 1].get_neigh_edges())
 	{
-		end2 = edges[*(ptr_neigh + i) - 1].end1 == start ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+		end2 = edges[edge_val - 1].end1 == start ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= distance_thresh &&
-			edges[*(ptr_neigh + i) - 1].quality > quality_thresh
+			edges[edge_val - 1].quality > quality_thresh
 			)
 		{
-			tmp.num = *(ptr_neigh + i);
-			tmp.quality = -edges[*(ptr_neigh + i) - 1].quality;
+			tmp.num = edge_val;
+			tmp.quality = -edges[edge_val - 1].quality;
 			que.push(tmp);
 		}
 	}
@@ -8520,53 +8466,50 @@ int Utils::unwrap_region_growing(
 		if (!nodes[end2 - 1].get_status())
 		{
 			nodes[end2 - 1].get_pos(&row2, &col2);
-			nodes[end2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-			for (int i = 0; i < num_neigh; i++)
+			for (long edge_val : nodes[end2 - 1].get_neigh_edges())
 			{
-				number = edges[*(ptr_neigh + i) - 1].end1 == end2 ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+				number = edges[edge_val - 1].end1 == end2 ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 				if (nodes[number - 1].get_status())
 				{
 					nodes[number - 1].get_phase(&phase);
 					nodes[number - 1].get_pos(&row1, &col1);
 					if (row1 > row2)
 					{
-						delta_phase = -edges[*(ptr_neigh + i) - 1].phase_diff;
+						delta_phase = -edges[edge_val - 1].phase_diff;
 					}
 					if (row1 < row2)
 					{
-						delta_phase = edges[*(ptr_neigh + i) - 1].phase_diff;
+						delta_phase = edges[edge_val - 1].phase_diff;
 					}
 					if (row1 == row2)
 					{
 						if (col1 > col2)
 						{
-							delta_phase = -edges[*(ptr_neigh + i) - 1].phase_diff;
+							delta_phase = -edges[edge_val - 1].phase_diff;
 						}
 						else
 						{
-							delta_phase = edges[*(ptr_neigh + i) - 1].phase_diff;
+							delta_phase = edges[edge_val - 1].phase_diff;
 						}
 					}
-					phase_total += (delta_phase + phase) * edges[*(ptr_neigh + i) - 1].quality;
-					MC_total += edges[*(ptr_neigh + i) - 1].quality;
+					phase_total += (delta_phase + phase) * edges[edge_val - 1].quality;
+					MC_total += edges[edge_val - 1].quality;
 				}
 			}
 			nodes[end2 - 1].set_phase(phase_total / MC_total);
 			nodes[end2 - 1].set_status(true);
-			nodes[end2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
 			number = end2;
-			for (int i = 0; i < num_neigh; i++)
+			for (long edge_val : nodes[number - 1].get_neigh_edges())
 			{
-
-				end2 = edges[*(ptr_neigh + i) - 1].end1 == number ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+				end2 = edges[edge_val - 1].end1 == number ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 				nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 				if (!nodes[end2 - 1].get_status() &&
 					distance <= distance_thresh &&
-					edges[*(ptr_neigh + i) - 1].quality > quality_thresh
+					edges[edge_val - 1].quality > quality_thresh
 					)
 				{
-					tmp.num = *(ptr_neigh + i);
-					tmp.quality = -edges[*(ptr_neigh + i) - 1].quality;
+					tmp.num = edge_val;
+					tmp.quality = -edges[edge_val - 1].quality;
 					que.push(tmp);
 				}
 			}
@@ -15679,16 +15622,22 @@ int tri_node::set_phase(double phi)
 	return 0;
 }
 
-int tri_node::get_neigh_ptr(long** ptr2ptr, int* num) const
+const std::vector<long>& tri_node::get_neigh_edges() const
 {
-	if (ptr2ptr == NULL || num == NULL)
+	return this->neigh_edges;
+}
+
+int tri_node::add_neigh_edge(long edge_idx)
+{
+	for (auto& edge : this->neigh_edges)
 	{
-		fprintf(stderr, "get_neigh_ptr(): input check failed!\n\n");
-		return -1;
+		if (edge == -1)
+		{
+			edge = edge_idx;
+			return 0;
+		}
 	}
-	*ptr2ptr = const_cast<long*>(this->neigh_edges.empty() ? NULL : this->neigh_edges.data());
-	*num = static_cast<int>(this->neigh_edges.size());
-	return 0;
+	return -1;
 }
 
 int tri_node::set_status(bool b_unwrapped)

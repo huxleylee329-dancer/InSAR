@@ -481,5 +481,21 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
     3. 预先分配 `slc.re` 与 `slc.im`，通过 OpenCV 官方高效实现的通道分离函数 `cv::split` 将通道 0 与通道 1 提取到实部与虚部中，其底层利用 SIMD 矢量化极大地提升了通道分离速度。
     4. 采用 C++ RAII 机制，无论是正常返回还是异常返回，`temp` 均可自动析构释放内存，杜绝了内存泄漏风险。
 
+### 28. 核心计算接口参数与封装安全性重构 (Utils, Dem, Evaluation & Unwrap)
+根据重构性能分析，对密集计算的核心接口进行参数重构，并修复 `tri_node` 类接口对内部私有成员的封装破坏缺陷：
+- **`Utils::xyz2ell` 密集计算接口参数重构（`cv::Mat` 转标量与静态化）**：
+  - **问题**：原接口 `Utils::xyz2ell(const Mat& xyz, Mat& llh)` 接受并返回 OpenCV `Mat` 矩阵。在 `Dem.cpp`（5 处调用点，如 `dem_newton_iter`）与 `Evaluation.cpp`（2 处调用点，如 `Pos`）的高频密集点云及高程解算迭代中，该设计导致在双层像素级循环内频繁、重复地为 1x3 矩阵执行动态内存分配与释放，不仅带来极高的动态内存开销，还增加了 OpenMP 多线程并行的锁竞争风险。此外，调用时还需实例化 `Utils` 对象。
+  - **解决方法**：
+    1. 将 `Utils::xyz2ell` 接口重构为 `static` 静态方法，避免无谓的对象实例化开销。
+    2. 将接口参数完全重构为 C++ 基础类型标量传参：`static int xyz2ell(double x, double y, double z, double& lat, double& lon, double& h)`。
+    3. 相应更新了 `Dem.cpp`、`Evaluation.cpp` 以及测试用例中所有 7 处高频调用逻辑，彻底消除了循环体内所有的 `Mat` 动态分配和生命周期托管开销，大幅提升了并行计算性能，并天然保证了多线程调用下的线程安全性。
+- **`tri_node` 封装破坏接口的安全性重构（去除裸指针与封装写入）**：
+  - **问题**：原接口 `tri_node::get_neigh_ptr` 返回裸的双重指针 `long**`。由于要在 `const` 方法内返回私有成员 `neigh_edges` 的连续数据地址，其内部使用了 `const_cast` 剥离常量属性。这导致外部代码（如 `Utils::init_tri_node` 两个重载）能直接通过该裸指针修改 `tri_node` 内部的私有数据，破坏了面向对象的封装性，并带有潜在的内存越界隐患。
+  - **解决方案**：
+    1. 彻底删除 `tri_node::get_neigh_ptr` 接口。
+    2. 新增安全的只读引用接口 `const std::vector<long>& get_neigh_edges() const`，实现 100% 零拷贝的内存安全只读访问。
+    3. 新增写入接口 `int add_neigh_edge(long edge_idx)`，将原先外部通过指针遍历并写入 `-1` 空闲位置的赋值逻辑安全封装于类内部。
+    4. 全面重构了 `Utils.cpp` 和 `Unwrap.cpp` 中所有 20 余处调用点，外部写入改用新接口 `add_neigh_edge`，只读遍历统一升级为现代的 `for (long edge_val : node.get_neigh_edges())` 范围循环，消除了所有指针偏移算术操作，并顺带清理了所有相关的未引用局部变量警告，使得 `Utils` 与 `Unwrap` 项目能够以 0 警告成功生成。
+
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

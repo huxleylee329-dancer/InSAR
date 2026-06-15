@@ -1161,7 +1161,7 @@ int Unwrap::MCF(
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2;
+	int number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
 	min_val = 1000000000.0;
 	max_val = -1000000000.0;
@@ -1170,20 +1170,17 @@ int Unwrap::MCF(
 	{
 		tt = 100000.0;
 	}
-	long* ptr_neigh = NULL;
 	queue<int> que;
 	//int start = 1;//起始点默认为第一个点，后续可以自己设定
-	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-	if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 	nodes[start - 1].set_status(true);
-	for (int i = 0; i < num_neigh; i++)
+	for (long edge_val : nodes[start - 1].get_neigh_edges())
 	{
-		if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
+		if (edge_val < 1 || edge_val > num_edges)
 		{
 			fprintf(stderr, "MCF(): edge index exceed legal range!\n");
 			return -1;
 		}
-		end2 = (edges + *(ptr_neigh + i) - 1)->end1 == start ? (edges + *(ptr_neigh + i) - 1)->end2 : (edges + *(ptr_neigh + i) - 1)->end1;
+		end2 = (edges + edge_val - 1)->end1 == start ? (edges + edge_val - 1)->end2 : (edges + edge_val - 1)->end1;
 		if (end2 < 1 || end2 > num_nodes)
 		{
 			fprintf(stderr, "MCF(): node index exceed legal range!\n");
@@ -1192,9 +1189,9 @@ int Unwrap::MCF(
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= thresh &&
-			fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
+			fabs((edges + edge_val - 1)->gain) < tt &&
 			nodes[end2 - 1].get_balance() &&
-			!((edges + *(ptr_neigh + i) - 1)->isBoundry && fabs((edges + *(ptr_neigh + i) - 1)->gain) > 0.5)
+			!((edges + edge_val - 1)->isBoundry && fabs((edges + edge_val - 1)->gain) > 0.5)
 			)
 		{
 			que.push(end2);
@@ -1203,13 +1200,14 @@ int Unwrap::MCF(
 			nodes[end2 - 1].get_phase(&phi2);
 			grad = phi2 - phi1;
 			grad = atan2(sin(grad), cos(grad));
-			gain = start > end2 ? 2 * PI * (edges + *(ptr_neigh + i) - 1)->gain : -2 * PI * (edges + *(ptr_neigh + i) - 1)->gain;
+			gain = start > end2 ? 2 * PI * (edges + edge_val - 1)->gain : -2 * PI * (edges + edge_val - 1)->gain;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
 			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
 			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_status(true);
 		}
 	}
+
 	while (que.size() != 0)
 	{
 		number = que.front();
@@ -1219,16 +1217,14 @@ int Unwrap::MCF(
 			fprintf(stderr, "MCF(): node index exceed legal range!\n");
 			return -1;
 		}
-		ret = nodes[number - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[number - 1].get_neigh_edges())
 		{
-			if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
+			if (edge_val < 1 || edge_val > num_edges)
 			{
 				fprintf(stderr, "MCF(): edge index exceed legal range!\n");
 				return -1;
 			}
-			end2 = (edges + *(ptr_neigh + i) - 1)->end1 == number ? (edges + *(ptr_neigh + i) - 1)->end2 : (edges + *(ptr_neigh + i) - 1)->end1;
+			end2 = (edges + edge_val - 1)->end1 == number ? (edges + edge_val - 1)->end2 : (edges + edge_val - 1)->end1;
 			if (end2 < 1 || end2 > num_nodes)
 			{
 				fprintf(stderr, "MCF(): node index exceed legal range!\n");
@@ -1237,9 +1233,9 @@ int Unwrap::MCF(
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= thresh &&
-				fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
+				fabs((edges + edge_val - 1)->gain) < tt &&
 				nodes[end2 - 1].get_balance()&&
-				!((edges + *(ptr_neigh + i) - 1)->isBoundry && fabs((edges + *(ptr_neigh + i) - 1)->gain) > 0.5)
+				!((edges + edge_val - 1)->isBoundry && fabs((edges + edge_val - 1)->gain) > 0.5)
 				)
 			{
 				que.push(end2);
@@ -1248,7 +1244,7 @@ int Unwrap::MCF(
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
-				gain = number > end2 ? 2 * PI * (edges + *(ptr_neigh + i) - 1)->gain : -2 * PI * (edges + *(ptr_neigh + i) - 1)->gain;
+				gain = number > end2 ? 2 * PI * (edges + edge_val - 1)->gain : -2 * PI * (edges + edge_val - 1)->gain;
 				min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
 				max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
@@ -1327,7 +1323,7 @@ int Unwrap::MCF(
 		wrapped_phase.copyTo(unwrapped_phase);
 	}
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2;
+	int number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
 	min_val = 1000000000.0;
 	max_val = -1000000000.0;
@@ -1337,19 +1333,16 @@ int Unwrap::MCF(
 		tt = 100000.0;
 	}
 	int num_edges = static_cast<int>(edges.size());
-	long* ptr_neigh = NULL;
 	queue<int> que;
-	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-	if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 	nodes[start - 1].set_status(true);
-	for (int i = 0; i < num_neigh; i++)
+	for (long edge_val : nodes[start - 1].get_neigh_edges())
 	{
-		if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
+		if (edge_val < 1 || edge_val > num_edges)
 		{
 			fprintf(stderr, "MCF(): edge index exceed legal range!\n");
 			return -1;
 		}
-		end2 = edges[*(ptr_neigh + i) - 1].end1 == start ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+		end2 = edges[edge_val - 1].end1 == start ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 		if (end2 < 1 || end2 > num_nodes)
 		{
 			fprintf(stderr, "MCF(): node index exceed legal range!\n");
@@ -1358,9 +1351,9 @@ int Unwrap::MCF(
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= thresh &&
-			/*!edges[*(ptr_neigh + i) - 1].isBoundry &&*/
-			!(edges[*(ptr_neigh + i) - 1].isBoundry && fabs(edges[*(ptr_neigh + i) - 1].gain) > 0.5) &&
-			fabs(edges[*(ptr_neigh + i) - 1].gain) < tt /*&&
+			/*!edges[edge_val - 1].isBoundry &&*/
+			!(edges[edge_val - 1].isBoundry && fabs(edges[edge_val - 1].gain) > 0.5) &&
+			fabs(edges[edge_val - 1].gain) < tt /*&&
 			nodes[end2 - 1].get_balance()*/
 			)
 		{
@@ -1370,13 +1363,14 @@ int Unwrap::MCF(
 			nodes[end2 - 1].get_phase(&phi2);
 			grad = phi2 - phi1;
 			grad = atan2(sin(grad), cos(grad));
-			gain = start < end2 ? 2 * PI * edges[*(ptr_neigh + i) - 1].gain : -2 * PI * edges[*(ptr_neigh + i) - 1].gain;
+			gain = start < end2 ? 2 * PI * edges[edge_val - 1].gain : -2 * PI * edges[edge_val - 1].gain;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
 			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
 			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_status(true);
 		}
 	}
+
 	while (que.size() != 0)
 	{
 		number = que.front();
@@ -1386,17 +1380,15 @@ int Unwrap::MCF(
 			fprintf(stderr, "MCF(): node index exceed legal range!\n");
 			return -1;
 		}
-		ret = nodes[number - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[number - 1].get_neigh_edges())
 		{
 			// removed unused: end1_row, end2_row, end1_col, end2_col (planned edge endpoint coords, never implemented)
-			if (*(ptr_neigh + i) < 1 || *(ptr_neigh + i) > num_edges)
+			if (edge_val < 1 || edge_val > num_edges)
 			{
 				fprintf(stderr, "MCF(): edge index exceed legal range!\n");
 				return -1;
 			}
-			end2 = edges[*(ptr_neigh + i) - 1].end1 == number ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+			end2 = edges[edge_val - 1].end1 == number ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 			if (end2 < 1 || end2 > num_nodes)
 			{
 				fprintf(stderr, "MCF(): node index exceed legal range!\n");
@@ -1405,9 +1397,9 @@ int Unwrap::MCF(
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= thresh &&
-				/*!edges[*(ptr_neigh + i) - 1].isBoundry &&*/
-				!(edges[*(ptr_neigh + i) - 1].isBoundry && fabs(edges[*(ptr_neigh + i) - 1].gain) > 0.5) &&
-				fabs(edges[*(ptr_neigh + i) - 1].gain) < tt/* &&
+				/*!edges[edge_val - 1].isBoundry &&*/
+				!(edges[edge_val - 1].isBoundry && fabs(edges[edge_val - 1].gain) > 0.5) &&
+				fabs(edges[edge_val - 1].gain) < tt/* &&
 				nodes[end2 - 1].get_balance() */
 				)
 			{
@@ -1417,7 +1409,7 @@ int Unwrap::MCF(
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
-				gain = number < end2 ? 2 * PI * edges[*(ptr_neigh + i) - 1].gain : -2 * PI * edges[*(ptr_neigh + i) - 1].gain;
+				gain = number < end2 ? 2 * PI * edges[edge_val - 1].gain : -2 * PI * edges[edge_val - 1].gain;
 				min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
 				max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
@@ -1470,7 +1462,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 		return -1;
 	}
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2;
+	int number, ret, end2;
 	// removed unused: row_start, col_start (planned start position tracking, never implemented)
 	double distance, grad, phi1, phi2, gain, tt;
 	if (pass) tt = 0.5;
@@ -1478,7 +1470,6 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	{
 		tt = 100000.0;
 	}
-	long* ptr_neigh = NULL;
 	queue<int> que;
 	queue<int> start_que;
 	int nr = unwrapped_phase.rows;
@@ -1581,16 +1572,15 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	{
 		number = que.front();
 		que.pop();
-		nodes[number - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[number - 1].get_neigh_edges())
 		{
-			end2 = (edges + *(ptr_neigh + i) - 1)->end1 == number ?
-				(edges + *(ptr_neigh + i) - 1)->end2 : (edges + *(ptr_neigh + i) - 1)->end1;
+			end2 = (edges + edge_val - 1)->end1 == number ?
+				(edges + edge_val - 1)->end2 : (edges + edge_val - 1)->end1;
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= thresh &&
-				fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
-				!(edges + *(ptr_neigh + i) - 1)->isResidueEdge /*非超过阈值的残差边*/
+				fabs((edges + edge_val - 1)->gain) < tt &&
+				!(edges + edge_val - 1)->isResidueEdge /*非超过阈值的残差边*/
 				)
 			{
 				que.push(end2);
@@ -1598,7 +1588,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
-				gain = number > end2 ? 2 * PI * (edges + *(ptr_neigh + i) - 1)->gain : -2 * PI * (edges + *(ptr_neigh + i) - 1)->gain;
+				gain = number > end2 ? 2 * PI * (edges + edge_val - 1)->gain : -2 * PI * (edges + edge_val - 1)->gain;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
 				nodes[end2 - 1].set_status(true);
 			}
@@ -1661,7 +1651,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 	}
 	wrapped_phase.copyTo(unwrapped_phase);
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2;
+	int number, ret, end2;
 	double distance, grad, phi1, phi2, gain, tt, min_val, max_val;
 	min_val = 1000000000.0;
 	max_val = -1000000000.0;
@@ -1670,7 +1660,6 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 	{
 		tt = 100000.0;
 	}
-	long* ptr_neigh = NULL;
 	//queue<int> que;
 	priority_queue<edge_index> neighbour_que;
 	edge_index tmp_edge_index;
@@ -1689,22 +1678,20 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		}
 	}
 	start = (edges + ix)->end1;
-	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-	if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 	nodes[start - 1].set_status(true);
-	for (int i = 0; i < num_neigh; i++)
+	for (long edge_val : nodes[start - 1].get_neigh_edges())
 	{
-		end2 = (edges + *(ptr_neigh + i) - 1)->end1 == start ? (edges + *(ptr_neigh + i) - 1)->end2 : (edges + *(ptr_neigh + i) - 1)->end1;
+		end2 = (edges + edge_val - 1)->end1 == start ? (edges + edge_val - 1)->end2 : (edges + edge_val - 1)->end1;
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= thresh &&
-			fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
+			fabs((edges + edge_val - 1)->gain) < tt &&
 			nodes[end2 - 1].get_balance() /*&&
 			!nodes[end2 - 1].is_residue_node()*/
 			)
 		{
-			tmp_edge_index.num = *(ptr_neigh + i);
-			tmp_edge_index.quality = (edges + *(ptr_neigh + i) - 1)->quality;
+			tmp_edge_index.num = edge_val;
+			tmp_edge_index.quality = (edges + edge_val - 1)->quality;
 			neighbour_que.push(tmp_edge_index);
 		}
 	}
@@ -1744,23 +1731,20 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 			nodes[end2 - 1].set_status(true);
 
 
-			ret = nodes[end2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-			if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 			number = end2;
-			for (int i = 0; i < num_neigh; i++)
+			for (long edge_val : nodes[number - 1].get_neigh_edges())
 			{
-
-				end2 = (edges + *(ptr_neigh + i) - 1)->end1 == number ? (edges + *(ptr_neigh + i) - 1)->end2 : (edges + *(ptr_neigh + i) - 1)->end1;
+				end2 = (edges + edge_val - 1)->end1 == number ? (edges + edge_val - 1)->end2 : (edges + edge_val - 1)->end1;
 				nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 				if (!nodes[end2 - 1].get_status() &&
 					distance <= thresh &&
-					fabs((edges + *(ptr_neigh + i) - 1)->gain) < tt &&
+					fabs((edges + edge_val - 1)->gain) < tt &&
 					nodes[end2 - 1].get_balance()/*&&
 					!nodes[end2 - 1].is_residue_node()*/
 					)
 				{
-					tmp_edge_index.num = *(ptr_neigh + i);
-					tmp_edge_index.quality = (edges + *(ptr_neigh + i) - 1)->quality;
+					tmp_edge_index.num = edge_val;
+					tmp_edge_index.quality = (edges + edge_val - 1)->quality;
 					neighbour_que.push(tmp_edge_index);
 				}
 			}
@@ -1835,12 +1819,11 @@ int Unwrap::_QualityGuided_MCF_1(
 
 	wrapped_phase.copyTo(unwrapped_phase);
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2, start;
+	int number, end2, start;
 	// removed unused: tt (threshold logic removed from quality-guided MCF)
 	double distance, grad, phi1, phi2, gain, min_val, max_val;
 	min_val = 1000000000.0;
 	max_val = -1000000000.0;
-	long* ptr_neigh = NULL;
 	priority_queue<edge_index> neighbour_que;
 	edge_index tmp_edge_index;
 	bool early_break = false;
@@ -1858,26 +1841,23 @@ int Unwrap::_QualityGuided_MCF_1(
 	}
 	start = edges[ix].end1;
 
-	ret = nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-	if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 	nodes[start - 1].set_status(true);
-	for (int i = 0; i < num_neigh; i++)
+	for (long edge_val : nodes[start - 1].get_neigh_edges())
 	{
-		end2 = edges[*(ptr_neigh + i) - 1].end1 == start ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+		end2 = edges[edge_val - 1].end1 == start ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 		nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= distance_thresh &&
-			!edges[*(ptr_neigh + i) - 1].isBoundry &&
+			!edges[edge_val - 1].isBoundry &&
 			nodes[end2 - 1].get_balance() &&
-			!edges[*(ptr_neigh + i) - 1].isResidueEdge
+			!edges[edge_val - 1].isResidueEdge
 			)
 		{
-			tmp_edge_index.num = *(ptr_neigh + i);
-			tmp_edge_index.quality = edges[*(ptr_neigh + i) - 1].quality;
+			tmp_edge_index.num = edge_val;
+			tmp_edge_index.quality = edges[edge_val - 1].quality;
 			neighbour_que.push(tmp_edge_index);
 		}
 	}
-
 
 	while (neighbour_que.size() != 0)
 	{
@@ -1910,23 +1890,20 @@ int Unwrap::_QualityGuided_MCF_1(
 			nodes[end2 - 1].set_status(true);
 
 
-			ret = nodes[end2 - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-			if (return_check(ret, "tri_node::get_neigh_ptr(*, *)", error_head)) return -1;
 			number = end2;
-			for (int i = 0; i < num_neigh; i++)
+			for (long edge_val : nodes[number - 1].get_neigh_edges())
 			{
-
-				end2 = edges[*(ptr_neigh + i) - 1].end1 == number ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+				end2 = edges[edge_val - 1].end1 == number ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 				nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 				if (!nodes[end2 - 1].get_status() &&
 					distance <= distance_thresh &&
-					!edges[*(ptr_neigh + i) - 1].isBoundry &&
+					!edges[edge_val - 1].isBoundry &&
 					nodes[end2 - 1].get_balance()&&
-					!edges[*(ptr_neigh + i) - 1].isResidueEdge
+					!edges[edge_val - 1].isResidueEdge
 					)
 				{
-					tmp_edge_index.num = *(ptr_neigh + i);
-					tmp_edge_index.quality = edges[*(ptr_neigh + i) - 1].quality;
+					tmp_edge_index.num = edge_val;
+					tmp_edge_index.quality = edges[edge_val - 1].quality;
 					neighbour_que.push(tmp_edge_index);
 				}
 			}
@@ -1987,11 +1964,10 @@ int Unwrap::_QualityGuided_MCF_2(
 		return -1;
 	}
 	int num_nodes = static_cast<int>(nodes.size());
-	int num_neigh, number, ret, end2;
+	int number, ret, end2;
 	// removed unused: row_start, col_start (planned start position tracking, never implemented)
 	// removed unused: tt (threshold logic not used in this quality-guided variant)
 	double distance, grad, phi1, phi2, gain;
-	long* ptr_neigh = NULL;
 	queue<int> que;
 	//queue<int> start_que;
 	int nr = unwrapped_phase.rows;
@@ -2010,15 +1986,14 @@ int Unwrap::_QualityGuided_MCF_2(
 	{
 		number = que.front();
 		que.pop();
-		nodes[number - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
-		for (int i = 0; i < num_neigh; i++)
+		for (long edge_val : nodes[number - 1].get_neigh_edges())
 		{
-			end2 = edges[*(ptr_neigh + i) - 1].end1 == number ?
-				edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+			end2 = edges[edge_val - 1].end1 == number ?
+				edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
 			if (!nodes[end2 - 1].get_status() &&
 				distance <= distance_thresh &&
-				!edges[*(ptr_neigh + i) - 1].isBoundry
+				!edges[edge_val - 1].isBoundry
 				)
 			{
 				que.push(end2);
@@ -2026,7 +2001,7 @@ int Unwrap::_QualityGuided_MCF_2(
 				nodes[end2 - 1].get_phase(&phi2);
 				grad = phi2 - phi1;
 				grad = atan2(sin(grad), cos(grad));
-				gain = number < end2 ? 2 * PI * edges[*(ptr_neigh + i) - 1].gain : -2 * PI * edges[*(ptr_neigh + i) - 1].gain;
+				gain = number < end2 ? 2 * PI * edges[edge_val - 1].gain : -2 * PI * edges[edge_val - 1].gain;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
 				nodes[end2 - 1].set_status(true);
 			}
@@ -2192,7 +2167,7 @@ int Unwrap::QualityGuided_MCF(
 
 	// removed unused: end1 (struct member .end1 accessed directly, local var never needed)
 	int start, end2, ambig, i;
-	long* ptr_neigh = NULL; int num_neigh, row, col, num_triangle, positive, negative;
+	int row, col, num_triangle, positive, negative;
 	double distance, phi, cluster_distance_thresh = 1.2;//低质量聚类距离阈值
 	Mat zeros = Mat::zeros(nr, nc, CV_32S);
 	Mat ambiguity, new_mask;
@@ -2219,14 +2194,13 @@ int Unwrap::QualityGuided_MCF(
 			{
 				unwrapped_neighbour_que.push(start);
 			}
-			nodes[start - 1].get_neigh_ptr(&ptr_neigh, &num_neigh);
 			nodes[start - 1].get_pos(&row, &col);//设置新的mask
 			new_mask.at<int>(row, col) = 1;
 			_mask_sentinel.at<int>(row, col) = 0;//未解缠的像素掩膜更新
 			nodes[start - 1].set_balance(false);//已加入队列设置为不平衡，避免重复加入队列
-			for (int i = 0; i < num_neigh; i++)
+			for (long edge_val : nodes[start - 1].get_neigh_edges())
 			{
-				end2 = edges[*(ptr_neigh + i) - 1].end1 == start ? edges[*(ptr_neigh + i) - 1].end2 : edges[*(ptr_neigh + i) - 1].end1;
+				end2 = edges[edge_val - 1].end1 == start ? edges[edge_val - 1].end2 : edges[edge_val - 1].end1;
 				nodes[start - 1].get_distance(nodes[end2 - 1], &distance);
 				if (
 					distance <= cluster_distance_thresh && //小于低质量聚类距离阈值则为同一类

@@ -37,11 +37,10 @@ public:
 	* 参数1 输入相位
 	*/
 	int set_phase(double phi);
-	/*获取邻接边指针
-	* 参数1 指向邻接边指针的指针（返回值）
-	* 参数2 邻接边个数指针（返回值）
-	*/
-	int get_neigh_ptr(long** ptr2ptr, int* num) const;
+	/*获取邻接边数组引用*/
+	const std::vector<long>& get_neigh_edges() const;
+	/*安全添加邻接边序号*/
+	int add_neigh_edge(long edge_idx);
 	/*改变解缠状态
 	* 参数1 是否已经解缠
 	*/
@@ -782,7 +781,7 @@ public:
 	* 参数1 84坐标系坐标
 	* 参数2 经纬高坐标系坐标（度/度/米）
 	*/
-	int xyz2ell(const Mat& xyz, Mat& llh);
+	static int xyz2ell(double x, double y, double z, double& lat, double& lon, double& h);
 	/*经纬高坐标系转84坐标系
 	* 参数1 经纬高坐标系坐标（纬度/经度/高度）
 	* 参数2 84坐标系坐标
