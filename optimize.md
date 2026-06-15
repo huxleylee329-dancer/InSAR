@@ -179,7 +179,7 @@
 - [x] **OMP 并行循环内逐行创建 Mat 对象** — `Registration.cpp:1070-1076,1714-1718`
   - 每行创建 `Mat tmp` 和 `Mat result`（实际是逐行创建，并非逐像素，但大图时仍会产生数万次频繁分配与锁竞争）
   - 应移到循环外预分配
-- [ ] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Registration.cpp:19-56`
+- [x] **`return_check`/`parallel_check`/`parallel_flag_change` 与其他模块重复** — `Registration.cpp:19-56`
   - 应提取到公共头文件
 
 ### P2 — 建议
@@ -424,7 +424,7 @@
 - [x] **`GDALAllRegister`/`GDALDestroyDriverManager` 调用不当** — `FormatConversion.cpp:888,944`
   - 每次调用都注册和销毁驱动管理器，应只调用一次
   - 修复：在 FormatConversion.cpp 中引入 std::call_once 进行线程安全懒加载注册，并彻底移除了所有的 GDALDestroyDriverManager() 销毁调用。
-- [ ] **`BurstIndices::operator=` 返回值应为引用** — `FormatConversion.h:1129`
+- [x] **`BurstIndices::operator=` 返回值应为引用** — `FormatConversion.h:1129`
   - 且应检查自赋值
 
 ### P3 — 优化
@@ -708,7 +708,7 @@
   - 在 Utils、Filter、Unwrap、Registration、Deflat、SBAS 六个模块中重复定义
 - [x] **删除 `parallel_flag_change()`（死代码）**
   - 按值传递 volatile 修改无效，在所有模块中均未被实际调用
-- [ ] **`volatile bool` 改为 `std::atomic<bool>`**
+- [x] **`volatile bool` 改为 `std::atomic<bool>`**
   - 出现在 Filter、Unwrap、Dem、Utils 中
   - `volatile` 不保证多线程内存可见性
 
@@ -717,9 +717,9 @@
 - [x] **统一 `PI` 常量使用**
   - Filter.cpp、Unwrap.cpp、Deflat.cpp、Utils.cpp 中多处手写 `3.1415926535`（精度不足）
   - 应统一使用 `Package.h` 中的 `PI` 宏
-- [ ] **统一光速常量使用**
+- [x] **统一光速常量使用**
   - Deflat.cpp 中手写 `300000000.0`，应使用 `VEL_C`
-- [ ] **删除所有硬编码调试路径**
+- [x] **删除所有硬编码调试路径**
   - Utils.cpp、Dem.cpp、Unwrap.cpp、SLC_simulator.cpp 中共 10+ 处
 - [ ] **清理所有 `#if 0` 和注释掉的死代码**
   - Unwrap.cpp 约 670 行、SBAS.cpp 约 160 行、Evaluation.cpp 约 190 行、各模块散布
@@ -734,6 +734,6 @@
   - `defficiency` → `deficiency`（Utils.cpp、Registration.cpp）
   - `invalide` → `invalid`（FormatConversion.cpp）
   - `failded` → `failed`（Deflat.cpp）
-- [ ] **统一赋值运算符返回引用**
+- [x] **统一赋值运算符返回引用**
   - ComplexMat、tri_node、triangle、tri_edge、node_index、SBAS_node、SBAS_edge、SBAS_triangle、Position、Velocity、OSV、BurstIndices
 - [ ] **统一注释风格为 Doxygen**

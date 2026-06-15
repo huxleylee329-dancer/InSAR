@@ -357,7 +357,7 @@ int Evaluation::PhasePreserve(const char* master_h5,
 				count2++;
 		}
 	relevant_error = sqrt(relevant_error / count2);
-	util.cvmat2bin("D:\\Test\\Error.bin", Error);
+	// util.cvmat2bin("D:\\Test\\Error.bin", Error);
 	*Output = sqrt(PhaseError / count);
 	return 0;
 }

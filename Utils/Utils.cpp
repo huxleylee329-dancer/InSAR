@@ -7384,12 +7384,12 @@ int Utils::homogeneous_selection_and_phase_linking(
 	//gamma = gamma / ((n_images - 1) * n_images / 2);
 	//homo_index.convertTo(homo_index, CV_64F);
 	//cvmat2bin("E:\\working_dir\\papers\\homogeneous_selection\\gamma.bin", gamma);
-	FormatConversion conversion;
-	conversion.creat_new_h5("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\homo_index.h5");
-	conversion.write_array_to_h5("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\homo_index.h5",
-		"homo_index", homo_index);
-	cvmat2bin("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\phase.bin", phase);
-	cvmat2bin("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\coherence.bin", coherence);
+	// FormatConversion conversion;
+	// conversion.creat_new_h5("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\homo_index.h5");
+	// conversion.write_array_to_h5("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\homo_index.h5",
+	// 	"homo_index", homo_index);
+	// cvmat2bin("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\phase.bin", phase);
+	// cvmat2bin("E:\\working_dir\\papers\\homogeneous_selection\\Sentinel\\sceneA\\singlepol\\coherence.bin", coherence);
 	return 0;
 }
 
@@ -15699,7 +15699,7 @@ tri_node::~tri_node()
 	//std::cout << "destructor" << "\n";
 }
 
-tri_node tri_node::operator=(const tri_node& src)
+tri_node& tri_node::operator=(const tri_node& src)
 {
 	if (src.neigh_edges == this->neigh_edges && this->neigh_edges != NULL)//两者相等
 	{

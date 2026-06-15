@@ -28,7 +28,7 @@ public:
 	tri_node(int, int, int, double);
 	~tri_node();
 	/*赋值函数（深拷贝赋值）*/
-	tri_node operator = (const tri_node& src);
+	tri_node& operator = (const tri_node& src);
 	/*获取节点相位
 	* 参数1 相位指针（返回值）
 	*/
@@ -168,7 +168,7 @@ struct triangle
 		this->residue = cp.residue;
 	}
 	/*赋值(深拷贝)*/
-	triangle operator= (const triangle& cp)
+	triangle& operator= (const triangle& cp)
 	{
 		this->edge1 = cp.edge1;
 		this->edge2 = cp.edge2;
@@ -246,7 +246,7 @@ struct tri_edge
 		delta_height = cp.delta_height; MC = cp.MC; phase_diff = cp.phase_diff;
 	}
 	/*赋值函数（深拷贝赋值）*/
-	tri_edge operator = (const tri_edge& cp)
+	tri_edge& operator = (const tri_edge& cp)
 	{
 		gain = cp.gain;
 		quality = cp.quality;
@@ -297,7 +297,7 @@ struct node_index
 		this->row = cp.row; this->col = cp.col; this->quality = cp.quality;
 	}
 	/*赋值函数*/
-	node_index operator = (const node_index& cp)
+	node_index& operator = (const node_index& cp)
 	{
 		this->row = cp.row; this->col = cp.col; this->quality = cp.quality;
 		return *this;
@@ -331,7 +331,7 @@ inline bool return_check(int ret, const char* detail_info, const std::string& er
 }
 
 
-inline bool parallel_check(volatile bool parallel_flag, const char* detail_info,
+inline bool parallel_check(bool parallel_flag, const char* detail_info,
 	const char* parallel_error_head)
 {
 	if (!parallel_flag)

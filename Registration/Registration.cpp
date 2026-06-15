@@ -4,6 +4,7 @@
 #include<string.h>
 #include "stdafx.h"
 #include<math.h>
+#include <atomic>
 #include"..\include\Registration.h"
 #include"..\include\FormatConversion.h"
 #ifdef _DEBUG
@@ -195,18 +196,7 @@ namespace
 }
 
 
-inline bool parallel_flag_change(volatile bool parallel_flag, int ret)
-{
-	if (ret < 0)
-	{
-		parallel_flag = false;
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+
 
 Registration::Registration()
 {
@@ -659,7 +649,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 	
 	int ret;
-	volatile bool parallel_flag = true;
+	std::atomic<bool> parallel_flag(true);
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i <= nr - 1; i++)
@@ -760,7 +750,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 	int ret;
 	Mat coherence;
 	Utils util;
-	volatile bool parallel_flag = true;
+	std::atomic<bool> parallel_flag(true);
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < nsubc; i++)

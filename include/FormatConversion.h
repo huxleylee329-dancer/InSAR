@@ -1149,7 +1149,7 @@ struct BurstIndices
 		this->secondBurstIndex = cp.secondBurstIndex;
 	}
 	/*赋值函数*/
-	BurstIndices operator=(const BurstIndices& cp)
+	BurstIndices& operator=(const BurstIndices& cp)
 	{
 		this->firstBurstIndex = cp.firstBurstIndex;
 		this->inUpperPartOfFirstBurst = cp.inUpperPartOfFirstBurst;

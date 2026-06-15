@@ -8,6 +8,8 @@
 
 | 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
 | :--- | :--- | :--- | :--- | :--- |
+| `工作区现场修改` | 2026-06-15 | AI | Registration, Unwrap, Evaluation, Utils, FormatConversion | 1. 将 OMP 并行错误控制的 volatile bool 升级为 std::atomic<bool>，规范 parallel_check 形参为 bool 并清理 Registration 遗留的死代码。<br>2. 屏蔽 Evaluation (D:\Test) 和 Utils (E:\working_dir) 的硬编码调试写盘路径。<br>3. 统一 tri_node, triangle, tri_edge, node_index, BurstIndices 的赋值运算符返回引用（T&），消除不必要的对象拷贝开销。 |
+| `b38f5f54` | 2026-06-15 | lewis | globalparam.h, Package.h, ComplexMat.h, Utils.h, SLC_simulator.h | 1. 修复 Heap 类内存泄漏与初始分配约 2GB 的问题，改用 std::vector 动态管理内存并纠正 empty() 语义。<br>2. 清理 Position/Velocity/OSV 冗余的手写拷贝构造与赋值操作符。<br>3. 统一清理公共头文件中冗余的 include guard，保留 #pragma once。 |
 | `工作区现场修改` | 2026-06-12 | AI | Evaluation, Dem, Utils | 1. 提炼公用静态辅助函数 `Utils::newton_iter_core` 并声明在 `Utils.h` 中。<br>2. 移除 `Dem.cpp` 中的局部 `newton_iter_core` 静态定义，并将所有 5 处调用重定向为 `Utils::newton_iter_core`。<br>3. 重构 `Evaluation::Pos()`，将 180 多行的冗余牛顿迭代矩阵计算替换为对公用静态 `Utils::newton_iter_core` 的单行调用。<br>4. 修复 `Evaluation::Unwrap()` 中计算主卫星斜距时缺失 getPosition 调用导致使用未初始化 Position 变量的严重 Bug。<br>5. 提炼 `readSatelliteParams` 内部静态辅助函数，消除 `PhasePreserve()` 和 `Unwrap()` 内部主/辅星数据读取的高重复代码约 50 行。<br>6. 纠正 `Evaluation::Unwrap()` 校验失败输出错误信息中函数名称不匹配的问题。<br>7. 注释屏蔽 `Evaluation::FFT2()` 中声明但从未被读取过的未引用局部变量 `slave_max`。<br>8. 规范 `Evaluation.h` 头文件的防重复包含宏，补充传统的 include guard 宏保护。<br>9. 将 `Evaluation::FFT2` 移至 `private` 作用域下，防止外部依赖。<br>10. 为 `Evaluation::Pos` 补全 Doxygen 参数说明，并将其头文件参数命名修改为与实现一致。 |
 | `工作区现场修改` | 2026-06-12 | AI | Dem | 1. 提炼 static 辅助函数 newton_iter_core 以重构高程反演计算，消除了 phase2dem_newton_iter, dem_newton_iter, dem_newton_iter_test, dem_newton_iter_14, dem_newton_iter_14_dualfreqpingpong 五个函数中约 800 行冗余 of 牛顿迭代代码。<br>2. 注释屏蔽 3 处硬编码本机的绝对调试盘写路径（error.bin 和 KK2.h5），杜绝环境适配报错隐患。<br>3. 将用于 OpenMP 并行错误控制的 volatile bool parallel_flag 升级为 std::atomic<bool>，规避并发可见性与数据竞争风险。<br>4. 优化平地相位加回循环性能，提取拟合系数到循环外，使用标定代数表达式代替内层循环内重复创建 Mat 和矩阵乘法运算。<br>5. 重命名含义模糊且不规范的局部变量 xxxx 为 orbit_idx，提高轨道索引选取的可读性。<br>6. 规范 Dem.h 头文件中 phase2dem_newton_iter 的“参数N”数字编号注释为 Doxygen 标准的 @param 格式，提供 VS 智能感知提示。 |
 | `工作区现场修改` | 2026-06-12 | AI | SBAS | 1. 重构整合 writeDIMACS_temporal/spatial，提取静态辅助函数 writeDIMACS_common，去重约 400 行代码。<br>2. 合并 compute_spatialTemporal_residue 和 compute_high_coherence_residue，清理大段注释死代码并修正拼写错误。<br>3. 重构 compute_high_coherence_residue_by_gradient，消除 170 行嵌套判断，修复 edge3 判定 Bug。<br>4. 修复 GET_NEXT_LINE 宏缩进排版错位问题。<br>5. 提取 refinement_and_reflattening 像素循环中的拟合系数至循环外，消除百万次越界判定并提升性能。<br>6. 规范 POD 结构体拷贝与赋值操作，SBAS_node 返回自身引用，SBAS_edge/SBAS_triangle 使用默认拷贝赋值以符合标准。<br>7. 优化 12 处函数的只读 Mat 参数为 `const Mat&`，提升常量正确性并支持传入临时变量。<br>8. 将 SBAS_node::neigh_edges 从原始指针升级为 `std::vector<int>`，删除手写拷贝/赋值/析构，实现自动生命周期管理。<br>9. 替换 3 处路径拼接 `sprintf` 为安全的 `snprintf`，防范缓冲区溢出。<br>10. 重构私有成员 `char error_head[256]` 为 `std::string`，并在 `Utils.h` 中新增内联重载以兼容 60 余处原有调用，提升内存安全性。 |
@@ -341,6 +343,28 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **`FFT2` 接口可见性收缩与 `Pos()` 参数命名规范及 Doxygen 注释补全**：
   - **问题**：`Evaluation::FFT2` 声明为公有成员函数，但仅在模块内部被调用，暴露了不必要的内部细节；`Evaluation::Pos` 缺少 Doxygen 参数描述，且其头文件声明中的参数命名（`lon_Output`/`height_Output`）与实现文件（`lon_abs`/`height_abs`）不一致，不便于理解。
   - **解决方案**：将 `FFT2` 函数移动到 `Evaluation.h` 的 `private:` 作用域下，防止外部依赖；在 `Evaluation.h` 中为 `Pos` 补充详尽的 Doxygen 格式 `@param` 说明，并将参数命名同步修改为与实现一致的 `lon_abs` 和 `height_abs`。
+
+### 17. 跨模块共性问题优化 (Registration, Unwrap, Evaluation, Utils, FormatConversion)
+- **OpenMP 错误标志线程安全升级与接口清理**：
+  - **问题**：在 `Registration.cpp` 和 `Unwrap.cpp` 中使用 `volatile bool parallel_flag` 做多线程（OpenMP）报错控制。但 `volatile` 无法防范多线程并发读写的数据竞争，内存可见性得不到保障；且 `Registration.cpp` 中仍残留已被弃用的 `parallel_flag_change` 传值 volatile 错误死代码。
+  - **解决方法**：引入 `<atomic>`，将变量升级为线程安全的 `std::atomic<bool> parallel_flag(true)`；彻底删除了 `Registration.cpp` 中的 `parallel_flag_change` 死代码；同时将全局 `parallel_check` 接口形参类型由 `volatile bool` 规范化为普通 `bool`。
+- **清除硬编码本地调试路径**：
+  - **问题**：在 `Evaluation.cpp` 中存在 `D:\\Test\\Error.bin` 的硬编码导出，以及在 `Utils.cpp` 中存在向本地绝对路径 `E:\\working_dir\\...` 读写 HDF5 / bin 文件的操作。这些硬编码在不适配的用户机上运行时会引发写入失败错误。
+  - **解决方法**：将这两处属于纯本地算法研发调试遗留的写操作整体进行注释屏蔽，彻底消除了环境依赖报错的隐患。
+- **赋值运算符统一返回引用（`T&`）以减少临时对象拷贝**：
+  - **问题**：`tri_node`, `triangle`, `tri_edge`, `node_index` (定义于 `Utils.h`) 以及 `BurstIndices` (定义于 `FormatConversion.h`) 的自定义 `operator=` 原本均为按值返回（`T`），会导致不必要的对象浅/深拷贝开销，且不符合标准 C++ 的链式赋值规范。
+  - **解决方法**：将上述 5 个结构体/类的赋值运算符统一优化为返回自身引用（`T&`），并在 `Utils.cpp` 和 `FormatConversion.h` 中同步修改实现，提升了大规模数据操作时的内存拷贝效率，也规范了 C++ 语义。
+
+### 18. 公共头文件重构与 Heap 内存泄露优化 (globalparam.h, Package.h, ComplexMat.h, Utils.h, SLC_simulator.h)
+- **`Heap` 类严重内存问题与解缠堆重构**：
+  - **问题**：在 `globalparam.h` 中，`Heap` 类的类内成员初始化部分直接对 `x`、`y` 和 `queue` 使用 `malloc` 申请了 3 个 1 亿元素的超大静态数组（总大小约 2GB）。这导致在任何实例化该类时，都会立即占用极高内存；更严重的是，析构函数为空，从未调用 `free` 来释放内存，造成了巨大的内存泄漏。此外，`Heap::empty()` 原本返回的是 `size` 值，其含义与 C++ STL 的 `std::vector::empty()` 完全相反（原本为非空返回 true，空返回 false）。
+  - **解决方法**：改用更现代且具自动生存期管理的 `std::vector<int>` 和 `std::vector<double>`。构造函数中改为调用 `resize` 初始预分配 1,000,000 个元素（约占 16MB 内存），既满足了常规解缠规模，又规避了频繁的内存重分配开销；在 `push` 中加入了动态检测与扩容机制（容量超限时倍增），保证了大图解缠的鲁棒性。析构函数保持 default 以实现自动释放，同时将 `empty()` 修改为标准的 `size == 0`。
+- **POD 结构体拷贝与赋值冗余清除**：
+  - **问题**：在 `Package.h` 中，为仅包含 POD 变量的 `Position`、`Velocity` 和 `OSV` 结构体手写了冗余的拷贝构造函数与赋值运算符。这些手写函数不仅对只包含简单类型的结构体毫无必要，且在原本的 `operator=` 中采用的是按值返回，既影响效率，又容易引发不必要的浅拷贝隐患。
+  - **解决方法**：彻底删除了这 3 个结构体内的自定义拷贝构造与赋值运算符，完全交由编译器默认生成的高效且安全的默认版本（自动支持按引用返回）。
+- **公共头文件 Guard 冗余清理**：
+  - **问题**：`Package.h`、`ComplexMat.h`、`Utils.h`、`SLC_simulator.h` 中同时使用了 `#pragma once` 编译器指令和 `#ifndef ...` 的宏 Guard。这种多重包含保护没有实际必要，且破坏了现代 C++ 头文件的简洁性。
+  - **解决方法**：统一清除了上述 4 个头文件中的 `#ifndef` / `#define` / `#endif` 传统宏，统一使用更现代且高效的单个 `#pragma once` 指令作为包含保护。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

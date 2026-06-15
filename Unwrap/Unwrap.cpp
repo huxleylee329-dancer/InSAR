@@ -7,6 +7,7 @@
 #include<tchar.h>
 #include <atlconv.h>
 #include<queue>
+#include <atomic>
 
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
@@ -2794,7 +2795,7 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 	int width = padded.cols;
 	int height = padded.rows;
 	int i, j;
-	volatile bool parallel_flag = true;
+	std::atomic<bool> parallel_flag(true);
 	int ret = 0;
 #pragma omp parallel for schedule(guided) \
 	private(ret)
