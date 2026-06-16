@@ -18,7 +18,7 @@ public:
 	* @param sigma                                      后向散射系数(返回值)
 	* @return 成功返回0，否则返回-1
 	*/
-	int reflectivity(Mat& incidenceAngle, Mat& sigma);
+	int reflectivity(const Mat& incidenceAngle, Mat& sigma);
 	/*@brief 计算后向散射系数
 	* @param DEM_x                                      DEM转换坐标（X）
 	* @param DEM_y                                      DEM转换坐标（Y）
@@ -30,12 +30,12 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int computeIncidenceAngle(
-		Mat& DEM_x,
-		Mat& DEM_y,
-		Mat& DEM_z,
-		Mat& satellitePos_x,
-		Mat& satellitePos_y,
-		Mat& satellitePos_z,
+		const Mat& DEM_x,
+		const Mat& DEM_y,
+		const Mat& DEM_z,
+		const Mat& satellitePos_x,
+		const Mat& satellitePos_y,
+		const Mat& satellitePos_z,
 		Mat& sigma
 	);
 	/*@brief 根据轨道和场景DEM以及成像参数生成单视复图像（单发单收）
@@ -60,8 +60,8 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int generateSLC(
-		Mat& stateVec,
-		Mat& dem,
+		const Mat& stateVec,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		double lon_space,
@@ -100,8 +100,8 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int generateSLC_spacety(
-		Mat& stateVec,
-		Mat& dem,
+		const Mat& stateVec,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		double lon_space,
@@ -119,8 +119,8 @@ public:
 		ComplexMat& slc
 	);
 	int generateSLC_optimized(
-		Mat& stateVec,
-		Mat& dem,
+		const Mat& stateVec,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		double lon_space,
@@ -166,9 +166,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int generateSLC(
-		Mat& stateVec1,
-		Mat& stateVec2,
-		Mat& dem,
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		int sceneHeight1,
@@ -221,9 +221,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int generateSLC(
-		Mat& stateVec1,
-		Mat& stateVec2,
-		Mat& dem,
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		int sceneHeight1,
@@ -270,9 +270,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int generateSlantrange(
-		Mat& stateVec1,
-		Mat& stateVec2,
-		Mat& dem,
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		const Mat& dem,
 		double lon_upperleft,
 		double lat_upperleft,
 		int sceneHeight,
@@ -304,9 +304,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int SLC_deramp(
-		Mat& mappedDEM,
-		Mat& mappedLat,
-		Mat& mappedLon,
+		const Mat& mappedDEM,
+		const Mat& mappedLat,
+		const Mat& mappedLon,
 		const char* slcH5File1,
 		const char* slcH5File2,
 		const char* slcH5File3,
@@ -327,12 +327,12 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int SLC_deramp_14(
-		vector<string>& slcH5FilesList,
-		vector<string>& slcH5FilesListOut,
+		const vector<string>& slcH5FilesList,
+		const vector<string>& slcH5FilesListOut,
 		int master_index,
-		Mat& mappedDEM,
-		Mat& mappedLat,
-		Mat& mappedLon,
+		const Mat& mappedDEM,
+		const Mat& mappedLat,
+		const Mat& mappedLon,
 		int mode
 	);
 	/*@brief 乒乓模式重新加入参考相位
@@ -350,9 +350,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int SLC_reramp(
-		Mat& mappedDEM,
-		Mat& mappedLat,
-		Mat& mappedLon,
+		const Mat& mappedDEM,
+		const Mat& mappedLat,
+		const Mat& mappedLon,
 		const char* slcH5File1,
 		const char* slcH5File2,
 		const char* slcH5File3,
@@ -449,7 +449,7 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int pingpong_MLE(
-		Mat& phase_reference,
+		const Mat& phase_reference,
 		Mat& wrapped_phase_low,
 		Mat& wrapped_phase_high,
 		Mat& outphase,
@@ -466,14 +466,13 @@ public:
 		double end1,
 		double start2,
 		double end2,
-		Mat& statevec1,
-		Mat& statevec2,
+		const Mat& statevec1,
+		const Mat& statevec2,
 		double prf,
-		string demPath
+		const string& demPath
 	);
 private:
-	char error_head[256];
-
+	std::string error_head;
 };
 
 

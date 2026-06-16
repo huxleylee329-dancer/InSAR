@@ -640,7 +640,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{
-		fprintf(stderr, "dem_newton_iter(): invalide unwrapped_phase !\n");
+		fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
 		return -1;
 	}
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);

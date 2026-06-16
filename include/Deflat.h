@@ -13,7 +13,7 @@ public:
 	 参数1 轨道数据
 	 参数2 拟合系数（返回值）
 	*/
-	int Orbit_Polyfit(Mat& Orbit, Mat& coef);
+	int Orbit_Polyfit(const Mat& Orbit, Mat& coef);
 	/*获取地面点的卫星成像方位向时刻
 	 参数1 卫星轨道中心方位向时刻
 	 参数2 轨道拟合系数
@@ -55,10 +55,10 @@ public:
 		Mat& phase,
 		Mat& phase_deflat,
 		Mat& flat_phase,
-		Mat auxi,
-		Mat gcps,
-		Mat orbit_main,
-		Mat orbit_slave,
+		const Mat& auxi,
+		const Mat& gcps,
+		const Mat& orbit_main,
+		const Mat& orbit_slave,
 		int mode,
 		int multilook_times
 	);
@@ -361,7 +361,7 @@ public:
 		Mat& mappedLat,
 		Mat& mappedLon,
 		const char* slcH5File,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 	/*@brief 计算斜距
 	* @param slant_range                            斜距（返回值）
@@ -378,7 +378,7 @@ public:
 		Mat& mappedLat,
 		Mat& mappedLon,
 		const char* slcH5File,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 	/*@brief 计算参考斜距和卫星轨道
 	* @param slant_range                            参考斜距（返回值）

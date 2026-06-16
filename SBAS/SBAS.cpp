@@ -847,15 +847,14 @@ int SBAS::readDIMACS(
 	vector<SBAS_node>& nodes,
 	vector<SBAS_edge>& edges,
 	vector<SBAS_triangle>& triangle,
-	double* obj_value,
+	double& obj_value,
 	double* flowcount
 )
 {
 	if (DIMACS_file_solution == NULL ||
 		edges.size() < 3 ||
 		nodes.size() < 3 ||
-		triangle.size() < 1 ||
-		!obj_value
+		triangle.size() < 1
 		)
 	{
 		fprintf(stderr, "readDIMACS(): input check failed!\n\n");
@@ -905,13 +904,13 @@ int SBAS::readDIMACS(
 			break;
 		}
 	}
-	if (sscanf(&(instring[i]), "%lf", obj_value) != 1)
+	if (sscanf(&(instring[i]), "%lf", &obj_value) != 1)
 	{
 		if (fp) fclose(fp);
 		fprintf(stderr, "read_DIMACS(): unknown file format!\n\n");
 		return -1;
 	}
-	if (*obj_value < 0.0)
+	if (obj_value < 0.0)
 	{
 		if (fp) fclose(fp);
 		fprintf(stderr, "readDIMACS(): this problem can't be solved(unbounded or infeasible)!\n\n");

@@ -194,7 +194,7 @@ inline float ReverseFloat(const float inFloat)
 //	{
 //		sbas.writeDIMACS_spatial(mcf_problem.c_str(), nodes, edges, triangles);
 //		unwrap.mcf_delaunay(mcf_problem.c_str(), path1.c_str());
-//		sbas.readDIMACS(mcf_solution.c_str(), nodes, edges, triangles, &obj);
+//		sbas.readDIMACS(mcf_solution.c_str(), nodes, edges, triangles, obj);
 //	}
 //	sbas.floodFillUnwrap(nodes, edges, 1, false);
 //	sbas.retrieve_unwrapped_phase(nodes, phase);
@@ -214,19 +214,19 @@ inline float ReverseFloat(const float inFloat)
 //	ret = sscanf(argv[1], "%d", &numOfImages);
 //	if (ret != 1)
 //	{
-//		fprintf(stderr, "invalide input format!\n");
+//		fprintf(stderr, "invalid input format!\n");
 //		return -1;
 //	}
 //	ret = sscanf(argv[2], "%d", &blocksize);
 //	if (ret != 1)
 //	{
-//		fprintf(stderr, "invalide input format!\n");
+//		fprintf(stderr, "invalid input format!\n");
 //		return -1;
 //	}
 //	ret = sscanf(argv[3], "%d", &wndsize);
 //	if (ret != 1)
 //	{
-//		fprintf(stderr, "invalide input format!\n");
+//		fprintf(stderr, "invalid input format!\n");
 //		return -1;
 //	}
 //	if (wndsize % 2 == 0) wndsize++;

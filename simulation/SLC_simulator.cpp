@@ -130,8 +130,7 @@ Mat conv2(const Mat& img, const Mat& ikernel, ConvolutionType type)
 }
 SLC_simulator::SLC_simulator()
 {
-	memset(this->error_head, 0, 256);
-	strcpy(this->error_head, "SLC_SIMULATOR_ERROR: error happens when using ");
+	this->error_head = "SLC_SIMULATOR_ERROR: error happens when using ";
 }
 
 SLC_simulator::~SLC_simulator()
@@ -139,7 +138,7 @@ SLC_simulator::~SLC_simulator()
 
 }
 
-int SLC_simulator::reflectivity(Mat& incidenceAngle, Mat& sigma)
+int SLC_simulator::reflectivity(const Mat& incidenceAngle, Mat& sigma)
 {
 	if (incidenceAngle.empty() || (incidenceAngle.type() != CV_64F && incidenceAngle.type() != CV_32F))
 	{
@@ -188,12 +187,12 @@ int SLC_simulator::reflectivity(Mat& incidenceAngle, Mat& sigma)
 }
 
 int SLC_simulator::computeIncidenceAngle(
-	Mat& DEM_x,
-	Mat& DEM_y,
-	Mat& DEM_z,
-	Mat& satellitePos_x,
-	Mat& satellitePos_y,
-	Mat& satellitePos_z,
+	const Mat& DEM_x,
+	const Mat& DEM_y,
+	const Mat& DEM_z,
+	const Mat& satellitePos_x,
+	const Mat& satellitePos_y,
+	const Mat& satellitePos_z,
 	Mat& sigma
 )
 {
@@ -337,8 +336,8 @@ int SLC_simulator::computeIncidenceAngle(
 }
 
 int SLC_simulator::generateSLC(
-	Mat& stateVec,
-	Mat& dem, 
+	const cv::Mat& stateVec,
+	const cv::Mat& dem, 
 	double lon_upperleft,
 	double lat_upperleft,
 	double lon_space,
@@ -354,7 +353,7 @@ int SLC_simulator::generateSLC(
 	double acquisitionStopTime,
 	double SNR,
 	ComplexMat& slc,
-	Mat& GCP
+	cv::Mat& GCP
 )
 {
 	if (stateVec.cols != 7 ||
@@ -489,11 +488,7 @@ int SLC_simulator::generateSLC(
 					double distance = slant_range.at<double>(ii, jj);
 					int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
 					int rangeIndex = cvRound((distance - nearRange) / rangeSpacing);
-					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex >= 0 && azimuthIndex < sceneHeight && rangeIndex >= 0 && rangeIndex < sceneWidth)
 					{
 						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
 						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
@@ -513,11 +508,7 @@ int SLC_simulator::generateSLC(
 				double distance = slant_range.at<double>(gcp_row, gcp_col);
 				int azimuthIndex = static_cast<int>(floor((zeroDopplerTime - acquisitionStartTime) / time_interval));
 				int rangeIndex = static_cast<int>(floor((distance - nearRange) / rangeSpacing));
-				if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
-				{
-
-				}
-				else
+				if (azimuthIndex >= 0 && azimuthIndex < sceneHeight && rangeIndex >= 0 && rangeIndex < sceneWidth)
 				{
 					double lat, lon, height, lat_total = 0.0, lon_total = 0.0, height_total = 0.0, distance_total = 0.0;
 					int azimuthIndex_tmp, rangeIndex_tmp, pixel_count = 0;
@@ -586,8 +577,8 @@ int SLC_simulator::generateSLC(
 }
 
 int SLC_simulator::generateSLC_spacety(
-	Mat& stateVec,
-	Mat& dem,
+	const Mat& stateVec,
+	const Mat& dem,
 	double lon_upperleft,
 	double lat_upperleft,
 	double lon_space,
@@ -736,11 +727,7 @@ int SLC_simulator::generateSLC_spacety(
 					double distance = slant_range.at<double>(ii, jj);
 					int azimuthIndex = cvRound((zeroDopplerTime - acquisitionStartTime) / time_interval);
 					int rangeIndex = cvRound((distance - nearRange) / rangeSpacing);
-					if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex >= 0 && azimuthIndex < sceneHeight && rangeIndex >= 0 && rangeIndex < sceneWidth)
 					{
 						theta = -4.0 * PI * distance / wavelength + randomAngle.at<float>(ii, jj);
 						real = /*sigma.at<double>(ii, jj)*/ 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
@@ -759,8 +746,8 @@ int SLC_simulator::generateSLC_spacety(
 }
 
 int SLC_simulator::generateSLC_optimized(
-	Mat& stateVec,
-	Mat& dem,
+	const Mat& stateVec,
+	const Mat& dem,
 	double lon_upperleft,
 	double lat_upperleft,
 	double lon_space,
@@ -1271,9 +1258,9 @@ int SLC_simulator::generateSLC_optimized(
 }
 
 int SLC_simulator::generateSLC(
-	Mat& stateVec1,
-	Mat& stateVec2,
-	Mat& dem,
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	const Mat& dem,
 	double lon_upperleft,
 	double lat_upperleft,
 	int sceneHeight1,
@@ -1520,12 +1507,8 @@ int SLC_simulator::generateSLC(
 					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
 					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
-					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
-						azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex1 >= 0 && azimuthIndex1 < sceneHeight1 && rangeIndex1 >= 0 && rangeIndex1 < sceneWidth1 &&
+						azimuthIndex2 >= 0 && azimuthIndex2 < sceneHeight2 && rangeIndex2 >= 0 && rangeIndex2 < sceneWidth2)
 					{
 						double lat, lon, height;
 						lat = upper_left_lat - (double)gcp_row * lat_spacing;
@@ -1612,12 +1595,8 @@ int SLC_simulator::generateSLC(
 					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
 					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
-					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
-						azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex1 >= 0 && azimuthIndex1 < sceneHeight1 && rangeIndex1 >= 0 && rangeIndex1 < sceneWidth1 &&
+						azimuthIndex2 >= 0 && azimuthIndex2 < sceneHeight2 && rangeIndex2 >= 0 && rangeIndex2 < sceneWidth2)
 					{
 						double lat, lon, height;
 						lat = upper_left_lat - (double)gcp_row * lat_spacing;
@@ -1713,9 +1692,9 @@ int SLC_simulator::generateSLC(
 }
 
 int SLC_simulator::generateSLC(
-	Mat& stateVec1,
-	Mat& stateVec2,
-	Mat& dem,
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	const Mat& dem,
 	double lon_upperleft,
 	double lat_upperleft,
 	int sceneHeight1,
@@ -1947,11 +1926,7 @@ int SLC_simulator::generateSLC(
 					int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
 					int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
-					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex1 >= 0 && azimuthIndex1 < sceneHeight1 && rangeIndex1 >= 0 && rangeIndex1 < sceneWidth1)
 					{
 						theta = -4.0 * PI * distance1 / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real.at<float>(ii, jj));
@@ -1968,11 +1943,7 @@ int SLC_simulator::generateSLC(
 					}
 
 
-					if (azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex2 >= 0 && azimuthIndex2 < sceneHeight2 && rangeIndex2 >= 0 && rangeIndex2 < sceneWidth2)
 					{
 						theta = -2.0 * PI * (distance1 + distance2) / wavelength + randomAngle.at<float>(ii, jj);
 						real = 1.0 * (cos(theta) + noise_real2.at<float>(ii, jj));
@@ -1986,8 +1957,6 @@ int SLC_simulator::generateSLC(
 						imaginary = 1.0 * (sin(theta) + noise_imaginary3.at<float>(ii, jj));
 						slc3.re.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(real);
 						slc3.im.at<float>(azimuthIndex2, rangeIndex2) += static_cast<float>(imaginary);
-
-
 					}
 
 				}
@@ -2008,12 +1977,8 @@ int SLC_simulator::generateSLC(
 				int azimuthIndex2 = static_cast<int>(floor((zeroDopplerTime2 - acquisitionStartTime2) / time_interval));
 				int rangeIndex2 = static_cast<int>(floor((distance2 - nearRange2) / rangeSpacing));
 
-				if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1 ||
-					azimuthIndex2 < 0 || azimuthIndex2 > sceneHeight2 - 1 || rangeIndex2 < 0 || rangeIndex2 > sceneWidth2 - 1)
-				{
-
-				}
-				else
+				if (azimuthIndex1 >= 0 && azimuthIndex1 < sceneHeight1 && rangeIndex1 >= 0 && rangeIndex1 < sceneWidth1 &&
+					azimuthIndex2 >= 0 && azimuthIndex2 < sceneHeight2 && rangeIndex2 >= 0 && rangeIndex2 < sceneWidth2)
 				{
 					double lat, lon, height;
 					lat = upper_left_lat - (double)gcp_row * lat_spacing;
@@ -2155,9 +2120,9 @@ int SLC_simulator::generateSLC(
 }
 
 int SLC_simulator::generateSlantrange(
-	Mat& stateVec1,
-	Mat& stateVec2,
-	Mat& dem,
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	const Mat& dem,
 	double lon_upperleft,
 	double lat_upperleft,
 	int sceneHeight1,
@@ -2322,11 +2287,7 @@ int SLC_simulator::generateSlantrange(
 
 					double distance2 = slant_range2.at<double>(ii, jj);
 
-					if (azimuthIndex1 < 0 || azimuthIndex1 > sceneHeight1 - 1 || rangeIndex1 < 0 || rangeIndex1 > sceneWidth1 - 1)
-					{
-
-					}
-					else
+					if (azimuthIndex1 >= 0 && azimuthIndex1 < sceneHeight1 && rangeIndex1 >= 0 && rangeIndex1 < sceneWidth1)
 					{
 						pixel_count.at<uchar>(azimuthIndex1, rangeIndex1) += 1;
 						R1.at<double>(azimuthIndex1, rangeIndex1) += distance1;
@@ -2355,9 +2316,9 @@ int SLC_simulator::generateSlantrange(
 }
 
 int SLC_simulator::SLC_deramp(
-	Mat& mappedDEM, 
-	Mat& mappedLat, 
-	Mat& mappedLon, 
+	const Mat& mappedDEM, 
+	const Mat& mappedLat, 
+	const Mat& mappedLon, 
 	const char* slcH5File1,
 	const char* slcH5File2,
 	const char* slcH5File3,
@@ -2546,12 +2507,12 @@ int SLC_simulator::SLC_deramp(
 }
 
 int SLC_simulator::SLC_deramp_14(
-	vector<string>& slcH5FilesList,
-	vector<string>& slcH5FilesListOut,
+	const vector<string>& slcH5FilesList,
+	const vector<string>& slcH5FilesListOut,
 	int master_index,
-	Mat& mappedDEM,
-	Mat& mappedLat,
-	Mat& mappedLon, 
+	const Mat& mappedDEM,
+	const Mat& mappedLat,
+	const Mat& mappedLon, 
 	int mode
 )
 {
@@ -3022,9 +2983,9 @@ int SLC_simulator::SLC_deramp_14(
 }
 
 int SLC_simulator::SLC_reramp(
-	Mat& mappedDEM,
-	Mat& mappedLat,
-	Mat& mappedLon,
+	const Mat& mappedDEM,
+	const Mat& mappedLat,
+	const Mat& mappedLon,
 	const char* slcH5File1,
 	const char* slcH5File2,
 	const char* slcH5File3,
@@ -3608,7 +3569,7 @@ int SLC_simulator::MB_phase_estimation(
 }
 
 int SLC_simulator::pingpong_MLE(
-	Mat& phase_reference,
+	const Mat& phase_reference,
 	Mat& wrapped_phase_low,
 	Mat& wrapped_phase_high,
 	Mat& outphase, 
@@ -3625,10 +3586,10 @@ int SLC_simulator::pingpong_MLE(
 	double end1, 
 	double start2,
 	double end2,
-	Mat& statevec1,
-	Mat& statevec2,
+	const Mat& statevec1,
+	const Mat& statevec2,
 	double prf,
-	string demPath
+	const string& demPath
 )
 {
 	if (phase_reference.size() != wrapped_phase_high.size() ||
@@ -3666,7 +3627,7 @@ int SLC_simulator::pingpong_MLE(
 		&lonMax, &latMax, &lonMin, &latMin);
 	ret = Utils::getSRTMDEM(demPath.c_str(), dem, &lon_upperleft, &lat_upperleft, lonMin, lonMax, latMin, latMax);
 	ret = flat.demMapping(dem, mappedDEM, mappedLat, mappedLon, lon_upperleft, lat_upperleft, offset_row, offset_col, sceneHeight, sceneWidth,
-		prf, rangeSpacing, wavelength_high, nearRangeTime, start1, end1, statevec1, 20);
+		prf, rangeSpacing, wavelength_high, nearRangeTime, start1, end1, const_cast<Mat&>(statevec1), 20);
 	mappedDEM = 0;
 	//计算卫星位置
 	Mat sate1 = Mat::zeros(sceneHeight, 3, CV_64F);

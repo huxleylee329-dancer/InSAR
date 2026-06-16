@@ -303,7 +303,7 @@ int Registration::fftshift2(Mat& matrix)
 	return 0;
 }
 
-int Registration::real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col)
+int Registration::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col)
 {
 	//if (Master.GetRows() < 1 ||
 	//	Master.GetCols() < 1 ||
@@ -1627,7 +1627,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	return 0;
 }
 
-int Registration::all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& offset_row, Mat& offset_col, Mat& para)
+int Registration::all_subpixel_move(const Mat& Coordinate_x, const Mat& Coordinate_y, const Mat& offset_row, const Mat& offset_col, Mat& para)
 {
 	if (Coordinate_x.rows < 1 ||
 		Coordinate_x.cols < 1 ||
@@ -1640,29 +1640,30 @@ int Registration::all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& o
 		return -1;
 	}
 	int N = Coordinate_x.rows;
-	Coordinate_x.convertTo(Coordinate_x, CV_64F);
-	Coordinate_y.convertTo(Coordinate_y, CV_64F);
-	offset_row.convertTo(offset_row, CV_64F);
-	offset_col.convertTo(offset_col, CV_64F);
+	Mat cx, cy, or_val, oc_val;
+	Coordinate_x.convertTo(cx, CV_64F);
+	Coordinate_y.convertTo(cy, CV_64F);
+	offset_row.convertTo(or_val, CV_64F);
+	offset_col.convertTo(oc_val, CV_64F);
 
-	Mat connect_h_x[] = { Mat::ones(N, 1, CV_64F), Coordinate_x, Coordinate_y, Coordinate_x.mul(Coordinate_x), Coordinate_y.mul(Coordinate_y),
-		Coordinate_y.mul(Coordinate_x) };
+	Mat connect_h_x[] = { Mat::ones(N, 1, CV_64F), cx, cy, cx.mul(cx), cy.mul(cy),
+		cy.mul(cx) };
 	Mat matrix, matrix_t;
 	hconcat(connect_h_x, 6, matrix);
 	Mat para1;
 	transpose(matrix, matrix_t);
-	if (!solve(matrix_t * matrix, matrix_t * offset_row, para1, DECOMP_LU))
+	if (!solve(matrix_t * matrix, matrix_t * or_val, para1, DECOMP_LU))
 	{
 		fprintf(stderr, "all_subpixel_move(): can't solve least square problem!\n");
 		return -1;
 	}
 
-	Mat connect_h_y[] = { Mat::ones(N, 1, CV_64F), Coordinate_x, Coordinate_y, Coordinate_x.mul(Coordinate_x), Coordinate_y.mul(Coordinate_y),
-		Coordinate_y.mul(Coordinate_x) };
+	Mat connect_h_y[] = { Mat::ones(N, 1, CV_64F), cx, cy, cx.mul(cx), cy.mul(cy),
+		cy.mul(cx) };
 	hconcat(connect_h_y, 6, matrix);
 	transpose(matrix, matrix_t);
 	Mat para2;
-	if (!solve(matrix_t * matrix, matrix_t * offset_col, para2, DECOMP_LU))
+	if (!solve(matrix_t * matrix, matrix_t * oc_val, para2, DECOMP_LU))
 	{
 		fprintf(stderr, "all_subpixel_move(): can't solve least square problem!\n");
 		return -1;

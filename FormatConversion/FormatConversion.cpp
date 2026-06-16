@@ -680,7 +680,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 		(offset_row + rows_subarray) > (int)dim[0] ||
 		(offset_col + cols_subarray) > (int)dim[1])
 	{
-		fprintf(stderr, "read_subarray_from_h5(): invalide subarray index!\n");
+		fprintf(stderr, "read_subarray_from_h5(): invalid subarray index!\n");
 		return -1;
 	}
 	H5UniqueId type = H5Dget_type(dataset_id);
@@ -764,7 +764,7 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		(offset_row + rows_subarray) > (int)dim[0] ||
 		(offset_col + cols_subarray) > (int)dim[1])
 	{
-		fprintf(stderr, "write_subarray_to_h5(): invalide subarray index!\n");
+		fprintf(stderr, "write_subarray_to_h5(): invalid subarray index!\n");
 		return -1;
 	}
 	H5UniqueId type = H5Dget_type(dataset_id);
@@ -1039,19 +1039,13 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	return 0;
 }
 
-int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename)
-{
-	H5_LOCK;
-	return TSX2h5(cosar_filename, xml_filename, GEOREF_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
-}
-
 int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filename, const char* GEOREF_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
 {
 	H5_LOCK;
-	if (cosar_filename == NULL ||
-		xml_filename == NULL ||
-		GEOREF_filename == NULL ||
-		dst_h5_filename == NULL
+	if (cosar_filename == nullptr ||
+		xml_filename == nullptr ||
+		GEOREF_filename == nullptr ||
+		dst_h5_filename == nullptr
 		)
 	{
 		fprintf(stderr, "TSX2h5(): input check failed!\n");
@@ -1580,64 +1574,10 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	return 0;
 }
 
-int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename)
-{
-	H5_LOCK;
-	return TSX2h5(xml_filename, dst_h5_filename, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
-}
-
-int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
-{
-	H5_LOCK;
-	if (xml_filename == NULL ||
-		dst_h5_filename == NULL)
-	{
-		fprintf(stderr, "TSX2h5(): input check failed!\n");
-		return -1;
-	}
-	string main_xml(xml_filename);
-	std::replace(main_xml.begin(), main_xml.end(), '/', '\\');
-	string folder;
-	if (main_xml.length() > main_xml.rfind("\\") && main_xml.rfind("\\") >= 0)
-	{
-		folder = main_xml.substr(0, main_xml.rfind("\\"));
-	}
-	else if(main_xml.length() > main_xml.rfind("/") && main_xml.rfind("/") >= 0)
-	{
-		folder = main_xml.substr(0, main_xml.rfind("/"));
-	}
-	else
-	{
-		fprintf(stderr, "TSX2h5(): invalide file %s!\n", main_xml.c_str());
-		return -1;
-	}
-	string GEOREF = folder + "\\ANNOTATION\\GEOREF.xml";
-	string COSAR = folder + "\\IMAGEDATA\\";
-	XMLFile xmldoc;
-	int ret = xmldoc.XMLFile_load(xml_filename);
-	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
-	TiXmlElement* pRoot = NULL, * pnode = NULL;
-	ret = xmldoc.find_node("imageData", pRoot);
-	if (return_check(ret, "find_node()", error_head)) return -1;
-	ret = xmldoc._find_node(pRoot, "filename", pnode);
-	if (return_check(ret, "_find_node()", error_head)) return -1;
-	COSAR = COSAR + pnode->GetText();
-	ret = TSX2h5(COSAR.c_str(), xml_filename, GEOREF.c_str(), dst_h5_filename, progressCallback, userData);
-	if (return_check(ret, "TSX2h5()", error_head)) return -1;
-	return 0;
-}
-
-int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization)
-{
-	H5_LOCK;
-	return TSX2h5(xml_filename, dst_h5_filename, polarization, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
-}
-
 int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, const char* polarization, ProgressCallback progressCallback, void* userData)
 {
 	H5_LOCK;
-	if (xml_filename == NULL ||
-		dst_h5_filename == NULL)
+	if (xml_filename == nullptr || dst_h5_filename == nullptr)
 	{
 		fprintf(stderr, "TSX2h5(): input check failed!\n");
 		return -1;
@@ -1655,7 +1595,7 @@ int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filena
 	}
 	else
 	{
-		fprintf(stderr, "TSX2h5(): invalide file %s!\n", main_xml.c_str());
+		fprintf(stderr, "TSX2h5(): invalid file %s!\n", main_xml.c_str());
 		return -1;
 	}
 	string GEOREF = folder + "\\ANNOTATION\\GEOREF.xml";
@@ -1663,49 +1603,56 @@ int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filena
 	XMLFile xmldoc;
 	int ret = xmldoc.XMLFile_load(xml_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
-	TiXmlElement* pRoot = NULL, * pnode = NULL;
+
+	TiXmlElement* pRoot = nullptr, * pnode = nullptr;
 	ret = xmldoc.find_node("imageData", pRoot);
 	if (return_check(ret, "find_node()", error_head)) return -1;
-	ret = xmldoc._find_node(pRoot, "polLayer", pnode);
-	if (return_check(ret, "_find_node()", error_head)) return -1;
-	if (strcmp(pnode->GetText(), polarization) == 0)
+
+	bool match_found = false;
+	if (polarization != nullptr)
 	{
+		ret = xmldoc._find_node(pRoot, "polLayer", pnode);
+		if (return_check(ret, "_find_node()", error_head)) return -1;
+		if (strcmp(pnode->GetText(), polarization) == 0)
+		{
+			ret = xmldoc._find_node(pRoot, "filename", pnode);
+			if (return_check(ret, "_find_node()", error_head)) return -1;
+			COSAR = COSAR + pnode->GetText();
+			match_found = true;
+		}
+		else
+		{
+			pRoot = pRoot->NextSiblingElement();
+			if (pRoot)
+			{
+				if (strcmp("imageData", pRoot->Value()) == 0)
+				{
+					ret = xmldoc._find_node(pRoot, "filename", pnode);
+					if (return_check(ret, "_find_node()", error_head)) return -1;
+					COSAR = COSAR + pnode->GetText();
+					match_found = true;
+				}
+			}
+		}
+	}
+
+	if (!match_found)
+	{
+		ret = xmldoc.find_node("imageData", pRoot);
+		if (return_check(ret, "find_node()", error_head)) return -1;
 		ret = xmldoc._find_node(pRoot, "filename", pnode);
 		if (return_check(ret, "_find_node()", error_head)) return -1;
 		COSAR = COSAR + pnode->GetText();
 	}
-	else
-	{
-		pRoot = pRoot->NextSiblingElement();
-		if (pRoot)
-		{
-			if (strcmp("imageData", pRoot->Value()) == 0)
-			{
-				ret = xmldoc._find_node(pRoot, "filename", pnode);
-				if (return_check(ret, "_find_node()", error_head)) return -1;
-				COSAR = COSAR + pnode->GetText();
-			}
-			else
-			{
-				ret = xmldoc.find_node("imageData", pRoot);
-				if (return_check(ret, "find_node()", error_head)) return -1;
-				ret = xmldoc._find_node(pRoot, "filename", pnode);
-				if (return_check(ret, "_find_node()", error_head)) return -1;
-				COSAR = COSAR + pnode->GetText();
-			}
-		}
-		else
-		{
-			ret = xmldoc.find_node("imageData", pRoot);
-			if (return_check(ret, "find_node()", error_head)) return -1;
-			ret = xmldoc._find_node(pRoot, "filename", pnode);
-			if (return_check(ret, "_find_node()", error_head)) return -1;
-			COSAR = COSAR + pnode->GetText();
-		}
-	}
-	ret = TSX2h5(COSAR.c_str(), xml_filename, GEOREF.c_str(), dst_h5_filename);
+
+	ret = TSX2h5(COSAR.c_str(), xml_filename, GEOREF.c_str(), dst_h5_filename, progressCallback, userData);
 	if (return_check(ret, "TSX2h5()", error_head)) return -1;
 	return 0;
+}
+
+int FormatConversion::TSX2h5(const char* xml_filename, const char* dst_h5_filename, ProgressCallback progressCallback, void* userData)
+{
+	return TSX2h5(xml_filename, dst_h5_filename, nullptr, progressCallback, userData);
 }
 
 int FormatConversion::read_POD(const char* POD_filename, double start_time, double stop_time, const char* dst_h5_filename)
@@ -1902,7 +1849,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 	ret = xmldoc.XMLFile_load(xml_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	TiXmlElement* pnode = NULL;
-	int linesPerBurst, burst_count, invalideLines;
+	int linesPerBurst, burst_count, invalidLines;
 	ret = xmldoc.get_int_para("linesPerBurst", &linesPerBurst);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	ret = xmldoc.find_node("burstList", pnode);
@@ -1932,7 +1879,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 	long firstValidSample;
 	char* ptr;
 	const char* p;
-	invalideLines = 0;
+	invalidLines = 0;
 	int count = 0;
 	Mat sentinel = Mat::zeros(1, slc.GetRows(), CV_64F);
 	for (int i = 0; i < burst_count; i++)
@@ -1948,7 +1895,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 		firstValidSample = strtol(p, &ptr, 0);
 		if (firstValidSample < 0)
 		{
-			invalideLines++;
+			invalidLines++;
 			sentinel.at<double>(0, count) = -1;
 		}
 		count++;
@@ -1957,7 +1904,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 			firstValidSample = strtol(ptr, &ptr, 0);
 			if (firstValidSample < 0)
 			{
-				invalideLines++;
+				invalidLines++;
 				sentinel.at<double>(0, count) = -1;
 			}
 			count++;
@@ -1965,24 +1912,24 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 		pchild = pchild->NextSiblingElement();
 	}
 	count = 0;
-	ComplexMat tmp; Mat sentinel_accu = Mat::zeros(slc.GetRows() - invalideLines, 1, CV_32S);
-	tmp.re.create(slc.GetRows() - invalideLines, slc.GetCols(), CV_16S);
-	tmp.im.create(slc.GetRows() - invalideLines, slc.GetCols(), CV_16S);
+	ComplexMat tmp; Mat sentinel_accu = Mat::zeros(slc.GetRows() - invalidLines, 1, CV_32S);
+	tmp.re.create(slc.GetRows() - invalidLines, slc.GetCols(), CV_16S);
+	tmp.im.create(slc.GetRows() - invalidLines, slc.GetCols(), CV_16S);
 	int samplesPerLine = slc.GetCols();
 	ComplexMat c;
-	int invalideLine_accu = 0;
+	int invalidLine_accu = 0;
 	for (int i = 0; i < slc.GetRows(); i++)
 	{
 		if (sentinel.at<double>(0, i) > -0.5)
 		{
-			sentinel_accu.at<int>(count, 0) = invalideLine_accu;
+			sentinel_accu.at<int>(count, 0) = invalidLine_accu;
 			c = slc(cv::Range(i, i + 1), cv::Range(0, samplesPerLine));
 			tmp.SetValue(cv::Range(count, count + 1), cv::Range(0, samplesPerLine), c);
 			count++;
 		}
 		else
 		{
-			invalideLine_accu++;
+			invalidLine_accu++;
 		}
 	}
 	slc = tmp;
@@ -1996,9 +1943,9 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 			count++;
 		}
 	}
-	if (invalideLine_accu != sentinel_accu.at<int>(sentinel_accu.rows - 1, 0))
+	if (invalidLine_accu != sentinel_accu.at<int>(sentinel_accu.rows - 1, 0))
 	{
-		t.at<int>(count, 0) = invalideLine_accu;
+		t.at<int>(count, 0) = invalidLine_accu;
 	}
 	else
 	{
@@ -2736,14 +2683,14 @@ int FormatConversion::get_a_burst(
 	long firstValidSample;
 	char* ptr;
 	const char* p;
-	int invalideLines = 0;
+	int invalidLines = 0;
 	int count = 0;
 	Mat sentinel = Mat::ones(1, linesPerBurst, CV_64F);
 	p = pchild->GetText();
 	firstValidSample = strtol(p, &ptr, 0);
 	if (firstValidSample < 0)
 	{
-		invalideLines++;
+		invalidLines++;
 		sentinel.at<double>(0, count) = -1;
 	}
 	count++;
@@ -2752,7 +2699,7 @@ int FormatConversion::get_a_burst(
 		firstValidSample = strtol(ptr, &ptr, 0);
 		if (firstValidSample < 0)
 		{
-			invalideLines++;
+			invalidLines++;
 			sentinel.at<double>(0, count) = -1;
 		}
 		count++;
@@ -2772,7 +2719,7 @@ int FormatConversion::get_a_burst(
 			}
 		}
 	}
-	end = linesPerBurst - (invalideLines - start);
+	end = linesPerBurst - (invalidLines - start);
 	burst = burst(cv::Range(start, end), cv::Range(0, samplesPerBurst));
 	return 0;
 }
@@ -2932,14 +2879,14 @@ int FormatConversion::get_burst_sentinel(
 	long firstValidSample;
 	char* ptr;
 	const char* p;
-	int invalideLines = 0;
+	int invalidLines = 0;
 	count = 0;
 	Mat sentinel = Mat::ones(1, linesPerBurst, CV_64F);
 	p = pchild2->GetText();
 	firstValidSample = strtol(p, &ptr, 0);
 	if (firstValidSample < 0)
 	{
-		invalideLines++;
+		invalidLines++;
 		sentinel.at<double>(0, count) = -1;
 	}
 	count++;
@@ -2948,7 +2895,7 @@ int FormatConversion::get_burst_sentinel(
 		firstValidSample = strtol(ptr, &ptr, 0);
 		if (firstValidSample < 0)
 		{
-			invalideLines++;
+			invalidLines++;
 			sentinel.at<double>(0, count) = -1;
 		}
 		count++;
@@ -2968,7 +2915,7 @@ int FormatConversion::get_burst_sentinel(
 			}
 		}
 	}
-	end = linesPerBurst - (invalideLines - start);
+	end = linesPerBurst - (invalidLines - start);
 	burst = burst(cv::Range(start, end), cv::Range(0, samplesPerBurst));
 
 	//求取overlapSize
@@ -2989,7 +2936,7 @@ int FormatConversion::get_burst_sentinel(
 			return -1;
 		}
 		int temp = static_cast<int>(std::round((azimuthAnxTime2 - azimuthAnxTime) / azimuthTimeInterval));
-		*overlapSize = linesPerBurst - invalideLines - temp;
+		*overlapSize = linesPerBurst - invalidLines - temp;
 	}
 	return 0;
 }
@@ -8517,7 +8464,7 @@ int FormatConversion::polyVal(Mat& coefficient, double x, double* val)
 	return 0;
 }
 
-int FormatConversion::real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col)
+int FormatConversion::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col)
 {
 	if (Master.GetRows() < 1 ||
 		Master.GetCols() < 1 ||
@@ -11829,7 +11776,7 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 
 
 
-orbitStateVectors::orbitStateVectors(Mat& stateVectors, double startTime, double stopTime)
+orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime)
 {
 	this->startTime = startTime;
 	this->stopTime = stopTime;
@@ -11847,7 +11794,7 @@ orbitStateVectors::orbitStateVectors(Mat& stateVectors, double startTime, double
 
 }
 
-orbitStateVectors::orbitStateVectors(Mat& stateVectors, double startTime, double stopTime, double delta_time)
+orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime, double delta_time)
 {
 	this->dt = delta_time;
 	this->isOrbitUpdated = false;

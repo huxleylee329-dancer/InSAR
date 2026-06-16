@@ -8,6 +8,7 @@
 #include <atlconv.h>
 #include<queue>
 #include <atomic>
+#include <limits>
 
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
@@ -1279,7 +1280,7 @@ int Unwrap::MCF(
 		{
 			if (_mask.at<int>(i, j) < 1)
 			{
-				unwrapped_phase.at<double>(i, j) = min_val - 0.1*(max_val - min_val);
+				unwrapped_phase.at<double>(i, j) = std::numeric_limits<double>::quiet_NaN();
 			}
 		}
 	}
@@ -1788,7 +1789,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		{
 			if (_mask.at<int>(i, j) < 1)
 			{
-				unwrapped_phase.at<double>(i, j) = min_val - 0.1 * (max_val - min_val);
+				unwrapped_phase.at<double>(i, j) = std::numeric_limits<double>::quiet_NaN();
 			}
 		}
 	}

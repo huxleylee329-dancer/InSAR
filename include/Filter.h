@@ -88,6 +88,6 @@ private:
 		int n_pad,
 		bool parallel
 	);
-	char error_head[256];
-	char parallel_error_head[256];
+	std::string error_head;
+	std::string parallel_error_head;
 };

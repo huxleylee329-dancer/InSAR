@@ -155,7 +155,7 @@ using cv::Range;
 //	//	sbas.writeDIMACS_spatial("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net", nodes, edges, triangles);
 //	//	unwrap.mcf_delaunay("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net",
 //	//		"E:\\working_dir\\projects\\software\\InSAR\\bin");
-//	//	sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes, edges, triangles, &obj);
+//	//	sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes, edges, triangles, obj);
 //	//	sbas.floodFillUnwrap(nodes, edges, 1);
 //	//	sbas.retrieve_unwrapped_phase(nodes, phase);
 //	//	memset(str, 0, 1024);
@@ -386,7 +386,7 @@ using cv::Range;
 //	////sbas.writeDIMACS_spatial("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net", nodes2, edges2, triangles2);
 //	////unwrap.mcf_delaunay("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net",
 //	////	"E:\\working_dir\\projects\\software\\InSAR\\bin");
-//	////sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes2, edges2, triangles2, &obj);
+//	////sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes2, edges2, triangles2, obj);
 //	////sbas.floodFillUnwrap(nodes2, edges2, 1);
 //	////sbas.retrieve_unwrapped_phase(nodes2, phase);
 //	////util.cvmat2bin("E:\\working_dir\\projects\\software\\InSAR\\bin\\unwrapped_phase.bin", phase);
@@ -471,7 +471,7 @@ using cv::Range;
 //	////		unwrap.mcf_delaunay("E:\\working_dir\\projects\\software\\InSAR\\bin\\temporal.net",
 //	////			"E:\\working_dir\\projects\\software\\InSAR\\bin");
 //	////		sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\temporal.net.sol",
-//	////			nodes1, edges1, triangles1, &obj_value, &flow_sum);
+//	////			nodes1, edges1, triangles1, obj_value, &flow_sum);
 //	////		obj_min = flow_sum;
 //	////		weight.at<double>(i, 0) = flow_sum;
 //	////		
@@ -502,7 +502,7 @@ using cv::Range;
 //	//	sbas.writeDIMACS_spatial("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net", nodes2, edges2, triangles2);
 //	//	unwrap.mcf_delaunay("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net",
 //	//		"E:\\working_dir\\projects\\software\\InSAR\\bin");
-//	//	sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes2, edges2, triangles2, &obj);
+//	//	sbas.readDIMACS("E:\\working_dir\\projects\\software\\InSAR\\bin\\mcf_problem.net.sol", nodes2, edges2, triangles2, obj);
 //	//	sbas.floodFillUnwrap(nodes2, edges2, 1);
 //	//	sbas.retrieve_unwrapped_phase(nodes2, phase);
 //	//	memset(str, 0, 1024);
@@ -762,7 +762,7 @@ using cv::Range;
 //		sbas.writeDIMACS_spatial("D:\\working_dir\\others\\wangyuan\\tgrs\\TSX_SBAS_compare\\mcf_problem.net", nodes, edges, triangles);
 //		unwrap.mcf_delaunay("D:\\working_dir\\others\\wangyuan\\tgrs\\TSX_SBAS_compare\\mcf_problem.net",
 //			"D:\\working_dir\\projects\\software\\InSAR\\bin");
-//		sbas.readDIMACS("D:\\working_dir\\others\\wangyuan\\tgrs\\TSX_SBAS_compare\\mcf_problem.net.sol", nodes, edges, triangles, &obj);
+//		sbas.readDIMACS("D:\\working_dir\\others\\wangyuan\\tgrs\\TSX_SBAS_compare\\mcf_problem.net.sol", nodes, edges, triangles, obj);
 //		sbas.floodFillUnwrap(nodes, edges, 1);
 //		sbas.retrieve_unwrapped_phase(nodes, phase);
 //		memset(str, 0, 1024);
@@ -1021,7 +1021,7 @@ using cv::Range;
 //	//	sbas.writeDIMACS_spatial("D:\\working_dir\\papers\\ESM_coherence_matrix\\realdata\\Sentinel\\ESPO\\mcf_problem.net", nodes, edges, triangles);
 //	//	unwrap.mcf_delaunay("D:\\working_dir\\papers\\ESM_coherence_matrix\\realdata\\Sentinel\\ESPO\\mcf_problem.net",
 //	//		"D:\\working_dir\\projects\\software\\InSAR\\bin");
-//	//	sbas.readDIMACS("D:\\working_dir\\papers\\ESM_coherence_matrix\\realdata\\Sentinel\\ESPO\\mcf_problem.net.sol", nodes, edges, triangles, &obj);
+//	//	sbas.readDIMACS("D:\\working_dir\\papers\\ESM_coherence_matrix\\realdata\\Sentinel\\ESPO\\mcf_problem.net.sol", nodes, edges, triangles, obj);
 //	//	sbas.floodFillUnwrap(nodes, edges, 1);
 //	//	sbas.retrieve_unwrapped_phase(nodes, phase);
 //	//	memset(str, 0, 1024);

@@ -152,7 +152,7 @@
 - [ ] **命名风格不一致** — `Utils.h`
   - 类名 `ComplexMat`(驼峰) vs `tri_node`(下划线) vs `Utils`(首字母大写)
   - 建议统一为驼峰命名
-- [ ] **大量被注释掉的代码未清理** — `Utils.cpp:4830-4880+` 等
+- [x] **大量被注释掉的代码未清理** — `Utils.cpp:4830-4880+` 等
 	  - 跳过：共约 1270 行注释代码，其中 `stack_coregistration` 三个废弃版本约 827 行、`MB_phase_estimation` 约 251 行、HermitianEVD 相位估计约 68 行；部分可能还会启用，暂不清理
 - [x] **`ofstream fout` 声明但从未使用** — `Utils.cpp:837,1118`
 	  - 修复：两处声明注释掉，标注"未使用"
@@ -170,7 +170,6 @@
 
 ### P1 — 重要
 
-- [ ] **`Orbit_Polyfit` 仅属于 Deflat 模块**（原误记在 `Registration` 模块，已修正，见 Deflat P0 建议）
 - [x] **`interp_cubic` 两个重载中边界扩展代码完全重复** — `Registration.cpp:312-583`
   - 约 120 行 copyTo 操作完全一致
   - 应抽取为 `padBorderComplex()` 辅助函数
@@ -189,10 +188,10 @@
   - `offset = offset;` 无效，整个 if-else 块等价于 `offset = fabs(offset);`
 - [ ] **函数参数过多** — `Registration.h:127-146`
   - `getDEMRgAzPos` 共 18 个参数，建议封装为结构体
-- [ ] **缺少 `const` 修饰** — `Registration.h` 多处
+- [x] **缺少 `const` 修饰** — `Registration.h` 多处
   - `real_coherent` 的 Master/Slave 仅被读取，应为 `const ComplexMat&`
   - `all_subpixel_move` 的输入参数应为 `const Mat&`
-- [ ] **`Mat` 参数按值传递** — `Registration.h` 部分重载
+- [x] **`Mat` 参数按值传递** — `Deflat.h` 部分重载
   - `auxi`、`gcps`、`orbit_main`、`orbit_slave` 应改为 `const Mat&`
 
 ### P3 — 优化
@@ -242,7 +241,7 @@
 - [ ] **函数参数过多** — `Deflat.h` 多处
   - `topo_removal` 17 个参数、`topography_simulation` 18 个参数、`demMapping` 18-20 个参数
   - 建议封装为结构体
-- [ ] **`mode` 参数使用魔法数字** — `Deflat.cpp` 多处
+- [x] **`mode` 参数使用魔法数字** — `Deflat.cpp` 多处
   - 1/2/4 分别对应"单发单收"/"单发双收"/"双频乒乓"，应使用枚举
 - [x] **变量命名混乱** — `Deflat.cpp:490,718`
   - 已将 4 处不规范的局部变量名 `xxxx` 重命名为 `orbit_idx`
@@ -307,7 +306,7 @@
 - [x] **`GaussianFilter` 参数缺少 const** — `Filter.h:82`
   - `window` 参数不被修改，应为 `const Mat&`
 - [ ] **大量注释掉的代码未清理** — `Filter.cpp:121-131,319-320,350,363-364,429`
-- [ ] **`error_head` 使用裸 `char[]`** — `Filter.h:84-86`
+- [x] **`error_head` 使用裸 `char[]`** — `Filter.h:84-86`
   - 建议使用 `std::string`
 
 ---
@@ -340,6 +339,7 @@
 - [ ] **MCF 系列函数 BFS 解缠核心逻辑重复 4 次** — `Unwrap.cpp:1255,1417,1581,1813`
   - BFS 遍历、邻居查找、相位梯度计算、解缠赋值代码几乎完全相同
   - 应提取核心 BFS 解缠循环为私有辅助方法
+  - 先不修改
 - [x] **硬编码调试路径** — `Unwrap.cpp:264,324-325,2297-2299`
   - `E:\zgb1\functions\mask.bin`、`E:\working_dir\projects\software\InSAR\bin\...`
   - 应立即删除
@@ -353,13 +353,14 @@
 - [ ] **`MCF` 三个重载签名差异不明显** — `Unwrap.h:68-83`
   - 后两个重载仅在 `tri_edge*` vs `vector<tri_edge>&` 上有微妙区别
   - 建议使用不同函数名：`MCF_regular`、`MCF_irregular`
-- [ ] **`tri_edge*` 裸指针配合 `int num_edges`** — `Unwrap.h:73`
+- [x] **`tri_edge*` 裸指针配合 `int num_edges`** — `Unwrap.h:73`
   - 应改为 `vector<tri_edge>&`（第三个重载已迁移）
+  - 结论：不应修改。
 - [x] **`MCF_second` 中 `pass` 参数无实际作用** — `Unwrap.cpp:1599-1603`
   - 无论 `pass` 为何值，`tt` 都是 100000.0
 - [x] **变量名遮蔽 `std::min`/`std::max`** — `Unwrap.cpp:1289-1290,1455-1456`
   - 使用 `min`/`max` 作为变量名
-- [ ] **未解缠像素填充值可能不合理** — `Unwrap.cpp:1402-1412`
+- [x] **未解缠像素填充值可能不合理** — `Unwrap.cpp:1402-1412`
   - `min - 0.1*(max - min)` 可能在后续处理中引入伪影，建议使用 NaN
 
 ### P3 — 优化
@@ -416,7 +417,7 @@
   - 应将 `get_gcps_from_TSX` 等移至对应传感器读取器类
 - [ ] **函数参数过多** — `FormatConversion.h` 多处
   - `XMLFile_add_interferometric_phase` 14 个参数、`XMLFile_add_denoise_14` 15 个参数
-- [ ] **冗余的函数重载** — `FormatConversion.h:783-831`
+- [x] **冗余的函数重载** — `FormatConversion.h:783-831`
   - `TSX2h5` 有 6 个重载，建议使用默认参数值代替
 - [x] **`read_slc_from_TSXcos` 中 `malloc` 分配大块内存** — `FormatConversion.cpp:913`
   - 已优化：使用 2通道 `cv::Mat temp(ysize, xsize, CV_16SC2)` 并利用 `temp.elemSize()` 和 `temp.step[0]` 作为步长直接调用 `GDALRasterIO` 读取。再通过 `cv::split` 分离通道到预先分配内存的 `slc.re` 与 `slc.im`，用 C++ RAII 避免了手动内存分配与泄漏隐患，消除了原本的低效双重 `for` 循环和移位运算。
@@ -487,7 +488,7 @@
   - 全部是 POD 类型，编译器默认生成的即可
 - [x] **`Mat` 参数缺少 const 限定** — `SBAS.h` 多处
   - `write_spatialTemporal_node()` 的 `B_temporal` 和 `B_effect` 等输入参数应为 `const Mat&`
-- [ ] **`readDIMACS` 使用 `double*` 而非引用** — `SBAS.h:348-349`
+- [x] **`readDIMACS` 使用 `double*` 而非引用** — `SBAS.h:348-349`
   - `obj_value` 建议使用 `double&`
 - [x] **`error_head[256]` 使用固定大小 char 数组** — `SBAS.h` 多处
   - 建议使用 `std::string`
@@ -524,9 +525,10 @@
   - **已完成**：提炼 static 辅助函数 `newton_iter_core` 以重构高程反演计算，消除了 `phase2dem_newton_iter`, `dem_newton_iter`, `dem_newton_iter_test`, `dem_newton_iter_14`, `dem_newton_iter_14_dualfreqpingpong` 五个函数中约 800 行冗余 of 牛顿迭代代码。
 - [x] **轨道零多普勒点查找代码重复 3 次** — `Dem.cpp:1117-1178,1690-1752,2247-2309`
   - 二分法查找零多普勒时间的代码完全相同
-- [ ] **`phase2dem_newton_iter()` 参数过多（15 个）且按值传递** — `Dem.h:31-47`
+- [x] **`phase2dem_newton_iter()` 参数过多（15 个）且按值传递** — `Dem.h:31-47`
   - 多个 `Mat` 按值传递导致不必要的深拷贝
   - 应改为 `const Mat&`
+  - 结论：不修改
 - [x] **硬编码调试路径** — `Dem.cpp:1511,1795-1796`
   - `G:\tmp\error.bin`、`E:\working_dir\projects\software\InSAR\bin\KK2.h5`
   - 应立即删除
@@ -538,7 +540,7 @@
 - [x] **`volatile bool parallel_flag` 用于 OpenMP 错误处理** — `Dem.cpp:476,930,1472,2049,2598`
   - `volatile` 不保证多线程可见性，应使用 `std::atomic<bool>`
   - **已完成**：将用于 OpenMP 并行错误控制的 `volatile bool parallel_flag` 升级为 `std::atomic<bool>`，规避并发可见性与数据竞争风险。
-- [ ] **`mode` 参数使用魔法数字** — `Dem.cpp` 多处
+- [x] **`mode` 参数使用魔法数字** — `Dem.cpp` 多处
   - 应使用枚举类型
 - [x] **平地相位加回代码重复** — `Dem.cpp:682-696,1190-1204`
   - 6 系数多项式平地相位加回逻辑在多处重复
@@ -624,9 +626,9 @@
 
 - [ ] **`generateSLC` 最多 27 个参数** — `SLC_simulator.h:60-187`
   - 建议将成像参数封装为 `ImagingParams` 结构体
-- [ ] **缺少 `const` 修饰** — `SLC_simulator.h` 多处
+- [x] **缺少 `const` 修饰** — `SLC_simulator.h` 多处
   - `stateVec`、`dem`、`mappedDEM` 等纯输入数据应为 `const Mat&`
-- [ ] **`pingpong_MLE` 的 `demPath` 按值传递** — `SLC_simulator.h:409`
+- [x] **`pingpong_MLE` 的 `demPath` 按值传递** — `SLC_simulator.h:409`
   - `string demPath` 应改为 `const string&`
 - [ ] **`SLC_deramp` 与 `SLC_reramp` 接口完全相同但功能相反** — `SLC_simulator.h:243,289`
   - 建议合并为一个函数，增加 `bool addPhase` 参数
@@ -644,9 +646,9 @@
 - [ ] **变量命名不规范** — `SLC_simulator.cpp` 多处
   - 大量单字母变量名 `ii`/`jj`/`iii`/`bb`/`aa` 在嵌套 3-4 层循环中极易混淆
   - 第 1059 行 `wright` 应为 `width`
-- [ ] **`error_head` 使用 C 风格字符数组** — `SLC_simulator.h:412`
+- [x] **`error_head` 使用 C 风格字符数组** — `SLC_simulator.h:412`
   - 建议使用 `std::string`
-- [ ] **空的 `if` 块** — `SLC_simulator.cpp:479-483,879-881` 等
+- [x] **空的 `if` 块** — `SLC_simulator.cpp:479-483,879-881` 等
   - `if (条件) { } else { ... }` 建议反转条件消除空代码块
 - [ ] **大量注释掉的调试代码** — `SLC_simulator.cpp:1276-1283,3826-3860,3968-4007,4043-4096`
   - 包含硬编码文件路径 `G:\tmp\...`
@@ -674,7 +676,7 @@
 
 ### P2 — 建议
 
-- [ ] **`PI` 等宏名称过于通用** — `Package.h:7-9`
+- [x] **`PI` 等宏名称过于通用** — `Package.h:7-9`
   - 容易与其他库冲突，建议改为 `INSAR_PI`、`INSAR_SPEED_OF_LIGHT`
   - 或改用 `constexpr` 常量
 - [ ] **结构体命名不一致** — `Package.h:19,58,97`
@@ -685,8 +687,6 @@
 
 ### P3 — 优化
 
-- [ ] **`globalparam.h` 毫无内容** — `include/globalparam.h`
-  - 仅一行空文件，建议删除或补充实际内容
 - [x] **头文件 include guard 冗余** — `Package.h`、`ComplexMat.h`、`Utils.h`、`SLC_simulator.h`
   - 同时使用 `#pragma once` 和 `#ifndef`，建议统一保留 `#pragma once`
 
@@ -731,7 +731,7 @@
   - [x] `quailty` → `quality`（Unwrap.h）
   - [x] `ployFit` → `polyFit`（Utils.h、FormatConversion.h）
   - [x] `defficiency` → `deficiency`（Utils.cpp、Registration.cpp）
-  - [ ] `invalide` → `invalid`（FormatConversion.cpp）
+  - [x] `invalide` → `invalid`（FormatConversion.cpp、Dem.cpp等）
   - [ ] `failded` → `failed`（Deflat.cpp）
 - [x] **统一赋值运算符返回引用**
   - ComplexMat、tri_node、triangle、tri_edge、node_index、SBAS_node、SBAS_edge、SBAS_triangle、Position、Velocity、OSV、BurstIndices

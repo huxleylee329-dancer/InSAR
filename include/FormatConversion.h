@@ -885,50 +885,31 @@ public:
 		const char* cosar_filename,
 		const char* xml_filename,
 		const char* GEOREF_filename,
-		const char* dst_h5_filename
-	);
-	int TSX2h5(
-		const char* cosar_filename,
-		const char* xml_filename,
-		const char* GEOREF_filename,
 		const char* dst_h5_filename,
-		ProgressCallback progressCallback,
-		void* userData
+		ProgressCallback progressCallback = nullptr,
+		void* userData = nullptr
 	);
 	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式
 
 	@param xml_filename                       TerraSAR-X 主xml文件名
 	@param dst_h5_filename                    目标h5文件
-	@return 成功返回0，否则返回-1
-	*/
-	int TSX2h5(
-		const char* xml_filename,
-		const char* dst_h5_filename
-	);
-	int TSX2h5(
-		const char* xml_filename,
-		const char* dst_h5_filename,
-		ProgressCallback progressCallback,
-		void* userData
-	);
-	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式(带极化选项)
-
-	@param xml_filename                       TerraSAR-X 主xml文件名
-	@param dst_h5_filename                    目标h5文件
-	@param polarization                       极化方式(默认为HH极化)
+	@param polarization                       极化方式
+	@param progressCallback                   进度回调函数
+	@param userData                           用户自定义数据
 	@return 成功返回0，否则返回-1
 	*/
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename,
-		const char* polarization ="HH"
+		const char* polarization = nullptr,
+		ProgressCallback progressCallback = nullptr,
+		void* userData = nullptr
 	);
 	int TSX2h5(
 		const char* xml_filename,
 		const char* dst_h5_filename,
-		const char* polarization,
 		ProgressCallback progressCallback,
-		void* userData
+		void* userData = nullptr
 	);
 
 
@@ -1214,7 +1195,7 @@ public:
 	 参数3 行偏移量（返回值）
 	 参数4 列偏移量（返回值）
 	*/
-	int real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col);
+	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col);
 	/*2D FFTSHIFT(原地操作)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT
@@ -1366,8 +1347,8 @@ public:
 class InSAR_API orbitStateVectors
 {
 public:
-	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime);
-	orbitStateVectors(Mat& stateVectors, double startTime, double stopTime, double delta_time);
+	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime);
+	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime, double delta_time);
 	~orbitStateVectors();
 	/** @brief 设置场景拍摄起始终止时间
 	* @param startTime

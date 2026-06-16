@@ -61,7 +61,7 @@ public:
 		Mat& dem,
 		const char* project_path,
 		int iter_times,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）
@@ -77,7 +77,7 @@ public:
 		Mat& dem,
 		const char* project_path,
 		int iter_times,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）
@@ -107,7 +107,7 @@ public:
 		Mat& error_xyz,
 		const char* project_path,
 		int iter_times,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 
 	/** @brief 牛顿迭代法反演高程（双频乒乓模式）
@@ -137,7 +137,7 @@ public:
 		Mat& error_xyz,
 		const char* project_path,
 		int iter_times,
-		int mode = 1
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
 	);
 
 private:

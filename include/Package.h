@@ -5,6 +5,17 @@
 constexpr double PI = 3.14159265358979323846;
 constexpr double VEL_C = 299792458.0;
 constexpr int INPUTMAXSIZE = 1024;
+
+/*-------------------------------------------------------*/
+/*                  雷达收发模式枚举                     */
+/*-------------------------------------------------------*/
+enum TransmitReceiveMode
+{
+	TR_MODE_SINGLE_TX_SINGLE_RX = 1, // 单发单收 (自发自收)
+	TR_MODE_SINGLE_TX_DOUBLE_RX = 2, // 单发双收 (一发多收)
+	TR_MODE_PING_PONG           = 3, // 乒乓模式
+	TR_MODE_DOUBLE_FREQ_PING    = 4  // 双频乒乓模式
+};
 #include"opencv2\core\core.hpp"
 #include"opencv2\highgui\highgui.hpp"
 #include"opencv2\imgproc\imgproc.hpp"

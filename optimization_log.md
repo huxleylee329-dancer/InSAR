@@ -6,8 +6,14 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
-| 整合来源 (Commit) | 日期 | 作者 | 涉及模块 | 问题/修改描述 |
-| `工作区现场修改` | 2026-06-15 | AI | ComplexMat, Utils, Registration, FormatConversion | 1. 将 `ComplexMat.h` 中的 `isempty()` 变更为符合驼峰法的 `isEmpty()`，并同步更新 `ComplexMat.cpp`、`FormatConversion.cpp`、`Registration.cpp` 和 `Utils.cpp` 中的相关引用。<br>2. 将 `Utils.h` 中的 `ployFit` 更正为 `polyFit`，同步更新 `Utils.cpp` 中的定义与报错信息。<br>3. 将 `Utils.cpp` 中的错误日志及注释中遗留的 `defficiency` 统一更正为 `deficiency`。 |
+| `工作区现场修改` | 2026-06-16 | AI | simulation, include | 1. 将私有成员 `char error_head[256]` 修改为 `std::string`，并在构造函数中通过标准 C++ 赋值初始化，规避缓冲区溢出隐患。<br>2. 对 `SLC_simulator.cpp` 中 9 处空的 `if` 代码块（`if (越界) {} else { 处理逻辑 }`）进行了条件反转重构，删除了无意义的空块与 `else` 关键字，缩减了代码嵌套层级并提升可读性。 |
+| `工作区现场修改` | 2026-06-16 | AI | Dem, include | 1. 重构 `mode` 收发模式魔法数字：在 `Dem.cpp` 内部（如 `phase2dem_newton_iter`、`dem_newton_iter` 等函数）将所有表示收发模式的硬编码魔数替换为 `Package.h` 中的 `TransmitReceiveMode` 统一枚举值。<br>2. 更新头文件默认实参：同步将 `include/Dem.h` 中方法的默认实参 `int mode = 1` 更新为 `int mode = TR_MODE_SINGLE_TX_SINGLE_RX`。<br>3. 维持二进制（ABI）和源码（API）兼容：对外的函数签名参数类型依旧保持为 `int mode`。 |
+| `工作区现场修改` | 2026-06-16 | AI | SBAS, test2, test3, optimize.md | 1. 将 `readDIMACS` 的 `double* obj_value` 参数修改为引用类型 `double& obj_value`，以提高类型安全并强制执行编译期参数校验。<br>2. 移除 `readDIMACS` 内部不必要的 `!obj_value` 空指针校验逻辑，并将 `*obj_value` 解引用操作修改为直接值访问形式。<br>3. 更新 `test2.cpp`、`test3.cpp` 中所有被注释的测试代码范例，将传参形式由 `&obj` 调整为 `obj`，并在 `optimize.md` 中将该项标记为已完成。 |
+| `工作区现场修改` | 2026-06-16 | AI | FormatConversion, Dem, Evaluation, test2, Utils | 1. 统一纠正拼写错误 `invalide` 为 `invalid`：将 `FormatConversion.cpp`、`Dem.cpp` 和 `Evaluation.cpp` 中所有错误日志输出中的 `invalide` 修正为 `invalid`。<br>2. 修正局部变量与注释命名：同步更正 `FormatConversion.cpp` 内相关函数中的局部变量 `invalideLines`/`invalideLine_accu` 为 `invalidLines`/`invalidLine_accu`，并清理了 `test2.cpp` 和 `Utils.cpp` 注释中遗留的拼写错误。 |
+| `工作区现场修改` | 2026-06-16 | AI | FormatConversion | 1. 优化 `TSX2h5` 的冗余重载：将 `include/FormatConversion.h` 中的 6 个冗余重载精简合并为 3 个，通过 C++ 默认参数合并接口。<br>2. 修复回调丢失 Bug：在 `FormatConversion.cpp` 中修正了偏振版本的 `TSX2h5` 重载，在内部调用时丢失 `progressCallback` 与 `userData` 参数的隐患。<br>3. 增强代码健壮性与现代化：统一将 C 风格 `NULL` 替换为 C++11 标准的 `nullptr`。 |
+| `工作区现场修改` | 2026-06-16 | AI | Unwrap | 1. 修复未解缠像素填充值不合理问题：在 Unwrap.cpp 顶端引入 `<limits>` 头文件，将 `Unwrap::MCF` 和 `Unwrap::QualityMap_MCF` 中未解缠/无效像素的填充值由 `min_val - 0.1 * (max_val - min_val)` 替换为标准的 `std::numeric_limits<double>::quiet_NaN()`，避免在后续 DEM 反演流程中引入高程伪影/地形尖峰，并优化牛顿迭代 `xyz2ell` 的收敛计算性能。 |
+| `工作区现场修改` | 2026-06-16 | AI | Registration, FormatConversion, Deflat, Package.h | 1. 优化 `real_coherent` 接口：将 `Registration` 和 `FormatConversion` 模块中的 `real_coherent` 接口的 `Master`/`Slave` 输入参数提升为 `const ComplexMat&`，保障只读安全性。<br>2. 优化 `all_subpixel_move` 接口：将参数类型改为 `const Mat&`，内部通过局部变量保存 `convertTo` 转换结果，彻底消除直接原地修改调用方传入参数 of 副作用。<br>3. 优化 `deflat` 接口与轨道拟合：将 `Deflat::deflat` 接口中按值传递的 `auxi`、`gcps`、`orbit_main`、`orbit_slave` 全部更正为 `const Mat&`；内部对可能修改的 `gcps` 采用 clone 局部对象处理；同步将 `Deflat::Orbit_Polyfit` 接口入参 `Orbit` 强化为 `const Mat&`，解决了 `deflat` 内部调用时丢失 const 限定符的编译报错。<br>4. 重构 `mode` 收发模式魔法数字：在 `Package.h` 中引入 `TransmitReceiveMode` 枚举定义，将 `Deflat` 模块内部（如 `deflat`、`topo_removal` 等函数）硬编码的比对和校验重构为使用枚举常量，同时保持外部接口类型兼容与零 ABI 变动。 |
+| `工作区现场修改` | 2026-06-15 | AI | ComplexMat, Utils, Registration, FormatConversion | 1. 将 `ComplexMat.h` 中的 `isempty()` 变更为符合驼峰法的 `isEmpty()`，并同步更新 `ComplexMat.cpp`、`FormatConversion.cpp`、`Registration.cpp` 和 `Utils.cpp` 中的相关引用。<br>2. 将 `Utils.h` 中的 `ployFit` 更正为 `polyFit`，同步更新 `Utils.cpp` 中的定义与报错信息。<br>3. 将 `Utils.cpp` 中的错误日志及注释中遗留 of `defficiency` 统一更正为 `deficiency`。 |
 | `工作区现场修改` | 2026-06-15 | AI | Unwrap, SBAS, Utils | 1. 重构并更名 `quailtyGuidedFloodfill` 为 `qualityGuidedFloodfill`，直接删除旧拼写接口声明。<br>2. 全面修正结构体属性中的拼写错误，将 `SBAS_edge` (SBAS.h) 和 `tri_edge` (Utils.h) 中的 `isBoundry` 更名为 `isBoundary`，并同步更新 Unwrap.cpp、SBAS.cpp 和 Utils.cpp 中的全部算法逻辑引用。 |
 | `工作区现场修改` | 2026-06-15 | AI | Registration | 1. 将散布在 `Registration.cpp` 中的硬编码魔数提取为只读局部常量（`constexpr` / `const`）。<br>2. 在 `registration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.4`；在 `coregistration_subpixel` 中提取相干性阈值 `COHERENCE_THRESH = 0.05`；在 `coregistration_subpixel` 和 `coregistration_subpixel_sinc` 中提取最大图像裁剪大小 `MAX_CROP_SIZE = 10000`、复相干性计算窗口大小 `COH_WIN_SIZE = 7` 和零容差 `ZERO_TOLERANCE = 1e-7`。 |
 | `工作区现场修改` | 2026-06-15 | AI | Utils | 1. 优化 `gen_mask` 系列函数，采用 `cv::boxFilter` 代替循环内的 ROI `cv::mean` 运算，降低时间复杂度至 $O(1)$ 并消除高频 Mat 对象分配。<br>2. 重构 `phase_derivatives_variance` 密集循环计算，基于 $\text{Var}(X) = E[X^2] - (E[X])^2$ 和 `cv::boxFilter` 将原本循环内部的子矩阵切片、差值、点乘和累加运算优化为标量运算，完全消除了 OMP 并行锁竞争与动态堆分配，运行速度提升数百倍。 |
@@ -23,7 +29,7 @@
 | `工作区现场修改` | 2026-06-12 | AI | Evaluation, Dem, Utils | 1. 提炼公用静态辅助函数 `Utils::newton_iter_core` 并声明在 `Utils.h` 中。<br>2. 移除 `Dem.cpp` 中的局部 `newton_iter_core` 静态定义，并将所有 5 处调用重定向为 `Utils::newton_iter_core`。<br>3. 重构 `Evaluation::Pos()`，将 180 多行的冗余牛顿迭代矩阵计算替换为对公用静态 `Utils::newton_iter_core` 的单行调用。<br>4. 修复 `Evaluation::Unwrap()` 中计算主卫星斜距时缺失 getPosition 调用导致使用未初始化 Position 变量的严重 Bug。<br>5. 提炼 `readSatelliteParams` 内部静态辅助函数，消除 `PhasePreserve()` 和 `Unwrap()` 内部主/辅星数据读取的高重复代码约 50 行。<br>6. 纠正 `Evaluation::Unwrap()` 校验失败输出错误信息中函数名称不匹配的问题。<br>7. 注释屏蔽 `Evaluation::FFT2()` 中声明但从未被读取过的未引用局部变量 `slave_max`。<br>8. 规范 `Evaluation.h` 头文件的防重复包含宏，补充传统的 include guard 宏保护。<br>9. 将 `Evaluation::FFT2` 移至 `private` 作用域下，防止外部依赖。<br>10. 为 `Evaluation::Pos` 补全 Doxygen 参数说明，并将其头文件参数命名修改为与实现一致。 |
 | `工作区现场修改` | 2026-06-12 | AI | Dem | 1. 提炼 static 辅助函数 newton_iter_core 以重构高程反演计算，消除了 phase2dem_newton_iter, dem_newton_iter, dem_newton_iter_test, dem_newton_iter_14, dem_newton_iter_14_dualfreqpingpong 五个函数中约 800 行冗余 of 牛顿迭代代码。<br>2. 注释屏蔽 3 处硬编码本机的绝对调试盘写路径（error.bin 和 KK2.h5），杜绝环境适配报错隐患。<br>3. 将用于 OpenMP 并行错误控制的 volatile bool parallel_flag 升级为 std::atomic<bool>，规避并发可见性与数据竞争风险。<br>4. 优化平地相位加回循环性能，提取拟合系数到循环外，使用标定代数表达式代替内层循环内重复创建 Mat 和矩阵乘法运算。<br>5. 重命名含义模糊且不规范的局部变量 xxxx 为 orbit_idx，提高轨道索引选取的可读性。<br>6. 规范 Dem.h 头文件中 phase2dem_newton_iter 的“参数N”数字编号注释为 Doxygen 标准的 @param 格式，提供 VS 智能感知提示。 |
 | `工作区现场修改` | 2026-06-12 | AI | SBAS | 1. 重构整合 writeDIMACS_temporal/spatial，提取静态辅助函数 writeDIMACS_common，去重约 400 行代码。<br>2. 合并 compute_spatialTemporal_residue 和 compute_high_coherence_residue，清理大段注释死代码并修正拼写错误。<br>3. 重构 compute_high_coherence_residue_by_gradient，消除 170 行嵌套判断，修复 edge3 判定 Bug。<br>4. 修复 GET_NEXT_LINE 宏缩进排版错位问题。<br>5. 提取 refinement_and_reflattening 像素循环中的拟合系数至循环外，消除百万次越界判定并提升性能。<br>6. 规范 POD 结构体拷贝与赋值操作，SBAS_node 返回自身引用，SBAS_edge/SBAS_triangle 使用默认拷贝赋值以符合标准。<br>7. 优化 12 处函数的只读 Mat 参数为 `const Mat&`，提升常量正确性并支持传入临时变量。<br>8. 将 SBAS_node::neigh_edges 从原始指针升级为 `std::vector<int>`，删除手写拷贝/赋值/析构，实现自动生命周期管理。<br>9. 替换 3 处路径拼接 `sprintf` 为安全的 `snprintf`，防范缓冲区溢出。<br>10. 重构私有成员 `char error_head[256]` 为 `std::string`，并在 `Utils.h` 中新增内联重载以兼容 60 余处原有调用，提升内存安全性。 |
-| `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效 of parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。 |
+| `工作区现场修改` | 2026-06-12 | AI | Filter | 1. 修复 GaussianFilter 中 Dst.zeros() 静态方法被误用为实例方法的问题，替换为 Dst.setTo(0)。<br>2. 重构并合并 Goldstein_filter 和 Goldstein_filter_parallel 约 200 行重复代码，提取为 goldstein_filter_impl 并通过 #pragma omp parallel for schedule(guided) if(parallel) 动态启用并行。将历史遗留的 sigma = 1.2 高斯核手工计算注释保留备查，并在并行版中恢复返回值安全校验。<br>3. 修复 filter_dl 函数中 USES_CONVERSION 和 A2W 导致的潜在栈溢出风险，改用 std::wstring 动态构建命令行，规避了 512 字节的缓冲区溢出风险，并修复了 Job Object 内核句柄泄漏。<br>4. 彻底删除无任何调用且参数按值传递失效 of parallel_flag_change 死代码函数并清理相关无效校验。<br>5. 将 slope_adaptive_filter 函数中低精度的局部 pi 变量（3.1415926535）替换为 Package.h 中高精度全局 PI 宏。<br>6. 重构私有成员 `char error_head[256]` 和 `char parallel_error_head[256]` 为 `std::string`，提升内存安全性。 |
 | `工作区现场修改` | 2026-06-12 | AI | Unwrap, simulation | 1. 修复 snaphu 函数中 slave.convertTo 误将 master 转换为 slave 并覆盖辅星数据的逻辑 Bug。<br>2. 彻底删除顶部的 CHECK_RETURN 死代码宏定义。<br>3. 修复 qualityGuidedFloodfill 和 qualityGuided 函数中 quality.at<int> 类型不匹配问题，将其修改为双精度 quality.at<double>。<br>4. 提取 runExternalProcess 辅助函数，消除 5 处进程创建的重复代码并规避 szCommandLine 缓冲区溢出风险及句柄泄漏。<br>5. 彻底删除无任何调用且参数按值传递失效的 parallel_flag_change 死代码函数。<br>6. 注释屏蔽 5 处硬编码本机的 E 盘调试写盘文件路径，杜绝环境适配报错隐患。<br>7. 重命名 4 处 MCF 算法相关的局部变量 min/max 为 min_val/max_val，避免命名遮蔽冲突。<br>8. 修复 MCF_second 算法中 pass 参数无效的问题，当 pass 为 true 时限制流增益阈值 tt 为 0.5。<br>9. 修复 SLC_deramp_14 双频乒乓模式中类型转换 Bug，避免主星数据转换后覆盖辅星数据。<br>10. 修复 generateSLC 等 5 处函数中分块行列数不足导致除零崩溃与图像全零的逻辑缺陷。 |
 | `工作区现场修改` | 2026-06-11 | AI | Deflat | 1. 修复 Orbit_Polyfit 中奇异矩阵检测条件永远为假的 Bug。<br>2. 修复 get_satellite_aztime_NEWTON 无法检测 Newton 迭代发散的 Bug。<br>3. 重构 getSRTMFileName 坐标文件名格式化逻辑，使用双重循环与 %02d 消除约 190 行冗余的 if-else 代码。<br>4. 提取 getTifPath 辅助函数，消除 getSRTMDEM 中 15 处重复的 tif 文件路径拼接代码。<br>5. 提取 findZeroDopplerTime 辅助函数，消除 7 处 zero-Doppler 查找的冗余代码。<br>6. 将 return_check 与 parallel_check 提取为 Utils.h 中的全局 inline 函数，并清理 Deflat 和 Utils 中的局部冗余定义及死代码 parallel_flag_change。<br>7. 提取 fillInvalidGaps 模板函数，消除 5 处 DEM 和经纬度投影图空白值搜索填充的冗余代码。<br>8. 消除 Deflat.cpp 中的魔数（Pi、光速），定义牛顿收敛常量，纠正 3 处函数报错名称及下载拼写错误，并移除 Deflat.h 中的冗余头文件包含保护。 |
 | `工作区现场修改` | 2026-06-11 | AI | Registration | 1. 提取 padBorder 辅助函数去重 4 处立方插值边界扩充逻辑。<br>2. 优化双线性重采样中的 OMP 循环，提前提取多项式系数，使用浮点乘加代替循环内 cv::Mat 创建与矩阵乘法。<br>3. 修复 WeightCalculation 中的自赋值死代码，采用 fabs 绝对值函数简化逻辑。<br>4. 纠正 13 处内部报错信息拼写错误与不匹配的函数名（如 coregistration_pixel 纠正为 coregistration_subpixel_sinc）。<br>5. 提取 bilinear_interp2d 统一插值函数，消除两处重采样中约 120 行冗余的类型分支双线性插值实现。<br>6. 清理 Registration.h 中冗余的传统防重包含宏保护，规范 include 头文件时的空格排版。 |
@@ -263,6 +269,9 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   将仅在模块内被引用的 `GaussianFilter` 参数 `window` 改为只读引用 `const Mat& window`，提升了数值安全性并避免不必要的对象拷贝开销；同时去除了 `Filter.h` 中传统宏包含保护（仅保留 `#pragma once`），规范了代码结构。
 - **`volatile bool` 升级为 `std::atomic<bool>`**：
   将 `slope_adaptive_filter` 中用于 OpenMP 错误控制的 `volatile bool parallel_flag` 升级为 `std::atomic<bool> parallel_flag`，以保证多线程下的内存可见性与线程安全性，消除数据竞争隐患。
+- **`error_head` 内存安全与现代化改造**：
+  - **问题**：`Filter` 类中定义的 `char error_head[256]` 和 `char parallel_error_head[256]` 属于固定大小的 C 风格字符数组，利用 `memset` 和 `strcpy` 初始化，存在缓冲区溢出隐患。
+  - **解决方法**：将它们的类型修改为 `std::string`，并在 `Filter` 构造函数中使用标准 C++ 赋值，提升了内存安全性和现代化程度。
 
 ### 14. SBAS 模块优化与重构 (SBAS)
 - **`writeDIMACS_temporal` 与 `writeDIMACS_spatial` 重构去重**：
@@ -498,6 +507,70 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
     2. 新增安全的只读引用接口 `const std::vector<long>& get_neigh_edges() const`，实现 100% 零拷贝的内存安全只读访问。
     3. 新增写入接口 `int add_neigh_edge(long edge_idx)`，将原先外部通过指针遍历并写入 `-1` 空闲位置的赋值逻辑安全封装于类内部。
     4. 全面重构了 `Utils.cpp` 和 `Unwrap.cpp` 中所有 20 余处调用点，外部写入改用新接口 `add_neigh_edge`，只读遍历统一升级为现代的 `for (long edge_val : node.get_neigh_edges())` 范围循环，消除了所有指针偏移算术操作，并顺带清理了所有相关的未引用局部变量警告，使得 `Utils` 与 `Unwrap` 项目能够以 0 警告成功生成。
+
+### 29. mode 收发模式魔法数字重构为枚举类型 (Deflat & Package.h)
+对密集使用的雷达收发模式 `mode` 进行类型安全重构，用具名枚举取代散布在代码中的魔法数字，提升代码的可读性与自文档化水平：
+- **`mode` 参数使用魔法数字校验与分支条件判断**：
+  - **问题**：在 `Deflat.cpp` 中多处接口（`deflat` 两个重载、`topo_removal`、`SLC_deramp`、`slantrange_compute_test`）的实现内，雷达的收发模式均使用硬编码的整型数字（如 `1` 代表单发单收、`2` 代表单发双收、`3` 代表乒乓模式、`4` 代表双频乒乓模式）作为校验与常数计算条件。这种写法缺乏语义提示，不仅降低了代码的可读性，且极易在后续添加或修改收发模式时发生判定逻辑偏离。
+  - **解决方法**：
+    1. 在核心公共头文件 `Package.h` 中引入统一的类型安全枚举 `TransmitReceiveMode` 定义，使 `TR_MODE_SINGLE_TX_SINGLE_RX` 等常量具有清晰的物理含义。
+    2. 将 `Deflat.h` 中 `SLC_deramp` 和 `slantrange_compute_test` 声明中的默认值 `mode = 1` 升级为 `mode = TR_MODE_SINGLE_TX_SINGLE_RX`，消除头文件中的魔数。
+    3. 为了不影响已有的外部调用者并维持二进制（ABI）和源码（API）的完美兼容，对外的函数签名参数类型依旧保持为 `int mode`。
+    4. 在 `Deflat.cpp` 中，将所有相关的 `mode` 数字逻辑判定（例如 `mode == 1`、`mode > 2 || mode < 1`）重构替换为对应的枚举常量，去除了该模块下的魔数技术债务。
+
+### 30. 拼写错误修正 — invalide 统一更正为 invalid (FormatConversion, Dem, Evaluation, test2 & Utils)
+为了消除拼写不规范和潜在的日志混淆，将代码中所有遗留的 `invalide` 统一更正为 `invalid`：
+- **错误日志输出修正**：
+  - **`FormatConversion.cpp`**：修正了 `read_subarray_from_h5` (L683)、`write_subarray_to_h5` (L767) 和 `TSX2h5` (L1598) 中的拼写错误，例如 `"read_subarray_from_h5(): invalid subarray index!\n"`。
+  - **`Dem.cpp`**：修正了 `dem_newton_iter` (L333, L591) 和 `dem_newton_iter_14` (L903) 中的 `invalid unwrapped_phase` 拼写错误。
+  - **`Evaluation.cpp`**：修正了 `dem_newton_iter` (L643) 的错误提示。
+- **局部变量名修正**：
+  - **`FormatConversion.cpp`**：在 `sentinel_deburst`、`get_a_burst` 和 `get_burst_sentinel` 中，将所有局部变量 `invalideLines` 统一重命名为 `invalidLines`，并将 `invalideLine_accu` 统一重命名为 `invalidLine_accu`，提升代码的变量命名规范度。
+- **注释与测试代码清理**：
+  - **`test2.cpp`**：修正了被注释的测试代码中遗留的 `"invalid input format!\n"` 拼写（共 3 处）。
+  - **`Utils.cpp`**：修正了被注释的代码中遗留的 `"invalid SAR images size\n"` 拼写。
+
+
+### 31. readDIMACS 接口参数 pointer 转 reference 优化 (SBAS)
+- **`obj_value` 参数由指针重构为引用**：
+  - **问题**：在 `SBAS::readDIMACS` 接口中，用于接收最优目标值的参数 `double* obj_value` 使用了指针传递。作为必须提供的传出参数，指针形式在调用时存在传递空指针（`nullptr`）的风险，并且内部不得不为此编写 `!obj_value` 的防御性校验，不利于接口语义表达与编译期安全保障。
+  - **解决方案**：
+    1. 将 [SBAS.h](file:///D:/SRC/InSAR/include/SBAS.h#L291) 中的 `readDIMACS` 函数声明及 [SBAS.cpp](file:///D:/SRC/InSAR/SBAS/SBAS.cpp#L850) 中对应的定义统一修改为 `double& obj_value`。
+    2. 移除 `readDIMACS` 内部入参校验中的 `!obj_value` 空指针判定，并将 `sscanf(&(instring[i]), "%lf", obj_value)` 和 `*obj_value < 0.0` 对应更正为传址形式 `&obj_value` 以及直接值访问 `obj_value < 0.0`。
+    3. 相应更新了测试调用范例 [test2.cpp](file:///D:/SRC/InSAR/test2/test2.cpp) 和 [test3.cpp](file:///D:/SRC/InSAR/test3/test3.cpp) 中所有被注释的相关调用形式，确保外部取消注释调用该接口时能够与新签名无缝匹配。
+
+### 32. mode 收发模式魔法数字重构为枚举类型 (Dem)
+对密集使用的雷达收发模式 `mode` 进行类型安全重构，用具名枚举取代散布在代码中的魔法数字，提升代码的可读性与自文档化水平：
+- **`mode` 参数使用魔法数字校验与分支条件判断**：
+  - **问题**：在 `Dem.cpp` 中多处接口（`phase2dem_newton_iter`、`dem_newton_iter`、`dem_newton_iter_test`、`dem_newton_iter_14` 和 `dem_newton_iter_14_dualfreqpingpong`）的实现内，雷达的收发模式均使用硬编码的整型数字（如 `1` 代表单发单收、`2` 代表单发双收、`4` 代表双频乒乓模式）作为校验与常数计算条件。这种写法缺乏语义提示，不仅降低了代码的可读性，且极易在后续添加或修改收发模式时发生判定逻辑偏离。
+  - **解决方案**：
+    1. 将 `include/Dem.h` 中对应接口声明中的默认值 `mode = 1` 升级为 `mode = TR_MODE_SINGLE_TX_SINGLE_RX`，消除头文件中的魔数。
+    2. 为了不影响已有的外部调用者并维持二进制（ABI）和源码（API）的完美兼容，对外的函数签名参数类型依旧保持为 `int mode`（与 `Deflat` 模块的重构模式对齐）。
+    3. 在 `Dem.cpp` 中，将所有相关的 `mode` 数字逻辑判定（例如 `mode == 1`、`mode == 2`、`mode < 1 || mode > 4`）重构替换为对应的 `TransmitReceiveMode` 枚举常量，去除了该模块下的魔数技术债务。
+
+### 33. SLC_simulator 头文件参数常量正确性与性能优化 (simulation & FormatConversion)
+- **`SLC_simulator` 输入参数 `const Mat&` 规范化**：
+  - **问题**：在 `SLC_simulator.h` 中，多处纯输入数据参数（如轨道数据 `stateVec`、高程数据 `dem`、配准后的 `mappedDEM`、`mappedLat`、`mappedLon` 等）被声明为非常量引用 `Mat&`。这既不符合 `const` 常量正确性规范，也无法保障调用方数据不被篡改。
+  - **解决方案**：将 `reflectivity`、`computeIncidenceAngle`、`generateSLC`（所有重载）、`generateSLC_spacety`、`generateSLC_optimized`、`generateSlantrange`、`SLC_deramp`、`SLC_deramp_14` 和 `SLC_reramp` 等接口中的这些纯输入矩阵参数统一变更为 `const Mat&`。
+- **`orbitStateVectors` 构造函数接收 `const Mat&` 级联改造**：
+  - **问题**：在 simulator 内部使用 `stateVec` 构造轨道状态向量时，由于 `orbitStateVectors` 构造函数原本只接受非常量引用 `Mat&`，直接修改 `stateVec` 会导致编译失败。
+  - **解决方案**：级联修改了 `orbitStateVectors` 的两个构造函数签名及实现，统一变更为 `const Mat& stateVectors`。经确认，构造函数内部仅对输入执行 `copyTo` 与只读 `at` 访问，该改造不仅解决了 simulator 编译冲突，也为全局轨道计算带来了常量正确性提升。
+- **`pingpong_MLE` 字符串参数传值优化与 `demMapping` 适配**：
+  - **问题**：
+    1. 在 `pingpong_MLE` 接口中，高程路径参数为 `string demPath`，由于是按值传递，会在每次调用时在堆上执行字符串拷贝与分配，降低了运行效率。
+    2. 为了修复 `pingpong_MLE` 将 `statevec1`（已升级为 `const Mat&`）传递给未常量化的 `Deflat::demMapping(...)` 外部接口而产生的 C2665 编译转换限定符丢失错误，需要进行合理适配。
+  - **解决方案**：
+    1. 将参数修改为常量引用 `const string& demPath`，避免堆内存分配开销。
+    2. 在 `SLC_simulator.cpp` 中调用 `flat.demMapping(...)` 传递 `statevec1` 时，使用 `const_cast<Mat&>(statevec1)` 进行适配。这使得在不改动外部 `Deflat` 库及其 DLL 导出符号（保障 ABI 兼容性）的前提下，实现本地编译通过，同时保护了外部调用方逻辑。
+
+### 34. SLC_simulator error_head 内存安全与空的 if 块控制流重构 (simulation & include)
+为了提高内存安全、防范缓冲区溢出，并消除控制流中的冗余空块，对 `SLC_simulator` 进行了如下重构：
+- **`error_head` 成员变量重构为 `std::string`**：
+  - **问题**：`SLC_simulator` 类中定义的 `char error_head[256]` 属于固定大小 of C 风格字符数组，在构造函数中利用 `memset` 和 `strcpy` 初始化。这存在潜在 of 缓冲区溢出风险，且与此前已被重构为 `std::string` of 其他模块（如 `SBAS`、`Filter`）风格不一致。
+  - **解决方案**：将 [SLC_simulator.h](file:///D:/SRC/InSAR/include/SLC_simulator.h#L475) 中的 `error_head` 更改为 `std::string`。在构造函数中，将其直接初始化为字符串赋值，规避了 `memset` 和 `strcpy` of 使用。由于 `Utils.h` 中已经包含接受 `const std::string&` of `return_check` 重载，此修改完全保证了源级兼容性，无需修改任何现有 of `return_check` 错误校验行。
+- **空的 `if` 代码块控制流重构**：
+  - **问题**：在 `SLC_simulator.cpp` of 多个核心逻辑函数中（如 `generateSLC`、`generateSLC_spacety`、`generateSLC_doubleRx`、`generateSLC_pingpong` 和 `computeSlantRange`），存在共 9 处结构为 `if (越界判定) { } else { 核心处理逻辑 }` of 代码块。这不仅导致无意义 of 空 `{}` 占位，也增加了不必要 of 代码嵌套层级，降低了代码可读性。
+  - **解决方案**：对这 9 处代码块进行了条件反转重构，变更为 `if (未越界判定) { 核心处理逻辑 }`，直接删除了空 of `if` 块和伴随 of `else` 关键字。在严格保证逻辑、行列边界和校验与原有功能 100% 比特级一致 of 同时，精简了控制流结构并提升了代码 of 直观度。
 
 ---
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*

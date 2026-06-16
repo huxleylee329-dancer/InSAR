@@ -166,7 +166,7 @@ int Deflat::get_satellite_aztime_NEWTON(double center_time, Mat& coef, Mat pos_x
 	return 0;
 }
 
-int Deflat::Orbit_Polyfit(Mat& Orbit, Mat& coef)
+int Deflat::Orbit_Polyfit(const Mat& Orbit, Mat& coef)
 {
 	if (Orbit.rows < 7 ||
 		Orbit.cols != 7 ||
@@ -213,10 +213,10 @@ int Deflat::deflat(
 	Mat& phase,
 	Mat& phase_deflat,
 	Mat& flat_phase,
-	Mat auxi,
-	Mat gcps,
-	Mat orbit_main,
-	Mat orbit_slave,
+	const Mat& auxi,
+	const Mat& gcps,
+	const Mat& orbit_main,
+	const Mat& orbit_slave,
 	int mode,
 	int multilook_times
 )
@@ -229,7 +229,7 @@ int Deflat::deflat(
 		auxi.cols != 5 ||
 		auxi.type() != CV_64F ||
 		auxi.channels() != 1 ||
-		(mode == 1 || mode == 2) == false ||
+		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false ||
 		gcps.rows < 2 ||
 		gcps.cols != 5 ||
 		orbit_main.rows < 1 ||
@@ -248,28 +248,30 @@ int Deflat::deflat(
 	int ret;
 	double C = 2.0 * PI;
 	double lambda = VEL_C / (auxi.at<double>(0, 4));
-	if (mode == 1) C = 4.0 * PI;
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX) C = 4.0 * PI;
 	else
 	{
 		C = 2.0 * PI;
 	}
+	Mat gcps_local = gcps;
 	if (multilook_times > 1)
 	{
-		for (int i = 0; i < gcps.rows; i++)
+		gcps_local = gcps.clone();
+		for (int i = 0; i < gcps_local.rows; i++)
 		{
-			gcps.at<double>(i, 0) = gcps.at<double>(i, 0) / multilook_times + 1;
-			gcps.at<double>(i, 1) = gcps.at<double>(i, 1) / multilook_times + 1;
+			gcps_local.at<double>(i, 0) = gcps_local.at<double>(i, 0) / multilook_times + 1;
+			gcps_local.at<double>(i, 1) = gcps_local.at<double>(i, 1) / multilook_times + 1;
 		}
 	}
 	///////////////////////////////////机载无轨道数据情况//////////////////////////////////////////
-	if (orbit_main.rows == 1 && orbit_slave.rows == 1 && gcps.rows == 2)
+	if (orbit_main.rows == 1 && orbit_slave.rows == 1 && gcps_local.rows == 2)
 	{
-		double delta_r1 = cv::norm(orbit_main(Range(0, 1), Range(1, 4)) - gcps(Range(0, 1), Range(2, 5))) - 
-			cv::norm(orbit_slave(Range(0, 1), Range(1, 4)) - gcps(Range(0, 1), Range(2, 5)));
-		double delta_r2 = cv::norm(orbit_main(Range(0, 1), Range(1, 4)) - gcps(Range(1, 2), Range(2, 5))) -
-			cv::norm(orbit_slave(Range(0, 1), Range(1, 4)) - gcps(Range(1, 2), Range(2, 5)));
-		double a = C * (delta_r2 - delta_r1) / lambda / (gcps.at<double>(1, 1) - gcps.at<double>(0, 1));
-		double b = C * delta_r1 / lambda - a * gcps.at<double>(0, 1);
+		double delta_r1 = cv::norm(orbit_main(Range(0, 1), Range(1, 4)) - gcps_local(Range(0, 1), Range(2, 5))) - 
+			cv::norm(orbit_slave(Range(0, 1), Range(1, 4)) - gcps_local(Range(0, 1), Range(2, 5)));
+		double delta_r2 = cv::norm(orbit_main(Range(0, 1), Range(1, 4)) - gcps_local(Range(1, 2), Range(2, 5))) -
+			cv::norm(orbit_slave(Range(0, 1), Range(1, 4)) - gcps_local(Range(1, 2), Range(2, 5)));
+		double a = C * (delta_r2 - delta_r1) / lambda / (gcps_local.at<double>(1, 1) - gcps_local.at<double>(0, 1));
+		double b = C * delta_r1 / lambda - a * gcps_local.at<double>(0, 1);
 		flat_phase = Mat::zeros(phase.rows, phase.cols, CV_64F);
 		int nr = phase.rows;
 		int nc = phase.cols;
@@ -310,25 +312,25 @@ int Deflat::deflat(
 		{
 			temp1 = orbit_main.at<double>(int(orbit_main.rows / 2), 0);
 			temp2 = orbit_main.at<double>(0, 0);
-			tmp = gcps(Range(i, i + 1), Range(2, 5));
+			tmp = gcps_local(Range(i, i + 1), Range(2, 5));
 			ret = get_satellite_aztime_NEWTON(temp1,coef_m, tmp, temp2, &aztime);
 			if (return_check(ret, "get_satellite_aztime_NEWTON(*, *, *, *, *)", error_head)) return -1;
 			ret = get_xyz(aztime, coef_m, tmp_xyz);
 			if (return_check(ret, "get_xyz(*, *, *)", error_head)) return -1;
 			tmp_xyz.copyTo(Satemain_xyz(Range(i, i + 1), Range(0, 3)));
 
-			ret = get_satellite_aztime_NEWTON(orbit_slave.at<double>(int(orbit_slave.rows / 2), 0),coef_s, gcps(Range(i, i + 1), Range(2, 5)), orbit_slave.at<double>(0, 0), &aztime);
+			ret = get_satellite_aztime_NEWTON(orbit_slave.at<double>(int(orbit_slave.rows / 2), 0),coef_s, gcps_local(Range(i, i + 1), Range(2, 5)), orbit_slave.at<double>(0, 0), &aztime);
 			if (return_check(ret, "get_satellite_aztime_NEWTON(*, *, *, *, *)", error_head)) return -1;
 			ret = get_xyz(aztime, coef_s, tmp_xyz);
 			if (return_check(ret, "get_xyz(*, *, *)", error_head)) return -1;
 			tmp_xyz.copyTo(Sateslave_xyz(Range(i, i + 1), Range(0, 3)));
 		}
-		double delta_r1 = cv::norm(Satemain_xyz(Range(0, 1), Range(0, 3)) - gcps(Range(0, 1), Range(2, 5))) -
-			cv::norm(Sateslave_xyz(Range(0, 1), Range(0, 3)) - gcps(Range(0, 1), Range(2, 5)));
-		double delta_r2 = cv::norm(Satemain_xyz(Range(1, 2), Range(0, 3)) - gcps(Range(1, 2), Range(2, 5))) -
-			cv::norm(Sateslave_xyz(Range(1, 2), Range(0, 3)) - gcps(Range(1, 2), Range(2, 5)));
-		double a = C * (delta_r2 - delta_r1) / lambda / (gcps.at<double>(1, 1) - gcps.at<double>(0, 1));
-		double b = C * delta_r1 / lambda - a * gcps.at<double>(0, 1);
+		double delta_r1 = cv::norm(Satemain_xyz(Range(0, 1), Range(0, 3)) - gcps_local(Range(0, 1), Range(2, 5))) -
+			cv::norm(Sateslave_xyz(Range(0, 1), Range(0, 3)) - gcps_local(Range(0, 1), Range(2, 5)));
+		double delta_r2 = cv::norm(Satemain_xyz(Range(1, 2), Range(0, 3)) - gcps_local(Range(1, 2), Range(2, 5))) -
+			cv::norm(Sateslave_xyz(Range(1, 2), Range(0, 3)) - gcps_local(Range(1, 2), Range(2, 5)));
+		double a = C * (delta_r2 - delta_r1) / lambda / (gcps_local.at<double>(1, 1) - gcps_local.at<double>(0, 1));
+		double b = C * delta_r1 / lambda - a * gcps_local.at<double>(0, 1);
 		flat_phase = Mat::zeros(phase.rows, phase.cols, CV_64F);
 		int nr = phase.rows;
 		int nc = phase.cols;
@@ -387,8 +389,8 @@ int Deflat::deflat(
 		height < 0.0||
 		time_interval < 0.0||
 		time_interval2 < 0.0 ||
-		mode > 2||
-		mode < 1||
+		mode > TR_MODE_SINGLE_TX_DOUBLE_RX ||
+		mode < TR_MODE_SINGLE_TX_SINGLE_RX ||
 		wave_length <= 0.0
 		)
 	{
@@ -615,7 +617,7 @@ int Deflat::topo_removal(
 		stateVec1.cols != 7 || stateVec1.rows < 7 || stateVec1.type() != CV_64F || stateVec2.cols != 7 || stateVec2.rows < 7 || stateVec2.type() != CV_64F ||
 		lon_coef.rows != 1 || lon_coef.cols != 32 || lon_coef.type() != CV_64F || lat_coef.rows != 1 || lat_coef.cols != 32 || lat_coef.type() != CV_64F ||
 		interp_interval1 < 0.0 || interp_interval2 < 0.0 ||
-		mode > 2 || mode < 1 || wavelength < 0.0 || inc_coef.type() != CV_64F||inc_coef.rows != 1|| inc_coef.cols != 11
+		mode > TR_MODE_SINGLE_TX_DOUBLE_RX || mode < TR_MODE_SINGLE_TX_SINGLE_RX || wavelength < 0.0 || inc_coef.type() != CV_64F||inc_coef.rows != 1|| inc_coef.cols != 11
 		)
 	{
 		fprintf(stderr, "topo_removal(): input check failed!\n");
@@ -1385,7 +1387,7 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 		sate1.at<double>(i, 1) = pos.y;
 		sate1.at<double>(i, 2) = pos.z;
 	}
-	double constant = (mode == 1 ? 4.0 * PI : 2.0 * PI);
+	double constant = (mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4.0 * PI : 2.0 * PI);
 
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
@@ -1482,7 +1484,7 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 		sate1.at<double>(i, 2) = pos.z;
 	}
 
-	double constant = (mode == 1 ? 4.0 * PI : 2.0 * PI);
+	double constant = (mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4.0 * PI : 2.0 * PI);
 
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)

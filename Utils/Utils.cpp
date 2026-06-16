@@ -5233,7 +5233,7 @@ int Utils::std(const Mat& input, double* std)
 //	}
 //	if (min_col < 1 || min_row < 1)
 //	{
-//		fprintf(stderr, "invalide SAR images size\n");
+//		fprintf(stderr, "invalid SAR images size\n");
 //		return -1;
 //	}
 //	

@@ -288,7 +288,7 @@ public:
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		vector<SBAS_triangle>& triangles,
-		double* obj_value,
+		double& obj_value,
 		double* flowcount = NULL
 	);
 	/*@brief 将差分干涉相位堆栈高相干点之间的相位梯度信息（与高相干点三角网络的边对应）保存在h5文件中

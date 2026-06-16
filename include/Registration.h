@@ -16,7 +16,7 @@ public:
 	 参数3 行偏移量（返回值）
 	 参数4 列偏移量（返回值）
 	*/
-	int real_coherent(ComplexMat& Master, ComplexMat& Slave, int* offset_row, int* offset_col);
+	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col);
 	/*2D FFTSHIFT(原地操作)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT
@@ -110,7 +110,7 @@ public:
 	 参数4 列偏移量
 	 参数5 拟合系数（返回值）
 	*/
-	int all_subpixel_move(Mat& Coordinate_x, Mat& Coordinate_y, Mat& offset_row, Mat& offset_col, Mat& para);
+	int all_subpixel_move(const Mat& Coordinate_x, const Mat& Coordinate_y, const Mat& offset_row, const Mat& offset_col, Mat& para);
 	/*根据粗配准偏移量筛选控制点
 	* 参数1 原始图像行数
 	* 参数2 原始图像列数

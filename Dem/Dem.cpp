@@ -95,8 +95,7 @@ int Dem::phase2dem_newton_iter(
 		delta_m <= 0.0 ||
 		delta_s <= 0.0 ||
 		multilook_times < 1||
-		mode < 1||
-		mode > 2
+		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false
 		)
 	{
 		fprintf(stderr, "phase2dem_newton_iter(): input check failed!\n\n");
@@ -112,7 +111,7 @@ int Dem::phase2dem_newton_iter(
 		return -1;
 	}
 	double C = 4 * 3.1415926535;
-	if (mode == 2)
+	if (mode == TR_MODE_SINGLE_TX_DOUBLE_RX)
 	{
 		C = 2 * 3.1415926535;
 	}
@@ -217,7 +216,7 @@ int Dem::phase2dem_newton_iter(
 	Mat tmp1 = Control_Point_Position - 
 		S_position_s(Range(row - 1, row), Range(0, 3));
 	double distance_r_s;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		distance_r_s = 2 * cv::norm(tmp1, NORM_L2);
 	}
@@ -248,7 +247,7 @@ int Dem::phase2dem_newton_iter(
 	Mat R_F = ones * Rm * 2.0 - lambda * unwrapped_phase / C;
 	Mat Satellite_M_T_Position = S_position_m;//主星发射位置
 	Mat Satellite_S_T_Position;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		Satellite_S_T_Position = S_position_s;//辅星发射位置
 	}
@@ -308,7 +307,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
 		iter_times < 1 ||
-		mode < 1 || mode > 2)
+		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false)
 	{
 		fprintf(stderr, "dem_newton_iter(): input check failed!\n");
 		return -1;
@@ -330,7 +329,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{
-		fprintf(stderr, "dem_newton_iter(): invalide unwrapped_phase !\n");
+		fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
 		return -1;
 	}
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
@@ -493,7 +492,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	//控制点绝对相位计算
 	double r_main = sqrt(sum((sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate1(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
 	double r_slave = sqrt(sum((sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground).mul(sate2(cv::Range(row, row + 1), cv::Range(0, 3)) - xyz_ground))[0]);
-	double C = mode == 1 ? 4 * PI : 2 * PI;
+	double C = mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4 * PI : 2 * PI;
 	double lambda = VEL_C / (carrier_frequency.at<double>(0, 0) + 1e-10);
 	double phase_real = (r_slave - r_main) / lambda * C;
 	double K = round((phase_real - unwrapped_phase.at<double>(row, col)) / (2 * PI));
@@ -515,7 +514,7 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
 	Mat Satellite_M_T_Position = sate1;//主星发射位置
 	Mat Satellite_S_T_Position;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		Satellite_S_T_Position = sate2;//辅星发射位置
 	}
@@ -565,7 +564,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
 		iter_times < 1 ||
-		mode < 1 || mode > 2)
+		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false)
 	{
 		fprintf(stderr, "dem_newton_iter(): input check failed!\n");
 		return -1;
@@ -588,7 +587,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{
-		fprintf(stderr, "dem_newton_iter(): invalide unwrapped_phase !\n");
+		fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
 		return -1;
 	}
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
@@ -756,7 +755,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		util.ell2xyz(llh_temp, ground);
 		double r_main = sqrt(sum((sate1(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground).mul(sate1(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground))[0]);
 		double r_slave = sqrt(sum((sate2(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground).mul(sate2(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground))[0]);
-		double C = mode == 1 ? 4 * PI : 2 * PI;
+		double C = mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4 * PI : 2 * PI;
 		double phase_real = (r_slave - r_main) / lambda * C;
 		K += ((phase_real - unwrapped_phase.at<double>(rrr - 1, ccc - 1)) / (2 * PI));
 	}
@@ -801,7 +800,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
 	Mat Satellite_M_T_Position = sate1;//主星发射位置
 	Mat Satellite_S_T_Position;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		Satellite_S_T_Position = sate2;//辅星发射位置
 	}
@@ -877,7 +876,7 @@ int Dem::dem_newton_iter_14(
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
 		iter_times < 1 ||
-		mode < 1 || mode > 2)
+		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false)
 	{
 		fprintf(stderr, "dem_newton_iter_14(): input check failed!\n");
 		return -1;
@@ -900,7 +899,7 @@ int Dem::dem_newton_iter_14(
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{
-		fprintf(stderr, "dem_newton_iter_14(): invalide unwrapped_phase !\n");
+		fprintf(stderr, "dem_newton_iter_14(): invalid unwrapped_phase !\n");
 		return -1;
 	}
 	//ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
@@ -1069,7 +1068,7 @@ int Dem::dem_newton_iter_14(
 		util.ell2xyz(llh_temp, ground);
 		double r_main = sqrt(sum((sate1(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground).mul(sate1(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground))[0]);
 		double r_slave = sqrt(sum((sate2(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground).mul(sate2(cv::Range(rrr - 1, rrr), cv::Range(0, 3)) - ground))[0]);
-		double C = mode == 1 ? 4 * PI : 2 * PI;
+		double C = mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4 * PI : 2 * PI;
 		double phase_real = (r_slave - r_main) / lambda * C;
 		KK.at<double>(0, i) = ((phase_real - unwrapped_phase.at<double>(rrr - 1, ccc - 1)) / (2 * PI));
 		K += ((phase_real - unwrapped_phase.at<double>(rrr - 1, ccc - 1)) / (2 * PI));
@@ -1117,7 +1116,7 @@ int Dem::dem_newton_iter_14(
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
 	Mat Satellite_M_T_Position = sate1;//主星发射位置
 	Mat Satellite_S_T_Position;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		Satellite_S_T_Position = sate2;//辅星发射位置
 	}
@@ -1193,7 +1192,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
 		iter_times < 1 ||
-		mode < 1 || mode > 4)
+		mode < TR_MODE_SINGLE_TX_SINGLE_RX || mode > TR_MODE_DOUBLE_FREQ_PING)
 	{
 		fprintf(stderr, "dem_newton_iter_14_dualfreqpingpong(): input check failed!\n");
 		return -1;
@@ -1408,7 +1407,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	Mat R_F = R_M * 2.0 + lambda * unwrapped_phase / (2 * PI);
 	Mat Satellite_M_T_Position = sate1;//主星发射位置
 	Mat Satellite_S_T_Position;
-	if (mode == 1)
+	if (mode == TR_MODE_SINGLE_TX_SINGLE_RX)
 	{
 		Satellite_S_T_Position = sate2;//辅星发射位置
 	}
