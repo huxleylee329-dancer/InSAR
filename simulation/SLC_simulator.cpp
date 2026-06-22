@@ -97,6 +97,7 @@ namespace {
 	}
 }
 
+namespace {
 enum ConvolutionType {
 	/* Return the full convolution, including border */
 	CONVOLUTION_FULL,
@@ -127,6 +128,7 @@ Mat conv2(const Mat& img, const Mat& ikernel, ConvolutionType type)
 		dest = dest.colRange((kernel.cols - 1) / 2, dest.cols - kernel.cols / 2).rowRange((kernel.rows - 1) / 2, dest.rows - kernel.rows / 2);
 	}
 	return dest;
+}
 }
 SLC_simulator::SLC_simulator()
 {

@@ -121,6 +121,9 @@
   - 跳过：两个 `geo_transformation` 重载中 54 行完全相同的双线性插值代码，但提取辅助函数需传入多个矩阵引用，接口收益有限
 - [ ] **数据结构体定义与 Utils 类耦合** — `Utils.h:126-309`
   - `triangle`、`tri_edge`、`tri_node`、`node_index`、`edge_index` 应提取到 `DelaunayTypes.h`
+- [x] **`Utils::gen_delaunay()` 内核句柄泄漏** — `Utils.cpp:4663`
+  - Windows 内核对象句柄 `hd` 在部分退出路径上未调用 `CloseHandle(hd)`
+  - 应确保所有退出路径（包括错误分支）均调用 `CloseHandle(hd)`，或使用 RAII 句柄包装
 
 ### P2 — 建议
 
@@ -142,6 +145,10 @@
 - [x] **`gen_mask` 系列与 `phase_derivatives_variance` 性能优化** — `Utils.cpp`
   - 在 OMP 并行的双层循环内每次迭代调用 `cv::mean()`，以及 `phase_derivatives_variance` 内部的 `cv::mean`、`sum` 和矩阵乘法，有极高计算与动态内存分配开销。
   - 修复：使用 `cv::boxFilter` 将复杂度降至 O(1)，并规避了循环内所有的 Mat 动态分配和 sum 遍历累加，使计算效率极大提升。
+- [x] **`tri_node::get_distance` 值传递触发深拷贝** — `Utils.h:70`, `Utils.cpp:15811`
+  - `int get_distance(tri_node node, double* distance) const` 采用值传递，每次调用都会触发 `tri_node` 的深拷贝（含 `malloc`/`memcpy`）
+  - 应改为常量引用传递：`int get_distance(const tri_node& node, double* distance) const`
+  - 外部调用源码无需修改，仅需重新编译
 
 ### P3 — 优化
 
@@ -336,10 +343,8 @@
 - [x] **外部进程创建代码重复 6 次** — `Unwrap.cpp:146-198,265-318,1757-1810,2692-2744,2829-2885`
   - 每处约 40-50 行 `CreateProcess`+Job Object+`WaitForSingleObject`+句柄关闭
   - 应提取为 `runExternalProcess()` 辅助函数
-- [ ] **MCF 系列函数 BFS 解缠核心逻辑重复 4 次** — `Unwrap.cpp:1255,1417,1581,1813`
-  - BFS 遍历、邻居查找、相位梯度计算、解缠赋值代码几乎完全相同
-  - 应提取核心 BFS 解缠循环为私有辅助方法
-  - 先不修改
+- [x] **MCF 系列函数 BFS 解缠核心逻辑重复 4 次** — `Unwrap.cpp:1255,1417,1581,1813`
+  - 跳过：经评估，4 处循环在边界判定（Boundary）、平衡状态（Balance）、残差边判定（Residue Edge）等具体过滤条件上存在细微且关键的差异。若强行合并，参数化或谓词包装后会让逻辑过度复杂，且对解缠结果有极高回归风险，因此在没有完整解缠回归测试集前保持现状以策安全。
 - [x] **硬编码调试路径** — `Unwrap.cpp:264,324-325,2297-2299`
   - `E:\zgb1\functions\mask.bin`、`E:\working_dir\projects\software\InSAR\bin\...`
   - 应立即删除
@@ -362,6 +367,9 @@
   - 使用 `min`/`max` 作为变量名
 - [x] **未解缠像素填充值可能不合理** — `Unwrap.cpp:1402-1412`
   - `min - 0.1*(max - min)` 可能在后续处理中引入伪影，建议使用 NaN
+- [x] **`Unwrap::GetSPD()` 内层循环冗余矩阵指针查找** — `Unwrap.cpp:2802-2823`
+  - 最内层循环中每次迭代都重复调用 `padded.ptr<double>(i)` 获取行指针
+  - 应在循环外部一次性缓存行指针，避免重复查找开销
 
 ### P3 — 优化
 
@@ -404,6 +412,12 @@
 - [x] **HDF5 资源清理代码重复** — `FormatConversion.cpp` 多处
   - 每个 H5 函数都有手动 `H5Dclose`/`H5Sclose`/`H5Fclose`/`H5Tclose`
   - 建议使用 RAII 包装器或 `goto cleanup` 模式
+- [x] **`XMLFile` 的 `Impl*` 裸指针存在泄漏风险** — `FormatConversion.h:602`, `FormatConversion.cpp:3890`
+  - `XMLFile` 使用裸指针 `Impl* impl_` 管理内部实现，异常路径下可能泄漏
+  - 应替换为 `std::unique_ptr<Impl> impl_`，确保异常安全并防止内存泄漏
+- [x] **`read_slc_from_Sentinel()` 早期返回分支文件描述符泄漏** — `FormatConversion.cpp:1958`
+  - `fopen` 打开文件后，在部分早期返回分支上未调用 `fclose(fp)`
+  - 应确保所有退出路径均调用 `fclose(fp)`，或使用 RAII 文件句柄包装
 
 ### P2 — 建议
 
@@ -492,6 +506,9 @@
   - `obj_value` 建议使用 `double&`
 - [x] **`error_head[256]` 使用固定大小 char 数组** — `SBAS.h` 多处
   - 建议使用 `std::string`
+- [x] **`SBAS.cpp` 内层循环冗余矩阵切片与函数调用** — `SBAS.cpp:1784-1786`
+  - 循环内对 1×1 范围进行矩阵切片并调用 `GetMod()` 计算模值，产生不必要的内存碎片和函数调用开销
+  - 应直接读取实部和虚部数值，内联计算模值：`sqrt(re*re + im*im)`
 
 ### P3 — 优化
 
@@ -634,8 +651,8 @@
   - 建议合并为一个函数，增加 `bool addPhase` 参数
 - [x] **OMP 并行循环内创建临时 Mat 对象** — `SLC_simulator.cpp` 多处
   - 每次迭代创建 `Mat XYZ, LLH(1,3,CV_64F), tt`，百万级像素时性能严重下降
-- [ ] **`conv2` 函数定义在 cpp 文件全局作用域** — `SLC_simulator.cpp:30-60`
-  - 通用二维卷积函数应提取到 Utils 类中
+- [x] **`conv2` 函数定义在 cpp 文件全局作用域** — `SLC_simulator.cpp:30-60`
+  - 修复：将 `conv2` 及其配套枚举类型放入 `SLC_simulator.cpp` 的匿名命名空间中，限制其作用域为文件内局部链接，防止与其他文件产生符号重定义冲突。
 - [x] **`Utils util` 在每个函数中重复实例化** — `SLC_simulator.cpp:2044,2447,3355`
   - 实际只需调用 `ell2xyz()`，应使用 `Utils::ell2xyz()` 静态版本
 
@@ -671,8 +688,8 @@
 - [ ] **`Package.h` 职责过重** — `Package.h`
   - 同时承担常量定义、结构体定义、DLL 导出宏、OpenCV/OpenMP 配置
   - 建议拆分为 `Constants.h`、`SarTypes.h`
-- [ ] **`ComplexMat.h` 中 `using namespace std` 污染全局命名空间** — `ComplexMat.h:11`
-  - 已在 ComplexMat 模块中记录
+- [x] **`ComplexMat.h` 中 `using namespace std` 污染全局命名空间** — `ComplexMat.h:11`
+  - 跳过：历史遗留头文件依赖过深，全局重构物理改动量过大（需改动大量公共头文件和源文件），保持现状以避免编译和回归风险。
 
 ### P2 — 建议
 
@@ -722,6 +739,12 @@
   - Utils.cpp、Dem.cpp、Unwrap.cpp、SLC_simulator.cpp 中共 10+ 处
 - [ ] **清理所有 `#if 0` 和注释掉的死代码**
   - Unwrap.cpp 约 670 行、SBAS.cpp 约 160 行、Evaluation.cpp 约 190 行、各模块散布
+- [ ] **采用基于范围的 for 循环**
+  - 多处使用传统 `for (int i = 0; i < vec.size(); i++)` 遍历容器
+  - 应改为 `for (const auto& item : vec)` 形式，减少下标错误风险并提升可读性
+- [ ] **使用 C++11 类内成员初始化器**
+  - 多个结构体/类（如 `tri_node`、`SBAS_node`、`OSV` 等）在构造函数中逐一初始化成员
+  - 应使用类内默认初始值（`int count = 0;`），让编译器生成默认构造函数
 
 ### P3 — 优化
 

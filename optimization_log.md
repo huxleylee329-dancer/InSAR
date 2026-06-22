@@ -6,7 +6,8 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
-| `工作区现场修改` | 2026-06-16 | AI | simulation, include | 1. 将私有成员 `char error_head[256]` 修改为 `std::string`，并在构造函数中通过标准 C++ 赋值初始化，规避缓冲区溢出隐患。<br>2. 对 `SLC_simulator.cpp` 中 9 处空的 `if` 代码块（`if (越界) {} else { 处理逻辑 }`）进行了条件反转重构，删除了无意义的空块与 `else` 关键字，缩减了代码嵌套层级并提升可读性。 |
+| 工作区现场修改 | 2026-06-22 | AI | simulation, optimize.md, optimization_log.md | 1. 将 `conv2` 及其配套的 `ConvolutionType` 声明移入 `SLC_simulator.cpp` 的匿名命名空间中，将其符号链接属性改为内部链接，彻底消除与其他模块同名符号冲突 (LNK2005) 的安全隐患。 |
+| `工作区现场修改` | 2026-06-16 | AI | simulation, include | 1. 将私有成员 `char error_head[256]` 修改为 `std::string`，并在构造函数中通过标准 C++ 赋值初始化，规避缓冲区溢出隐患。<br>2. 对 `SLC_simulator.cpp` 中 9 处空的 `if` 代码块（`if (越界) {} else { 处理逻辑 }`）进行了条件反转重构，删除了无意义 of 空块与 `else` 关键字，缩减了代码嵌套层级并提升可读性。 |
 | `工作区现场修改` | 2026-06-16 | AI | Dem, include | 1. 重构 `mode` 收发模式魔法数字：在 `Dem.cpp` 内部（如 `phase2dem_newton_iter`、`dem_newton_iter` 等函数）将所有表示收发模式的硬编码魔数替换为 `Package.h` 中的 `TransmitReceiveMode` 统一枚举值。<br>2. 更新头文件默认实参：同步将 `include/Dem.h` 中方法的默认实参 `int mode = 1` 更新为 `int mode = TR_MODE_SINGLE_TX_SINGLE_RX`。<br>3. 维持二进制（ABI）和源码（API）兼容：对外的函数签名参数类型依旧保持为 `int mode`。 |
 | `工作区现场修改` | 2026-06-16 | AI | SBAS, test2, test3, optimize.md | 1. 将 `readDIMACS` 的 `double* obj_value` 参数修改为引用类型 `double& obj_value`，以提高类型安全并强制执行编译期参数校验。<br>2. 移除 `readDIMACS` 内部不必要的 `!obj_value` 空指针校验逻辑，并将 `*obj_value` 解引用操作修改为直接值访问形式。<br>3. 更新 `test2.cpp`、`test3.cpp` 中所有被注释的测试代码范例，将传参形式由 `&obj` 调整为 `obj`，并在 `optimize.md` 中将该项标记为已完成。 |
 | `工作区现场修改` | 2026-06-16 | AI | FormatConversion, Dem, Evaluation, test2, Utils | 1. 统一纠正拼写错误 `invalide` 为 `invalid`：将 `FormatConversion.cpp`、`Dem.cpp` 和 `Evaluation.cpp` 中所有错误日志输出中的 `invalide` 修正为 `invalid`。<br>2. 修正局部变量与注释命名：同步更正 `FormatConversion.cpp` 内相关函数中的局部变量 `invalideLines`/`invalideLine_accu` 为 `invalidLines`/`invalidLine_accu`，并清理了 `test2.cpp` 和 `Utils.cpp` 注释中遗留的拼写错误。 |
@@ -622,6 +623,10 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **`Patch2D::update` 逗号运算符清理（`patch_2d.cpp`）**：
   - **问题**：`x = x_, y = y_, dist = d;` 使用逗号运算符将三个独立赋值合并为一行，语义不清晰且易误读。
   - **解决方法**：拆分为三行独立赋值语句。
+
+- **`conv2` 移出全局作用域，防范链接冲突（`SLC_simulator.cpp`）**：
+  - **问题**：`conv2` 及其配套枚举类型 `ConvolutionType` 被定义在 `SLC_simulator.cpp` 的全局作用域中，具有外部链接属性。由于在其他地方（如 `test2.cpp`）也存在同名重定义，一旦后续将仿真代码与测试代码合并或静态链接，链接器会直接报错 `LNK2005`（符号已定义冲突）。
+  - **解决方法**：将 `conv2` 函数和 `ConvolutionType` 枚举体完整包裹在 `SLC_simulator.cpp` 的匿名命名空间（`namespace { ... }`）内，限制其链接属性为内部链接（当前编译单元局部可见），在不影响内部 12 处调用的前提下，彻底消除了外部链接冲突的安全隐患。
 
 ---
 

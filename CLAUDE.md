@@ -30,7 +30,7 @@ Clean a configuration:
 MSBuild.exe InSAR.sln /t:Clean /p:Configuration=Debug /p:Platform=x64
 ```
 
-There is no discovered automated unit-test runner. The `test`, `test2`, and `test3` projects are console/application harnesses rather than a conventional test framework. The only active `main` found is in `unziptool/unziptool.cpp`; much of `test/test.cpp` is commented exploratory code. Build or run the relevant harness manually after changing processing code.
+There is no discovered automated unit-test runner. The `test`, `test2`, and `test3` projects are console/application harnesses rather than a conventional test framework. Each contains an active, uncommented `main` entry point at the end of its respective main C++ file representing the current test setup (with multiple alternative test configurations commented out). Build or run the relevant harness manually after changing processing code.
 
 Most x64 project outputs are configured to `bin/`; debug DLL targets usually use the `_d` suffix, while release targets use the project name.
 
@@ -44,6 +44,7 @@ The Visual Studio projects currently contain absolute include/library paths. Com
 - Eigen for numeric operations in some modules.
 - OpenMP enabled in many x64 configurations.
 - libtorch for the `Filter` project.
+- ONNX Runtime (onnxruntime.lib) for ONNX model inference in the `SARProcessing` project.
 
 If a build fails before compilation, inspect the relevant `.vcxproj` include and library paths first; many Release paths point at `D:\softwarepackages\...`, while many Debug x64 paths point at `D:\SRC\...`.
 
@@ -58,6 +59,7 @@ The main processing modules are split into one directory per Visual Studio proje
 - `FormatConversion` handles project XML/HDF5/raster/SAR format conversion and includes sensor-specific readers/utilities. It also vendors/compiles TinyXML sources.
 - `Registration` implements pixel/subpixel co-registration, interpolation, FFT helpers, DEM-to-SAR positioning, offset fitting, and resampling.
 - `Deflat`, `Filter`, `Unwrap`, `Dem`, `SBAS`, `simulation`, and `Evaluation` implement the corresponding InSAR processing stages or analysis tools.
+- `SARProcessing` implements core SAR processing routines, including BM3D-based image denoising, texture feature extraction, and ONNX-based object detection.
 - `unziptool` is a small console application project that builds an `unzip` executable.
 - `test`, `test2`, and `test3` are ad hoc harness projects for manual experiments and integration checks.
 
