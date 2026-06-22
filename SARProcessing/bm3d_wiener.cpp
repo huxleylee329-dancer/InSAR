@@ -22,7 +22,7 @@ BM3D_WIE::BM3D_WIE(
 	int swinrv_,			// vertical search window radius
 	int sstepv_			// vertical search step
 ) : orig_w(w_), orig_h(h_), psize(psize_), pstep(pstep_),
-	swinrh(swinrh_), ssteph(ssteph_), swinrv(swinrv_), sstepv(sstepv_)
+	swinrh(swinrh_), ssteph(ssteph_), swinrv(swinrv_), sstepv(sstepv_), wie_wgt_sum(0.0)
 {
 	// pad the last patch to ensure a completed step (copy the last row/column)
 	int w_pad = (orig_w - psize + pstep - 1) / pstep * pstep + psize - orig_w;
@@ -32,35 +32,23 @@ BM3D_WIE::BM3D_WIE(
 	w = orig_w + w_pad + swinrh * 2;
 	h = orig_h + h_pad + swinrv * 2;
 
-	g3d_noisy = new Group3D(psize, psize, max_sim);
-	g3d_basic = new Group3D(psize, psize, max_sim);
-	noisy = new ImageType[w * h]();
-	basic = new ImageType[w * h]();
+	g3d_noisy = std::make_unique<Group3D>(psize, psize, max_sim);
+	g3d_basic = std::make_unique<Group3D>(psize, psize, max_sim);
+	noisy.resize(w * h, 0);
+	basic.resize(w * h, 0);
 
-	numerator   = new PatchType[w * (psize + swinrv * 2)];
-	denominator = new PatchType[w * (psize + swinrv * 2)];
+	numerator.resize(w * (psize + swinrv * 2), 0);
+	denominator.resize(w * (psize + swinrv * 2), 0);
 
 	// the distances computed by the last patch can be partially reused when stepping forward
 	nbuf = (psize + pstep - 1) / pstep;
 	nsh  = (2 * swinrh + ssteph) / ssteph;
 	nsv  = (2 * swinrv + sstepv) / sstepv;
 
-	dist_buf = new DistType[nsh * nsv * nbuf];
-	dist_sum = new DistType[nsh * nsv];
+	dist_buf.resize(nsh * nsv * nbuf);
+	dist_sum.resize(nsh * nsv);
 
 	row_cnt = h;	// avoid processing without the noisy image initialization
-}
-
-BM3D_WIE::~BM3D_WIE()
-{
-	delete g3d_noisy;
-	delete g3d_basic;
-	delete[] noisy;
-	delete[] basic;
-	delete[] numerator;
-	delete[] denominator;
-	delete[] dist_buf;
-	delete[] dist_sum;
 }
 
 void BM3D_WIE::run(ImageType *clean)
@@ -72,25 +60,13 @@ void BM3D_WIE::run(ImageType *clean)
 	if (row_cnt > 0)
 		reset();
 	while (next_line(clean) >= 0);
-
-	clock_t stime = gtime + ftime + atime;
-	std::cout << "time(s): "
-			  << (double)gtime / CLOCKS_PER_SEC << ' '
-			  << (double)ftime / CLOCKS_PER_SEC << ' '
-			  << (double)atime / CLOCKS_PER_SEC << ' '
-			  << (double)stime / CLOCKS_PER_SEC << std::endl;
-
-	std::cout << "percentage: "
-			  << (double)gtime / stime * 100 << ' '
-			  << (double)ftime / stime * 100 << ' '
-			  << (double)atime / stime * 100 << std::endl;
 }
 
 void BM3D_WIE::reset()
 {
 	row_cnt = 0;
-	memset(numerator,   0, (psize + swinrv * 2) * w * sizeof(PatchType));
-	memset(denominator, 0, (psize + swinrv * 2) * w * sizeof(PatchType));
+	memset(numerator.data(),   0, (psize + swinrv * 2) * w * sizeof(PatchType));
+	memset(denominator.data(), 0, (psize + swinrv * 2) * w * sizeof(PatchType));
 }
 
 void BM3D_WIE::load(ImageType *org_noisy, ImageType *org_basic, int sigma, DistType max_mdist, int sigmau, int sigmav)
@@ -102,8 +78,8 @@ void BM3D_WIE::load(ImageType *org_noisy, ImageType *org_basic, int sigma, DistT
 	int w_pad = w - 2 * swinrh - orig_w;
 	int h_pad = h - 2 * swinrv - orig_h;
 
-	ImageType *tmp_noisy = noisy + swinrv * w + swinrh;
-	ImageType *tmp_basic = basic + swinrv * w + swinrh;
+	ImageType *tmp_noisy = noisy.data() + swinrv * w + swinrh;
+	ImageType *tmp_basic = basic.data() + swinrv * w + swinrh;
 	for (int i = 0; i < orig_h; i++)
 	{
 		memcpy(tmp_noisy, org_noisy, orig_w * sizeof(ImageType));
@@ -126,8 +102,8 @@ void BM3D_WIE::load(ImageType *org_noisy, ImageType *org_basic, int sigma, DistT
 		tmp_noisy += w;
 		tmp_basic += w;
 	}
-	memset(numerator,   0, (psize + swinrv * 2) * w * sizeof(PatchType));
-	memset(denominator, 0, (psize + swinrv * 2) * w * sizeof(PatchType));
+	memset(numerator.data(),   0, (psize + swinrv * 2) * w * sizeof(PatchType));
+	memset(denominator.data(), 0, (psize + swinrv * 2) * w * sizeof(PatchType));
 }
 
 /* Porcess a line of reference patches, the location of the line is recorded by (this->row_cnt).
@@ -146,14 +122,14 @@ int BM3D_WIE::next_line(ImageType *clean)
 {
 	if (row_cnt >= orig_h + pstep - psize) return -1;	// beyond the last line of reference patches
 
-	refer_noisy = noisy + (row_cnt + swinrv) * w + swinrh;	// the first reference patch of the line
-	refer_basic = basic + (row_cnt + swinrv) * w + swinrh;	// the first reference patch of the line
+	refer_noisy = noisy.data() + (row_cnt + swinrv) * w + swinrh;	// the first reference patch of the line
+	refer_basic = basic.data() + (row_cnt + swinrv) * w + swinrh;	// the first reference patch of the line
 
-	numer = numerator   + swinrv * w + swinrh;
-	denom = denominator + swinrv * w + swinrh;
+	numer = numerator.data()   + swinrv * w + swinrh;
+	denom = denominator.data() + swinrv * w + swinrh;
 
-	memset(dist_buf, 0, nsh * nsv * nbuf * sizeof(DistType));
-	memset(dist_sum, 0, nsh * nsv * sizeof(DistType));
+	memset(dist_buf.data(), 0, nsh * nsv * nbuf * sizeof(DistType));
+	memset(dist_sum.data(), 0, nsh * nsv * sizeof(DistType));
 
 	// initialize the distance buffer
 #pragma omp parallel for num_threads(USE_THREADS_NUM)
@@ -199,8 +175,8 @@ int BM3D_WIE::next_line(ImageType *clean)
 	}
 
 	// output the completed rows
-	numer = numerator   + swinrh;
-	denom = denominator + swinrh;
+	numer = numerator.data()   + swinrh;
+	denom = denominator.data() + swinrh;
 
 	int output_rows;
 	if (row_cnt < swinrv)
@@ -303,6 +279,7 @@ void BM3D_WIE::filtering()
 	double noisy_variance = g3d_basic->thres * g3d_basic->num;
 	// wiener filtering
 	double wie_wgt = 0.;
+	wie_wgt_sum = 0.0;
 	for (int p = 0; p < g3d_basic->num; p++)
 	{
 		for (int i = 0; i < psize * psize; i++)
@@ -342,8 +319,8 @@ void BM3D_WIE::aggregation()
 
 void BM3D_WIE::shift_numer_denom()
 {
-	numer = numerator;
-	denom = denominator;
+	numer = numerator.data();
+	denom = denominator.data();
 	for (int i = 0; i < 2 * swinrv + psize - pstep; i++)
 	{
 		memcpy(numer, numer + w * pstep, w * sizeof(PatchType));

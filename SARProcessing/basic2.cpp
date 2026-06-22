@@ -2,6 +2,20 @@
 #include <cmath>
 #include <iostream>
 
+// 重构傅里叶图像的象限，使原点位于图像中心 (FFT Shift)
+static void fftShift(cv::Mat& magI) {
+    magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
+    int cx = magI.cols / 2;
+    int cy = magI.rows / 2;
+    cv::Mat q0(magI, cv::Rect(0, 0, cx, cy));
+    cv::Mat q1(magI, cv::Rect(cx, 0, cx, cy));
+    cv::Mat q2(magI, cv::Rect(0, cy, cx, cy));
+    cv::Mat q3(magI, cv::Rect(cx, cy, cx, cy));
+    cv::Mat tmp;
+    q0.copyTo(tmp); q3.copyTo(q0); tmp.copyTo(q3);
+    q1.copyTo(tmp); q2.copyTo(q1); tmp.copyTo(q2);
+}
+
 BasicFeatures extract_basic_features(const cv::Mat& img_gray) {
     BasicFeatures feats = { 0.0, 0.0, 0.0, 0.0 };
     if (img_gray.empty()) return feats;
@@ -28,16 +42,7 @@ BasicFeatures extract_basic_features(const cv::Mat& img_gray) {
     cv::Mat magI = planes[0];
 
     // 2.2 FFT Shift
-    magI = magI(cv::Rect(0, 0, magI.cols & -2, magI.rows & -2));
-    int cx = magI.cols / 2;
-    int cy = magI.rows / 2;
-    cv::Mat q0(magI, cv::Rect(0, 0, cx, cy));
-    cv::Mat q1(magI, cv::Rect(cx, 0, cx, cy));
-    cv::Mat q2(magI, cv::Rect(0, cy, cx, cy));
-    cv::Mat q3(magI, cv::Rect(cx, cy, cx, cy));
-    cv::Mat tmp;
-    q0.copyTo(tmp); q3.copyTo(q0); tmp.copyTo(q3);
-    q1.copyTo(tmp); q2.copyTo(q1); tmp.copyTo(q2);
+    fftShift(magI);
 
     // 2.3 对数尺度变换
     magI += cv::Scalar::all(1);
@@ -107,27 +112,26 @@ BasicFeatures extract_basic_features(const cv::Mat& img_gray) {
         }
     }
 
-    double std_i = 0.0, std_j = 0.0;
+    double var_i = 0.0, var_j = 0.0;
+    double cov = 0.0;
     for (int i = 0; i < 256; ++i) {
         for (int j = 0; j < 256; ++j) {
             double p = glcm.at<double>(i, j);
             if (p > 0) {
-                std_i += p * (i - mean_i) * (i - mean_i);
-                std_j += p * (j - mean_j) * (j - mean_j);
+                double diff_i = i - mean_i;
+                double diff_j = j - mean_j;
+                var_i += p * diff_i * diff_i;
+                var_j += p * diff_j * diff_j;
+                cov += p * diff_i * diff_j;
             }
         }
     }
-    std_i = std::sqrt(std_i);
-    std_j = std::sqrt(std_j);
+    double std_i = std::sqrt(var_i);
+    double std_j = std::sqrt(var_j);
 
     double correlation = 0.0;
-    for (int i = 0; i < 256; ++i) {
-        for (int j = 0; j < 256; ++j) {
-            double p = glcm.at<double>(i, j);
-            if (p > 0 && std_i > 0 && std_j > 0) {
-                correlation += p * (i - mean_i) * (j - mean_j) / (std_i * std_j);
-            }
-        }
+    if (std_i > 0.0 && std_j > 0.0) {
+        correlation = cov / (std_i * std_j);
     }
 
     feats.contrast = contrast;

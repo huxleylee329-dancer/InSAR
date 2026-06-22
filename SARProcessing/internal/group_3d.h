@@ -2,6 +2,8 @@
 #define __PATCH_3D_H__
 
 #include <iostream>
+#include <vector>
+#include <memory>
 #include "patch_2d.h"
 
 struct Group3D
@@ -18,13 +20,12 @@ struct Group3D
 	PatchType thres;	// hard threshold of the filtering
 	int nonzeros;		// number of nonzero coefficients
 
-	Patch2D **patch;	// array of pointers of 2D patches
-	Patch2D **buf;		// array of pointers used as buffer (in Hadamard transform)
+	std::vector<std::unique_ptr<Patch2D>> patch;	// array of pointers of 2D patches
+	std::vector<std::unique_ptr<Patch2D>> buf;		// array of pointers used as buffer (in Hadamard transform)
 
 	static const PatchType sqrt_powN_x32[8];	// integer of (sqrt(1<<n) * 32)
 
 	Group3D(int w_, int h_, int maxp);
-	~Group3D();
 
 	void set_thresholds(int sigma, DistType maxd);
 

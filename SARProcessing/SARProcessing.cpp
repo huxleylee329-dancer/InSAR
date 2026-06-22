@@ -27,6 +27,21 @@
 
 // ============ 内部辅助函数 ============
 
+#ifdef _WIN32
+// 将 UTF-8 编码的 std::string 转换为宽字符 std::wstring
+static std::wstring toWideString(const std::string& str)
+{
+    int wideLen = MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, nullptr, 0);
+    if (wideLen <= 0) return L"";
+    std::wstring wstr(wideLen, 0);
+    MultiByteToWideChar(CP_UTF8, 0, str.c_str(), -1, &wstr[0], wideLen);
+    if (!wstr.empty() && wstr.back() == L'\0') {
+        wstr.pop_back();
+    }
+    return wstr;
+}
+#endif
+
 // 计算中值（用于噪声估计）
 static double calcMedian(const cv::Mat& img)
 {
@@ -245,14 +260,7 @@ bool SARProcessor::DetectShip(const char* imagePath,
         // 将路径转换为 native 分隔符
         std::string modelPathStr(modelPath);
 #ifdef _WIN32
-        // 转换为宽字符串用于 Windows
-        int wideLen = MultiByteToWideChar(CP_UTF8, 0, modelPathStr.c_str(), -1, nullptr, 0);
-        std::wstring modelPathW(wideLen, 0);
-        MultiByteToWideChar(CP_UTF8, 0, modelPathStr.c_str(), -1, &modelPathW[0], wideLen);
-        // 去掉末尾的 null terminator
-        if (!modelPathW.empty() && modelPathW.back() == L'\0') {
-            modelPathW.pop_back();
-        }
+        std::wstring modelPathW = toWideString(modelPathStr);
         Ort::Session session(env, modelPathW.c_str(), sessionOptions);
 #else
         Ort::Session session(env, modelPathStr.c_str(), sessionOptions);
@@ -290,12 +298,7 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
 
     std::string modelPathStr(modelPath);
 #ifdef _WIN32
-    int wideLen = MultiByteToWideChar(CP_UTF8, 0, modelPathStr.c_str(), -1, nullptr, 0);
-    std::wstring modelPathW(wideLen, 0);
-    MultiByteToWideChar(CP_UTF8, 0, modelPathStr.c_str(), -1, &modelPathW[0], wideLen);
-    if (!modelPathW.empty() && modelPathW.back() == L'\0') {
-        modelPathW.pop_back();
-    }
+    std::wstring modelPathW = toWideString(modelPathStr);
     Ort::Session session(env, modelPathW.c_str(), sessionOptions);
 #else
     Ort::Session session(env, modelPathStr.c_str(), sessionOptions);

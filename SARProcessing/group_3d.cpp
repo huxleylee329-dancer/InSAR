@@ -6,22 +6,12 @@ const PatchType Group3D::sqrt_powN_x32[8] = {32, 45, 64, 90, 128, 180, 256, 360}
 Group3D::Group3D(int w_, int h_, int maxp)
 	: w(w_), h(h_), max_patches(maxp)
 {
-	patch = new Patch2D *[max_patches];
-	buf   = new Patch2D *[max_patches];
+	patch.reserve(max_patches);
 	for (int i = 0; i < max_patches; i++)
 	{
-		patch[i] = new Patch2D(w, h);
+		patch.push_back(std::make_unique<Patch2D>(w, h));
 	}
-}
-
-Group3D::~Group3D()
-{
-	for (int i = 0; i < max_patches; i++)
-	{
-		delete patch[i];
-	}
-	delete[] patch;
-	delete[] buf;
+	buf.resize(max_patches);
 }
 
 void Group3D::set_thresholds(int sigma, DistType maxd)
@@ -66,12 +56,12 @@ void Group3D::insert_patch(int x, int y, DistType d)
 	if (idx >= max_patches) return;
 	if (num >= max_patches) num--;
 
-	Patch2D *tmp = patch[num];
+	std::unique_ptr<Patch2D> tmp = std::move(patch[num]);
 	for (int i = num; i > idx; i--)
 	{
-		patch[i] = patch[i - 1];
+		patch[i] = std::move(patch[i - 1]);
 	}
-	patch[idx] = tmp;
+	patch[idx] = std::move(tmp);
 	patch[idx]->update(x, y, d);
 	num++;
 }
@@ -172,11 +162,6 @@ void Group3D::hadamard_1d()
 	PatchType tmp;
 	for (int n = 0; n < log_num; n++)
 	{
-		for (int p = 0; p < num / 2; p++)
-		{
-			buf[p] = patch[2 * p];
-			buf[p + num / 2] = patch[2 * p + 1];
-		}
 		for (int p = 0; p < num; p += 2)
 		{
 			for (int i = 0; i < w*h; i++)
@@ -186,9 +171,14 @@ void Group3D::hadamard_1d()
 				patch[p + 1]->values[i] = tmp;
 			}
 		}
+		for (int p = 0; p < num / 2; p++)
+		{
+			buf[p] = std::move(patch[2 * p]);
+			buf[p + num / 2] = std::move(patch[2 * p + 1]);
+		}
 		for (int p = 0; p < num; p++)
 		{
-			patch[p] = buf[p];
+			patch[p] = std::move(buf[p]);
 		}
 	}
 }

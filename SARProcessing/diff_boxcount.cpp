@@ -78,10 +78,10 @@ double extract_diffbox_feature(const cv::Mat& img_gray) {
     }
 
     // 4. 对数域线性拟合 np.polyfit(np.log(rlist), np.log(NRlist), 1)
-    std::vector<double> log_rlist, log_NRlist;
+    std::vector<double> log_rlist(rlist.size()), log_NRlist(rlist.size());
     for (size_t i = 0; i < rlist.size(); ++i) {
-        log_rlist.push_back(std::log(rlist[i]));
-        log_NRlist.push_back(std::log(NRlist[i]));
+        log_rlist[i] = std::log(rlist[i]);
+        log_NRlist[i] = std::log(NRlist[i]);
     }
 
     return polyfit_slope(log_rlist, log_NRlist);

@@ -25,7 +25,7 @@
  */
 void inplace_forward_bior15_2d_8x8(float *src)
 {
-	static float buf[4];
+	float buf[4];
 	float *org_src = src;
 
 	// horizontal transform of the 1st step (8x8)
@@ -161,7 +161,7 @@ void inplace_forward_bior15_2d_8x8(float *src)
  */
 void inplace_backward_bior15_2d_8x8(float *src)
 {
-	static float buf[4];
+	float buf[4];
 	float *org_src = src;
 
 	// vertical transform of the 1st step (2x2)
@@ -298,7 +298,7 @@ void inplace_backward_bior15_2d_8x8(float *src)
  */
 void inplace_forward_bior15_2d_8x8(int *src)
 {
-	static int buf[4];
+	int buf[4];
 	int *org_src = src;
 
 	// horizontal transform of the 1st step (8x8)
@@ -399,7 +399,7 @@ void inplace_forward_bior15_2d_8x8(int *src)
  */
 void inplace_backward_bior15_2d_8x8(int *src)
 {
-	static int buf[4];
+	int buf[4];
 	int *org_src = src;
 
 	// vertical transform of the 1st step (2x2)

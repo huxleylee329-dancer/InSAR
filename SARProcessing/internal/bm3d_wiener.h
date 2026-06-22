@@ -4,6 +4,8 @@
 #include <iostream>
 #include <time.h>
 #include <omp.h>
+#include <vector>
+#include <memory>
 
 #include "global_define.h"
 #include "patch_2d.h"
@@ -33,7 +35,7 @@ public:
 		int swinrv_ = 16,			// vertical search window radius
 		int sstepv_ = 1				// vertical search step
 		);
-	virtual ~BM3D_WIE();
+	virtual ~BM3D_WIE() = default;
 
 	/* Load a new grayscale image and reset the buffers. */
 	virtual void load(
@@ -75,8 +77,8 @@ protected:
 	int orig_h;			// original image height
 	int w;				// padded image width
 	int h;				// padded image height
-	ImageType *noisy;	// padded noisy image
-	ImageType *basic;	// padded basic image
+	std::vector<ImageType> noisy;	// padded noisy image
+	std::vector<ImageType> basic;	// padded basic image
 
 	int psize;			// patch size
 	int pstep;			// reference patch step
@@ -87,21 +89,21 @@ protected:
 	int swinrv;			// vertical search window radius
 	int sstepv;			// vertical search step
 
-	Group3D *g3d_basic;		// 3d group containg the reference patch and all its similar ones
-	Group3D *g3d_noisy;		// 3d group containg the reference patch and all its similar ones
+	std::unique_ptr<Group3D> g3d_basic;		// 3d group containg the reference patch and all its similar ones
+	std::unique_ptr<Group3D> g3d_noisy;		// 3d group containg the reference patch and all its similar ones
 	ImageType *refer_noisy;	// reference patch pointer (top-left) of noisy image
 	ImageType *refer_basic;	// reference patch pointer (top-left) of basic image
 
 	int row_cnt;		// counter of the processed rows of the original image
 
-	PatchType *numerator;		// size: w * (2 * swinrv + psize)
-	PatchType *denominator;		// size: w * (2 * swinrv + psize)
+	std::vector<PatchType> numerator;		// size: w * (2 * swinrv + psize)
+	std::vector<PatchType> denominator;		// size: w * (2 * swinrv + psize)
 	PatchType *numer;			// template pointer
 	PatchType *denom;			// template pointer
 	double wie_wgt_sum;
 
-	DistType *dist_buf;		// sliding buffer to record the distances step by step
-	DistType *dist_sum;		// distances buffer of each candidate patch
+	std::vector<DistType> dist_buf;		// sliding buffer to record the distances step by step
+	std::vector<DistType> dist_sum;		// distances buffer of each candidate patch
 
 	int nbuf;				// number of steps in a single patch, ceil(psize / pstep)
 	int ncnt;				// counter of the steps

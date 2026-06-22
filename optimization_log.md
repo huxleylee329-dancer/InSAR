@@ -572,5 +572,57 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   - **问题**：在 `SLC_simulator.cpp` of 多个核心逻辑函数中（如 `generateSLC`、`generateSLC_spacety`、`generateSLC_doubleRx`、`generateSLC_pingpong` 和 `computeSlantRange`），存在共 9 处结构为 `if (越界判定) { } else { 核心处理逻辑 }` of 代码块。这不仅导致无意义 of 空 `{}` 占位，也增加了不必要 of 代码嵌套层级，降低了代码可读性。
   - **解决方案**：对这 9 处代码块进行了条件反转重构，变更为 `if (未越界判定) { 核心处理逻辑 }`，直接删除了空 of `if` 块和伴随 of `else` 关键字。在严格保证逻辑、行列边界和校验与原有功能 100% 比特级一致 of 同时，精简了控制流结构并提升了代码 of 直观度。
 
+### 35. SARProcessing 模块代码简化与现代化重构 (SARProcessing)
+基于 code-simplifier 工具的全面审查，对 SARProcessing 项目的 BM3D 降噪子系统、特征提取模块及辅助工具进行代码简化与现代化改造，涉及 12 个文件，净减少约 48 行代码（144 增 / 191 删）。
+
+- **BM3D 内存管理现代化（`new/delete` → `std::vector` / `std::unique_ptr`）**：
+  - **问题**：`BM3D`、`BM3D_WIE`、`Group3D` 和 `Patch2D` 四个类全面使用 `new[]` / `delete[]` 手动管理堆内存（包括图像缓冲区、距离缓冲区、patch 指针数组等），需要手写析构函数，且在异常路径下存在内存泄漏隐患，同时阻止编译器生成正确的拷贝/移动构造函数。
+  - **解决方法**：
+    1. 将 `BM3D` 和 `BM3D_WIE` 中的 `ImageType *noisy`、`PatchType *numerator` / `*denominator`、`DistType *dist_buf` / `*dist_sum` 全部替换为 `std::vector<>`，通过 `.data()` 获取裸指针供现有算法循环使用，保持 100% 功能等价。
+    2. 将 `Group3D` 中的 `Patch2D **patch` 和 `Patch2D **buf` 替换为 `std::vector<std::unique_ptr<Patch2D>>`，在 `insert_patch` 和 `hadamard_1d` 中使用 `std::move` 语义实现所有权转移。
+    3. 将 `Patch2D` 中的 `PatchType *values` 替换为 `std::vector<PatchType>`，通过 `values.data()` 传入 `inplace_forward_bior15_2d_8x8` / `inplace_backward_bior15_2d_8x8` 变换函数。
+    4. 消除了 4 个类共 8 个手写析构函数（`BM3D::~BM3D`、`BM3D_WIE::~BM3D_WIE`、`Group3D::~Group3D`、`Patch2D::~Patch2D`），均改用编译器默认生成或 `= default`。
+
+- **`hadamard_1d` 空指针解引用崩溃缺陷修复（`group_3d.cpp`）**：
+  - **问题**：在将 `Patch2D **patch` 迁移为 `std::vector<std::unique_ptr<Patch2D>>` 后，`hadamard_1d` 中原有的执行顺序——先将 patch 元素通过 `std::move` 移入 buf，再进行蝶形计算——导致 `patch[p]` 已被移走为 `nullptr`，后续 `patch[p]->values[i]` 访问时空指针解引用引发 Crash。
+  - **解决方法**：调整逻辑步骤顺序为：①首先在当前顺序的 patch 上进行 Hadamard 蝶形计算；②计算完毕后通过 `std::move` 将重排元素移至 buf；③最后将 buf 内元素全部移回 patch 以开始下一轮迭代。此修复正确维持了 `std::unique_ptr` 的移动语义，且无多余内存分配开销。
+
+- **`BM3D_WIE::filtering()` 未初始化累加器 Bug 修复（`bm3d_wiener.cpp`）**：
+  - **问题**：`wie_wgt_sum` 是 `BM3D_WIE` 的成员变量，在 `filtering()` 中被累加但从未重置。多次调用 `load()` + `run()` 后，`wie_wgt_sum` 跨调用累积导致 Wiener 权重计算错误。
+  - **解决方法**：在构造函数初始化列表中加入 `wie_wgt_sum(0.0)`，并在 `filtering()` 函数入口处添加 `wie_wgt_sum = 0.0;` 重置。
+
+- **BM3D / BM3D_WIE 析构函数风格统一**：
+  - **问题**：`bm3d.h` 中删除了析构函数声明（依赖编译器生成），而 `bm3d_wiener.h` 中保留了显式 `virtual ~BM3D_WIE();`，风格不一致。
+  - **解决方法**：统一为 `virtual ~BM3D() = default;` 和 `virtual ~BM3D_WIE() = default;`，显式表明使用编译器默认析构。
+
+- **移除 `run()` 中的 `std::cout` 调试输出**：
+  - **问题**：`BM3D::run()` 和 `BM3D_WIE::run()` 中无条件向 `std::cout` 打印分组/滤波/聚合的计时信息。在作为 DLL 库发布时，此行为对调用方不可预期。
+  - **解决方法**：移除两个 `run()` 方法中的全部 `std::cout` 输出（共约 20 行）。
+
+- **`transform.cpp` 中 `static` 局部缓冲区线程安全修复**：
+  - **问题**：`inplace_forward_bior15_2d_8x8`（float 和 int 版本）及 `inplace_backward_bior15_2d_8x8`（float 和 int 版本）四个函数中，`static float buf[4]` / `static int buf[4]` 为静态局部变量。虽然当前 BM3D 的 OpenMP 并行不直接调用这些变换函数，但 `static` 声明使其在多线程场景下存在数据竞争隐患，且对 4 元素数组无任何性能收益。
+  - **解决方法**：将 4 处 `static float/int buf[4]` 改为栈局部变量 `float/int buf[4]`。
+
+- **ONNX 路径转换代码去重（`SARProcessing.cpp`）**：
+  - **问题**：`DetectShip()` 和 `DetectShipBatch()` 中各包含一段完全相同的 `MultiByteToWideChar` UTF-8 到宽字符转换代码（约 7 行），存在维护冗余。
+  - **解决方法**：提取 `static std::wstring toWideString(const std::string& str)` 辅助函数，两个调用点均简化为单行调用，同时增加了 `wideLen <= 0` 的防御性检查。
+
+- **GLCM 特征提取循环优化（`basic2.cpp`）**：
+  - **问题**：`extract_basic_features` 中 GLCM 纹理特征提取对 256×256 共生矩阵遍历了三次：第一次计算 contrast、ASM 和均值，第二次计算方差，第三次计算相关性。第三次循环中 `std_i > 0 && std_j > 0` 的判断被放在了内层循环内，造成百万次无效判定。
+  - **解决方法**：将第二次循环扩展为同时计算方差和协方差（`cov`），然后用闭式公式 `correlation = cov / (std_i * std_j)` 替代第三次循环，将条件判断 `std_i > 0 && std_j > 0` 提升到循环外。总计从三次 256×256 遍历减少为两次。
+
+- **FFT Shift 提取为命名函数（`basic2.cpp`）**：
+  - **问题**：`extract_basic_features` 中 FFT Shift（象限重排）逻辑为 10 行内联代码，缺乏语义标识。
+  - **解决方法**：提取为 `static void fftShift(cv::Mat& magI)` 辅助函数，原调用点简化为单行 `fftShift(magI);`。
+
+- **`diff_boxcount.cpp` vector 预分配优化**：
+  - **问题**：`log_rlist` 和 `log_NRlist` 在已知大小的情况下使用 `push_back` 循环填充，造成多次动态扩容。
+  - **解决方法**：改为构造时预分配 `std::vector<double> log_rlist(rlist.size())`，循环内使用索引赋值。
+
+- **`Patch2D::update` 逗号运算符清理（`patch_2d.cpp`）**：
+  - **问题**：`x = x_, y = y_, dist = d;` 使用逗号运算符将三个独立赋值合并为一行，语义不清晰且易误读。
+  - **解决方法**：拆分为三行独立赋值语句。
+
 ---
+
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*
