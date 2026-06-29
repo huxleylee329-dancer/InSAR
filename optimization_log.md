@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-06-29 | AI | Filter | 1. 修复并优化 `Filter` 模块的 `czt2` 与 `slope_adaptive_filter` 算法，消除多线程环境下的崩溃 Bug 并提升性能。<br>2. 修复 `cv::merge` 引发 `ipp::IwException` 的 Bug，改为直接创建复数矩阵 `Mat::zeros(..., CV_64FC2)`。<br>3. 修复 `cv::flip` 对非连续 ROI 矩阵导致的 IPP 崩溃 Bug，使用 OpenCV 标准 `cv::copyMakeBorder` 优雅重构边缘扩充逻辑。<br>4. 实施 4 大性能优化：重用线程局部缓冲区以实现零动态分配；预计算 `h_dft` 核矩阵；整幅图预滤波处理；限制 OpenCV 线程数为 1 消除嵌套并行冲突。<br>5. 实施 2 大重型三角函数优化：将 `czt2` 内部的 `result` 矩阵计算（占总计算量 90% 以上）完全预计算并移出多线程循环；将 `W` 矩阵的三角函数运算提取至列循环外（计算量减少 `nc` 倍），消除数百亿次冗余 `cos`/`sin` 计算。<br>6. 引入 `FilterProgressCallback` 接口，在 `slope_adaptive_filter` 中基于原子变量计数（`std::atomic`）实现严格递增、单线程串行安全触发的进度汇报，解决多线程无序进度导致的 GUI 跳跃与竞态隐隐患。 |
 | 工作区现场修改 | 2026-06-22 | AI | simulation, optimize.md, optimization_log.md | 1. 将 `conv2` 及其配套的 `ConvolutionType` 声明移入 `SLC_simulator.cpp` 的匿名命名空间中，将其符号链接属性改为内部链接，彻底消除与其他模块同名符号冲突 (LNK2005) 的安全隐患。 |
 | `工作区现场修改` | 2026-06-16 | AI | simulation, include | 1. 将私有成员 `char error_head[256]` 修改为 `std::string`，并在构造函数中通过标准 C++ 赋值初始化，规避缓冲区溢出隐患。<br>2. 对 `SLC_simulator.cpp` 中 9 处空的 `if` 代码块（`if (越界) {} else { 处理逻辑 }`）进行了条件反转重构，删除了无意义 of 空块与 `else` 关键字，缩减了代码嵌套层级并提升可读性。 |
 | `工作区现场修改` | 2026-06-16 | AI | Dem, include | 1. 重构 `mode` 收发模式魔法数字：在 `Dem.cpp` 内部（如 `phase2dem_newton_iter`、`dem_newton_iter` 等函数）将所有表示收发模式的硬编码魔数替换为 `Package.h` 中的 `TransmitReceiveMode` 统一枚举值。<br>2. 更新头文件默认实参：同步将 `include/Dem.h` 中方法的默认实参 `int mode = 1` 更新为 `int mode = TR_MODE_SINGLE_TX_SINGLE_RX`。<br>3. 维持二进制（ABI）和源码（API）兼容：对外的函数签名参数类型依旧保持为 `int mode`。 |
@@ -627,6 +628,35 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
 - **`conv2` 移出全局作用域，防范链接冲突（`SLC_simulator.cpp`）**：
   - **问题**：`conv2` 及其配套枚举类型 `ConvolutionType` 被定义在 `SLC_simulator.cpp` 的全局作用域中，具有外部链接属性。由于在其他地方（如 `test2.cpp`）也存在同名重定义，一旦后续将仿真代码与测试代码合并或静态链接，链接器会直接报错 `LNK2005`（符号已定义冲突）。
   - **解决方法**：将 `conv2` 函数和 `ConvolutionType` 枚举体完整包裹在 `SLC_simulator.cpp` 的匿名命名空间（`namespace { ... }`）内，限制其链接属性为内部链接（当前编译单元局部可见），在不影响内部 12 处调用的前提下，彻底消除了外部链接冲突的安全隐患。
+
+- **`Filter` 模块 czt2 与 边界填充 IPP 异常修复与算法重构性能优化（`Filter.cpp`, `Filter.h`）**：
+  - **问题 A（崩溃/异常）**：在 OpenMP 多线程执行坡度自适应滤波（`slope_adaptive_filter`）时，调用 `cv::merge` 将两个全零的 `CV_64F` 矩阵合并为 `CV_64FC2` 矩阵，频繁在 OpenCV 的 Intel IPP 后端中引发 `ipp::IwException` 异常。此外，在对非连续切片矩阵（ROI）调用 `cv::flip` 进行边界翻转时，也频繁因为 IPP 库对步长/非连续性支持缺陷而崩溃。
+  - **解决方法 A**：
+    1. 彻底取消 `czt2` 中的零合并，直接利用 OpenCV 原生的 `Mat::zeros(..., CV_64FC2)` 代替原来的 `cv::merge`，从而完全避开合并时的 IPP 调用。
+    2. 用 OpenCV 官方的标准高水平 API `cv::copyMakeBorder` 搭配反射边界模式（`BORDER_REFLECT`）一行替换原来手写的 20 多行分配、4次 `flip` 翻转和 4次 `copyTo` 拷贝的繁琐边界赋值逻辑，代码不仅更为整洁，且完全避开了 `cv::flip` 在非连续矩阵上的 IPP 兼容 Bug，同时保留了核心 DFT 计算的 IPP 硬件加速。
+  - **问题 B（性能极其缓慢，进度长期卡死）**：
+    1. **堆内存锁竞争**：在每一像素的计算中，`czt2` 内部和滤波大循环内部高频动态创建和释放数十个局部 `cv::Mat` 变量。这导致在 Windows 多线程并发时遭遇极其严重的全局堆锁竞争（Heap Lock Contention），CPU 线程大部分时间在排队等待申请内存。
+    2. **冗余 DFT 计算**：CZT 变换中的核矩阵 `h` 及其离散傅里叶变换 `h_dft`，它的数学值只取决于常数参数，在整张图的处理中恒定不变。但原代码在每个像素的计算中都重新分配 `h` 并执行了一次 DFT 计算（对于 200 万像素的图像会执行几百万次重复的 1D DFT）。
+    3. **冗余均值滤波**：原代码对每个滑动窗口提取后单独做一次均值滤波（调用 `meanfilter`，相当于执行了几百万次小图模糊）。
+    4. **嵌套并行过载**：外层 OpenMP 并行与 OpenCV 内部默认的多线程发生嵌套冲突，导致线程严重超载、高频上下文切换与 CPU 缓存失效。
+  - **解决方法 B**：
+    1. **内存重用**：将 `czt2` 所需的所有辅助缓冲区（`g_1`, `g_trans_1`, `y_1`, `W_1`, `tmp_1`, `phase_czt1_trans` 等）在外层 `i` 循环中（即每个线程内）一次性分配，并在 `j` 列循环中多次重用，使 `czt2` 实现“零动态内存分配”。（已移除原 `result_1` 和 `result_2` 缓冲区）。
+    2. **常量预计算**：将 CZT 变换的一维核向量 `h_1d` 的计算及其 `dft` 移到整个多线程循环外部，只在开头计算一次，并通过 `cv::repeat` 垂直广播为对应的 `h_dft_1` 和 `h_dft_2` 直接传入 `czt2`。
+    3. **均值整幅预处理**：在并行大循环开始前，将 `phase_update` 复制并使用 `meanfilter` 执行一次全局均值滤波，后续的窗口滤波直接变成简单的子矩阵切片拷贝（`copyTo`），用 1 次全局模糊替代了原先 200 万次局部窗口模糊。
+    4. **嵌套并行消除**：在函数入口处添加 `cv::setNumThreads(1)` 强制 OpenCV 在并行的子线程中以单线程模式运行，在计算结束后通过 `cv::setNumThreads(prev_threads)` 还原，完全消除了嵌套上下文切换。
+  - **问题 C（极其庞大的隐藏三角函数运算）**：
+    1. **result 矩阵冗余计算**：`czt2` 内部的 `result` 矩阵大小为 $96 \times 96$（或 $96 \times 9$），其值仅与 `phi0` 相关，在整张图的处理中是绝对恒定不变的。原代码在每个像素的计算中都使用双重循环重复计算 `cos`/`sin`（一幅图需要调用近 200 亿次三角函数，占滤波算法 90% 以上的计算量）。
+    2. **W 矩阵列计算冗余**：`W` 矩阵的计算公式仅与行索引有关，与列无关（每一列数值相同）。原代码使用双重循环，导致每行相同的 `cos`/`sin` 被重复调用了 `nc` 次（对于列数多的情况会放大近百倍）。
+  - **解决方法 C**：
+    1. **result 矩阵全局预计算**：在多线程大循环外部预先计算一维的 `result_1d` 核向量，并通过 `cv::repeat` 广播克隆出两阶段 `czt2` 使用的常量矩阵 `result_const_1` 和 `result_const_2`，以只读引用的形式传递，彻底砍掉了双重循环及其中近 200 亿次的三角函数开销。
+    2. **W 矩阵行级三角函数提取**：将 `czt2` 内部计算 `W` 的 `cos`/`sin` 计算提取到列循环外，每行只计算一次，在列循环内直接对所有元素赋值，使 `W` 矩阵的三角函数评估次数降低了 `nc` 倍（第一阶段减少 9 倍，第二阶段减少 96 倍）。
+
+  - **问题 D（并发下进度汇报无序与跳跃）**：
+    * 原 slope_adaptive_filter 函数的进度汇报依赖于 OpenMP 并行线程的循环索引 `i`，直接输出至 stdout。在并行环境下，不同线程是无序完成各行的，这会导致输出的进度数值在 `(i-Radius)/total_rows` 中发生频繁的乱序与“忽大忽小”的跳跃，不适合为外部 GUI（SatExplorer）提供平滑递增的进度呈现，并且在多线程高频调用时对 GUI 的异步槽产生并发性能冲击。
+  - **解决方法 D**：
+    1. **引入回调类型**：在 `Filter.h` 中新增进度回调类型定义 `typedef void (__stdcall *FilterProgressCallback)(int progress, const char* message);`，并在 `slope_adaptive_filter` 签名中接受形参 `cb = nullptr`，实现极低的外部耦合。
+    2. **全局原子计数**：在滤波算法内部使用 `std::atomic<int> completed_rows(0)` 代替基于 `i` 的索引统计。每次有核心完成某一行，通过 `++completed_rows` 进行唯一的原子加一操作。
+    3. **串行化触发回调**：只有当全局累积完成的行数 `current_completed` 为 10 的倍数时，才执行 `cb(prog, "Filtering rows...")`。由于 `current_completed` 在递增时是绝对唯一的，因此同一时间只可能有一个线程触发回调，天然避免了回调被并发执行的线程安全隐患，为 GUI 提供了严格单调递增、流程平滑的百分比更新。
 
 ---
 

@@ -5,6 +5,9 @@
 
 
 
+// 定义滤波专用的进度回调函数指针类型
+typedef void (__stdcall *FilterProgressCallback)(int progress, const char* message);
+
 class InSAR_API Filter
 {
 public:
@@ -18,7 +21,8 @@ public:
 	 参数5 CZT变换参数
 	 参数6 CZT变换参数
 	*/
-	int czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0);
+	int czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0,
+		const Mat& h_dft, const Mat& result_const, Mat& g, Mat& g_trans, Mat& y, Mat& W, Mat& tmp);
 	/*均值滤波器（原地操作）
 	 参数1 输入（返回值）
 	 参数2 滤波窗口大小（必须是奇数）
@@ -32,7 +36,7 @@ public:
 	 参数3 滤波窗口大小（必须是奇数）
 	 参数4 均值滤波窗口大小（必须是奇数）
 	*/
-	int slope_adaptive_filter(Mat& phase, Mat& phase_filtered, int wndsize_filter, int wndsize_prefilter);
+	int slope_adaptive_filter(Mat& phase, Mat& phase_filtered, int wndsize_filter, int wndsize_prefilter, FilterProgressCallback cb = nullptr);
 	/** @brief 深度学习滤波（路径不要有中文）
 	 
 	 @param filter_dl_path              滤波程序路径
