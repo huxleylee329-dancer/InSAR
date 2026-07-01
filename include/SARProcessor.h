@@ -67,7 +67,8 @@ public:
                                float* shipProbs,
                                char* results,
                                int resultTextSize,
-                               bool* successFlags);
+                               bool* successFlags,
+                               SARProgressCallback cb = nullptr);
 
     // ============ 评价指标 ============
 

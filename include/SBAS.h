@@ -230,7 +230,8 @@ public:
 		int multilook_az,
 		int multilook_rg,
 		const char* ifgSavePath,
-		bool b_save_images = false
+		bool b_save_images = false,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 根据高相干掩膜矩阵写入三角网节点文件
 	* @param mask                     高相干掩膜矩阵(int型)
@@ -307,7 +308,8 @@ public:
 		const Mat& mask,
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
-		const char* dstH5File
+		const char* dstH5File,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 估计差分干涉相位数据堆栈相关系数并生成高相干掩膜
 	* @param phaseFiles               差分干涉相位数据堆栈文件
@@ -324,7 +326,8 @@ public:
 		int wndsize_az,
 		double coherence_thresh,
 		double count_thresh,
-		Mat& mask
+		Mat& mask,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 洪水淹没法高相干点积分解缠（三角网络边梯度已经用MCF求解过）
 	* @param nodes                   高相干点三角网络节点
@@ -337,7 +340,8 @@ public:
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		int start,
-		bool b_zero_start = false
+		bool b_zero_start = false,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 用相干系数设置高相干点三角网络边的权重
 	* @param coherence               相干系数
@@ -432,7 +436,8 @@ public:
 		int multilook_rg,
 		const char* ifgSavePath,
 		bool b_save_images = false,
-		double alpha = 0.8
+		double alpha = 0.8,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 计算时间相关系数（temporal_coherence），评估时间序列估计效果
 	* @param estimated_phase_series              时间序列差分相位估计结果(n×1)

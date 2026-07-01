@@ -699,7 +699,8 @@ int SBAS::generate_interferograms(
 	int multilook_az, 
 	int multilook_rg, 
 	const char* ifgSavePath,
-	bool b_save_images
+	bool b_save_images,
+	SBASProgressCallback cb
 )
 {
 	if (edges.size() < 3 ||
@@ -722,8 +723,16 @@ int SBAS::generate_interferograms(
 	char str[256];
 	int master_ix, slave_ix, offset_row, offset_col;
 	double B_temporal, B_spatial;
-	for (int i = 0; i < edges.size(); i++)
+	int num_edges = static_cast<int>(edges.size());
+	for (int i = 0; i < num_edges; i++)
 	{
+		if (cb)
+		{
+			if (!cb(i * 100 / num_edges, "Generating interferograms..."))
+			{
+				return -2;
+			}
+		}
 		if (nodes[edges[i].end1 - 1].B_temporal > nodes[edges[i].end2 - 1].B_temporal)
 		{
 			master_ix = edges[i].end1;slave_ix = edges[i].end2;
@@ -800,7 +809,8 @@ int SBAS::saveGradientStack(
 	const Mat& mask, 
 	vector<SBAS_node>& nodes, 
 	vector<SBAS_edge>& edges,
-	const char* dstH5File
+	const char* dstH5File,
+	SBASProgressCallback cb
 )
 {
 	if (phaseFiles.size() < 3 ||
@@ -825,6 +835,10 @@ int SBAS::saveGradientStack(
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	for (int i = 0; i < num_ifgs; i++)
 	{
+		if (cb && !cb(i * 100 / num_ifgs, "Saving gradient stack..."))
+		{
+			return -2;
+		}
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "phase", phase);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 		ret = set_high_coherence_node_phase(mask, nodes, edges, phase);
@@ -1124,7 +1138,8 @@ int SBAS::generate_high_coherence_mask(
 	int wndsize_az, 
 	double coherence_thresh,
 	double count_thresh,
-	Mat& mask
+	Mat& mask,
+	SBASProgressCallback cb
 )
 {
 	if (phaseFiles.size() < 1 ||
@@ -1145,6 +1160,10 @@ int SBAS::generate_high_coherence_mask(
 	int num_images = static_cast<int>(phaseFiles.size());
 	for (int i = 0; i < num_images; i++)
 	{
+		if (cb && !cb(i * 100 / num_images, "Generating high coherence mask..."))
+		{
+			return -2;
+		}
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "phase", phase);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 		int rows = phase.rows; int cols = phase.cols;
@@ -1185,7 +1204,7 @@ int SBAS::generate_high_coherence_mask(
 	return 0;
 }
 
-int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, int start, bool b_zero_start)
+int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, int start, bool b_zero_start, SBASProgressCallback cb)
 {
 	if (nodes.size() < 3 ||
 		edges.size() < 3 ||
@@ -1202,6 +1221,8 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 	queue<int> node_que;
 	node_que.push(start);
 	if (b_zero_start) nodes[start - 1].phase = 0.0;
+	int completed = 0;
+	int step = std::max(1, num_nodes / 100);
 	while (!node_que.empty())
 	{
 		node_ix = node_que.front();
@@ -1244,6 +1265,14 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 					}
 					node_que.push(end1);
 				}
+			}
+		}
+		completed++;
+		if (cb && completed % step == 0)
+		{
+			if (!cb(completed * 100 / num_nodes, "Flood fill unwrapping..."))
+			{
+				return -2;
 			}
 		}
 	}
@@ -1470,7 +1499,8 @@ int SBAS::generate_interferograms(
 	int multilook_rg,
 	const char* ifgSavePath,
 	bool b_save_images,
-	double alpha
+	double alpha,
+	SBASProgressCallback cb
 )
 {
 	if (formation_matrix.type() != CV_32S ||
@@ -1497,12 +1527,20 @@ int SBAS::generate_interferograms(
 	int master_ix, slave_ix, offset_row, offset_col;
 	double B_temporal, B_spatial;
 	bool b_mappedLatLon_written = false;
+	int pair_count = 0;
+	for (int i = 0; i < n_images; i++) for (int j = 0; j < i; j++) if (formation_matrix.at<int>(i, j) == 1) pair_count++;
+	int current_pair = 0;
 	for (int i = 0; i < n_images; i++)
 	{
 		for (int j = 0; j < i; j++)
 		{
 			if (formation_matrix.at<int>(i, j) == 1)
 			{
+				if (cb && !cb(current_pair * 100 / std::max(1, pair_count), "Generating interferograms..."))
+				{
+					return -2;
+				}
+				current_pair++;
 				master_ix = i + 1; slave_ix = j + 1;
 				B_temporal = temporal_baseline.at<double>(i, j);
 				B_spatial = spatial_baseline.at<double>(i, j);

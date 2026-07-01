@@ -120,7 +120,8 @@ public:
 		double acquisitionStartTime,
 		double acquisitionStopTime,
 		double SNR,
-		ComplexMat& slc
+		ComplexMat& slc,
+		SimulationProgressCallback cb = nullptr
 	);
 	int generateSLC_optimized(
 		const Mat& stateVec,
@@ -321,7 +322,8 @@ public:
 		const char* slcH5File1_out,
 		const char* slcH5File2_out,
 		const char* slcH5File3_out,
-		const char* slcH5File4_out
+		const char* slcH5File4_out,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 去参考相位
 	* @param master_index                           主图序列号（1-based）
@@ -340,7 +342,8 @@ public:
 		const Mat& mappedDEM,
 		const Mat& mappedLat,
 		const Mat& mappedLon,
-		int mode
+		int mode,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 乒乓模式重新加入参考相位
 	* @param mappedDEM                              配准主图像坐标系DEM
@@ -367,7 +370,8 @@ public:
 		const char* slcH5File1_out,
 		const char* slcH5File2_out,
 		const char* slcH5File3_out,
-		const char* slcH5File4_out
+		const char* slcH5File4_out,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 乒乓模式干涉相位估计
 	* @param estimation_wndsize                     估计窗口大小

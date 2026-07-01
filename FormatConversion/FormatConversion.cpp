@@ -320,12 +320,13 @@ namespace
 
 
 
-inline void report_progress(ProgressCallback progressCallback, void* userData, int percent, const char* message)
+inline bool report_progress(ProgressCallback progressCallback, void* userData, int percent, const char* message)
 {
 	if (progressCallback)
 	{
-		progressCallback(percent, message, userData);
+		return progressCallback(percent, message, userData);
 	}
+	return true;
 }
 
 inline float ReverseFloat(const float inFloat)
@@ -1051,7 +1052,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		fprintf(stderr, "TSX2h5(): input check failed!\n");
 		return -1;
 	}
-	report_progress(progressCallback, userData, 0, "开始导入TerraSAR-X数据");
+	if (!report_progress(progressCallback, userData, 0, "开始导入TerraSAR-X数据")) return -2;
 	/*
 	* 检查h5文件是否已经存在
 	*/
@@ -1059,7 +1060,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	int ret;
 	ret = creat_new_h5(dst_h5_filename);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 5, "创建H5文件完成");
+	if (!report_progress(progressCallback, userData, 5, "创建H5文件完成")) return -2;
 
 	/*
 	* 写入slc数据
@@ -1067,7 +1068,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	ComplexMat slc;
 	int rows, cols;
-	report_progress(progressCallback, userData, 10, "读取TerraSAR-X SLC数据");
+	if (!report_progress(progressCallback, userData, 10, "读取TerraSAR-X SLC数据")) return -2;
 	ret = read_slc_from_TSXcos(cosar_filename, slc);
 	if (return_check(ret, "read_slc_from_TSXcos()", error_head)) return -1;
 	rows = slc.GetRows(); cols = slc.GetCols();
@@ -1077,7 +1078,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	slc.re.release();
 	slc.im.release();
-	report_progress(progressCallback, userData, 35, "写入SLC数据完成");
+	if (!report_progress(progressCallback, userData, 35, "写入SLC数据完成")) return -2;
 
 	/*
 	* 写入控制点数据
@@ -1085,14 +1086,14 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	Mat gcps;
 	XMLFile xmldoc;
-	report_progress(progressCallback, userData, 40, "读取TerraSAR-X控制点数据");
+	if (!report_progress(progressCallback, userData, 40, "读取TerraSAR-X控制点数据")) return -2;
 	ret = xmldoc.XMLFile_load(GEOREF_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	ret = xmldoc.get_gcps_from_TSX(gcps);
 	if (return_check(ret, "get_gcps_from_TSX", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5", error_head)) return -1;
-	report_progress(progressCallback, userData, 50, "写入控制点数据完成");
+	if (!report_progress(progressCallback, userData, 50, "写入控制点数据完成")) return -2;
 
 	/*
 	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
@@ -1117,7 +1118,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	row = (row - double(rows) * 0.5) / (double(rows) + 1e-10);
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
-	report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数");
+	if (!report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数")) return -2;
 	// 生成5阶范德蒙矩阵
 	Mat A, temp, coefficient;
 	double rms;
@@ -1376,7 +1377,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	report_progress(progressCallback, userData, 80, "坐标转换系数写入完成");
+	if (!report_progress(progressCallback, userData, 80, "坐标转换系数写入完成")) return -2;
 	/*
 	* 写入轨道数据
 	*/
@@ -1399,7 +1400,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	report_progress(progressCallback, userData, 90, "写入TerraSAR-X轨道和多普勒参数完成");
+	if (!report_progress(progressCallback, userData, 90, "写入TerraSAR-X轨道和多普勒参数完成")) return -2;
 	/*
 	* 写入其他辅助参数
 	*/
@@ -1570,7 +1571,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp_int.at<int>(0, 0) = range_len;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 100, "TerraSAR-X数据导入完成");
+	if (!report_progress(progressCallback, userData, 100, "TerraSAR-X数据导入完成")) return -2;
 	return 0;
 }
 
@@ -1751,7 +1752,9 @@ int FormatConversion::read_slc_from_Sentinel(
 	const char* filename, 
 	const char* xml_filename,
 	ComplexMat& slc,
-	Mat& gcps_line
+	Mat& gcps_line,
+	ProgressCallback progressCallback,
+	void* userData
 )
 {
 	if (filename == NULL ||
@@ -1829,6 +1832,12 @@ int FormatConversion::read_slc_from_Sentinel(
 		if (return_check(ret, "burst_stitch()", error_head)) return -1;
 		gcps_merged_line_num.at<int>(0, i + 1) = slc.GetRows();
 		pchild = pchild->NextSiblingElement();
+		if (progressCallback) {
+			int progress = 10 + i * 80 / burst_count;
+			if (!progressCallback(progress, "正在读取并拼接 Sentinel-1 影像分片...", userData)) {
+				return -2;
+			}
+		}
 	}
 	gcps_merged_line_num.copyTo(gcps_line);
 	return 0;
@@ -1973,7 +1982,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		return -1;
 	}
 
-	report_progress(progressCallback, userData, 0, "开始导入Sentinel-1数据");
+	if (!report_progress(progressCallback, userData, 0, "开始导入Sentinel-1数据")) return -2;
 	/*
 	* 检查h5文件是否已经存在
 	*/
@@ -1988,8 +1997,9 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 
 	ComplexMat slc;Mat gcps_line_index;
 	int rows, cols;
-	report_progress(progressCallback, userData, 10, "读取Sentinel-1 SLC数据");
-	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index);//需要deburst
+	if (!report_progress(progressCallback, userData, 10, "读取Sentinel-1 SLC数据")) return -2;
+	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index, progressCallback, userData);//需要deburst
+	if (ret == -2) return -2;
 	if (return_check(ret, "read_slc_from_Sentinel()", error_head)) return -1;
 	//ret = sentinel_deburst(xml_filename, slc, sentinel);
 	//if (return_check(ret, "sentinel_deburst()", error_head)) return -1;
@@ -2026,7 +2036,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 50, "写入控制点数据完成");
+	if (!report_progress(progressCallback, userData, 50, "写入控制点数据完成")) return -2;
 
 	/*
 	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
@@ -2331,7 +2341,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	report_progress(progressCallback, userData, 90, "写入Sentinel-1轨道和多普勒参数完成");
+	if (!report_progress(progressCallback, userData, 90, "写入Sentinel-1轨道和多普勒参数完成")) return -2;
 	/*
 	* 其他辅助数据
 	*/
@@ -2474,7 +2484,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	tmp_int.at<int>(0, 0) = cols;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 100, "Sentinel-1数据导入完成");
+	if (!report_progress(progressCallback, userData, 100, "Sentinel-1数据导入完成")) return -2;
 
 	return 0;
 }
@@ -2510,7 +2520,7 @@ int FormatConversion::import_sentinel(
 		fprintf(stderr, "import_sentinel(): input check failed!\n");
 		return -1;
 	}
-	report_progress(progressCallback, userData, 0, "开始导入Sentinel-1产品");
+	if (!report_progress(progressCallback, userData, 0, "开始导入Sentinel-1产品")) return -2;
 	int ret;
 	string xmlhead, tiffhead, subswath, polar;
 	if (0 == strcmp("iw2", subswath_name))subswath = "iw2";
@@ -2521,7 +2531,7 @@ int FormatConversion::import_sentinel(
 	else polar = "vv";
 
 	XMLFile xmldoc;
-	report_progress(progressCallback, userData, 10, "读取Sentinel-1 manifest文件");
+	if (!report_progress(progressCallback, userData, 10, "读取Sentinel-1 manifest文件")) return -2;
 	ret = xmldoc.XMLFile_load(manifest);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	TiXmlElement* root = NULL, * pnode = NULL;
@@ -2569,7 +2579,7 @@ int FormatConversion::import_sentinel(
 		return -1;
 	}
 	TiXmlElement* pchild = NULL;
-	report_progress(progressCallback, userData, 30, "查找Sentinel-1 XML和TIFF文件");
+	if (!report_progress(progressCallback, userData, 30, "查找Sentinel-1 XML和TIFF文件")) return -2;
 
 	while (pnode)
 	{
@@ -2596,11 +2606,11 @@ int FormatConversion::import_sentinel(
 		}
 		pnode = pnode->NextSiblingElement();
 	}
-	report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件");
+	if (!report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件")) return -2;
 	Sentinel1Reader reader(xml_filename.c_str(), tiff_filename.c_str(), PODFile);
 	ret = reader.writeToh5(dest_h5_file);
 	if (return_check(ret, "writeToh5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成");
+	if (!report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成")) return -2;
 	return 0;
 }
 
@@ -3375,17 +3385,17 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
-	report_progress(progressCallback, userData, 0, "开始导入ALOS数据");
+	if (!report_progress(progressCallback, userData, 0, "开始导入ALOS数据")) return -2;
 	///////////////////////创建h5文件////////////
 
 	int ret;
 	if (return_check(creat_new_h5(dst_h5), "creat_new_h5()", error_head)) return -1;
-	report_progress(progressCallback, userData, 5, "创建H5文件完成");
+	if (!report_progress(progressCallback, userData, 5, "创建H5文件完成")) return -2;
 
 	//////////////读取slc数据并写入到目标文件中/////////////
 
 	ComplexMat slc;
-	report_progress(progressCallback, userData, 10, "读取ALOS SLC数据");
+	if (!report_progress(progressCallback, userData, 10, "读取ALOS SLC数据")) return -2;
 	ret = read_slc_from_ALOS(IMG_file, slc);
 	if (return_check(ret, "read_slc_from_ALOS()", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5, "s_re", slc.re);
@@ -3398,7 +3408,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	//////////////读取并写入轨道数据//////////////////////
 
-	report_progress(progressCallback, userData, 45, "读取ALOS轨道数据");
+	if (!report_progress(progressCallback, userData, 45, "读取ALOS轨道数据")) return -2;
 	Mat stateVec;
 	ret = read_stateVec_from_ALOS(LED_file, stateVec);
 	if (return_check(ret, "read_stateVec_from_ALOS()", error_head)) return -1;
@@ -3407,7 +3417,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	////////////读取并写入图像坐标与经纬坐标转换关系////////////////////
 
-	report_progress(progressCallback, userData, 60, "读取ALOS坐标转换系数");
+	if (!report_progress(progressCallback, userData, 60, "读取ALOS坐标转换系数")) return -2;
 	Mat lon_coef, lat_coef, row_coef, col_coef;
 	ret = read_conversion_coefficient_from_ALOS(LED_file, lon_coef, lat_coef, row_coef, col_coef);
 	if (return_check(ret, "read_conversion_coefficient_from_ALOS()", error_head)) return -1;
@@ -3468,7 +3478,11 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	string temp_str = str;
 	sscanf(temp_str.c_str(), "%lf", &inc_center);
 	write_double_to_h5(dst_h5, "inc_center", inc_center);
-	report_progress(progressCallback, userData, 85, "写入ALOS辅助参数");
+	if (!report_progress(progressCallback, userData, 85, "写入ALOS辅助参数"))
+	{
+		if (fp) fclose(fp);
+		return -2;
+	}
 	///////////写入其他辅助参数//////////////
 
 	string file_type, sensor, polarization, imaging_mode,
@@ -3698,7 +3712,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	write_str_to_h5(dst_h5, "comment", sss.c_str());
 
 	if (fp)fclose(fp);
-	report_progress(progressCallback, userData, 100, "ALOS数据导入完成");
+	if (!report_progress(progressCallback, userData, 100, "ALOS数据导入完成")) return -2;
 	return 0;
 }
 

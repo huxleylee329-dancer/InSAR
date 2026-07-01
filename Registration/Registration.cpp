@@ -871,7 +871,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 }
 
 int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
-	int* offset_col)
+	int* offset_col, RegistrationProgressCallback cb)
 {
 	constexpr int MAX_CROP_SIZE = 10000;
 	constexpr double COHERENCE_THRESH = 0.05;
@@ -974,15 +974,27 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			offset_coord_col.at<double>(i, j) = ((double)blocksize) / 2 * (double)(2 * j + 1);
 		}
 	}
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_blocks(0);
+	int block_step = std::max(1, m / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < m; i++)
 	{
+		if (cancel_flag)
+		{
+			continue;
+		}
 		ComplexMat master_sub, slave_sub, master_sub_interp, slave_sub_interp, master1, slave1;
 		Mat amplitude_slave, sign, coh1;
 		int offset_row, offset_col;
 		double mean_coh;
 		for (int j = 0; j < n; j++)
 		{
+			if (cancel_flag)
+			{
+				break;
+			}
 			//计算相关系数判断是否是有效数据
 			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.re);
 			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.im);
@@ -1030,7 +1042,17 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			offset_c.at<double>(i, j) = (double)offset_col / (double)interp_times;
 			
 		}
+		int current_completed = ++completed_blocks;
+		if (cb && current_completed % block_step == 0)
+		{
+			int progress = current_completed * 50 / m;
+			if (!cb(progress, "Subpixel searching..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 
 	/*---------------------------------------*/
 	/*    拟合偏移量（将坐标做归一化处理）   */
@@ -1200,9 +1222,15 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	const double cc1 = coef_c.at<double>(1, 0);
 	const double cc2 = coef_c.at<double>(2, 0);
 
+	std::atomic<int> completed_rows(0);
+	int row_step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		double x, y, ii, jj;
 		double offset_rows, offset_cols;
 		for (int j = 0; j < cols; j++)
@@ -1224,7 +1252,17 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			mat_set_from_double(slave_tmp.re, i, j, re_val);
 			mat_set_from_double(slave_tmp.im, i, j, im_val);
 		}
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % row_step == 0)
+		{
+			int progress = 50 + current_completed * 50 / rows;
+			if (!cb(progress, "Bilinear resampling..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	slave = slave_tmp;
 	return 0;
 }
@@ -1256,7 +1294,7 @@ int Registration::every_subpixel_move(int i, int j, Mat& coefficient, double* of
 }
 
 int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
-	int* offset_col, double coh_thresh)
+	int* offset_col, double coh_thresh, RegistrationProgressCallback cb)
 {
 	constexpr int MAX_CROP_SIZE = 10000;
 	constexpr int COH_WIN_SIZE = 7;
@@ -1358,15 +1396,27 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 			offset_coord_col.at<double>(i, j) = ((double)blocksize) / 2 * (double)(2 * j + 1);
 		}
 	}
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_blocks(0);
+	int block_step = std::max(1, m / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < m; i++)
 	{
+		if (cancel_flag)
+		{
+			continue;
+		}
 		ComplexMat master_sub, slave_sub, master_sub_interp, slave_sub_interp, master1, slave1;
 		Mat amplitude_slave, sign, coh1;
 		int offset_row, offset_col;
 		double mean_coh;
 		for (int j = 0; j < n; j++)
 		{
+			if (cancel_flag)
+			{
+				break;
+			}
 			//计算相关系数判断是否是有效数据
 			master.re(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.re);
 			master.im(Range(i * blocksize, (i + 1) * blocksize), Range(j * blocksize, (j + 1) * blocksize)).copyTo(master1.im);
@@ -1414,7 +1464,17 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 			offset_c.at<double>(i, j) = (double)offset_col / (double)interp_times;
 
 		}
+		int current_completed = ++completed_blocks;
+		if (cb && current_completed % block_step == 0)
+		{
+			int progress = current_completed * 50 / m;
+			if (!cb(progress, "Subpixel searching..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 
 	/*---------------------------------------*/
 	/*    拟合偏移量（将坐标做归一化处理）   */
@@ -1597,9 +1657,15 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	const double cc1 = coef_c.at<double>(1, 0);
 	const double cc2 = coef_c.at<double>(2, 0);
 
+	std::atomic<int> completed_rows(0);
+	int row_step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < cols; j++)
 		{
 			double jj = static_cast<double>(j);
@@ -1621,7 +1687,17 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 			mat_set_from_double(slave_tmp.re, i, j, re_val);
 			mat_set_from_double(slave_tmp.im, i, j, im_val);
 		}
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % row_step == 0)
+		{
+			int progress = 50 + current_completed * 50 / rows;
+			if (!cb(progress, "Sinc resampling..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 
 	slave = slave_tmp;
 	return 0;
@@ -1848,7 +1924,8 @@ int Registration::getDEMRgAzPos(
 	double acquisitionStartTime,
 	double acquisitionStopTime,
 	double lon_spacing,
-	double lat_spacing
+	double lat_spacing,
+	RegistrationProgressCallback cb
 )
 {
 	if (DEM.empty() ||
@@ -1883,10 +1960,17 @@ int Registration::getDEMRgAzPos(
 	rangePos.create(DEM_rows, DEM_cols, CV_64F);
 	azimuthPos.create(DEM_rows, DEM_cols, CV_64F);
 	double dopplerFrequency = 0.0;
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, DEM_rows / 100);
+
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < DEM_cols; j++)
 		{
 			Position groundPosition;
@@ -1917,6 +2001,20 @@ int Registration::getDEMRgAzPos(
 				azimuthPos.at<double>(i, j) = azimuthIndex;
 			}
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / DEM_rows;
+			if (!cb(progress, "Solving radar geometry equations..."))
+			{
+				cancel_flag = true;
+			}
+		}
+	}
+	if (cancel_flag)
+	{
+		return -2;
 	}
 	return 0;
 }

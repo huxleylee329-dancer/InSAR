@@ -218,7 +218,8 @@ int Deflat::deflat(
 	const Mat& orbit_main,
 	const Mat& orbit_slave,
 	int mode,
-	int multilook_times
+	int multilook_times,
+	DeflatProgressCallback cb
 )
 {
 	if (phase.cols < 2 ||
@@ -275,14 +276,18 @@ int Deflat::deflat(
 		flat_phase = Mat::zeros(phase.rows, phase.cols, CV_64F);
 		int nr = phase.rows;
 		int nc = phase.cols;
+		std::atomic<bool> cancel_flag(false);
 #pragma omp parallel for schedule(guided)
 		for (int i = 0; i < nr; i++)
 		{
+			if (cancel_flag) continue;
 			for (int j = 0; j < nc; j++)
 			{
 				flat_phase.at<double>(i, j) = a * double(i) + b;
 			}
 		}
+		if (cb && !cb(100, "deflat finished")) cancel_flag = true;
+		if (cancel_flag) return -2;
 		Utils util;
 		phase_deflat = phase - flat_phase;
 		ret = util.wrap(phase_deflat, phase_deflat);
@@ -334,14 +339,18 @@ int Deflat::deflat(
 		flat_phase = Mat::zeros(phase.rows, phase.cols, CV_64F);
 		int nr = phase.rows;
 		int nc = phase.cols;
+		std::atomic<bool> cancel_flag(false);
 #pragma omp parallel for schedule(guided)
 		for (int i = 0; i < nr; i++)
 		{
+			if (cancel_flag) continue;
 			for (int j = 0; j < nc; j++)
 			{
 				flat_phase.at<double>(i, j) = a * double(j) + b;
 			}
 		}
+		if (cb && !cb(100, "deflat finished")) cancel_flag = true;
+		if (cancel_flag) return -2;
 		Utils util;
 		phase_deflat = phase - flat_phase;
 		ret = util.wrap(phase_deflat, phase_deflat);
@@ -368,7 +377,8 @@ int Deflat::deflat(
 	int mode,
 	double wave_length,
 	Mat& phase_deflated,
-	Mat& flat_phase_coef
+	Mat& flat_phase_coef,
+	DeflatProgressCallback cb
 )
 {
 	if (stateVec1.cols != 7 ||
@@ -509,9 +519,14 @@ int Deflat::deflat(
 	* 计算斜距和平地相位
 	*/
 
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) continue;
 		Mat tmp(1, 3, CV_64F); Mat r, xyz; double r1, r2;
 		for (int j = 0; j < cols; j++)
 		{
@@ -525,7 +540,16 @@ int Deflat::deflat(
 			r2 = sqrt(sum(r.mul(r))[0]);//辅星斜距
 			lat.at<double>(i, j) = (r2 - r1) / wave_length * (1 / (double)mode) * 4 * PI;
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / rows, "Computing flat phase..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 
 	/*
 	* 拟合平地相位（二阶拟合），取1/20进行拟合
@@ -1282,7 +1306,7 @@ int Deflat::paraMapping_float(
 	int offset_row, int offset_col, int sceneHeight, int sceneWidth, double prf,
 	double rangeSpacing, double wavelength, double nearRangeTime,
 	double acquisitionStartTime, double acquisitionStopTime, Mat& stateVector,
-	int interp_times, double lon_spacing, double lat_spacing)
+	int interp_times, double lon_spacing, double lat_spacing, DeflatProgressCallback cb)
 {
 	if (DEM84.empty() ||
 		DEM84.type() != CV_32F ||
@@ -1335,11 +1359,17 @@ int Deflat::paraMapping_float(
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, DEM_rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = 0; j < DEM_cols; j++)
 		{
+			if (cancel_flag) break;
 			Position groundPosition;
 			double lat, lon, height;
 			lat = lat_upperleft - (double)i * lat_spacing;
@@ -1364,7 +1394,16 @@ int Deflat::paraMapping_float(
 				DEM_out.at<float>(azimuthIndex, rangeIndex) = parameter.at<float>(i, j);
 			}
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / DEM_rows, "Mapping parameters..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;
 	//投影DEM插值
@@ -1374,7 +1413,7 @@ int Deflat::paraMapping_float(
 	return 0;
 }
 
-int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File, int mode)
+int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File, int mode, DeflatProgressCallback cb)
 {
 	if (mappedDEM.rows != mappedLat.rows ||
 		mappedDEM.rows != mappedLon.rows ||
@@ -1462,9 +1501,14 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 	}
 	double constant = (mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4.0 * PI : 2.0 * PI);
 
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, sceneHeight / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			double r, real, imagine, real2, imagine2; // used for complex phase deramping
@@ -1483,11 +1527,20 @@ int Deflat::SLC_deramp(ComplexMat& slc, Mat& mappedDEM, Mat& mappedLat, Mat& map
 			slc.re.at<float>(i, j) = static_cast<float>(real * real2 + imagine * imagine2);
 			slc.im.at<float>(i, j) = static_cast<float>(real * imagine2 - real2 * imagine);
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / sceneHeight, "SLC phase deramping..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 
-int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File, int mode)
+int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File, int mode, DeflatProgressCallback cb)
 {
 	if (mappedDEM.rows != mappedLat.rows ||
 		mappedDEM.rows != mappedLon.rows ||
@@ -1559,9 +1612,14 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 
 	double constant = (mode == TR_MODE_SINGLE_TX_SINGLE_RX ? 4.0 * PI : 2.0 * PI);
 
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, sceneHeight / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			double r;
@@ -1574,12 +1632,20 @@ int Deflat::slantrange_compute_test(Mat& slant_range, Mat& mappedDEM, Mat& mappe
 			r = cv::norm(tt, cv::NORM_L2);
 			slant_range.at<double>(i, j) = r;
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / sceneHeight, "Computing slant ranges..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 
-int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
-	Mat& sate_vel, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File)
+int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos, Mat& sate_vel, Mat& mappedDEM, Mat& mappedLat, Mat& mappedLon, const char* slcH5File, DeflatProgressCallback cb)
 {
 	if (mappedDEM.rows != mappedLat.rows ||
 		mappedDEM.rows != mappedLon.rows ||
@@ -1656,9 +1722,14 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 		sate_vel.at<double>(i, 1) = vel.vy;
 		sate_vel.at<double>(i, 2) = vel.vz;
 	}
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, sceneHeight / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			// removed unused: real, imagine, real2, imagine2 (copy-paste from SLC_deramp, no complex math here)
@@ -1672,7 +1743,16 @@ int Deflat::slantrange_compute(Mat& slant_range, Mat& sate_pos,
 			r = cv::norm(tt, cv::NORM_L2);
 			slant_range.at<double>(i, j) = r;
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / sceneHeight, "Computing slant ranges..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 
@@ -1680,7 +1760,8 @@ int Deflat::SLCs_deramp(
 	vector<string>& SLCH5Files,
 	int reference,
 	const char* demPath,
-	vector<string>& outSLCH5Files
+	vector<string>& outSLCH5Files,
+	DeflatProgressCallback cb
 )
 {
 	if (SLCH5Files.size() < 1 ||
@@ -1753,7 +1834,12 @@ int Deflat::SLCs_deramp(
 	ret = conversion.write_array_to_h5(outSLCH5Files[reference - 1].c_str(), "mapped_lon", mappedLon);
 	for (int i = 0; i < images_num; i++)
 	{
-		ret = SLC_deramp(slc, mappedDem, mappedLat, mappedLon, SLCH5Files[i].c_str());
+		if (cb && !cb(i * 100 / images_num, "Batch phase deramping..."))
+		{
+			return -2;
+		}
+		ret = SLC_deramp(slc, mappedDem, mappedLat, mappedLon, SLCH5Files[i].c_str(), TR_MODE_SINGLE_TX_SINGLE_RX, cb);
+		if (ret == -2) return -2;
 		if (return_check(ret, "SLC_deramp()", error_head)) return -1;
 		ret = conversion.write_slc_to_h5(outSLCH5Files[i].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
@@ -1785,7 +1871,8 @@ int Deflat::topography_phase_simulation(
 	int offset_row,
 	int offset_col,
 	double wavelength,
-	double rangeSpacing
+	double rangeSpacing,
+	DeflatProgressCallback cb
 )
 {
 	if (mappedDEM.empty() ||
@@ -1817,9 +1904,14 @@ int Deflat::topography_phase_simulation(
 	a4 = inc_coef.at<double>(0, 8);
 	a5 = inc_coef.at<double>(0, 9);
 
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) continue;
 		double r1, inc, jj;
 		for (int j = 0; j < cols; j++)
 		{
@@ -1831,7 +1923,16 @@ int Deflat::topography_phase_simulation(
 			r1 = nearRangeTime * VEL_C / 2.0 + rangeSpacing * (double)j;//主星斜距
 			topography_phase.at<double>(i, j) = - 4 * PI * mappedDEM.at<short>(i, j) * B_effect / wavelength / r1 / sin(inc / 180.0 * PI);
 		}
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / rows, "Simulating topography phase..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 

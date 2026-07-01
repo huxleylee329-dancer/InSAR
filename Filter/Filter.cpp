@@ -383,7 +383,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	return 0;
 }
 
-int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const char* dl_model_file, Mat& phase, Mat& phase_filtered)
+int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const char* dl_model_file, Mat& phase, Mat& phase_filtered, FilterProgressCallback cb)
 {
 	if (filter_dl_path == NULL ||
 		dl_model_file == NULL ||
@@ -471,7 +471,42 @@ int Filter::filter_dl(const char* filter_dl_path, const char* tmp_path, const ch
 				}
 			}
 		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
+		
+		bool cancel_requested = false;
+		int wait_tick = 0;
+		while (true)
+		{
+			DWORD wait_res = WaitForSingleObject(p_i.hProcess, 100);
+			if (wait_res == WAIT_OBJECT_0)
+			{
+				break;
+			}
+			wait_tick++;
+			if (wait_tick >= 5) // 500ms
+			{
+				wait_tick = 0;
+				if (cb && !cb(50, "深度学习网络模型前向推理中..."))
+				{
+					cancel_requested = true;
+					break;
+				}
+			}
+		}
+
+		if (cancel_requested)
+		{
+			::TerminateProcess(p_i.hProcess, -1);
+			if (hd)
+			{
+				::CloseHandle(hd);
+			}
+			::CloseHandle(p_i.hThread);
+			::CloseHandle(p_i.hProcess);
+			std::remove(cos_file.c_str());
+			std::remove(sin_file.c_str());
+			return -2;
+		}
+
 		if (hd)
 		{
 			::CloseHandle(hd);

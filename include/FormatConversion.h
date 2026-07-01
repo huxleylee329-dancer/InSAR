@@ -710,7 +710,7 @@ private:
 /*********           格式转换类库        **********/
 /**************************************************/
 
-typedef void (*ProgressCallback)(int percent, const char* message, void* userData);
+typedef bool (*ProgressCallback)(int percent, const char* message, void* userData);
 
 class InSAR_API FormatConversion
 {
@@ -936,7 +936,7 @@ public:
 	* @param gcps_line                   deburst之后控制点行坐标（int型，1×n）
 	* @return 成功返回0，否则返回-1
 	*/
-	int read_slc_from_Sentinel(const char* filename, const char* xml_filename, ComplexMat& slc, Mat& gcps_line);
+	int read_slc_from_Sentinel(const char* filename, const char* xml_filename, ComplexMat& slc, Mat& gcps_line, ProgressCallback progressCallback = nullptr, void* userData = nullptr);
 	/*
 	* 功能：sentinel1数据deburst(数据类型为16位整型)
 	* 参数1：用于deburst的xml参数文件

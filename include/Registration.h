@@ -85,9 +85,10 @@ public:
 		int blocksize,
 		int interp_times,
 		int* offset_row = NULL,
-		int* offset_col = NULL
+		int* offset_col = NULL,
+		RegistrationProgressCallback cb = nullptr
 	);
-	/** @brief 精配准---sinc插值（支持16位整型和64位浮点型输入）
+	/** @brief 精配准---sinc插值（支持16位整型 and 64位浮点型输入）
 
 	@param master              主图像
 	@param slave               辅图像
@@ -104,7 +105,8 @@ public:
 		int interp_times,
 		int* offset_row = NULL,
 		int* offset_col = NULL,
-		double coh_thresh = 0.0
+		double coh_thresh = 0.0,
+		RegistrationProgressCallback cb = nullptr
 	);
 	/*拟合像素偏移量
 	 参数1 行序列号
@@ -162,7 +164,8 @@ public:
 		double acquisitionStartTime,
 		double acquisitionStopTime,
 		double lon_spacing,
-		double lat_spacing
+		double lat_spacing,
+		RegistrationProgressCallback cb = nullptr
 	);
 	/*@brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
 	* @param slaveOffset                           偏移量

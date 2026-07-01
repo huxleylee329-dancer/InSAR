@@ -26,7 +26,7 @@ using namespace cv;
 #include <string>
 
 namespace {
-	bool runExternalProcess(const std::wstring& cmdLine, const std::string& jobPrefix, const std::string& errorMsgPrefix)
+	bool runExternalProcess(const std::wstring& cmdLine, const std::string& jobPrefix, const std::string& errorMsgPrefix, UnwrapProgressCallback cb = nullptr)
 	{
 		STARTUPINFO si;
 		PROCESS_INFORMATION pi;
@@ -71,7 +71,31 @@ namespace {
 			}
 		}
 
-		WaitForSingleObject(pi.hProcess, INFINITE);
+		bool is_cancelled = false;
+		if (cb) {
+			int count = 0;
+			while (true) {
+				DWORD exitCode = 0;
+				if (GetExitCodeProcess(pi.hProcess, &exitCode)) {
+					if (exitCode != STILL_ACTIVE) {
+						break;
+					}
+				}
+				count++;
+				int simulated_progress = std::min(99, count / 5);
+				if (!cb(simulated_progress, ("Running external solver " + jobPrefix + "...").c_str())) {
+					is_cancelled = true;
+					break;
+				}
+				Sleep(100);
+			}
+		} else {
+			WaitForSingleObject(pi.hProcess, INFINITE);
+		}
+
+		if (is_cancelled) {
+			::TerminateProcess(pi.hProcess, -2);
+		}
 
 		::CloseHandle(pi.hThread);
 		::CloseHandle(pi.hProcess);
@@ -79,7 +103,7 @@ namespace {
 		{
 			::CloseHandle(hd);
 		}
-		return true;
+		return !is_cancelled;
 	}
 
 	// 质量引导解缠专用：包含 4 邻域的梯度与相位更新控制参数
@@ -129,7 +153,8 @@ int Unwrap::MCF(
 	Mat& coherence,
 	Mat& residue,
 	const char* MCF_problem_file,
-	const char* MCF_EXE_PATH
+	const char* MCF_EXE_PATH,
+	UnwrapProgressCallback cb
 )
 
 {
@@ -193,9 +218,9 @@ int Unwrap::MCF(
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
 	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "MCF(): create mcf.exe process failed!"))
+	if (!runExternalProcess(cmdLine, "MCF", "MCF(): create mcf.exe process failed!", cb))
 	{
-		return -1;
+		return -2;
 	}
 	Mat k1, k2;
 	string solution(MCF_problem_file);
@@ -235,7 +260,8 @@ int Unwrap::MCF_improved(
 	Mat& unwrapped_phase,
 	const char* MCF_problem_file,
 	const char* MCF_exe_path,
-	double coh_thresh
+	double coh_thresh,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase.rows < 2 ||
@@ -266,9 +292,9 @@ int Unwrap::MCF_improved(
 	// util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
 	std::wstring cmdLine = A2W(MCF_exe_path) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "MCF_improved(): create mcf.exe process failed!"))
+	if (!runExternalProcess(cmdLine, "MCF", "MCF_improved(): create mcf.exe process failed!", cb))
 	{
-		return -1;
+		return -2;
 	}
 	Mat k1, k2;
 	string solution(MCF_problem_file);
@@ -1496,7 +1522,7 @@ int Unwrap::MCF(
 	return 0;
 }
 
-int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* edges, int num_edges, bool pass, double thresh)
+int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* edges, int num_edges, bool pass, double thresh, UnwrapProgressCallback cb)
 {
 	if (unwrapped_phase.rows < 2 ||
 		unwrapped_phase.cols < 2 ||
@@ -1617,6 +1643,8 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 			que.push(i + 1);
 		}
 	}
+	int completed_nodes = 0;
+	int step = std::max(1, num_nodes / 100);
 	while (que.size() != 0)
 	{
 		number = que.front();
@@ -1642,6 +1670,14 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 				nodes[end2 - 1].set_status(true);
 			}
 		}
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
+		{
+			if (!cb(completed_nodes * 100 / num_nodes, "Secondary unwrapping..."))
+			{
+				return -2;
+			}
+		}
 	}
 	
 	int row, col;
@@ -1658,7 +1694,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	return 0;
 }
 
-int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH)
+int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb)
 {
 	if (MCF_problem_file == NULL ||
 		MCF_EXE_PATH == NULL
@@ -1671,14 +1707,14 @@ int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH)
 	Utils util;
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
 	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "mcf_delaunay(): create mcf.exe process failed!"))
+	if (!runExternalProcess(cmdLine, "MCF", "mcf_delaunay(): create mcf.exe process failed!", cb))
 	{
-		return -1;
+		return -2;
 	}
 	return 0;
 }
 
-int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, vector<tri_node>& nodes, tri_edge* edges, int num_edges, int start, bool pass, double thresh)
+int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, vector<tri_node>& nodes, tri_edge* edges, int num_edges, int start, bool pass, double thresh, UnwrapProgressCallback cb)
 {
 	if (wrapped_phase.rows < 2 ||
 		wrapped_phase.cols < 2 ||
@@ -1709,11 +1745,9 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 	{
 		tt = 100000.0;
 	}
-	//queue<int> que;
 	priority_queue<edge_index> neighbour_que;
 	edge_index tmp_edge_index;
 	bool early_break = false;
-	//int start = 1;//起始点默认为第一个点，后续可以自己设定
 	if (start > num_nodes) start = 1;
 	//////////寻找相关系数最大的边为起始边////////////
 	int ix = 0;
@@ -1735,8 +1769,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		if (!nodes[end2 - 1].get_status() &&
 			distance <= thresh &&
 			fabs((edges + edge_val - 1)->gain) < tt &&
-			nodes[end2 - 1].get_balance() /*&&
-			!nodes[end2 - 1].is_residue_node()*/
+			nodes[end2 - 1].get_balance()
 			)
 		{
 			tmp_edge_index.num = edge_val;
@@ -1745,7 +1778,8 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 		}
 	}
 
-
+	int completed_nodes = 0;
+	int step = std::max(1, num_nodes / 100);
 	while (neighbour_que.size() != 0)
 	{
 		tmp_edge_index = neighbour_que.top();
@@ -1760,25 +1794,20 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 			number = (edges + tmp_edge_index.num - 1)->end2;
 			end2 = (edges + tmp_edge_index.num - 1)->end1;
 		}
-		//number = nodes[(edges + tmp_edge_index.num - 1)->end1 - 1].get_status() ? (edges + tmp_edge_index.num - 1)->end2 : (edges + tmp_edge_index.num - 1)->end1;
-		//end2 = (edges + tmp_edge_index.num - 1)->end1 == number ? (edges + tmp_edge_index.num - 1)->end2 : (edges + tmp_edge_index.num - 1)->end1;
 		nodes[number - 1].get_phase(&phi1);
 		nodes[end2 - 1].get_phase(&phi2);
 		grad = phi2 - phi1;
 		if (!nodes[end2 - 1].get_status() &&
 			fabs((edges + tmp_edge_index.num - 1)->gain) < tt &&
-			nodes[end2 - 1].get_balance()/*&&
-			!nodes[end2 - 1].is_residue_node()*/
+			nodes[end2 - 1].get_balance()
 			)
 		{
 			grad = atan2(sin(grad), cos(grad));
 			gain = 0.0;
-			//gain = number > end2 ? 2 * PI * (edges + tmp_edge_index.num - 1)->gain : -2 * PI * (edges + tmp_edge_index.num - 1)->gain;
 			min_val = min_val > (grad + phi1 + gain) ? (grad + phi1 + gain) : min_val;
 			max_val = max_val < (grad + phi1 + gain) ? (grad + phi1 + gain) : max_val;
 			nodes[end2 - 1].set_phase(grad + phi1 + gain);
 			nodes[end2 - 1].set_status(true);
-
 
 			number = end2;
 			for (long edge_val : nodes[number - 1].get_neigh_edges())
@@ -1788,8 +1817,7 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 				if (!nodes[end2 - 1].get_status() &&
 					distance <= thresh &&
 					fabs((edges + edge_val - 1)->gain) < tt &&
-					nodes[end2 - 1].get_balance()/*&&
-					!nodes[end2 - 1].is_residue_node()*/
+					nodes[end2 - 1].get_balance()
 					)
 				{
 					tmp_edge_index.num = edge_val;
@@ -1798,16 +1826,14 @@ int Unwrap::QualityMap_MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, 
 				}
 			}
 		}
-		/*else
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
 		{
-			nodes[number - 1].get_distance(nodes[end2 - 1], &distance);
-			if (nodes[end2 - 1].get_status() && fabs(grad) >= 2 * PI && distance < 1.5)
+			if (!cb(completed_nodes * 100 / num_nodes, "Quality guided unwrapping..."))
 			{
-				early_break = true;
-				break;
+				return -2;
 			}
-		}*/
-		
+		}
 	}
 
 	int rows, cols;
@@ -1852,7 +1878,8 @@ int Unwrap::_QualityGuided_MCF_1(
 	vector<tri_node>& nodes,
 	vector<tri_edge>& edges,
 	double distance_thresh, 
-	bool pass
+	bool pass,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase.empty() ||
@@ -1908,6 +1935,8 @@ int Unwrap::_QualityGuided_MCF_1(
 		}
 	}
 
+	int completed_nodes = 0;
+	int step = std::max(1, num_nodes / 100);
 	while (neighbour_que.size() != 0)
 	{
 		tmp_edge_index = neighbour_que.top();
@@ -1957,8 +1986,14 @@ int Unwrap::_QualityGuided_MCF_1(
 				}
 			}
 		}
-
-
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
+		{
+			if (!cb(completed_nodes * 100 / num_nodes, "Quality guided unwrapping step 1..."))
+			{
+				return -2;
+			}
+		}
 	}
 
 	
@@ -1998,7 +2033,8 @@ int Unwrap::_QualityGuided_MCF_2(
 	Mat& unwrapped_phase,
 	vector<tri_node>& nodes, 
 	vector<tri_edge>& edges,
-	double distance_thresh
+	double distance_thresh,
+	UnwrapProgressCallback cb
 )
 {
 	if (unwrapped_phase.rows < 2 ||
@@ -2031,6 +2067,8 @@ int Unwrap::_QualityGuided_MCF_2(
 			que.push(i + 1);
 		}
 	}
+	int completed_nodes = 0;
+	int step = std::max(1, num_nodes / 100);
 	while (que.size() != 0)
 	{
 		number = que.front();
@@ -2053,6 +2091,14 @@ int Unwrap::_QualityGuided_MCF_2(
 				gain = number < end2 ? 2 * PI * edges[edge_val - 1].gain : -2 * PI * edges[edge_val - 1].gain;
 				nodes[end2 - 1].set_phase(grad + phi1 + gain);
 				nodes[end2 - 1].set_status(true);
+			}
+		}
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
+		{
+			if (!cb(completed_nodes * 100 / num_nodes, "Quality guided unwrapping step 2..."))
+			{
+				return -2;
 			}
 		}
 	}
@@ -2078,7 +2124,8 @@ int Unwrap::QualityGuided_MCF(
 	double coherence_thresh,
 	double distance_thresh,
 	const char* tmp_path, 
-	const char* EXE_path
+	const char* EXE_path,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase.empty() ||
@@ -2112,7 +2159,8 @@ int Unwrap::QualityGuided_MCF(
 		if (return_check(ret, "residue()", error_head)) return -1;
 		string mcf_problem_file(tmp_path);
 		mcf_problem_file.append("\\mcf_problem.net");
-		ret = MCF(phase, unwrapped_phase, coherence, residue, mcf_problem_file.c_str(), EXE_path);
+		ret = MCF(phase, unwrapped_phase, coherence, residue, mcf_problem_file.c_str(), EXE_path, cb);
+		if (ret == -2) return -2;
 		if (return_check(ret, "MCF()", error_head)) return -1;
 		return 0;
 	}
@@ -2143,7 +2191,8 @@ int Unwrap::QualityGuided_MCF(
 	if (return_check(ret, "residue()", error_head)) return -1;
 
 	Mat out_mask;
-	ret = _QualityGuided_MCF_1(phase, unwrapped_phase, out_mask, nodes, edges, distance_thresh);
+	ret = _QualityGuided_MCF_1(phase, unwrapped_phase, out_mask, nodes, edges, distance_thresh, true, cb);
+	if (ret == -2) return -2;
 	if (return_check(ret, "residue()", error_head)) return -1;
 
 	out_mask.convertTo(mask, CV_64F);
@@ -2221,8 +2270,17 @@ int Unwrap::QualityGuided_MCF(
 	Mat zeros = Mat::zeros(nr, nc, CV_32S);
 	Mat ambiguity, new_mask;
 	int  mask_sentinel_new = cv::countNonZero(_mask_sentinel);
+	int mask_sentinel_total = mask_sentinel_new;
 	while (mask_sentinel_new != 0)//只要还存在未解缠的像素就继续循环
 	{
+		if (cb)
+		{
+			int progress = mask_sentinel_total > 0 ? (mask_sentinel_total - mask_sentinel_new) * 100 / mask_sentinel_total : 100;
+			if (!cb(progress, "Quality guided MCF loop..."))
+			{
+				return -2;
+			}
+		}
 		for (int i = 0; i < nodes.size(); i++)
 		{
 			nodes[i].get_pos(&row, &col);
@@ -2293,18 +2351,21 @@ int Unwrap::QualityGuided_MCF(
 		if (positive == 0 && negative == 0)
 		{
 
-			ret = MCF(wrapped_phase, unwrapped_phase, out_mask, new_mask, nodes_sub, edges_sub, 1, false, distance_thresh);
+			ret = MCF(wrapped_phase, unwrapped_phase, out_mask, new_mask, nodes_sub, edges_sub, 1, false, distance_thresh, cb);
+			if (ret == -2) return -2;
 			if (return_check(ret, "MCF()", error_head)) return -1;
 		}
 		else
 		{
 			ret = util.write_DIMACS(mcf_problem.c_str(), tri_sub, nodes_sub, edges_sub, coherence);
 			if (return_check(ret, "write_DIMACS()", error_head)) return -1;
-			ret = mcf_delaunay(mcf_problem.c_str(), EXE_path);
+			ret = mcf_delaunay(mcf_problem.c_str(), EXE_path, cb);
+			if (ret == -2) return -2;
 			if (return_check(ret, "mcf_delaunay()", error_head)) return -1;
 			ret = util.read_DIMACS(mcf_solution.c_str(), edges_sub, nodes_sub, tri_sub);
 			if (return_check(ret, "read_DIMACS()", error_head)) return -1;
-			ret = MCF(wrapped_phase, unwrapped_phase, out_mask, new_mask, nodes_sub, edges_sub, 1, false, distance_thresh);
+			ret = MCF(wrapped_phase, unwrapped_phase, out_mask, new_mask, nodes_sub, edges_sub, 1, false, distance_thresh, cb);
+			if (ret == -2) return -2;
 			if (return_check(ret, "MCF()", error_head)) return -1;
 		}
 
@@ -2345,7 +2406,8 @@ int Unwrap::snaphu(
 	Mat& unwrapped_phase,
 	const char* project_path,
 	const char* tmp_folder,
-	const char* exe_path
+	const char* exe_path,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase_file == NULL || 
@@ -2543,9 +2605,9 @@ int Unwrap::snaphu(
 	USES_CONVERSION;
 	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
 	std::wstring cmdLine = A2W(EXE_path.c_str()) + std::wstring(L"\\snaphu.exe -f ") + A2W(config_file.c_str());
-	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!"))
+	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!", cb))
 	{
-		return -1;
+		return -2;
 	}
 
 	//读取结果
@@ -2563,7 +2625,7 @@ int Unwrap::snaphu(
 	return 0;
 }
 
-int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder)
+int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder, UnwrapProgressCallback cb)
 {
 	if (wrapped_phase.type() != CV_64F ||
 		wrapped_phase.empty() ||
@@ -2640,9 +2702,9 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	string commandline = str + string("\\snaphu.exe -f ") + config_file;
 
 	std::wstring cmdLine = A2W(commandline.c_str());
-	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!"))
+	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!", cb))
 	{
-		return -1;
+		return -2;
 	}
 
 	//读取结果
@@ -2832,7 +2894,7 @@ int Unwrap::unwrap(Mat& src, Mat& dst, int x0, int y0, int x1, int y1, Mat& flag
 	return 0;
 }
 
-int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
+int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase, UnwrapProgressCallback cb)
 {
 	if (wrapped_phase.rows < 1 ||
 		wrapped_phase.cols < 1 ||
@@ -2874,6 +2936,7 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
 		}
 	}
 	int top = height * width;
+	int step = std::max(1, top / 100);
 	while (count < top)
 	{
 		mark = 0;
@@ -2904,6 +2967,13 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase)
 		}
 		if (mark == 1)
 			count++;
+		if (cb && count % step == 0)
+		{
+			if (!cb(count * 100 / top, "SPD guided flood-fill unwrapping..."))
+			{
+				return -2;
+			}
+		}
 	}
 	tmp.copyTo(unwrapped_phase);
 	return 0;

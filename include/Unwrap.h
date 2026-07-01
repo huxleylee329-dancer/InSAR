@@ -28,7 +28,8 @@ public:
 		Mat& unwrapped_phase,
 		Mat& coherence, Mat& residue,
 		const char* MCF_problem_file,
-		const char* MCF_EXE_PATH
+		const char* MCF_EXE_PATH,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/*@brief 改进的最小费用流算法
 	* @param wrapped_phase                待解缠相位
@@ -43,7 +44,8 @@ public:
 		Mat& unwrapped_phase,
 		const char* MCF_problem_file,
 		const char* MCF_exe_path,
-		double coh_thresh = 0.75
+		double coh_thresh = 0.75,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/*@brief 基于相位质量的洪水淹没法积分解缠
 	* @param wrapped_phase                待解缠相位
@@ -124,7 +126,8 @@ public:
 		tri_edge* edges,
 		int num_edges,
 		bool pass = false,
-		double thresh = 1000000000.0
+		double thresh = 1000000000.0,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 调用mcf.exe解Delaunay三角网络最小费用流问题
 	
@@ -134,7 +137,8 @@ public:
 	*/
 	int mcf_delaunay(
 		const char* MCF_problem_file,
-		const char* MCF_EXE_PATH
+		const char* MCF_EXE_PATH,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/*结合质量图和最小费用流的解缠法（此法需要提前计算每条边的质量值）
 	* 参数1 待解缠相位
@@ -156,7 +160,8 @@ public:
 		int num_edges,
 		int start,
 		bool pass = false,
-		double thresh = 10000.0
+		double thresh = 10000.0,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 结合质量图和最小费用流的解缠法第一步（绕过残差点的质量图法）
 	
@@ -176,7 +181,8 @@ public:
 		vector<tri_node>& nodes,
 		vector<tri_edge>& edges,
 		double distance_thresh = 1.5,
-		bool pass = true
+		bool pass = true,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 结合质量图和最小费用流的解缠法第二步（第一步未解缠的使用最小费用流法解缠）
 	
@@ -190,7 +196,8 @@ public:
 		Mat& unwrapped_phase,
 		vector<tri_node>& nodes,
 		vector<tri_edge>& edges,
-		double distance_thresh = 1.5
+		double distance_thresh = 1.5,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 结合质量图和最小费用流的解缠法
 	 
@@ -207,7 +214,8 @@ public:
 		double coherence_thresh,
 		double distance_thresh,
 		const char* tmp_path,
-		const char* EXE_path
+		const char* EXE_path,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 统计费用流法解缠（SNAPHU）
 	
@@ -223,7 +231,8 @@ public:
 		Mat& unwrapped_phase,
 		const char* project_path,
 		const char* tmp_folder,
-		const char* exe_path
+		const char* exe_path,
+		UnwrapProgressCallback cb = nullptr
 	);
 
 	/*@brief 统计费用流法解缠（SNAPHU）
@@ -235,7 +244,8 @@ public:
 	int snaphu(
 		Mat& wrapped_phase,
 		Mat& unwrapped_phase,
-		const char* tmp_folder
+		const char* tmp_folder,
+		UnwrapProgressCallback cb = nullptr
 	);
 
 	/*@brief 质量图法解缠
@@ -283,7 +293,8 @@ public:
 	@param unwrapped_phase		解缠相位（返回值）
 	*/
 	int SPD_Guided_Unwrap(Mat& wrapped_phase,
-		Mat& unwrapped_phase);
+		Mat& unwrapped_phase,
+		UnwrapProgressCallback cb = nullptr);
 
 private:
 	char error_head[256];

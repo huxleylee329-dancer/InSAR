@@ -51,7 +51,8 @@ public:
 		const char* tmp_path,
 		const char* dl_model_file,
 		Mat& phase,
-		Mat& phase_filtered
+		Mat& phase_filtered,
+		FilterProgressCallback cb = nullptr
 	);
 	/*经典Goldstein滤波
 	* 参数1 待滤波相位

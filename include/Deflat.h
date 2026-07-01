@@ -63,7 +63,8 @@ public:
 		const Mat& orbit_main,
 		const Mat& orbit_slave,
 		int mode,
-		int multilook_times
+		int multilook_times,
+		DeflatProgressCallback cb = nullptr
 	);
 	/** @brief 去平地
 	
@@ -96,7 +97,8 @@ public:
 		int mode,
 		double wavelength,
 		Mat& phase_deflated,
-		Mat& flat_phase_coef
+		Mat& flat_phase_coef,
+		DeflatProgressCallback cb = nullptr
 	);
 
 	/** @brief 利用外部DEM数据去除地形相位
@@ -350,7 +352,8 @@ public:
 		Mat& stateVector,
 		int interp_times = 10,
 		double lon_spacing = 1.0 / 2400.0,
-		double lat_spacing = 1.0 / 3600.0
+		double lat_spacing = 1.0 / 3600.0,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 去除配准SLC图像中的参考地形相位（包括平地相位）
 	* @param slc_deramped                           去参考相位后SLC图像（返回值）
@@ -367,7 +370,8 @@ public:
 		Mat& mappedLat,
 		Mat& mappedLon,
 		const char* slcH5File,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 计算斜距
 	* @param slant_range                            斜距（返回值）
@@ -384,7 +388,8 @@ public:
 		Mat& mappedLat,
 		Mat& mappedLon,
 		const char* slcH5File,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 计算参考斜距和卫星轨道
 	* @param slant_range                            参考斜距（返回值）
@@ -403,7 +408,8 @@ public:
 		Mat& mappedDEM,
 		Mat& mappedLat,
 		Mat& mappedLon,
-		const char* slcH5File
+		const char* slcH5File,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 去除配准SAR图像数据堆栈的参考地形相位（包括平地相位）
 	* @param SLCH5Files                             配准SAR图像数据堆栈h5文件
@@ -416,7 +422,8 @@ public:
 		vector<string>& SLCH5Files,
 		int reference,
 		const char* demPath,
-		vector<string>& outSLCH5Files
+		vector<string>& outSLCH5Files,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 根据投影至SAR坐标系的DEM和卫星系统参数模拟地形相位
 	* @param mappedDEM                              投影至SAR坐标系的DEM（short型）
@@ -439,7 +446,8 @@ public:
 		int offset_row,
 		int offset_col,
 		double wavelength,
-		double rangeSpacing
+		double rangeSpacing,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 计算所需DEM的地理边界
 	* @param lat_coefficient                        地理坐标转换系数（行列-->纬度）

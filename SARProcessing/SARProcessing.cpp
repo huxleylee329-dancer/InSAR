@@ -289,7 +289,8 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
                                    float* shipProbs,
                                    char* results,
                                    int resultTextSize,
-                                   bool* successFlags)
+                                   bool* successFlags,
+                                   SARProgressCallback cb)
 {
     if (!imagePaths || imageCount <= 0 || !modelPath || !shipProbs || !results || !successFlags) {
         return 0;
@@ -309,6 +310,9 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
 
     int successCount = 0;
     for (int i = 0; i < imageCount; ++i) {
+        if (cb && !cb(i * 100 / imageCount, "Detecting ships...")) {
+            return successCount;
+        }
         char* resultPtr = results + i * resultTextSize;
         shipProbs[i] = 0.0f;
         successFlags[i] = false;

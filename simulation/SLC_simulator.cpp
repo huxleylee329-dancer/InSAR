@@ -18,7 +18,7 @@
 
 namespace {
 	// 避免在 OMP 内层循环分配 cv::Mat 的高效相位修正计算函数
-	inline void applyPhaseCorrection(
+	inline bool applyPhaseCorrection(
 		Mat& slc_re,
 		Mat& slc_im,
 		const Mat& mappedLat,
@@ -29,14 +29,22 @@ namespace {
 		double wavelength,
 		double phaseCoeff,       // 相位系数
 		bool useSate2 = false,    // 是否同时使用双星距离和
-		Mat* R_out = nullptr      // 可选的输出斜距矩阵指针
+		Mat* R_out = nullptr,     // 可选的输出斜距矩阵指针
+		SimulationProgressCallback cb = nullptr,
+		const char* message = "Phase correction..."
 	) {
 		int rows = slc_re.rows;
 		int cols = slc_re.cols;
+		std::atomic<bool> cancel_flag(false);
+		std::atomic<int> completed_rows(0);
+		int step = std::max(1, rows / 100);
 		
 		#pragma omp parallel for schedule(guided)
 		for (int i = 0; i < rows; i++)
 		{
+			if (cancel_flag) {
+				continue;
+			}
 			double s1x = 0.0, s1y = 0.0, s1z = 0.0;
 			if (!sate1.empty()) {
 				s1x = sate1.at<double>(i, 0);
@@ -93,7 +101,16 @@ namespace {
 				re_ptr[j] = static_cast<float>(real * real2 + imagine * imagine2);
 				im_ptr[j] = static_cast<float>(real * imagine2 - real2 * imagine);
 			}
+
+			int finished = ++completed_rows;
+			if (cb && finished % step == 0) {
+				int progress = finished * 100 / rows;
+				if (!cb(progress, message)) {
+					cancel_flag = true;
+				}
+			}
 		}
+		return !cancel_flag;
 	}
 }
 
@@ -607,7 +624,8 @@ int SLC_simulator::generateSLC_spacety(
 	double acquisitionStartTime,
 	double acquisitionStopTime,
 	double SNR,
-	ComplexMat& slc
+	ComplexMat& slc,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec.cols != 7 ||
@@ -752,8 +770,12 @@ int SLC_simulator::generateSLC_spacety(
 				}
 			}
 
-			printf("\rprocess %lf", (double)(i * num_block_col + j + 1) / (double)(num_block_row * num_block_col) * 100.0);
-			fflush(stdout);
+			if (cb) {
+				double progress_val = (double)(i * num_block_col + j + 1) / (double)(num_block_row * num_block_col) * 100.0;
+				if (!cb(static_cast<int>(progress_val), "Generating Spacety SLC image...")) {
+					return -2;
+				}
+			}
 		}
 	}
 	return 0;
@@ -2364,7 +2386,8 @@ int SLC_simulator::SLC_deramp(
 	const char* slcH5File1_out,
 	const char* slcH5File2_out, 
 	const char* slcH5File3_out, 
-	const char* slcH5File4_out
+	const char* slcH5File4_out,
+	SimulationProgressCallback cb
 )
 {
 	if (mappedDEM.rows != mappedLat.rows ||
@@ -2481,7 +2504,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, nullptr, cb, "Deramping file 1/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
@@ -2497,7 +2520,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, nullptr, cb, "Deramping file 2/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
@@ -2513,7 +2536,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, nullptr, cb, "Deramping file 3/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
@@ -2529,7 +2552,7 @@ int SLC_simulator::SLC_deramp(
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, nullptr, cb, "Deramping file 4/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
@@ -2551,7 +2574,8 @@ int SLC_simulator::SLC_deramp_14(
 	const Mat& mappedDEM,
 	const Mat& mappedLat,
 	const Mat& mappedLon, 
-	int mode
+	int mode,
+	SimulationProgressCallback cb
 )
 {
 	if (mappedDEM.rows != mappedLat.rows ||
@@ -3031,7 +3055,8 @@ int SLC_simulator::SLC_reramp(
 	const char* slcH5File1_out,
 	const char* slcH5File2_out,
 	const char* slcH5File3_out,
-	const char* slcH5File4_out
+	const char* slcH5File4_out,
+	SimulationProgressCallback cb
 )
 {
 	if (mappedDEM.rows != mappedLat.rows ||
@@ -3145,7 +3170,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, 4.0 * PI / wavelength, false);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, 4.0 * PI / wavelength, false, nullptr, cb, "Reramping file 1/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
@@ -3161,7 +3186,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File2, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true, nullptr, cb, "Reramping file 2/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
@@ -3177,7 +3202,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File3, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, 4.0 * PI / wavelength, false);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, 4.0 * PI / wavelength, false, nullptr, cb, "Reramping file 3/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
@@ -3193,7 +3218,7 @@ int SLC_simulator::SLC_reramp(
 	ret = conversion.read_slc_from_h5(slcH5File4, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
-	applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true);
+	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true, nullptr, cb, "Reramping file 4/4...")) return -2;
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);

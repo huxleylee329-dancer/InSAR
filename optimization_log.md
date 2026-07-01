@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-01 | AI | FormatConversion, Filter, Registration, simulation | 遗漏的中止机制全面补齐与双向通信机制改造：<br>1. FormatConversion：修改 `ProgressCallback` 签名为返回 `bool`，在 `sentinel2h5` 和 `read_slc_from_Sentinel` 中加入中止判断，支持导入大文件时提前返回 `-2`。<br>2. Filter：为 `filter_dl` 引入进度回调，将 `WaitForSingleObject` 同步挂起重构为 100ms 轮询检测，支持在取消时强杀外部 `filter_dl.exe` 进程、清理 Job/Process/Thread 句柄与临时文件并返回 `-2`。<br>3. Registration：为 `getDEMRgAzPos` 接入进度汇报，在 OpenMP 循环中使用原子计数与 `cancel_flag` 实现安全退避检测与毫秒级响应，维持 `DEM_rows` 安全循环范围。<br>4. simulation：为 `generateSLC_spacety` 追加进度回调并删除 `printf` 调试输出。重构 `applyPhaseCorrection` 辅助函数以支持 `cb` 和原子 `cancel_flag` 退避检测，打通 `SLC_deramp`/`SLC_reramp` 的行级高速中止响应。 |
 | 工作区现场修改 | 2026-07-01 | AI | Deflat, Unwrap, SBAS, Registration, SARProcessing | 工业级双向进度汇报与中止机制标准化改造：<br>1. Deflat：修改 `demMapping`/`demMapping_float` 三个重载，加入 `DeflatProgressCallback`，在 OpenMP 循环入口支持 `cancel_flag` 退出并在完成时返回 `-2`。<br>2. Unwrap：修改 `qualityGuidedFloodfill` 及 Delaunay `MCF` 重载，加入 `UnwrapProgressCallback`，分别在洪泛优先队列和图解缠队列中周期性触发进度汇报并支持中止。<br>3. SBAS：修改 `adaptive_multilooking` 接口，加入 `SBASProgressCallback`。使用跨 tile 的行计数 `completed_rows` 和 `cancel_flag` 保证了 OMP 和外层分块循环的快速避让退出，并在用户取消时返回 `-2`。<br>4. Registration：修改 `performBilinearResampling` 和 `performSincResampling`，加入 `RegistrationProgressCallback`，在耗时极重的 sinc 重采样 OpenMP 循环中安全统计进度并响应取消。<br>5. SARProcessing：在 `global_define.h` 中定义 `SARProgressCallback`，更新 `BM3D::run` 和 `BM3D_WIE::run` 为双向回调，在 1D 滑动窗口循环中分步（0-50% 和 50-100%）汇报进度，在取消时安全析构并退出，Denoise 核心接口返回空 Mat。 |
 | 工作区现场修改 | 2026-06-29 | AI | Filter | 1. 修复并优化 `Filter` 模块的 `czt2` 与 `slope_adaptive_filter` 算法，消除多线程环境下的崩溃 Bug 并提升性能。<br>2. 修复 `cv::merge` 引发 `ipp::IwException` 的 Bug，改为直接创建复数矩阵 `Mat::zeros(..., CV_64FC2)`。<br>3. 修复 `cv::flip` 对非连续 ROI 矩阵导致的 IPP 崩溃 Bug，使用 OpenCV 标准 `cv::copyMakeBorder` 优雅重构边缘扩充逻辑。<br>4. 实施 4 大性能优化：重用线程局部缓冲区以实现零动态分配；预计算 `h_dft` 核矩阵；整幅图预滤波处理；限制 OpenCV 线程数为 1 消除嵌套并行冲突。<br>5. 实施 2 大重型三角函数优化：将 `czt2` 内部的 `result` 矩阵计算（占总计算量 90% 以上）完全预计算并移出多线程循环；将 `W` 矩阵的三角函数运算提取至列循环外（计算量减少 `nc` 倍），消除数百亿次冗余 `cos`/`sin` 计算。<br>6. 引入 `FilterProgressCallback` 接口并设计双向中止机制：在 `slope_adaptive_filter` 中检测到回调返回 `false` 时，基于 `std::atomic` 标志使 OpenMP 并行线程快速避让跳出，在 1 秒内安全中断大计算并返回 `-2`，且得益于 RAII 保证了零内存泄漏。 |
 | 工作区现场修改 | 2026-06-22 | AI | simulation, optimize.md, optimization_log.md | 1. 将 `conv2` 及其配套的 `ConvolutionType` 声明移入 `SLC_simulator.cpp` 的匿名命名空间中，将其符号链接属性改为内部链接，彻底消除与其他模块同名符号冲突 (LNK2005) 的安全隐患。 |
@@ -750,3 +751,72 @@ Simulation 改造要点说明：
 ---
 
 *注：本分支已对目前已合入的代码与编译警告进行了上述清理。对于 master 上其他未合入的全局优化与并发改造（如 HDF5 Concurrency Mutex 等），在本分支的代码中暂不列入，待后续优化重排时统一记录。*
+
+---
+
+### 14. 全模块重量计算中止机制标准化补全（Unwrap / SBAS / SARProcessing）
+
+**背景**：前序工作已为 `FormatConversion`、`Registration`、`Deflat`、`Filter`、`simulation` 和 `SBAS::adaptive_multilooking` 实现了双向进度/取消机制。本次对剩余遗漏函数进行全面补齐，确保所有耗时计算路径均可响应用户取消请求。回调签名统一为：
+
+```cpp
+typedef bool (__stdcall *XxxProgressCallback)(int progress, const char* message);
+// 回调返回 false  → 触发取消，函数返回 -2
+// 回调返回 true   → 继续执行，更新进度百分比（0~100）
+```
+
+---
+
+#### 14.1 Unwrap 模块（Unwrap.cpp / Unwrap.h）
+
+**`runExternalProcess` 辅助函数重构**
+
+- 新增 `UnwrapProgressCallback cb = nullptr` 参数。
+- 将原来的 `WaitForSingleObject` 同步阻塞改为 100 ms 轮询循环（`GetExitCodeProcess` + `Sleep(100)`）。
+- 每次轮询调用 `cb`；若 `cb` 返回 `false`，立即调用 `TerminateProcess` 强杀子进程，清理 Job/Process/Thread 句柄后返回 `false`（调用方返回 `-2`）。
+
+| 函数 | 中止点 | 返回码 |
+|---|---|---|
+| `MCF`（规则网格） | 外部 `mcf.exe` 进程轮询 | `-2` |
+| `MCF_improved` | 外部 `mcf.exe` 进程轮询 | `-2` |
+| `MCF_second` | 优先队列迭代每步检查 `cb` | `-2` |
+| `mcf_delaunay` | 外部 `mcf.exe` 进程轮询 | `-2` |
+| `QualityMap_MCF` | 优先队列迭代每步检查 `cb` | `-2` |
+| `_QualityGuided_MCF_1` | 优先队列迭代每步检查 `cb` | `-2` |
+| `_QualityGuided_MCF_2` | 普通队列迭代每步检查 `cb` | `-2` |
+| `QualityGuided_MCF` | 嵌套调用全部传入 `cb`；外层每次迭代检查 | `-2` |
+| `snaphu`（两个重载） | 外部 `snaphu.exe` 进程轮询 | `-2` |
+| `SPD_Guided_Unwrap` | 堆提取主循环每步检查 `cb` | `-2` |
+
+**编译 Bug 修复**：在为 `QualityMap_MCF` 添加取消检查时，`}` 误置于函数末尾的节点读取代码之前，导致函数过早关闭，引发 `error C2065: "unwrapped_phase": 未声明的标识符` 等连锁编译错误。已通过删除多余的 `}` 修复。
+
+---
+
+#### 14.2 SBAS 模块（SBAS.cpp / SBAS.h）
+
+所有更新均在 `SBAS.h` 中同步新增 `SBASProgressCallback cb = nullptr` 默认参数。
+
+| 函数 | 中止策略 | 返回码 |
+|---|---|---|
+| `generate_interferograms`（Delaunay 三角网版） | 在每条边处理前检查 `cb`；进度 = `i * 100 / num_edges` | `-2` |
+| `generate_interferograms`（组合矩阵版） | 预先统计干涉对总数，每对处理前检查 `cb` | `-2` |
+| `saveGradientStack` | 每幅相位读取前检查 `cb`；进度 = `i * 100 / num_ifgs` | `-2` |
+| `generate_high_coherence_mask` | 每幅图像处理前检查 `cb`；进度 = `i * 100 / num_images` | `-2` |
+| `floodFillUnwrap` | 队列迭代每步累计计数，每隔 `step = max(1, num_nodes/100)` 步检查 `cb` | `-2` |
+
+---
+
+#### 14.3 SARProcessing 模块（SARProcessing.cpp / SARProcessor.h）
+
+| 函数 | 中止策略 | 返回码 |
+|---|---|---|
+| `DetectShipBatch` | 每张图像 ONNX 推理前检查 `cb`；取消时提前返回已完成的成功计数 | 提前返回 `successCount` |
+
+- `SARProcessor.h` 同步更新 `DetectShipBatch` 声明，新增 `SARProgressCallback cb = nullptr` 尾部默认参数，保持向后 ABI 兼容。
+- `DenoiseGray` / `bm3dCoreDenoise` / `BM3D::run` / `BM3D_WIE::run` 已在前序工作中完成，本次无需再改。
+
+---
+
+**设计一致性说明**：
+- 所有函数取消时返回 `-2`（与既有约定一致，`-1` 保留给普通错误，`0` 为正常完成）。
+- OpenMP 并行区域内使用 `std::atomic<bool> cancel_flag` + 循环头部 `continue/break` 检查，外层循环再检查 `cancel_flag` 决定提前退出，符合 C++ 并发内存模型，无数据竞争。
+- 外部进程（`mcf.exe`/`snaphu.exe`）通过 Job Object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）包裹，取消时 `TerminateProcess` + `CloseHandle` 确保子进程无残留。
