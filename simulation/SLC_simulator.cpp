@@ -355,7 +355,8 @@ int SLC_simulator::generateSLC(
 	double acquisitionStopTime,
 	double SNR,
 	ComplexMat& slc,
-	cv::Mat& GCP
+	cv::Mat& GCP,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec.cols != 7 ||
@@ -419,9 +420,12 @@ int SLC_simulator::generateSLC(
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
-	for (int i = 0; i < num_block_row; i++)
+	bool cancel_requested = false;
+	int total_blocks = num_block_row * num_block_col;
+	int completed_blocks = 0;
+	for (int i = 0; i < num_block_row && !cancel_requested; i++)
 	{
-		for (int j = 0; j < num_block_col; j++)
+		for (int j = 0; j < num_block_col && !cancel_requested; j++)
 		{
 			//bool flag = (i % 3 == 0) && (j % 3 == 0) && i != 0 && j != 0;
 			//if (!flag) continue;
@@ -554,10 +558,18 @@ int SLC_simulator::generateSLC(
 				}
 			}
 			
-			printf("\rprocess %lf", (double)(i * num_block_col + j + 1) / (double)(num_block_row * num_block_col) * 100.0);
-			fflush(stdout);
+			++completed_blocks;
+			if (cb)
+			{
+				int progress = completed_blocks * 100 / total_blocks;
+				if (!cb(progress, "Generating SLC..."))
+				{
+					cancel_requested = true;
+				}
+			}
 		}
 	}
+	if (cancel_requested) return -2;
 
 	int total_rows = static_cast<int>(GCPs.size() / 7);
 	if (total_rows > 0)
@@ -765,7 +777,8 @@ int SLC_simulator::generateSLC_optimized(
 	double acquisitionStopTime,
 	double SNR,
 	ComplexMat& slc,
-	Mat& GCP
+	Mat& GCP,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec.cols != 7 ||
@@ -973,9 +986,13 @@ int SLC_simulator::generateSLC_optimized(
 
 	uint64 seed = 0;
 
-	for (int bi = 0; bi < num_block_row; ++bi)
+	bool cancel_requested = false;
+	int total_blocks = num_block_row * num_block_col;
+	int completed_blocks = 0;
+
+	for (int bi = 0; bi < num_block_row && !cancel_requested; ++bi)
 	{
-		for (int bj = 0; bj < num_block_col; ++bj)
+		for (int bj = 0; bj < num_block_col && !cancel_requested; ++bj)
 		{
 			seed++;
 
@@ -1232,11 +1249,18 @@ int SLC_simulator::generateSLC_optimized(
 				}
 			}
 
-			printf("\rprocess %.2lf%%",
-				(double)(bi * num_block_col + bj + 1) / (double)(num_block_row * num_block_col) * 100.0);
-			fflush(stdout);
+			++completed_blocks;
+			if (cb)
+			{
+				int progress = completed_blocks * 100 / total_blocks;
+				if (!cb(progress, "Generating SLC (dual)..."))
+				{
+					cancel_requested = true;
+				}
+			}
 		}
 	}
+	if (cancel_requested) return -2;
 
 	// -----------------------------
 	// 输出 GCP
@@ -1283,7 +1307,8 @@ int SLC_simulator::generateSLC(
 	ComplexMat& slc1,
 	ComplexMat& slc2,
 	Mat& GCP,
-	int mode
+	int mode,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec1.cols != 7 ||
@@ -1719,7 +1744,8 @@ int SLC_simulator::generateSLC(
 	ComplexMat& slc3, 
 	ComplexMat& slc4, 
 	Mat& GCP1,
-	Mat& GCP2
+	Mat& GCP2,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec1.cols != 7 ||
@@ -1807,10 +1833,13 @@ int SLC_simulator::generateSLC(
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
+	bool cancel_requested = false;
+	int total_blocks = num_block_row * num_block_col;
+	int completed_blocks = 0;
 	// removed unused: process
-	for (int i = 0; i < num_block_row; i++)
+	for (int i = 0; i < num_block_row && !cancel_requested; i++)
 	{
-		for (int j = 0; j < num_block_col; j++)
+		for (int j = 0; j < num_block_col && !cancel_requested; j++)
 		{
 			seed++;
 			int row_start = i * block_rows - 1;
@@ -2028,11 +2057,18 @@ int SLC_simulator::generateSLC(
 					slc4.im.at<float>(azimuthIndex1, rangeIndex1) += static_cast<float>(imaginary);
 				}
 			}
-			printf("\rprocess %lf: %llu / %d", (double)seed / (double)(num_block_row * num_block_col) * 100.0, seed,
-				num_block_row* num_block_col);
-			fflush(stdout);
+			++completed_blocks;
+			if (cb)
+			{
+				int progress = completed_blocks * 100 / total_blocks;
+				if (!cb(progress, "Generating SLC (pingpong)..."))
+				{
+					cancel_requested = true;
+				}
+			}
 		}
 	}
+	if (cancel_requested) return -2;
 
 	////二维复数卷积
 	int wright = 16;

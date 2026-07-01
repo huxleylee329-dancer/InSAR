@@ -1607,7 +1607,8 @@ int SBAS::adaptive_multilooking(
 	int homogeneous_test_wnd,
 	double thresh_c1_to_c2, 
 	bool b_normalize,
-	bool b_save_images
+	bool b_save_images,
+	SBASProgressCallback cb
 )
 {
 	if (coregis_slc_files.size() < 2 ||
@@ -1704,6 +1705,9 @@ int SBAS::adaptive_multilooking(
 	int homotest_radius = (homogeneous_test_wnd - 1) / 2;
 
 	//分块读取、计算和储存
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr / 100);
 
 	int left, right, top, bottom, block_num_row, block_num_col, left_pad, right_pad, top_pad, bottom_pad;
 	vector<ComplexMat> slc_series, slc_series_filter;
@@ -1716,8 +1720,14 @@ int SBAS::adaptive_multilooking(
 	else block_num_col = int(floor((double)nc / (double)blocksize_col)) + 1;
 	for (int i = 0; i < block_num_row; i++)
 	{
+		if (cancel_flag) {
+			break;
+		}
 		for (int j = 0; j < block_num_col; j++)
 		{
+			if (cancel_flag) {
+				break;
+			}
 			top = i * blocksize_row;
 			top_pad = top - homotest_radius; top_pad = top_pad < 0 ? 0 : top_pad;
 			bottom = top + blocksize_row; bottom = bottom > nr ? nr : bottom;
@@ -1754,6 +1764,9 @@ int SBAS::adaptive_multilooking(
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
+				if (cancel_flag) {
+					continue;
+				}
 				ComplexMat coherence_matrix, eigenvector; Mat eigenvalue; int ret1, count_parallel;
 				for (int jj = (left - left_pad); jj < (right - left_pad); jj++)
 				{
@@ -1794,6 +1807,16 @@ int SBAS::adaptive_multilooking(
 
 
 				}
+
+				int current_completed = ++completed_rows;
+				if (cb && current_completed % step == 0)
+				{
+					int progress = current_completed * 100 / nr;
+					if (!cb(progress, "Adaptive multilooking..."))
+					{
+						cancel_flag = true;
+					}
+				}
 			}
 
 			//储存
@@ -1820,6 +1843,11 @@ int SBAS::adaptive_multilooking(
 			slc_series_filter.clear();
 			fprintf(stdout, "估计相位进度：%.1lf\n", double((i + 1) * block_num_col + j + 1) / double((block_num_col) * (block_num_row)));
 		}
+	}
+
+	if (cancel_flag)
+	{
+		return -2;
 	}
 
 

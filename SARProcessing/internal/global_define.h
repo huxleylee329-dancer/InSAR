@@ -30,5 +30,8 @@ typedef float PatchType;
 #endif
 
 
+// 定义 SARProcessing 专用的进度回调函数指针类型
+typedef bool (__stdcall *SARProgressCallback)(int progress, const char* message);
+
 #endif
 

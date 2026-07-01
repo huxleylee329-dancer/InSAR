@@ -6,7 +6,8 @@
 
 
 // 定义滤波专用的进度回调函数指针类型
-typedef void (__stdcall *FilterProgressCallback)(int progress, const char* message);
+// 返回值改为 bool：true 继续计算，false 中止计算
+typedef bool (__stdcall *FilterProgressCallback)(int progress, const char* message);
 
 class InSAR_API Filter
 {
@@ -64,7 +65,8 @@ public:
 		Mat& phase_filter,
 		double alpha,
 		int n_win,
-		int n_pad
+		int n_pad,
+		FilterProgressCallback cb = nullptr
 	);
 	/*经典Goldstein滤波（并行）
 	* 参数1 待滤波相位
@@ -78,7 +80,8 @@ public:
 		Mat& phase_filter,
 		double alpha,
 		int n_win,
-		int n_pad
+		int n_pad,
+		FilterProgressCallback cb = nullptr
 	);
 	// 按二维高斯函数实现高斯滤波
 	int GaussianFilter(Mat& src, Mat& dst, const Mat& window);
@@ -90,7 +93,8 @@ private:
 		double alpha,
 		int n_win,
 		int n_pad,
-		bool parallel
+		bool parallel,
+		FilterProgressCallback cb = nullptr
 	);
 	std::string error_head;
 	std::string parallel_error_head;

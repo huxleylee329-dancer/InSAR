@@ -2043,7 +2043,8 @@ int Registration::performBilinearResampling(
 	double a0Rg, double a1Rg, double a2Rg, 
 	double a0Az, double a1Az, double a2Az,
 	int* offset_row,
-	int* offset_col
+	int* offset_col,
+	RegistrationProgressCallback cb
 )
 {
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
@@ -2097,9 +2098,16 @@ int Registration::performBilinearResampling(
 	const double cc1 = coef_c.at<double>(1, 0);
 	const double cc2 = coef_c.at<double>(2, 0);
 
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		// removed unused: x, y
 		double ii, jj;
 		double offset_rows, offset_cols;
@@ -2120,6 +2128,21 @@ int Registration::performBilinearResampling(
 			mat_set_from_double(slcResampled.re, i, j, re_val);
 			mat_set_from_double(slcResampled.im, i, j, im_val);
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / rows;
+			if (!cb(progress, "Bilinear resampling..."))
+			{
+				cancel_flag = true;
+			}
+		}
+	}
+
+	if (cancel_flag)
+	{
+		return -2;
 	}
 	slave = slcResampled;
 	return 0;
@@ -2133,7 +2156,8 @@ int Registration::performSincResampling(
 	double a0Rg, double a1Rg, double a2Rg,
 	double a0Az, double a1Az, double a2Az,
 	int* offset_row,
-	int* offset_col
+	int* offset_col,
+	RegistrationProgressCallback cb
 )
 {
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
@@ -2206,9 +2230,16 @@ int Registration::performSincResampling(
 	const double cc1 = a1Rg;
 	const double cc2 = a2Rg;
 
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, rows / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < cols; j++)
 		{
 			double ii = static_cast<double>(i);
@@ -2229,8 +2260,22 @@ int Registration::performSincResampling(
 			mat_set_from_double(slcResampled.re, i, j, re_value);
 			mat_set_from_double(slcResampled.im, i, j, im_value);
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / rows;
+			if (!cb(progress, "Sinc resampling..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
 
+	if (cancel_flag)
+	{
+		return -2;
+	}
 	slave = slcResampled;
 
 	return 0;

@@ -1,6 +1,9 @@
 #pragma once
 #include "Package.h"
 
+// 定义 SARProcessing 专用的进度回调函数指针类型
+typedef bool (__stdcall *SARProgressCallback)(int progress, const char* message);
+
 // 基础特征结构体（GLCM + FFT）
 struct BasicFeatures {
     double fphr;         // 频率峰值比
@@ -17,7 +20,7 @@ public:
     // imgGray: 输入灰度图 (CV_8UC1)
     // sigma8: 噪声标准差（建议值，内部会自动估计）
     // 返回: 降噪后的图像 (CV_8UC1)，失败返回空 Mat
-    static cv::Mat DenoiseGray(const cv::Mat& imgGray, double sigma8);
+    static cv::Mat DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProgressCallback cb = nullptr);
 
     // ============ 特征提取 ============
 

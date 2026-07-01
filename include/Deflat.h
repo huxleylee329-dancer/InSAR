@@ -4,6 +4,9 @@
 #include"..\include\Utils.h"
 
 
+// 定义 Deflat 专用的进度回调函数指针类型
+typedef bool (__stdcall *DeflatProgressCallback)(int progress, const char* message);
+
 class InSAR_API Deflat
 {
 public:
@@ -211,7 +214,8 @@ public:
 		Mat& stateVector,
 		int interp_times = 10,
 		double lon_spacing = 5.0 / 6000.0,
-		double lat_spacing = 5.0 / 6000.0
+		double lat_spacing = 5.0 / 6000.0,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 将WGS84坐标DEM投影到相应的SAR坐标系中（投影经纬度也返回）
 	* @param DEM84                        84坐标系DEM（short型矩阵）
@@ -260,7 +264,8 @@ public:
 		double lon_spacing = 5.0 / 6000.0,
 		double lat_spacing = 5.0 / 6000.0,
 		int geocoding_cali_factor_rg = 0,
-		int geocoding_cali_factor_az = 0
+		int geocoding_cali_factor_az = 0,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 将WGS84坐标DEM投影到相应的SAR坐标系中
 	* @param DEM84                        84坐标系DEM（float型矩阵）
@@ -301,7 +306,8 @@ public:
 		Mat& stateVector,
 		int interp_times = 10,
 		double lon_spacing = 1.0 / 2400.0,
-		double lat_spacing = 1.0 / 3600.0
+		double lat_spacing = 1.0 / 3600.0,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 将WGS84坐标参数投影到相应的SAR坐标系中
 	* @param input                        84坐标系待投影参数（float型矩阵）

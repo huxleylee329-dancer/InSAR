@@ -53,7 +53,8 @@ int Dem::phase2dem_newton_iter(
 	double delta_s,
 	int multilook_times,
 	int mode,
-	int iters = 30
+	int iters,
+	DemProgressCallback cb
 )
 {
 	if (unwrapped_phase.rows < 1 ||
@@ -266,11 +267,18 @@ int Dem::phase2dem_newton_iter(
 	int fine_size_rows = unwrapped_phase.rows;
 	int fine_size_cols = unwrapped_phase.cols;
 	Mat fd = doppler_frequency;
-	Utils::newton_iter_core(iters, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core(iters, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda);
+	                 R_M, R_F, fd, lambda, cb))
+	{
+		return -2;
+	}
 	std::atomic<bool> parallel_flag(true);
 	DEM_height = Mat::zeros(fine_size_rows, fine_size_cols, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, fine_size_rows / 10);
+
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < fine_size_rows; i++)
@@ -288,8 +296,18 @@ int Dem::phase2dem_newton_iter(
 			}
 			DEM_height.at<double>(i, j) = h;
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = 90 + (current_completed * 10) / fine_size_rows;
+			if (!cb(progress, "Converting coordinates..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
-	if (parallel_check(parallel_flag, "phase2dem_newton_iter()", parallel_error_head)) return -1;
+	if (!parallel_flag) return -2;
 	double lat, lon, h;
 	ret = Utils::xyz2ell(
 		Control_Point_Position.at<double>(0, 0),
@@ -302,7 +320,7 @@ int Dem::phase2dem_newton_iter(
 	return 0;
 }
 
-int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times, int mode)
+int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times, int mode, DemProgressCallback cb)
 {
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
@@ -531,11 +549,18 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda);
+	                 R_M, R_F, fd, lambda, cb))
+	{
+		return -2;
+	}
 	std::atomic<bool> parallel_flag(true);
 	dem.create(nr, nc, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, nr / 10);
+
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < nr; i++)
@@ -553,13 +578,23 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 			}
 			dem.at<double>(i, j) = h;
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = 90 + (current_completed * 10) / nr;
+			if (!cb(progress, "Converting coordinates..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
-	if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
+	if (!parallel_flag) return -2;
 	dem = dem + llh.at<double>(0, 2) - dem.at<double>(row, col);
 	return 0;
 }
 
-int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times, int mode)
+int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times, int mode, DemProgressCallback cb)
 {
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
@@ -817,27 +852,51 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda);
+	                 R_M, R_F, fd, lambda, cb))
+	{
+		return -2;
+	}
 	std::atomic<bool> parallel_flag(true);
 	dem.create(nr, nc, CV_64F);
 	Mat lon, lat;
 	lon.create(nr, nc, CV_64F); lat.create(nr, nc, CV_64F); 
+
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, nr / 10);
+
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
+		if (!parallel_flag) continue;
 		for (int j = 0; j < nc; j++)
 		{
+			if (!parallel_flag) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat_val, lon_val, h_val);
+			if (ret < 0)
+			{
+				parallel_flag = false;
+				continue;
+			}
 			dem.at<double>(i, j) = h_val;
 			lat.at<double>(i, j) = lat_val;
 			lon.at<double>(i, j) = lon_val;
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = 90 + (current_completed * 10) / nr;
+			if (!cb(progress, "Converting coordinates..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
-	//if (parallel_check(parallel_flag, "dem_newton_iter()", parallel_error_head)) return -1;
+	if (!parallel_flag) return -2;
 	//dem = dem + llh.at<double>(0, 2) - dem.at<double>(row - 1, col - 1);
 	Mat error(static_cast<int>(valid_row.size()), 3, CV_64F);
 
@@ -870,7 +929,8 @@ int Dem::dem_newton_iter_14(
 	Mat& error_xyz,
 	const char* project_path,
 	int iter_times,
-	int mode
+	int mode,
+	DemProgressCallback cb
 )
 {
 	if (unwrapped_phase_file == NULL ||
@@ -1136,25 +1196,50 @@ int Dem::dem_newton_iter_14(
 	dem_y = ones * xyz_ground.at<double>(0, 1);
 	dem_z = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda);
+	                 R_M, R_F, fd, lambda, cb))
+	{
+		return -2;
+	}
 	std::atomic<bool> parallel_flag(true);
 	dem.create(nr, nc, CV_64F);
 	lon.create(nr, nc, CV_64F); lat.create(nr, nc, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, nr / 10);
+
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
+		if (!parallel_flag) continue;
 		for (int j = 0; j < nc; j++)
 		{
+			if (!parallel_flag) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+			if (ret < 0)
+			{
+				parallel_flag = false;
+				continue;
+			}
 			dem.at<double>(i, j) = h_val;
 			lat.at<double>(i, j) = lat_val;
 			lon.at<double>(i, j) = lon_val;
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = 90 + (current_completed * 10) / nr;
+			if (!cb(progress, "Converting coordinates..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
+	if (!parallel_flag) return -2;
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
@@ -1186,7 +1271,8 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	Mat& error_xyz,
 	const char* project_path,
 	int iter_times, 
-	int mode
+	int mode,
+	DemProgressCallback cb
 )
 {
 	if (unwrapped_phase_file == NULL ||
@@ -1427,25 +1513,50 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	dem_y = ones * xyz_ground.at<double>(0, 1);
 	dem_z = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda);
+	                 R_M, R_F, fd, lambda, cb))
+	{
+		return -2;
+	}
 	std::atomic<bool> parallel_flag(true);
 	dem.create(nr, nc, CV_64F);
 	lon.create(nr, nc, CV_64F); lat.create(nr, nc, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	int step = std::max(1, nr / 10);
+
 #pragma omp parallel for schedule(guided) \
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
+		if (!parallel_flag) continue;
 		for (int j = 0; j < nc; j++)
 		{
+			if (!parallel_flag) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
+			if (ret < 0)
+			{
+				parallel_flag = false;
+				continue;
+			}
 			dem.at<double>(i, j) = h_val;
 			lat.at<double>(i, j) = lat_val;
 			lon.at<double>(i, j) = lon_val;
 		}
+
+		int current_completed = ++completed_rows;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = 90 + (current_completed * 10) / nr;
+			if (!cb(progress, "Converting coordinates..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
+	if (!parallel_flag) return -2;
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)

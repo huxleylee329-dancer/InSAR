@@ -6,6 +6,9 @@
 
 
 
+// 定义 Dem 专用的进度回调函数指针类型
+typedef bool (__stdcall *DemProgressCallback)(int progress, const char* message);
+
 class InSAR_API Dem
 {
 public:
@@ -45,7 +48,8 @@ public:
 		double delta_s,
 		int multilook_times,
 		int mode, 
-		int iters
+		int iters,
+		DemProgressCallback cb = nullptr
 	);
 	/** @brief 牛顿迭代法反演高程
 	
@@ -61,7 +65,8 @@ public:
 		Mat& dem,
 		const char* project_path,
 		int iter_times,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DemProgressCallback cb = nullptr
 	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）
@@ -77,7 +82,8 @@ public:
 		Mat& dem,
 		const char* project_path,
 		int iter_times,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DemProgressCallback cb = nullptr
 	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）
@@ -107,7 +113,8 @@ public:
 		Mat& error_xyz,
 		const char* project_path,
 		int iter_times,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DemProgressCallback cb = nullptr
 	);
 
 	/** @brief 牛顿迭代法反演高程（双频乒乓模式）
@@ -137,7 +144,8 @@ public:
 		Mat& error_xyz,
 		const char* project_path,
 		int iter_times,
-		int mode = TR_MODE_SINGLE_TX_SINGLE_RX
+		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DemProgressCallback cb = nullptr
 	);
 
 private:

@@ -5,6 +5,9 @@
 
 
 
+// 定义 Registration 专用的进度回调函数指针类型
+typedef bool (__stdcall *RegistrationProgressCallback)(int progress, const char* message);
+
 class InSAR_API Registration
 {
 public:
@@ -216,7 +219,8 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az,
 		int* offset_row = NULL,
-		int* offset_col = NULL
+		int* offset_col = NULL,
+		RegistrationProgressCallback cb = nullptr
 	);
 	/*@brief 复图像SINC插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
@@ -239,7 +243,8 @@ public:
 		double a0Rg, double a1Rg, double a2Rg,
 		double a0Az, double a1Az, double a2Az,
 		int* offset_row = NULL,
-		int* offset_col = NULL
+		int* offset_col = NULL,
+		RegistrationProgressCallback cb = nullptr
 	);
 private:
 	char error_head[256];

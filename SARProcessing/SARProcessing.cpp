@@ -57,8 +57,7 @@ static double calcMedian(const cv::Mat& img)
     return 0.0;
 }
 
-// BM3D 核心降噪（不含前后处理）
-static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8)
+static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8, SARProgressCallback cb)
 {
     if (img8U.empty() || img8U.type() != CV_8UC1) {
         return cv::Mat();
@@ -77,12 +76,16 @@ static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8)
     // 第一阶段：硬阈值
     BM3D bm3d(width, height, 16, 8, 3, 16, 1, 16, 1);
     bm3d.load(noisy.ptr<ImageType>(), sigma, 2500);
-    bm3d.run(basic.ptr<ImageType>());
+    if (!bm3d.run(basic.ptr<ImageType>(), cb)) {
+        return cv::Mat(); // User canceled
+    }
 
     // 第二阶段：Wiener 滤波
     BM3D_WIE bm3d_wie(width, height, 32, 8, 3, 16, 1, 16, 1);
     bm3d_wie.load(noisy.ptr<ImageType>(), basic.ptr<ImageType>(), sigma, 400);
-    bm3d_wie.run(clean.ptr<ImageType>());
+    if (!bm3d_wie.run(clean.ptr<ImageType>(), cb)) {
+        return cv::Mat(); // User canceled
+    }
 
     return clean;
 }
@@ -150,7 +153,7 @@ static bool detectShipInternal(Ort::Session& session,
 // ============ SARProcessor 公开 API 实现 ============
 
 // BM3D 降噪（含前后处理：log 变换、噪声估计、逆 log、亮度保持）
-cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8)
+cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProgressCallback cb)
 {
     if (imgGray.empty()) {
         return cv::Mat();
@@ -194,7 +197,7 @@ cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8)
     cv::Mat img8U;
     imgNorm.convertTo(img8U, CV_8U, 255.0);
     double sigma8Final = sigmaFinal * 255.0;
-    cv::Mat den8U = bm3dCoreDenoise(img8U, sigma8Final);
+    cv::Mat den8U = bm3dCoreDenoise(img8U, sigma8Final, cb);
 
     if (den8U.empty()) {
         return cv::Mat();

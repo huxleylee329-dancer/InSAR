@@ -97,7 +97,7 @@ bool Utils::findZeroDopplerTime(
 	return orbitStateVectors::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, dopplerThreshold);
 }
 
-void Utils::newton_iter_core(
+bool Utils::newton_iter_core(
 	int iter_times,
 	Mat& P1, Mat& P2, Mat& P3,
 	const Mat& Satellite_M_T_Position,
@@ -109,7 +109,8 @@ void Utils::newton_iter_core(
 	const Mat& R_M,
 	const Mat& R_F,
 	const Mat& fd,
-	double lambda)
+	double lambda,
+	NewtonProgressCallback cb)
 {
 	int nr = P1.rows;
 	int nc = P1.cols;
@@ -178,12 +179,12 @@ void Utils::newton_iter_core(
 
 		//Dff
 		//第一行：f(1)的x，y，z的导数
-		ones = Mat::ones(1, nc, CV_64F);
 		temp_var = Satellite_M_T_Position(Range(0, Satellite_M_T_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df11 = temp_var.mul(temp_var1);
+		Df11 = Df11 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -196,6 +197,7 @@ void Utils::newton_iter_core(
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df12 = temp_var.mul(temp_var1);
+		Df12 = Df12 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(1, 2)) * ones - P2;
 		cv::sqrt(M_T, temp_var1);
@@ -208,6 +210,7 @@ void Utils::newton_iter_core(
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df13 = temp_var.mul(temp_var1);
+		Df13 = Df13 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(2, 3)) * ones - P3;
 		cv::sqrt(M_T, temp_var1);
@@ -302,7 +305,17 @@ void Utils::newton_iter_core(
 		P1 = P1 - delta_Rt1;
 		P2 = P2 - delta_Rt2;
 		P3 = P3 - delta_Rt3;
+
+		if (cb)
+		{
+			int progress = (i + 1) * 90 / iter_times;
+			if (!cb(progress, "Computing Newton iteration..."))
+			{
+				return false;
+			}
+		}
 	}
+	return true;
 }
 
 int Utils::createVandermondeMatrix(Mat& inArray, Mat& vandermondeMatrix, int degree)

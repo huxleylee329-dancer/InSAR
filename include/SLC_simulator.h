@@ -5,6 +5,9 @@
 #include <thread>
 #include <chrono>
 
+// 定义仿真模拟专用的进度回调函数指针类型
+typedef bool (__stdcall *SimulationProgressCallback)(int progress, const char* message);
+
 /*----------------------------------------*/
 /*          单视复图像仿真类              */
 /*----------------------------------------*/
@@ -77,7 +80,8 @@ public:
 		double acquisitionStopTime,
 		double SNR,
 		ComplexMat& slc,
-		Mat& GCP
+		Mat& GCP,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 根据轨道和场景DEM以及成像参数生成单视复图像（单发单收）---给天仪
 	* @param stateVec                                  轨道数据
@@ -136,7 +140,8 @@ public:
 		double acquisitionStopTime,
 		double SNR,
 		ComplexMat& slc,
-		Mat& GCP
+		Mat& GCP,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 根据轨道和场景DEM以及成像参数生成单视复图像（单发双收或者单发单收，生成2幅图）
 	* @param stateVec1                                 轨道数据1（主星，信号发射轨道+信号接收轨道）
@@ -189,7 +194,8 @@ public:
 		ComplexMat& slc1,
 		ComplexMat& slc2,
 		Mat& GCP,
-		int mode = 1
+		int mode = 1,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 根据轨道和场景DEM以及成像参数生成单视复图像（单发双收，乒乓模式，生成4幅图）
 	* @param stateVec1                                 轨道数据1（主星，信号发射轨道+信号接收轨道）
@@ -246,7 +252,8 @@ public:
 		ComplexMat& slc3,
 		ComplexMat& slc4,
 		Mat& GCP1, 
-		Mat& GCP2
+		Mat& GCP2,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 根据轨道和场景DEM以及成像参数参考斜距（单发双收，乒乓模式）
 	* @param stateVec1                                 轨道数据1（主星，信号发射轨道+信号接收轨道）

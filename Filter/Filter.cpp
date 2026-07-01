@@ -361,7 +361,10 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		if (cb && current_completed % 10 == 0)
 		{
 			int prog = current_completed * 100 / total_rows;
-			cb(prog, "Filtering rows...");
+			if (!cb(prog, "Filtering rows..."))
+			{
+				parallel_flag = false;
+			}
 		}
 
 #pragma omp critical(stdout_print)
@@ -372,7 +375,10 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	// 恢复 OpenCV 线程设置
 	cv::setNumThreads(prev_threads);
 
-	//if (parallel_check(parallel_flag, "slope_adaptive_filter()", parallel_error_head)) return -1;
+	if (!parallel_flag)
+	{
+		return -2; // 提前返回 -2 表示用户中止
+	}
 	phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)).copyTo(phase_filter);
 	return 0;
 }
@@ -499,7 +505,8 @@ int Filter::goldstein_filter_impl(
 	double alpha,
 	int n_win,
 	int n_pad,
-	bool parallel
+	bool parallel,
+	FilterProgressCallback cb
 ) {
 	if (phase.cols < 3 ||
 		phase.rows < 3 ||
@@ -554,6 +561,9 @@ int Filter::goldstein_filter_impl(
 
 	int n_win_ex = n_win + n_pad;
 	std::atomic<bool> parallel_flag(true);
+	std::atomic<int> completed_wins(0);
+	int total_wins = n_win_i;
+	int step = std::max(1, total_wins / 100);
 
 	for (int ix1 = 1; ix1 <= n_win_i; ix1++)
 	{
@@ -626,10 +636,10 @@ int Filter::goldstein_filter_impl(
 
 			H.copyTo(tmp);
 			tmp = tmp.reshape(0, 1);
-			cv::sort(tmp, tmp, SORT_ASCENDING + SORT_EVERY_ROW);
+			cv::sort(tmp, tmp, cv::SORT_EVERY_ROW | cv::SORT_ASCENDING);
 			if (tmp.cols % 2 == 1)
 			{
-				median = tmp.at<double>(0, int((tmp.cols + 1) / 2) - 1);
+				median = tmp.at<double>(0, int(tmp.cols / 2));
 			}
 			else
 			{
@@ -653,20 +663,30 @@ int Filter::goldstein_filter_impl(
 			temp = ph_out(Range(i1 - 1, i2), Range(j1 - 1, j2)) + ph_filt;
 			ret = ph_out.SetValue(Range(i1 - 1, i2), Range(j1 - 1, j2), temp);
 		}
-		fprintf(stdout, "Goldstein filtering process: %d / %d\n", ix1, n_win_i);
+
+		int current = ++completed_wins;
+		if (cb && current % step == 0)
+		{
+			int progress = current * 100 / total_wins;
+			if (!cb(progress, "Goldstein filtering..."))
+			{
+				parallel_flag = false;
+			}
+		}
 	}
+	if (!parallel_flag) return -2;
 	ph_out.GetPhase().copyTo(phase_filter);
 	return 0;
 }
 
-int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
+int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad, FilterProgressCallback cb)
 {
-	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, false);
+	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, false, cb);
 }
 
-int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad)
+int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad, FilterProgressCallback cb)
 {
-	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, true);
+	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, true, cb);
 }
 
 // 按二维高斯函数实现高斯滤波

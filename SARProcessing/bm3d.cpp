@@ -73,7 +73,7 @@ BM3D::BM3D(
 	row_cnt = h;	// avoid processing without the noisy image initialization
 }
 
-void BM3D::run(ImageType *clean)
+bool BM3D::run(ImageType *clean, SARProgressCallback cb)
 {
 	gtime = 0;
 	ftime = 0;
@@ -81,7 +81,23 @@ void BM3D::run(ImageType *clean)
 
 	if (row_cnt > 0)
 		reset();
-	while (next_line(clean) >= 0);
+
+	int total_rows = orig_h + pstep - psize;
+	if (total_rows <= 0) total_rows = 1;
+	int step = std::max(1, total_rows / 100);
+
+	while (next_line(clean) >= 0)
+	{
+		if (cb && row_cnt % step == 0)
+		{
+			int progress = (row_cnt * 50) / total_rows;
+			if (!cb(progress, "Denoising (Hard-thresholding)..."))
+			{
+				return false;
+			}
+		}
+	}
+	return true;
 }
 
 void BM3D::reset()

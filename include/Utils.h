@@ -6,6 +6,9 @@
 #include<string>
 #include"..\include\sar_comm.h"
 
+// 定义牛顿迭代专用的进度回调函数指针类型
+typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* message);
+
 class orbitStateVectors;
 
 
@@ -383,7 +386,7 @@ public:
 	* @param fd                                多普勒频率
 	* @param lambda                            雷达波长
 	*/
-	static void newton_iter_core(
+	static bool newton_iter_core(
 		int iter_times,
 		cv::Mat& P1, cv::Mat& P2, cv::Mat& P3,
 		const cv::Mat& Satellite_M_T_Position,
@@ -395,7 +398,8 @@ public:
 		const cv::Mat& R_M,
 		const cv::Mat& R_F,
 		const cv::Mat& fd,
-		double lambda
+		double lambda,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 生成范德蒙矩阵
 	* @param inArray                           自变量序列

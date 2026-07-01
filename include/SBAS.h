@@ -8,6 +8,9 @@
 /*----------------------------------------*/
 /*          小基线集三角网络节点          */
 /*----------------------------------------*/
+// 定义 SBAS 专用的进度回调函数指针类型
+typedef bool (__stdcall *SBASProgressCallback)(int progress, const char* message);
+
 class InSAR_API SBAS_node
 {
 public:
@@ -470,7 +473,8 @@ public:
 		int homogeneous_test_wnd = 21,
 		double thresh_c1_to_c2 = 0.7,
 		bool b_normalize = true,
-		bool b_save_images = true
+		bool b_save_images = true,
+		SBASProgressCallback cb = nullptr
 	);
 	/*@brief 轨道精炼重去平（一阶拟合）
 	* @param unwrapped_phase                       解缠相位

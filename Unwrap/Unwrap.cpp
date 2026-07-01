@@ -311,7 +311,7 @@ int Unwrap::MCF_improved(
 	return 0;
 }
 
-int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, Mat& quality, Mat& k1, Mat& k2)
+int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& mask, Mat& quality, Mat& k1, Mat& k2, UnwrapProgressCallback cb)
 {
 	if (wrapped_phase.type() != CV_64F ||
 		quality.type() != CV_64F ||
@@ -1025,6 +1025,10 @@ int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 			}
 		}
 	}
+	int total_pixels = nr * nc;
+	int step = std::max(1, total_pixels / 100);
+	int completed_pixels = 0;
+
 	priority_queue<node_index> que;
 	node_index node, node2;
 	node.row = i_start; node.col = j_start; node.quality = max_quailty;
@@ -1033,6 +1037,15 @@ int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	double grad;
 	while (!que.empty())
 	{
+		completed_pixels++;
+		if (cb && completed_pixels % step == 0)
+		{
+			int progress = completed_pixels * 100 / total_pixels;
+			if (!cb(progress, "Unwrapping (Phase 1)..."))
+			{
+				return -2;
+			}
+		}
 		node = que.top();
 		que.pop();
 		unwrapped_status.at<int>(node.row, node.col) = 1;
@@ -1097,6 +1110,15 @@ int Unwrap::qualityGuidedFloodfill(Mat& wrapped_phase, Mat& unwrapped_phase, Mat
 	}
 	while (!que2.empty())
 	{
+		completed_pixels++;
+		if (cb && completed_pixels % step == 0)
+		{
+			int progress = completed_pixels * 100 / total_pixels;
+			if (!cb(progress, "Unwrapping (Phase 2)..."))
+			{
+				return -2;
+			}
+		}
 		node = que2.front();
 		que2.pop();
 		unwrapped_status.at<int>(node.row, node.col) = 1;
@@ -1139,7 +1161,8 @@ int Unwrap::MCF(
 	int num_edges, 
 	int start,
 	bool pass,
-	double thresh
+	double thresh,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase.rows < 2 ||
@@ -1209,8 +1232,20 @@ int Unwrap::MCF(
 		}
 	}
 
+	int step = std::max(1, num_nodes / 100);
+	int completed_nodes = 0;
+
 	while (que.size() != 0)
 	{
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
+		{
+			int progress = completed_nodes * 100 / num_nodes;
+			if (!cb(progress, "Unwrapping (MCF)..."))
+			{
+				return -2;
+			}
+		}
 		number = que.front();
 		que.pop();
 		if (number < 1 || number > num_nodes)
@@ -1297,7 +1332,8 @@ int Unwrap::MCF(
 	vector<tri_edge>& edges,
 	int start,
 	bool pass,
-	double thresh
+	double thresh,
+	UnwrapProgressCallback cb
 )
 {
 	if (wrapped_phase.rows < 2 ||
@@ -1372,8 +1408,20 @@ int Unwrap::MCF(
 		}
 	}
 
+	int step = std::max(1, num_nodes / 100);
+	int completed_nodes = 0;
+
 	while (que.size() != 0)
 	{
+		completed_nodes++;
+		if (cb && completed_nodes % step == 0)
+		{
+			int progress = completed_nodes * 100 / num_nodes;
+			if (!cb(progress, "Unwrapping (MCF)..."))
+			{
+				return -2;
+			}
+		}
 		number = que.front();
 		que.pop();
 		if (number < 1 || number > num_nodes)

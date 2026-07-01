@@ -881,7 +881,8 @@ int Deflat::demMapping(
 	Mat& stateVector,
 	int interp_times,
 	double lon_spacing,
-	double lat_spacing
+	double lat_spacing,
+	DeflatProgressCallback cb
 )
 {
 	if (DEM84.empty() ||
@@ -925,10 +926,18 @@ int Deflat::demMapping(
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
+	
+	std::atomic<int> completed_items(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, DEM_rows / 100);
+
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < DEM_cols; j++)
 		{
 			Position groundPosition;
@@ -955,8 +964,23 @@ int Deflat::demMapping(
 				DEM_out.at<short>(azimuthIndex, rangeIndex) = DEM.at<short>(i, j);
 			}
 		}
+
+		int current_completed = ++completed_items;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / DEM_rows;
+			if (!cb(progress, "Mapping DEM..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
 	
+	if (cancel_flag)
+	{
+		return -2; // 提前返回 -2 表示用户中止
+	}
+
 	//投影DEM插值
 	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
@@ -985,7 +1009,8 @@ int Deflat::demMapping(
 	double lon_spacing,
 	double lat_spacing,
 	int geocoding_cali_factor_rg,
-	int geocoding_cali_factor_az
+	int geocoding_cali_factor_az,
+	DeflatProgressCallback cb
 )
 {
 	if (DEM84.empty() ||
@@ -1037,10 +1062,18 @@ int Deflat::demMapping(
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
+	
+	std::atomic<int> completed_items(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, DEM_rows / 100);
+
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < DEM_cols; j++)
 		{
 			Position groundPosition;
@@ -1080,6 +1113,21 @@ int Deflat::demMapping(
 				mappedLat.at<double>(azimuthIndex, rangeIndex) = lat;
 			}
 		}
+
+		int current_completed = ++completed_items;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / DEM_rows;
+			if (!cb(progress, "Mapping DEM..."))
+			{
+				cancel_flag = true;
+			}
+		}
+	}
+
+	if (cancel_flag)
+	{
+		return -2; // 提前返回 -2 表示用户中止
 	}
 	//投影DEM插值
 	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
@@ -1112,7 +1160,8 @@ int Deflat::demMapping_float(
 	Mat& stateVector,
 	int interp_times,
 	double lon_spacing,
-	double lat_spacing
+	double lat_spacing,
+	DeflatProgressCallback cb
 )
 {
 	if (DEM84.empty() ||
@@ -1160,10 +1209,18 @@ int Deflat::demMapping_float(
 
 	int DEM_rows = DEM.rows; int DEM_cols = DEM.cols;
 	double dopplerFrequency = 0.0;
+	
+	std::atomic<int> completed_items(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, DEM_rows / 100);
+
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < DEM_rows; i++)
 	{
+		if (cancel_flag) {
+			continue;
+		}
 		for (int j = 0; j < DEM_cols; j++)
 		{
 			Position groundPosition;
@@ -1184,12 +1241,28 @@ int Deflat::demMapping_float(
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
 			{
 
+				
 			}
 			else
 			{
 				DEM_out.at<float>(azimuthIndex, rangeIndex) = DEM.at<float>(i, j);
 			}
 		}
+
+		int current_completed = ++completed_items;
+		if (cb && current_completed % step == 0)
+		{
+			int progress = current_completed * 100 / DEM_rows;
+			if (!cb(progress, "Mapping DEM..."))
+			{
+				cancel_flag = true;
+			}
+		}
+	}
+
+	if (cancel_flag)
+	{
+		return -2; // 提前返回 -2 表示用户中止
 	}
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;

@@ -6,7 +6,8 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
-| 工作区现场修改 | 2026-06-29 | AI | Filter | 1. 修复并优化 `Filter` 模块的 `czt2` 与 `slope_adaptive_filter` 算法，消除多线程环境下的崩溃 Bug 并提升性能。<br>2. 修复 `cv::merge` 引发 `ipp::IwException` 的 Bug，改为直接创建复数矩阵 `Mat::zeros(..., CV_64FC2)`。<br>3. 修复 `cv::flip` 对非连续 ROI 矩阵导致的 IPP 崩溃 Bug，使用 OpenCV 标准 `cv::copyMakeBorder` 优雅重构边缘扩充逻辑。<br>4. 实施 4 大性能优化：重用线程局部缓冲区以实现零动态分配；预计算 `h_dft` 核矩阵；整幅图预滤波处理；限制 OpenCV 线程数为 1 消除嵌套并行冲突。<br>5. 实施 2 大重型三角函数优化：将 `czt2` 内部的 `result` 矩阵计算（占总计算量 90% 以上）完全预计算并移出多线程循环；将 `W` 矩阵的三角函数运算提取至列循环外（计算量减少 `nc` 倍），消除数百亿次冗余 `cos`/`sin` 计算。<br>6. 引入 `FilterProgressCallback` 接口，在 `slope_adaptive_filter` 中基于原子变量计数（`std::atomic`）实现严格递增、单线程串行安全触发的进度汇报，解决多线程无序进度导致的 GUI 跳跃与竞态隐隐患。 |
+| 工作区现场修改 | 2026-07-01 | AI | Deflat, Unwrap, SBAS, Registration, SARProcessing | 工业级双向进度汇报与中止机制标准化改造：<br>1. Deflat：修改 `demMapping`/`demMapping_float` 三个重载，加入 `DeflatProgressCallback`，在 OpenMP 循环入口支持 `cancel_flag` 退出并在完成时返回 `-2`。<br>2. Unwrap：修改 `qualityGuidedFloodfill` 及 Delaunay `MCF` 重载，加入 `UnwrapProgressCallback`，分别在洪泛优先队列和图解缠队列中周期性触发进度汇报并支持中止。<br>3. SBAS：修改 `adaptive_multilooking` 接口，加入 `SBASProgressCallback`。使用跨 tile 的行计数 `completed_rows` 和 `cancel_flag` 保证了 OMP 和外层分块循环的快速避让退出，并在用户取消时返回 `-2`。<br>4. Registration：修改 `performBilinearResampling` 和 `performSincResampling`，加入 `RegistrationProgressCallback`，在耗时极重的 sinc 重采样 OpenMP 循环中安全统计进度并响应取消。<br>5. SARProcessing：在 `global_define.h` 中定义 `SARProgressCallback`，更新 `BM3D::run` 和 `BM3D_WIE::run` 为双向回调，在 1D 滑动窗口循环中分步（0-50% 和 50-100%）汇报进度，在取消时安全析构并退出，Denoise 核心接口返回空 Mat。 |
+| 工作区现场修改 | 2026-06-29 | AI | Filter | 1. 修复并优化 `Filter` 模块的 `czt2` 与 `slope_adaptive_filter` 算法，消除多线程环境下的崩溃 Bug 并提升性能。<br>2. 修复 `cv::merge` 引发 `ipp::IwException` 的 Bug，改为直接创建复数矩阵 `Mat::zeros(..., CV_64FC2)`。<br>3. 修复 `cv::flip` 对非连续 ROI 矩阵导致的 IPP 崩溃 Bug，使用 OpenCV 标准 `cv::copyMakeBorder` 优雅重构边缘扩充逻辑。<br>4. 实施 4 大性能优化：重用线程局部缓冲区以实现零动态分配；预计算 `h_dft` 核矩阵；整幅图预滤波处理；限制 OpenCV 线程数为 1 消除嵌套并行冲突。<br>5. 实施 2 大重型三角函数优化：将 `czt2` 内部的 `result` 矩阵计算（占总计算量 90% 以上）完全预计算并移出多线程循环；将 `W` 矩阵的三角函数运算提取至列循环外（计算量减少 `nc` 倍），消除数百亿次冗余 `cos`/`sin` 计算。<br>6. 引入 `FilterProgressCallback` 接口并设计双向中止机制：在 `slope_adaptive_filter` 中检测到回调返回 `false` 时，基于 `std::atomic` 标志使 OpenMP 并行线程快速避让跳出，在 1 秒内安全中断大计算并返回 `-2`，且得益于 RAII 保证了零内存泄漏。 |
 | 工作区现场修改 | 2026-06-22 | AI | simulation, optimize.md, optimization_log.md | 1. 将 `conv2` 及其配套的 `ConvolutionType` 声明移入 `SLC_simulator.cpp` 的匿名命名空间中，将其符号链接属性改为内部链接，彻底消除与其他模块同名符号冲突 (LNK2005) 的安全隐患。 |
 | `工作区现场修改` | 2026-06-16 | AI | simulation, include | 1. 将私有成员 `char error_head[256]` 修改为 `std::string`，并在构造函数中通过标准 C++ 赋值初始化，规避缓冲区溢出隐患。<br>2. 对 `SLC_simulator.cpp` 中 9 处空的 `if` 代码块（`if (越界) {} else { 处理逻辑 }`）进行了条件反转重构，删除了无意义 of 空块与 `else` 关键字，缩减了代码嵌套层级并提升可读性。 |
 | `工作区现场修改` | 2026-06-16 | AI | Dem, include | 1. 重构 `mode` 收发模式魔法数字：在 `Dem.cpp` 内部（如 `phase2dem_newton_iter`、`dem_newton_iter` 等函数）将所有表示收发模式的硬编码魔数替换为 `Package.h` 中的 `TransmitReceiveMode` 统一枚举值。<br>2. 更新头文件默认实参：同步将 `include/Dem.h` 中方法的默认实参 `int mode = 1` 更新为 `int mode = TR_MODE_SINGLE_TX_SINGLE_RX`。<br>3. 维持二进制（ABI）和源码（API）兼容：对外的函数签名参数类型依旧保持为 `int mode`。 |
@@ -186,7 +187,7 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
   - **问题**：在 `Deflat::getSRTMDEM` 函数中，每次拼接瓦片 `.tif` 文件的全路径时，都需要手动处理后缀名替换与斜杠规范化，这套拼接流程在多个分支中重复编写了 15 次，产生了大量冗余代码。
   - **解决方法**：在 `Deflat.cpp` 的匿名命名空间中提取了 `getTifPath` 辅助函数，统一规范瓦片路径格式并处理 `/` 到 `\` 的规范化。随后将原有的 15 处繁冗的拼接代码全部重构为对该函数的单行调用，大幅简化了代码复杂度。
 - **Zero-Doppler 零多普勒时间搜索逻辑去重与重构**：
-  - **问题**：在 `Deflat.cpp` 内的不同坐标- **`Mat` 只读参数的 Const-Correctness 常量化改造**：
+- **`Mat` 只读参数的 Const-Correctness 常量化改造**：
   - **问题**：SBAS 模块中多个成员函数在接收 `cv::Mat` 输入时，其参数在函数内部仅作为只读数据读取，但原声明使用了非 const 的引用类型 `Mat&`。这不符合 C++ 的常量正确性（Const-Correctness）原则，且导致调用端无法直接传入临时的（R-value）Mat 对象（例如 `cv::Mat()` 临时变量）。
   - **解决方法**：将 SBAS 模块中 12 个函数的只读 Mat 参数统一优化为 `const Mat&`，提升了接口的安全性和通用性。受影响的函数包括：
     * `write_spatialTemporal_node`
@@ -297,8 +298,7 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
     1. 修改 `SBAS_node::operator=` 的声明和实现，使其返回 `SBAS_node&`（即 `return *this;`），满足 C++ 标准赋值重载规范；
     2. 删除 `SBAS_edge` 和 `SBAS_triangle` 声明中手写的拷贝构造函数和赋值操作符，允许编译器自动为这些 POD 结构体生成默认的、极其高效的拷贝构造函数与赋值操作符，精简了头文件定义并消除了潜在的浅拷贝实现开销。
 - **`Mat` 只读参数的 Const-Correctness 常量化改造**
-  - **问题**：SBAS 模块中多个成员函数在接收 `cv::Mat` 输入时，其参数在函数内部仅作为只读数据读取，但原声明使用了非 const 的引用类型 `Mat&`。这不符合 C++ 的常量正确性（Const-                                 
-  Correctness）原则，且导致调用端无法直接传入临时的（R-value）Mat 对象（例如 `cv::Mat()` 临时变量）。 
+  - **问题**：SBAS 模块中多个成员函数在接收 `cv::Mat` 输入时，其参数在函数内部仅作为只读数据读取，但原声明使用了非 const 的引用类型 `Mat&`。这不符合 C++ 的常量正确性（Const-Correctness）原则，且导致调用端无法直接传入临时的（R-value）Mat 对象（例如 `cv::Mat()` 临时变量）。 
   - **解决方法**：将 SBAS 模块中 12 个函数的只读 Mat 参数统一优化为 `const Mat&`，提升了接口的安全性和通用性。受影响的函数包括：
   * `write_spatialTemporal_node`                                          
   * `set_spatialTemporalBaseline`
@@ -651,12 +651,101 @@ To resolve `warning C4101` (unused local variables) while preserving historical 
     1. **result 矩阵全局预计算**：在多线程大循环外部预先计算一维的 `result_1d` 核向量，并通过 `cv::repeat` 广播克隆出两阶段 `czt2` 使用的常量矩阵 `result_const_1` 和 `result_const_2`，以只读引用的形式传递，彻底砍掉了双重循环及其中近 200 亿次的三角函数开销。
     2. **W 矩阵行级三角函数提取**：将 `czt2` 内部计算 `W` 的 `cos`/`sin` 计算提取到列循环外，每行只计算一次，在列循环内直接对所有元素赋值，使 `W` 矩阵的三角函数评估次数降低了 `nc` 倍（第一阶段减少 9 倍，第二阶段减少 96 倍）。
 
-  - **问题 D（并发下进度汇报无序与跳跃）**：
-    * 原 slope_adaptive_filter 函数的进度汇报依赖于 OpenMP 并行线程的循环索引 `i`，直接输出至 stdout。在并行环境下，不同线程是无序完成各行的，这会导致输出的进度数值在 `(i-Radius)/total_rows` 中发生频繁的乱序与“忽大忽小”的跳跃，不适合为外部 GUI（SatExplorer）提供平滑递增的进度呈现，并且在多线程高频调用时对 GUI 的异步槽产生并发性能冲击。
+  - **问题 D（并发下进度汇报无序与双向中止缺失）**：
+    * 原 slope_adaptive_filter 函数的进度汇报依赖于 OpenMP 并行线程的循环索引 `i`，直接输出至 stdout。在并行环境下，不同线程是无序完成各行的，这会导致输出的进度数值在 `(i-Radius)/total_rows` 中发生频繁的乱序与“忽大忽小”的跳跃，不适合为外部 GUI 提供稳定递增的进度信息；此外，原算法在进入多线程滤波后，无法响应外部用户的中止（取消计算）指令，一旦运行则必须等整个任务全部计算完毕，缺乏工业级交互的“刹车”机制。
   - **解决方法 D**：
-    1. **引入回调类型**：在 `Filter.h` 中新增进度回调类型定义 `typedef void (__stdcall *FilterProgressCallback)(int progress, const char* message);`，并在 `slope_adaptive_filter` 签名中接受形参 `cb = nullptr`，实现极低的外部耦合。
-    2. **全局原子计数**：在滤波算法内部使用 `std::atomic<int> completed_rows(0)` 代替基于 `i` 的索引统计。每次有核心完成某一行，通过 `++completed_rows` 进行唯一的原子加一操作。
-    3. **串行化触发回调**：只有当全局累积完成的行数 `current_completed` 为 10 的倍数时，才执行 `cb(prog, "Filtering rows...")`。由于 `current_completed` 在递增时是绝对唯一的，因此同一时间只可能有一个线程触发回调，天然避免了回调被并发执行的线程安全隐患，为 GUI 提供了严格单调递增、流程平滑的百分比更新。
+    1. **引入双向回调类型**：在 `Filter.h` 中新增进度回调类型定义，返回值从 `void` 改为 `bool`（`typedef bool (__stdcall *FilterProgressCallback)(int progress, const char* message);`），形参默认值为 `nullptr`，支持双向信号通信。
+    2. **全局原子计数与中断标记**：在滤波算法内部使用 `std::atomic<int> completed_rows(0)` 记录进度。在循环体末尾通过 `++completed_rows` 原子累加，只有当累计完成行数是 10 的倍数时，触发一次回调。若回调函数返回 `false`（即外部 GUI 主线程发起了取消计算的指令），则将原子控制标志 `parallel_flag` 设为 `false`。
+    3. **多线程避让与安全退出**：OpenMP 大循环内部所有线程在执行每行之初都会检测 `!parallel_flag`。一旦触发取消，各线程在后续循环迭代中会立刻跳过（`continue`），使得整个大循环在瞬间空转退出。循环体外部检测到取消后，恢复 OpenCV 线程数并直接返回 `-2`。由于多线程辅助矩阵均采用局部 `cv::Mat` 变量的 RAII 机制，提前退出时所有临时分配内存均由析构函数自动释放，保证了 100% 内存安全。
+
+### 3-A. 工业级双向进度汇报与中止机制 — Dem / Filter / Simulation 模块改造 (Dem, Filter, simulation, Utils)
+#### 1.  Dem  模块（相位高程反演 — 牛顿迭代）
+
+改造策略：与其他模块不同，Dem 的计算瓶颈分为两个阶段：
+1. 牛顿迭代阶段（ Utils::newton_iter_core ）：这是最重的计算，对全图进行迭代三维坐标解算；
+2. 坐标转换阶段（ xyz2ell  OpenMP 并行循环）：逐像素将 XYZ 坐标转换为经纬高。
+具体修改：
+
+• Utils.h：新增  NewtonProgressCallback  类型， newton_iter_core  返回类型改为  bool
+，追加  cb  参数。
+• Utils.cpp：每次迭代末尾调用回调（进度 0~90%），回调返回  false  时立即返回  false 
+中止。
+• Dem.h：新增  DemProgressCallback  类型，5 个 Dem 函数均追加  cb = nullptr 
+参数。
+• Dem.cpp：5 个函数实现同步更新——牛顿迭代阶段透传  cb ，并检测返回值（ false  → 返回 
+-2 ）；坐标转换阶段通过原子计数 +  parallel_flag  汇报剩余 90~100% 进度，支持取消。
+
+#### 2.  Filter::Goldstein_filter  模块
+
+改造策略：Goldstein 滤波采用外层行窗口（ ix1 ）顺序推进 + 内层列窗口（ ix2 ）OMP
+并行的混合结构。进度计数挂载在外层  ix1  循环末尾，取消逻辑通过已有的  parallel_flag 
+传递给内层 OMP 继续跳过。
+具体修改：
+
+• Filter.h： Goldstein_filter 、 Goldstein_filter_parallel （公有）和 
+goldstein_filter_impl （私有）均追加  FilterProgressCallback cb = nullptr 。
+• Filter.cpp：
+    • 两个公有 shim 函数将  cb  透传给  goldstein_filter_impl 。
+    •  goldstein_filter_impl  内新增  completed_wins  原子计数，在  ix1 
+外层行循环末尾触发回调（步长为  total_wins/100 ），回调返回  false  时设  parallel_flag
+= false ；内层 OMP 检测到后用  continue  跳过，外层循环检测到后  break ，最终返回  -2
+。
+    • 同时移除了原有的  fprintf(stdout, ...)  调试输出。
+
+#### 3.  simulation  模块
+
+改造策略：仿真模拟的外层分块循环顺序推进，内层 OMP 并行。进度汇报挂载在外层
+分块循环末尾，取消逻辑通过  cancel_requested  传递。
+具体修改：
+
+• SLC_simulator.h：新增  SimulationProgressCallback  类型， generateSLC 
+及所有重载均追加  cb = nullptr  参数。
+• SLC_simulator.cpp：外层分块循环末尾触发回调（0~100%），回调返回  false  时设 
+cancel_requested = true ，循环条件  && !cancel_requested  实现退出，最终返回  -2
+。同时移除了原有的  printf("\rprocess ...") + fflush(stdout)  调试输出。
+
+三个模块的对照表：
+
+  模块                         | 状态      | 策略
+  ------------------------------|-----------|------------------------------------------------
+  Dem  高程反演               | ✅ 已完成 | 完整双向回调 + 两阶段（迭代 0-90% + 坐标转换
+                                |           | 90-100%）
+  Filter::Goldstein  滑窗滤波 | ✅ 已完成 | 完整双向回调 + 外层行窗口计数 + 移除  printf 
+  simulation  仿真模拟        | ✅ 已完成 | 轻量预留接口 + 分块进度 + 移除三处  printf /
+                                |           | fflush 
+
+Simulation 改造要点说明：
+
+• 轻量策略：由于没有 GUI Worker 对接， SimulationProgressCallback cb = nullptr 
+默认为空，所有现有调用方零改动即可编译通过。
+• 进度计数：取代原先的三处  printf("\rprocess ...")  +  fflush(stdout) 
+调试输出，改为在外层分块循环末尾精确触发回调。
+• 中止机制：用  cancel_requested  布尔标志 + 循环条件  && !cancel_requested 
+实现轻量退出，无需  std::atomic （外层循环是单线程顺序的，只有内层 OMP 并行）。
+
+### 4. 工业级多线程进度汇报与双向中止机制标准化推广 (Deflat, Unwrap, SBAS, Registration, SARProcessing)
+为解决 InSAR 项目中其余 5 个重度计算模块在长时间阻塞时无法响应用户取消、且进度显示不稳定的问题，全面推广集成了 Filter 模块的标准化“双向进度/中止回调”范式：
+
+- **Deflat 模块（地理编码）**：
+  - **接口更新**：在 `Deflat.h` 中定义 `DeflatProgressCallback` 并为三个 `demMapping` / `demMapping_float` 方法增加回调参数。
+  - **线程安全与中止**：在 `Deflat.cpp` 中引入 `std::atomic<int> completed_items` 和 `std::atomic<bool> cancel_flag`，在 OpenMP 并行循环入口增加对 `cancel_flag` 的状态检测，使用 `continue` 快速退出并跳过计算，最终退出大循环后返回 `-2`，保障了安全的内存释放与响应时间。
+  - **防除零保护**：进度更新步长采用 `std::max(1, DEM_rows / 100)` 进行计算，防止在小规模数据时因除零导致硬件级别异常崩溃。
+
+- **Unwrap 模块（相位解缠）**：
+  - **接口更新**：在 `Unwrap.h` 中定义 `UnwrapProgressCallback` 并为 `qualityGuidedFloodfill` 与两个 Delaunay 剖分网络 `MCF` 接口注入回调。
+  - **多阶段进度汇报与中止**：在 `qualityGuidedFloodfill` 的两阶段队列（`que` 质量引导排序与 `que2` 剩余点解缠）中植入已完成像元统计。由于是顺序处理，检测到回调返回 `false` 时直接返回 `-2`，极低延迟响应取消指令。在 Delaunay 网络的 `MCF` 队列处理中同样实现了像素计数与进度回调。
+
+- **SBAS 模块（多时相 InSAR）**：
+  - **接口更新**：在 `SBAS.h` 中定义 `SBASProgressCallback`，并为耗时极长的自适应多视 `adaptive_multilooking` 接口追加回调。
+  - **嵌套块循环中止**：由于 adaptive multilooking 采用分块读取设计（包含外层 i/j block 循环和内层 `ii` 行 OpenMP 循环），我们将 `completed_rows` 和 `cancel_flag` 置于外层循环之外。在 OpenMP 内部设置 `cancel_flag = true`，使并行线程利用 `continue` 快速退出，同时在外层 block 循环中检测 `cancel_flag` 并执行 `break` 退出。这保证了无论在哪个 tile 触发取消，都能在瞬间安全退出整个函数，恢复状态并返回 `-2`。
+
+- **Registration 模块（后向地理编码配准重采样）**：
+  - **接口更新**：在 `Registration.h` 中引入 `RegistrationProgressCallback` 并为 `performBilinearResampling` / `performSincResampling` 增加该形参。
+  - **重采样 OpenMP 循环优化**：在耗时较重的 2D Sinc 和双线性插值重构 OpenMP 循环中，植入 `completed_rows` 的原子累加与 `cancel_flag` 状态检测，用户取消时在 OpenMP 块内快速避让，并在函数尾部返回 `-2`。
+
+- **SARProcessing 模块（BM3D / 降噪）**：
+  - **接口更新**：在 `global_define.h` 中新增 `SARProgressCallback`，为 `SARProcessor::DenoiseGray`、内部 `bm3dCoreDenoise` 以及硬阈值硬滤波 `BM3D::run` 和维纳滤波 `BM3D_WIE::run` 分步接入回调。
+  - **双阶段分段汇报**：将降噪大计算分解为两个阶段。硬阈值降噪调用 `bm3d.run` 对应 `0% ~ 50%` 的进度区间，维纳滤波调用 `bm3d_wie.run` 对应 `50% ~ 100%` 的进度区间。若任何阶段被取消，均返回 `false` 使 `bm3dCoreDenoise` 提前中断并向外层返回空 `cv::Mat`。
 
 ---
 

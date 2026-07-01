@@ -7,6 +7,9 @@
 #include"globalparam.h"
 
 
+// 定义 Unwrap 专用的进度回调函数指针类型
+typedef bool (__stdcall *UnwrapProgressCallback)(int progress, const char* message);
+
 class InSAR_API Unwrap
 {
 public:
@@ -57,7 +60,8 @@ public:
 		Mat& mask,
 		Mat& quality,
 		Mat& k1,
-		Mat& k2
+		Mat& k2,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/*基于不规则网络的最小费用流解缠算法
 	* 参数1 待解缠相位
@@ -79,7 +83,8 @@ public:
 		int num_edges,
 		int start,
 		bool pass = false,
-		double thresh = 10000.0
+		double thresh = 10000.0,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/** @brief 基于Delaunay三角网络的最小费用流解缠算法
 	
@@ -102,7 +107,8 @@ public:
 		vector<tri_edge>& edges,
 		int start,
 		bool pass = false,
-		double thresh = 10000.0
+		double thresh = 10000.0,
+		UnwrapProgressCallback cb = nullptr
 	);
 	/*基于不规则网络的最小费用流解缠算法（用于第二次解缠，不能单独使用）
 	* 参数1 已解缠相位（完成了第一次解缠的相位）
