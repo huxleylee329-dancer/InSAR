@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -139,7 +139,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;DEFLAT_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>D:\softwarepackages\opencv\build\include;D:\working_dir\projects\software\InSAR\include;D:\softwarepackages\HDF5-1.8.22\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;D:\SRC\HDF5\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
@@ -149,7 +149,7 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>D:\softwarepackages\opencv\build\x64\vc15\lib;D:\working_dir\projects\software\InSAR\lib;D:\softwarepackages\HDF5-1.8.22\lib;D:\softwarepackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\HDF5\lib;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
