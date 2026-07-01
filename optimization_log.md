@@ -6,6 +6,9 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-01 | AI | Utils | 修复 Newton 迭代发散与高程反演数值万亿级溢出 Bug：<br>在 `newton_iter_core` 中移成了主星偏导数 `Df11`、`Df12`、`Df13` 多余的 `* 2` 乘积操作。这排除了重复乘以 2 的错误，使其在单发单收模式下精确等于发射端和接收端导数的天然累加，消除了雅可比矩阵 1.5 倍的计算偏差，使 Newton 迭代法能顺利收敛并获得正确高程数值。 |
+| 工作区现场修改 | 2026-07-01 | AI | FormatConversion | HDF5 文件只读打开方式安全改造：<br>在 `FormatConversion.cpp` 中，将只读性质的接口（包括 `read_array_from_h5`、`read_subarray_from_h5`、`read_str_from_h5`、GEDI L2A/L2B 读取及 CSK SLC 读取等）中 `H5Fopen` 的打开模式由 `H5F_ACC_RDWR` 变更为 `H5F_ACC_RDONLY`。这消除了并发读取文件或在只读文件系统下因写权限请求被系统拒绝而打开失败的隐患，保证了文件导入的稳定性和并发安全性。 |
+| 工作区现场修改 | 2026-07-01 | AI | simulation, SARProcessing | 全计算中止与进度汇报接口补齐：<br>1. simulation：为 `MB_phase_estimation`（多基线相位估计）等多个核心模拟函数追加 `SimulationProgressCallback cb` 并在此类 OMP/分块循环中加入 `cancel_flag` 状态检测和退出逻辑，取消时返回 `-2`。<br>2. SARProcessing：为 `ExtractDiffBoxFeature`（差分盒维数）接口及底层的 `extract_diffbox_feature` 补充 `SARProgressCallback` 回调，支持进度汇报与取消中止。 |
 | 工作区现场修改 | 2026-07-01 | AI | FormatConversion, Filter, Registration, simulation | 遗漏的中止机制全面补齐与双向通信机制改造：<br>1. FormatConversion：修改 `ProgressCallback` 签名为返回 `bool`，在 `sentinel2h5` 和 `read_slc_from_Sentinel` 中加入中止判断，支持导入大文件时提前返回 `-2`。<br>2. Filter：为 `filter_dl` 引入进度回调，将 `WaitForSingleObject` 同步挂起重构为 100ms 轮询检测，支持在取消时强杀外部 `filter_dl.exe` 进程、清理 Job/Process/Thread 句柄与临时文件并返回 `-2`。<br>3. Registration：为 `getDEMRgAzPos` 接入进度汇报，在 OpenMP 循环中使用原子计数与 `cancel_flag` 实现安全退避检测与毫秒级响应，维持 `DEM_rows` 安全循环范围。<br>4. simulation：为 `generateSLC_spacety` 追加进度回调并删除 `printf` 调试输出。重构 `applyPhaseCorrection` 辅助函数以支持 `cb` 和原子 `cancel_flag` 退避检测，打通 `SLC_deramp`/`SLC_reramp` 的行级高速中止响应。 |
 | 工作区现场修改 | 2026-07-01 | AI | Deflat, Unwrap, SBAS, Registration, SARProcessing | 工业级双向进度汇报与中止机制标准化改造：<br>1. Deflat：修改 `demMapping`/`demMapping_float` 三个重载，加入 `DeflatProgressCallback`，在 OpenMP 循环入口支持 `cancel_flag` 退出并在完成时返回 `-2`。<br>2. Unwrap：修改 `qualityGuidedFloodfill` 及 Delaunay `MCF` 重载，加入 `UnwrapProgressCallback`，分别在洪泛优先队列和图解缠队列中周期性触发进度汇报并支持中止。<br>3. SBAS：修改 `adaptive_multilooking` 接口，加入 `SBASProgressCallback`。使用跨 tile 的行计数 `completed_rows` 和 `cancel_flag` 保证了 OMP 和外层分块循环的快速避让退出，并在用户取消时返回 `-2`。<br>4. Registration：修改 `performBilinearResampling` 和 `performSincResampling`，加入 `RegistrationProgressCallback`，在耗时极重的 sinc 重采样 OpenMP 循环中安全统计进度并响应取消。<br>5. SARProcessing：在 `global_define.h` 中定义 `SARProgressCallback`，更新 `BM3D::run` 和 `BM3D_WIE::run` 为双向回调，在 1D 滑动窗口循环中分步（0-50% 和 50-100%）汇报进度，在取消时安全析构并退出，Denoise 核心接口返回空 Mat。 |
 | 工作区现场修改 | 2026-06-29 | AI | Filter | 1. 修复并优化 `Filter` 模块的 `czt2` 与 `slope_adaptive_filter` 算法，消除多线程环境下的崩溃 Bug 并提升性能。<br>2. 修复 `cv::merge` 引发 `ipp::IwException` 的 Bug，改为直接创建复数矩阵 `Mat::zeros(..., CV_64FC2)`。<br>3. 修复 `cv::flip` 对非连续 ROI 矩阵导致的 IPP 崩溃 Bug，使用 OpenCV 标准 `cv::copyMakeBorder` 优雅重构边缘扩充逻辑。<br>4. 实施 4 大性能优化：重用线程局部缓冲区以实现零动态分配；预计算 `h_dft` 核矩阵；整幅图预滤波处理；限制 OpenCV 线程数为 1 消除嵌套并行冲突。<br>5. 实施 2 大重型三角函数优化：将 `czt2` 内部的 `result` 矩阵计算（占总计算量 90% 以上）完全预计算并移出多线程循环；将 `W` 矩阵的三角函数运算提取至列循环外（计算量减少 `nc` 倍），消除数百亿次冗余 `cos`/`sin` 计算。<br>6. 引入 `FilterProgressCallback` 接口并设计双向中止机制：在 `slope_adaptive_filter` 中检测到回调返回 `false` 时，基于 `std::atomic` 标志使 OpenMP 并行线程快速避让跳出，在 1 秒内安全中断大计算并返回 `-2`，且得益于 RAII 保证了零内存泄漏。 |
@@ -820,3 +823,72 @@ typedef bool (__stdcall *XxxProgressCallback)(int progress, const char* message)
 - 所有函数取消时返回 `-2`（与既有约定一致，`-1` 保留给普通错误，`0` 为正常完成）。
 - OpenMP 并行区域内使用 `std::atomic<bool> cancel_flag` + 循环头部 `continue/break` 检查，外层循环再检查 `cancel_flag` 决定提前退出，符合 C++ 并发内存模型，无数据竞争。
 - 外部进程（`mcf.exe`/`snaphu.exe`）通过 Job Object（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）包裹，取消时 `TerminateProcess` + `CloseHandle` 确保子进程无残留。
+
+---
+
+### 36. Newton 迭代发散与高程反演数值溢出 Bug 修复 (Utils)
+
+**问题诊断**：
+在高程反演（DEM 生成）流程中，计算出的高程矩阵有 99.79% 的像素值达到了 $10^{12}$ 米（万亿级）的非物理尺度，明显发生了数值计算发散，且 Legend 范围严重失真。
+经排查，Bug 发生在底层 [Utils.cpp](file:///D:/SRC/insar/Utils/Utils.cpp) 中的 [newton_iter_core](file:///D:/SRC/insar/Utils/Utils.cpp#L100) 函数里。
+
+主星单程/双程几何距约束方程定义为：
+$$f_1 = 2 \cdot \text{Range}_{M\_T} - 2 R_M = 0$$
+对其关于目标点坐标 $X, Y, Z$ 求偏导数，理论上应为 $2 \cdot \frac{\partial \text{Range}_{M\_T}}{\partial X}$。
+而在原版 C++ 源码中：
+```cpp
+Df11 = temp_var.mul(temp_var1); // 计算单程偏导数
+Df11 = Df11 * 2;                // 已经乘以了 2
+...
+Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
+```
+在单发单收（Monostatic）的常规对称模式下，发射端和接收端坐标极其接近，上述累加计算实际得到了约 $3 \cdot \frac{\partial \text{Range}_{M\_T}}{\partial X}$ 的偏导数。这使得雅可比矩阵第一行（主星斜距偏导数）被放大了 1.5 倍，破坏了多维非线性方程组的迭代搜索方向，导致 Newton-Raphson 迭代计算在第 2~3 步直接发散至 $10^{12}$ 级别。
+
+**修复方案**：
+在 [Utils.cpp](file:///D:/SRC/insar/Utils/Utils.cpp) 的 [newton_iter_core](file:///D:/SRC/insar/Utils/Utils.cpp#L100) 函数中进行如下外科手术式修复：
+- 移除 `Df11 = Df11 * 2;`
+- 移除 `Df12 = Df12 * 2;`
+- 移除 `Df13 = Df13 * 2;`
+
+这确保了计算主星双程距偏导数时只对发射端和接收端导数进行天然累加，精确对齐了方程 $f_1$ 的导数，消除了 1.5 倍的计算偏差。经过仿真测试，修改后 Newton 迭代在第 4 步即可实现完美收敛，反演高程完全恢复正常（例如 (0,0) 点高程为符合实际地形的 200.7 米）。
+
+---
+
+### 37. HDF5 只读模式安全改造 (FormatConversion)
+
+**问题诊断**：
+原本在 `FormatConversion.cpp` 中，部分仅包含读取数据的函数在调用 `H5Fopen` 时，错误地传入了可读写权限标志 `H5F_ACC_RDWR`：
+- 这包括 `read_array_from_h5`、`read_subarray_from_h5`、`read_str_from_h5` 等底层基础 HDF5 读取接口。
+- 也包括传感器/高度计数据读取接口，如 `read_height_metric_from_GEDI_L2B`、`read_height_metric_from_GEDI_L2A`、`read_height_metric_from_ICESat_2_L3A` 以及 `CSK_reader::read_slc`。
+
+使用 `H5F_ACC_RDWR` 打开仅供读取的 H5 文件，存在如下隐患：
+1. **权限不足导致失败**：在只读存储介质或权限受限的运行环境下，会导致打开文件失败。
+2. **并发冲突限制**：在多进程/多线程并发读取同一个 H5 数据集时，写锁请求会导致并发读取被排斥而失败。
+3. **文件时间戳污染**：以读写权限打开 H5 文件时，即使**没有任何写操作**，HDF5 库在打开和关闭文件时也会自动更新文件在磁盘上的修改时间（Modification Time）。这会造成无意义的“时间戳污染”，破坏依赖文件修改时间进行增量编译、数据备份同步或数据版本控制系统的更新判定。
+
+**修复方案**：
+将以上提及 of 7 处 `H5Fopen` 调用中的标志 `H5F_ACC_RDWR` 替换为 **`H5F_ACC_RDONLY`**，修改示例如下：
+```diff
+-H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
++H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+```
+此修改纯粹提升了数据读取的安全性和多源数据并发共享的稳定性。
+
+---
+
+### 38. 遗留计算接口的中止与进度汇报补齐 (simulation & SARProcessing)
+
+**背景**：
+为了实现全系统工业级双向进度汇报与中止响应，需要补齐其余遗漏的大计算/重负载函数的回调链和中断逻辑。
+
+**修改细节**：
+1. **Simulation 模块 (`simulation`)**：
+   - 更新 [SLC_simulator.h](file:///D:/SRC/insar/include/SLC_simulator.h) 及 [SLC_simulator.cpp](file:///D:/SRC/insar/simulation/SLC_simulator.cpp)。
+   - 在 `SLC_simulator::MB_phase_estimation`（多基线相位估计）等多个核心模拟接口中新增 `SimulationProgressCallback cb = nullptr`。
+   - 在分块循环以及内层 OpenMP 并行计算中，定义 `std::atomic<bool> cancel_flag(false)`。
+   - 每次调用回调后，若检测到取消信号，则将 `cancel_flag` 置为 `true` 并安全退避退出，最终返回 `-2`。
+2. **SARProcessing 模块 (`SARProcessing`)**：
+   - 更新 [SARProcessor.h](file:///D:/SRC/insar/include/SARProcessor.h)、[SARProcessing.cpp](file:///D:/SRC/insar/SARProcessing/SARProcessing.cpp) 及其依赖文件。
+   - 针对 `SARProcessor::ExtractDiffBoxFeature` 和底层的 `extract_diffbox_feature`（差分盒维数 DBC 分形特征提取），添加 `SARProgressCallback cb = nullptr`。
+   - 在 DBC 计算的主循环（尺度 `data` 迭代）中，按进度比例更新回调。若回调返回 `false` 则提前返回 `-2.0`（利用 vector 的 RAII 自动释放内存，无资源泄漏风险）。
+

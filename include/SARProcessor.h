@@ -28,7 +28,7 @@ public:
     static BasicFeatures ExtractBasicFeatures(const cv::Mat& imgGray);
 
     // 提取差分盒维数（DBC）分形特征
-    static double ExtractDiffBoxFeature(const cv::Mat& imgGray);
+    static double ExtractDiffBoxFeature(const cv::Mat& imgGray, SARProgressCallback cb = nullptr);
 
     // ============ 目标检测（ONNX 推理）============
 

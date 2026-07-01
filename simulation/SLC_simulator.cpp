@@ -2197,7 +2197,8 @@ int SLC_simulator::generateSlantrange(
 	double acquisitionStartTime2, 
 	double acquisitionStopTime2,
 	Mat& R1, 
-	Mat& R2
+	Mat& R2,
+	SimulationProgressCallback cb
 )
 {
 	if (stateVec1.cols != 7 ||
@@ -2263,11 +2264,17 @@ int SLC_simulator::generateSlantrange(
 	double time_interval = 1.0 / prf;
 	double dopplerFrequency = 0.0;
 	uint64 seed = 0;
+	
+	std::atomic<bool> cancel_flag(false);
+	int total_blocks = num_block_row * num_block_col;
+
 	// removed unused: process
 	for (int i = 0; i < num_block_row; i++)
 	{
+		if (cancel_flag) break;
 		for (int j = 0; j < num_block_col; j++)
 		{
+			if (cancel_flag) break;
 			seed++;
 			int row_start = i * block_rows - 1;
 			row_start = row_start < 0 ? 0 : row_start;
@@ -2294,6 +2301,7 @@ int SLC_simulator::generateSlantrange(
 #pragma omp parallel for schedule(guided)
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
+				if (cancel_flag) continue;
 				for (int jj = 0; jj < DEM_cols; jj++)
 				{
 					Position groundPosition;
@@ -2316,6 +2324,7 @@ int SLC_simulator::generateSlantrange(
 #pragma omp parallel for schedule(guided)
 			for (int ii = 0; ii < DEM_rows; ii++)
 			{
+				if (cancel_flag) continue;
 				for (int jj = 0; jj < DEM_cols; jj++)
 				{
 					Position groundPosition;
@@ -2355,10 +2364,21 @@ int SLC_simulator::generateSlantrange(
 					}
 				}
 			}
-			printf("\rprocess: %llu / %d", seed, num_block_row * num_block_col);
+			printf("\rprocess: %llu / %d", seed, total_blocks);
 			fflush(stdout);
+
+			if (cb)
+			{
+				int progress = static_cast<int>(seed * 100 / total_blocks);
+				if (!cb(progress, "Generating slant range..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
 	}
+
+	if (cancel_flag) return -2;
 
 	for (int i = 0; i < sceneHeight1; i++)
 	{
@@ -3242,7 +3262,8 @@ int SLC_simulator::MB_phase_estimation(
 	const char* slcH5File1_out,
 	const char* slcH5File2_out,
 	const char* slcH5File3_out,
-	const char* slcH5File4_out
+	const char* slcH5File4_out,
+	SimulationProgressCallback cb
 )
 {
 	if (estimation_wndsize % 2 == 0 || estimation_wndsize < 5 ||
@@ -3301,10 +3322,16 @@ int SLC_simulator::MB_phase_estimation(
 	else block_num_row = int(floor((double)nr / (double)blocksize_row)) + 1;
 	if (nc % blocksize_col == 0) block_num_col = nc / blocksize_col;
 	else block_num_col = int(floor((double)nc / (double)blocksize_col)) + 1;
+	
+	std::atomic<bool> cancel_flag(false);
+	int total_blocks = block_num_row * block_num_col;
+
 	for (int i = 0; i < block_num_row; i++)
 	{
+		if (cancel_flag) break;
 		for (int j = 0; j < block_num_col; j++)
 		{
+			if (cancel_flag) break;
 			top = i * blocksize_row;
 			top_pad = top - homotest_radius; top_pad = top_pad < 0 ? 0 : top_pad;
 			bottom = top + blocksize_row; bottom = bottom > nr ? nr : bottom;
@@ -3332,6 +3359,7 @@ int SLC_simulator::MB_phase_estimation(
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
+				if (cancel_flag) continue;
 				ComplexMat coherence_matrix, eigenvector; Mat eigenvalue; int ret1;
 				Mat real1, imag1, real2, imag2, real, imag;
 				// removed unused: value1, value2 (commented-out H5 reads)
@@ -3400,9 +3428,19 @@ int SLC_simulator::MB_phase_estimation(
 			slc_series_filter.clear();
 			printf("\r估计进度：%.2f %%", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
+
+			if (cb)
+			{
+				int progress = static_cast<int>((i * block_num_col + j + 1) * 100 / total_blocks);
+				if (!cb(progress, "Estimating multi-baseline phase..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
 	}
 
+	if (cancel_flag) return -2;
 	return 0;
 }
 
@@ -3423,7 +3461,8 @@ int SLC_simulator::MB_phase_estimation(
 	const char* slcH5File5_out,
 	const char* slcH5File6_out,
 	const char* slcH5File7_out,
-	const char* slcH5File8_out
+	const char* slcH5File8_out,
+	SimulationProgressCallback cb
 )
 {
 	if (estimation_wndsize % 2 == 0 || estimation_wndsize < 5 ||
@@ -3469,55 +3508,21 @@ int SLC_simulator::MB_phase_estimation(
 	ret = conversion.read_slc_from_h5(slcH5File1, slc);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	nr = slc.GetRows(); nc = slc.GetCols();
-	//ret = conversion.creat_new_h5(slcH5File1_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File2_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File3_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File4_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File5_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File6_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File7_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.creat_new_h5(slcH5File8_out);
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-
-
-	//ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File5_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File6_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File7_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-	//ret = conversion.write_slc_to_h5(slcH5File8_out, slc);
-	//if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
-
-	//phase.create(nr, nc, CV_64F); phase = 0.0;
-	//ret = conversion.creat_new_h5("G:\\tmp\\dual_phase.h5");
-	//if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	//ret = conversion.write_array_to_h5("G:\\tmp\\dual_phase.h5", "phase", phase);
-	//if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	if (nr % blocksize_row == 0) block_num_row = nr / blocksize_row;
 	else block_num_row = int(floor((double)nr / (double)blocksize_row)) + 1;
 	if (nc % blocksize_col == 0) block_num_col = nc / blocksize_col;
 	else block_num_col = int(floor((double)nc / (double)blocksize_col)) + 1;
+	
+	std::atomic<bool> cancel_flag(false);
+	int total_blocks = block_num_row * block_num_col;
+
 	for (int i = 0; i < block_num_row; i++)
 	{
+		if (cancel_flag) break;
 		for (int j = 0; j < block_num_col; j++)
 		{
+			if (cancel_flag) break;
 			top = i * blocksize_row;
 			top_pad = top - homotest_radius; top_pad = top_pad < 0 ? 0 : top_pad;
 			bottom = top + blocksize_row; bottom = bottom > nr ? nr : bottom;
@@ -3538,15 +3543,14 @@ int SLC_simulator::MB_phase_estimation(
 				if (return_check(ret, "read_subarray_from_h5()", error_head)) return -1;
 				if (slc.type() != CV_64F) slc.convertTo(slc, CV_64F);
 				slc_series.push_back(slc);
-				//slc_series_filter.push_back(slc);
 			}
 			phase.create(slc.GetRows(), slc.GetCols(), CV_64F); phase = 0.0;
 			//计算
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
+				if (cancel_flag) continue;
 				ComplexMat coherence_matrix, eigenvector; Mat eigenvalue; int ret1;
-				Mat real1, imag1, real2, imag2, real, imag; 
 				double value1, value2;
 				double re, im, re1, im1, re2, im2;
 				for (int jj = (left - left_pad); jj < (right - left_pad); jj++)
@@ -3557,8 +3561,6 @@ int SLC_simulator::MB_phase_estimation(
 						ret1 = util.HermitianEVD(coherence_matrix, eigenvalue, eigenvector);
 						if (!eigenvalue.empty() && ret1 == 0)
 						{
-							//cout << coherence_matrix.GetMod() << endl;
-							//eigenvector * eigenvector;
 							value1 = eigenvalue.at<double>(0, 0);
 							value2 = eigenvalue.at<double>(1, 0);
 							re1 = eigenvector.re.at<double>(0, 0); im1 = eigenvector.im.at<double>(0, 0);
@@ -3571,63 +3573,31 @@ int SLC_simulator::MB_phase_estimation(
 							re += (re1 * re2 + im1 * im2) * value2;
 							im += (im1 * re2 - re1 * im2) * value2;
 
-							/*eigenvector.re(cv::Range(0, n_images), cv::Range(0, 1)).copyTo(real1);
-							eigenvector.im(cv::Range(0, n_images), cv::Range(0, 1)).copyTo(imag1);
-							cv::transpose(real1, real2); cv::transpose(imag1, imag2);
-							real = real1 * real2 + imag1 * imag2; real = real * value1;
-							imag = imag1 * real2 - real1 * imag2; imag = imag * value1;*/
-
-							/*eigenvector.re(cv::Range(0, n_images), cv::Range(1, 2)).copyTo(real1);
-							eigenvector.im(cv::Range(0, n_images), cv::Range(1, 2)).copyTo(imag1);
-							cv::transpose(real1, real2); cv::transpose(imag1, imag2);
-							real += (real1 * real2 + imag1 * imag2) * value2;
-							imag += (imag1 * real2 - real1 * imag2) * value2;
-							coherence_matrix.SetRe(real);
-							coherence_matrix.SetIm(imag);
-							real = coherence_matrix.GetPhase();*/
 							phase.at<double>(ii, jj) = atan2(im, re);
-							/*if (eigenvalue.at<double>(1, 0) / (eigenvalue.at<double>(0, 0) + 1e-10) < thresh_c1_to_c2)
-							{
-								for (int kk = 0; kk < n_images; kk++)
-								{
-									slc_series_filter[kk].re.at<double>(ii, jj) = eigenvector.re.at<double>(kk, 0);
-									slc_series_filter[kk].im.at<double>(ii, jj) = eigenvector.im.at<double>(kk, 0);
-								}
-							}
-							else
-							{
-								fprintf(stdout, "not processed!\n");
-							}*/
 						}
 					}
-
-
 				}
 			}
-			//util.cvmat2bin("G:\\tmp\\phase_test.bin", phase); return 0;
-			////储存
+			//储存
 			phase(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
 			ret = conversion.write_subarray_to_h5("G:\\tmp\\dual_phase.h5", "phase", ph, top, left, bottom - top, right - left);
 			if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
 
-			/*for (int kk = 0; kk < n_images; kk++)
-			{
-				slc_series_filter[kk].re(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
-				ph.convertTo(ph, CV_32F);
-				ret = conversion.write_subarray_to_h5(coregis_slc_files_out[kk].c_str(), "s_re", ph, top, left, bottom - top, right - left);
-				if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
-
-				slc_series_filter[kk].im(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
-				ph.convertTo(ph, CV_32F);
-				ret = conversion.write_subarray_to_h5(coregis_slc_files_out[kk].c_str(), "s_im", ph, top, left, bottom - top, right - left);
-				if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
-			}*/
 			slc_series.clear();
-			//slc_series_filter.clear();
 			printf("\r估计进度：%.2f %%", double(i * block_num_col + j + 1) / double((block_num_col) * (block_num_row)) * 100.0);
 			fflush(stdout);
+
+			if (cb)
+			{
+				int progress = static_cast<int>((i * block_num_col + j + 1) * 100 / total_blocks);
+				if (!cb(progress, "Estimating multi-baseline phase..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 

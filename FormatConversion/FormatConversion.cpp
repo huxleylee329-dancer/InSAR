@@ -572,7 +572,7 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 		fprintf(stderr, "read_array_from_h5(): input check  failed!\n");
 		return -1;
 	}
-	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_array_from_h5(): failed to open %s!\n", filename);
@@ -658,7 +658,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 		return -1;
 	}
 
-	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_subarray_from_h5(): failed to open %s!\n", filename);
@@ -869,7 +869,7 @@ int FormatConversion::read_str_from_h5(const char* filename, const char* dataset
 		fprintf(stderr, "read_str_from_h5(): input check failed!\n");
 		return -1;
 	}
-	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_str_from_h5(): failed to open %s !\n", filename);
@@ -7787,7 +7787,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2B(
 	beam_name_list.push_back("/BEAM0110/");
 	beam_name_list.push_back("/BEAM1000/");
 	beam_name_list.push_back("/BEAM1011/");
-	H5UniqueId file_id = H5Fopen(gedi_h5_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(gedi_h5_file, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_height_metric_from_GEDI_L2B(): failed to open %s!\n", gedi_h5_file);
@@ -8015,7 +8015,7 @@ int FormatConversion::read_height_metric_from_GEDI_L2A(const char* gedi_h5_file,
 	beam_name_list.push_back("/BEAM0110/");
 	beam_name_list.push_back("/BEAM1000/");
 	beam_name_list.push_back("/BEAM1011/");
-	H5UniqueId file_id = H5Fopen(gedi_h5_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(gedi_h5_file, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_height_metric_from_GEDI_L2A(): failed to open %s!\n", gedi_h5_file);
@@ -8189,7 +8189,7 @@ int FormatConversion::read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_
 	beam_name_list.push_back("/gt2r/");
 	beam_name_list.push_back("/gt3l/");
 	beam_name_list.push_back("/gt3r/");
-	H5UniqueId file_id = H5Fopen(ICESat_2_h5_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(ICESat_2_h5_file, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_height_metric_from_ICESat_2_L3A(): failed to open %s!\n", ICESat_2_h5_file);
@@ -12256,7 +12256,7 @@ int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
 		fprintf(stderr, "read_slc(): input check  failed!\n");
 		return -1;
 	}
-	H5UniqueId file_id = H5Fopen(CSK_data_file, H5F_ACC_RDWR, H5P_DEFAULT);
+	H5UniqueId file_id = H5Fopen(CSK_data_file, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
 		fprintf(stderr, "read_slc(): failed to open %s!\n", CSK_data_file);

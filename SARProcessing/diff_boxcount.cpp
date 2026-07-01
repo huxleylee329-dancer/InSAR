@@ -22,7 +22,7 @@ double polyfit_slope(const std::vector<double>& x, const std::vector<double>& y)
     return (n * sum_xy - sum_x * sum_y) / denominator;
 }
 
-double extract_diffbox_feature(const cv::Mat& img_gray) {
+double extract_diffbox_feature(const cv::Mat& img_gray, SARProgressCallback cb) {
     if (img_gray.empty()) return 0.0;
 
     // 1. 转为浮点型并计算极差
@@ -50,7 +50,17 @@ double extract_diffbox_feature(const cv::Mat& img_gray) {
 
     // np.arange(2, (M // 2) - 1, 2)
     int upper_limit = (M / 2) - 1;
+    int iterations = 0;
+    int total_iterations = std::max(1, (upper_limit > 2) ? ((upper_limit - 3) / 2 + 1) : 1);
     for (int data = 2; data < upper_limit; data += 2) {
+        if (cb) {
+            int progress = iterations * 100 / total_iterations;
+            if (!cb(progress, "Extracting fractal features...")) {
+                return -2.0; // Early return on cancellation (std::vectors will automatically release memory via RAII)
+            }
+        }
+        iterations++;
+
         double r = (double)data / M;
         double s_dot = std::ceil(max_gray * r);
         int length = M / data;

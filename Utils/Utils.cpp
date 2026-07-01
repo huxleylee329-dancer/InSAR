@@ -184,7 +184,6 @@ bool Utils::newton_iter_core(
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df11 = temp_var.mul(temp_var1);
-		Df11 = Df11 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(0, 1)) * ones - P1;
 		cv::sqrt(M_T, temp_var1);
@@ -197,7 +196,6 @@ bool Utils::newton_iter_core(
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df12 = temp_var.mul(temp_var1);
-		Df12 = Df12 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(1, 2)) * ones - P2;
 		cv::sqrt(M_T, temp_var1);
@@ -210,7 +208,6 @@ bool Utils::newton_iter_core(
 		temp_var1 = 1 / temp_var1;
 		temp_var1 = -temp_var1;
 		Df13 = temp_var.mul(temp_var1);
-		Df13 = Df13 * 2;
 
 		temp_var = Satellite_M_R_Position(Range(0, Satellite_M_R_Position.rows), Range(2, 3)) * ones - P3;
 		cv::sqrt(M_T, temp_var1);

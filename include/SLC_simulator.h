@@ -295,7 +295,8 @@ public:
 		double acquisitionStartTime2,
 		double acquisitionStopTime2,
 		Mat& R1,
-		Mat& R2
+		Mat& R2,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 乒乓模式去参考相位
 	* @param mappedDEM                              配准主图像坐标系DEM
@@ -394,7 +395,8 @@ public:
 		const char* slcH5File1_out,
 		const char* slcH5File2_out,
 		const char* slcH5File3_out,
-		const char* slcH5File4_out
+		const char* slcH5File4_out,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 双频乒乓模式干涉相位估计
 	* @param estimation_wndsize                     估计窗口大小
@@ -433,7 +435,8 @@ public:
 		const char* slcH5File5_out,
 		const char* slcH5File6_out,
 		const char* slcH5File7_out,
-		const char* slcH5File8_out
+		const char* slcH5File8_out,
+		SimulationProgressCallback cb = nullptr
 	);
 	/*@brief 乒乓模式双频无模糊最大似然相位估计
 	* @param phase_reference                参考相位（用于最大似然搜索的区间确定）

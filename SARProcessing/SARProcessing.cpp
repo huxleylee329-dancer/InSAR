@@ -232,9 +232,9 @@ BasicFeatures SARProcessor::ExtractBasicFeatures(const cv::Mat& imgGray)
 }
 
 // 特征提取：差分盒维数
-double SARProcessor::ExtractDiffBoxFeature(const cv::Mat& imgGray)
+double SARProcessor::ExtractDiffBoxFeature(const cv::Mat& imgGray, SARProgressCallback cb)
 {
-    return extract_diffbox_feature(imgGray);
+    return extract_diffbox_feature(imgGray, cb);
 }
 
 // 单张图像船舶检测
