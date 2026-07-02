@@ -39,6 +39,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PSI", "PSI\PSI.vcxproj", "{
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DeformationRateField", "DeformationRateField\DeformationRateField.vcxproj", "{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GCPManager", "GCPManager\GCPManager.vcxproj", "{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}"
+EndProject
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -305,6 +307,20 @@ Global
 		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|Win32.Build.0 = Release|Win32
 		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|x64.ActiveCfg = Release|x64
 		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|x64.Build.0 = Release|x64
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|ARM.ActiveCfg = Debug|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|Win32.ActiveCfg = Debug|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|Win32.Build.0 = Debug|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|x64.ActiveCfg = Debug|x64
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Debug|x64.Build.0 = Debug|x64
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|ARM.ActiveCfg = Release|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|Mixed Platforms.ActiveCfg = Release|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|Mixed Platforms.Build.0 = Release|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|Win32.ActiveCfg = Release|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|Win32.Build.0 = Release|Win32
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|x64.ActiveCfg = Release|x64
+		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
