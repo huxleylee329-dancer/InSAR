@@ -37,6 +37,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "SARProcessing", "SARProcess
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PSI", "PSI\PSI.vcxproj", "{C88EA5BA-0D2B-4F87-A36C-5D25A2F7AF99}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DeformationRateField", "DeformationRateField\DeformationRateField.vcxproj", "{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}"
+EndProject
+
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -288,6 +291,20 @@ Global
 		{C88EA5BA-0D2B-4F87-A36C-5D25A2F7AF99}.Release|Win32.Build.0 = Release|Win32
 		{C88EA5BA-0D2B-4F87-A36C-5D25A2F7AF99}.Release|x64.ActiveCfg = Release|x64
 		{C88EA5BA-0D2B-4F87-A36C-5D25A2F7AF99}.Release|x64.Build.0 = Release|x64
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|ARM.ActiveCfg = Debug|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|Win32.ActiveCfg = Debug|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|Win32.Build.0 = Debug|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|x64.ActiveCfg = Debug|x64
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Debug|x64.Build.0 = Debug|x64
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|ARM.ActiveCfg = Release|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|Mixed Platforms.ActiveCfg = Release|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|Mixed Platforms.Build.0 = Release|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|Win32.ActiveCfg = Release|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|Win32.Build.0 = Release|Win32
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|x64.ActiveCfg = Release|x64
+		{961E62C9-4C5C-405B-9FE4-CF9158EA19E6}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
