@@ -41,6 +41,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DeformationRateField", "Def
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GCPManager", "GCPManager\GCPManager.vcxproj", "{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AtmosphericCorrection", "AtmosphericCorrection\AtmosphericCorrection.vcxproj", "{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}"
+EndProject
 
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -321,6 +323,20 @@ Global
 		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|Win32.Build.0 = Release|Win32
 		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|x64.ActiveCfg = Release|x64
 		{8CE82A9C-7F40-42EA-88A9-9CBEB7A27E01}.Release|x64.Build.0 = Release|x64
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|ARM.ActiveCfg = Debug|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|Mixed Platforms.Build.0 = Debug|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|Win32.ActiveCfg = Debug|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|Win32.Build.0 = Debug|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|x64.ActiveCfg = Debug|x64
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Debug|x64.Build.0 = Debug|x64
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|ARM.ActiveCfg = Release|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|Mixed Platforms.ActiveCfg = Release|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|Mixed Platforms.Build.0 = Release|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|Win32.ActiveCfg = Release|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|Win32.Build.0 = Release|Win32
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|x64.ActiveCfg = Release|x64
+		{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
