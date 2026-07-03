@@ -157,10 +157,12 @@
   <ItemGroup>
     <ClInclude Include="..\include\GCPPoint.h" />
     <ClInclude Include="..\include\GCPManager.h" />
+    <ClInclude Include="..\include\OrbitRefinement.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
     <ClCompile Include="GCPManager.cpp" />
+    <ClCompile Include="OrbitRefinement.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

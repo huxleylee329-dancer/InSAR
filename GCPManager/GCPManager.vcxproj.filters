@@ -17,12 +17,18 @@
     <ClInclude Include="..\include\GCPManager.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\OrbitRefinement.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="GCPManager.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="OrbitRefinement.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
