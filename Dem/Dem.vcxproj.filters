@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <Filter Include="源文件">
@@ -27,6 +27,9 @@
     <ClInclude Include="..\include\Dem.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="..\include\DEMSourceManager.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="..\include\tinystr.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -39,6 +42,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Dem.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DEMSourceManager.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="dllmain.cpp">
