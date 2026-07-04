@@ -6,7 +6,7 @@
 
 
 // 定义 Registration 专用的进度回调函数指针类型
-typedef bool (__stdcall *RegistrationProgressCallback)(int progress, const char* message);
+typedef bool (__stdcall *RegistrationProgressCallback)(int progress, const char* message, void* userData);
 
 class InSAR_API Registration
 {
@@ -86,7 +86,8 @@ public:
 		int interp_times,
 		int* offset_row = NULL,
 		int* offset_col = NULL,
-		RegistrationProgressCallback cb = nullptr
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
 	);
 	/** @brief 精配准---sinc插值（支持16位整型 and 64位浮点型输入）
 
@@ -106,7 +107,8 @@ public:
 		int* offset_row = NULL,
 		int* offset_col = NULL,
 		double coh_thresh = 0.0,
-		RegistrationProgressCallback cb = nullptr
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
 	);
 	/*拟合像素偏移量
 	 参数1 行序列号
@@ -165,7 +167,8 @@ public:
 		double acquisitionStopTime,
 		double lon_spacing,
 		double lat_spacing,
-		RegistrationProgressCallback cb = nullptr
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
 	);
 	/*@brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
 	* @param slaveOffset                           偏移量
@@ -223,7 +226,8 @@ public:
 		double a0Az, double a1Az, double a2Az,
 		int* offset_row = NULL,
 		int* offset_col = NULL,
-		RegistrationProgressCallback cb = nullptr
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
 	);
 	/*@brief 复图像SINC插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
@@ -247,7 +251,8 @@ public:
 		double a0Az, double a1Az, double a2Az,
 		int* offset_row = NULL,
 		int* offset_col = NULL,
-		RegistrationProgressCallback cb = nullptr
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
 	);
 private:
 	char error_head[256];

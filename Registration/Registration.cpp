@@ -871,7 +871,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 }
 
 int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
-	int* offset_col, RegistrationProgressCallback cb)
+	int* offset_col, RegistrationProgressCallback cb, void* userData)
 {
 	constexpr int MAX_CROP_SIZE = 10000;
 	constexpr double COHERENCE_THRESH = 0.05;
@@ -1046,7 +1046,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		if (cb && current_completed % block_step == 0)
 		{
 			int progress = current_completed * 50 / m;
-			if (!cb(progress, "Subpixel searching..."))
+			if (!cb(progress, "Subpixel searching...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -1256,7 +1256,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		if (cb && current_completed % row_step == 0)
 		{
 			int progress = 50 + current_completed * 50 / rows;
-			if (!cb(progress, "Bilinear resampling..."))
+			if (!cb(progress, "Bilinear resampling...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -1294,7 +1294,7 @@ int Registration::every_subpixel_move(int i, int j, Mat& coefficient, double* of
 }
 
 int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& slave, int blocksize, int interp_times, int* offset_row,
-	int* offset_col, double coh_thresh, RegistrationProgressCallback cb)
+	int* offset_col, double coh_thresh, RegistrationProgressCallback cb, void* userData)
 {
 	constexpr int MAX_CROP_SIZE = 10000;
 	constexpr int COH_WIN_SIZE = 7;
@@ -1468,7 +1468,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 		if (cb && current_completed % block_step == 0)
 		{
 			int progress = current_completed * 50 / m;
-			if (!cb(progress, "Subpixel searching..."))
+			if (!cb(progress, "Subpixel searching...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -1691,7 +1691,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 		if (cb && current_completed % row_step == 0)
 		{
 			int progress = 50 + current_completed * 50 / rows;
-			if (!cb(progress, "Sinc resampling..."))
+			if (!cb(progress, "Sinc resampling...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -1925,7 +1925,8 @@ int Registration::getDEMRgAzPos(
 	double acquisitionStopTime,
 	double lon_spacing,
 	double lat_spacing,
-	RegistrationProgressCallback cb
+	RegistrationProgressCallback cb,
+	void* userData
 )
 {
 	if (DEM.empty() ||
@@ -2006,7 +2007,7 @@ int Registration::getDEMRgAzPos(
 		if (cb && current_completed % step == 0)
 		{
 			int progress = current_completed * 100 / DEM_rows;
-			if (!cb(progress, "Solving radar geometry equations..."))
+			if (!cb(progress, "Solving radar geometry equations...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -2142,7 +2143,8 @@ int Registration::performBilinearResampling(
 	double a0Az, double a1Az, double a2Az,
 	int* offset_row,
 	int* offset_col,
-	RegistrationProgressCallback cb
+	RegistrationProgressCallback cb,
+	void* userData
 )
 {
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
@@ -2231,7 +2233,7 @@ int Registration::performBilinearResampling(
 		if (cb && current_completed % step == 0)
 		{
 			int progress = current_completed * 100 / rows;
-			if (!cb(progress, "Bilinear resampling..."))
+			if (!cb(progress, "Bilinear resampling...", userData))
 			{
 				cancel_flag = true;
 			}
@@ -2255,7 +2257,8 @@ int Registration::performSincResampling(
 	double a0Az, double a1Az, double a2Az,
 	int* offset_row,
 	int* offset_col,
-	RegistrationProgressCallback cb
+	RegistrationProgressCallback cb,
+	void* userData
 )
 {
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2 ||
@@ -2363,7 +2366,7 @@ int Registration::performSincResampling(
 		if (cb && current_completed % step == 0)
 		{
 			int progress = current_completed * 100 / rows;
-			if (!cb(progress, "Sinc resampling..."))
+			if (!cb(progress, "Sinc resampling...", userData))
 			{
 				cancel_flag = true;
 			}
