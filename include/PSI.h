@@ -47,6 +47,9 @@ struct PSI_API PS_Edge {
     std::vector<double> phase_diff; // 各景干涉图上的包裹相位差 [num_ifg]
 };
 
+// ===== PSI 进度回调函数指针类型 =====
+typedef bool (__stdcall *PSIProgressCallback)(int progress, const char* message);
+
 // ===== PSI 主算法类 =====
 class PSI_API PSI {
 public:
@@ -70,7 +73,8 @@ public:
         int num_images,
         double da_threshold,
         cv::Mat& ps_mask,
-        cv::Mat& amplitude_dispersion
+        cv::Mat& amplitude_dispersion,
+        PSIProgressCallback cb = nullptr
     );
 
     /**
@@ -100,7 +104,8 @@ public:
         const std::vector<PS_Edge>& edges,
         const cv::Mat& ps_slc_data,
         const cv::Mat& formation_matrix,
-        cv::Mat& edge_phase_diff
+        cv::Mat& edge_phase_diff,
+        PSIProgressCallback cb = nullptr
     );
 
     /**
@@ -136,7 +141,8 @@ public:
         cv::Mat& deformation_time_series,
         cv::Mat& deformation_velocity,
         cv::Mat& temporal_coherence,
-        cv::Mat& topographic_residual
+        cv::Mat& topographic_residual,
+        PSIProgressCallback cb = nullptr
     );
 
     /**

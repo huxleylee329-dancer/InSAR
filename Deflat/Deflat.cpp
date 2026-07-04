@@ -834,7 +834,8 @@ int Deflat::topography_simulation(
 	double nearRangeTime, double rangeSpacing, double wavelength,
 	double acquisition_start_time, double acquisition_stop_time, 
 	const char* DEMpath,
-	int interp_times
+	int interp_times,
+	DeflatProgressCallback cb
 )
 {
 	if (wavelength < 0.0 ||
@@ -873,7 +874,9 @@ int Deflat::topography_simulation(
 	if (return_check(ret, "getSRTMDEM()", error_head)) return -1;
 	ret = demMapping(dem, dem_out, lon_upperleft, lat_upperleft, offset_row, offset_col,
 		sceneHeight, sceneWidth, prf1, rangeSpacing, wavelength,
-		nearRangeTime, acquisition_start_time, acquisition_stop_time, statevector1, interp_times);
+		nearRangeTime, acquisition_start_time, acquisition_stop_time, statevector1, interp_times,
+		5.0 / 6000.0, 5.0 / 6000.0, cb);
+	if (ret == -2) return -2;
 	if (return_check(ret, "demMapping()", error_head)) return -1;
 	//Mat out; dem_out.convertTo(out, CV_64F);
 	//util.cvmat2bin("E:\\zgb1\\functions\\out.bin", out);
@@ -882,7 +885,8 @@ int Deflat::topography_simulation(
 		1 / prf1, 1 / prf2, &B_effect, &B_para);
 	if (return_check(ret, "baseline_estimation()", error_head)) return -1;
 	ret = topography_phase_simulation(dem_out, topography_phase, inc_cofficient, B_effect, nearRangeTime,
-		offset_row, offset_col, wavelength, rangeSpacing);
+		offset_row, offset_col, wavelength, rangeSpacing, cb);
+	if (ret == -2) return -2;
 	if (return_check(ret, "topography_phase_simulation()", error_head)) return -1;
 	return 0;
 }

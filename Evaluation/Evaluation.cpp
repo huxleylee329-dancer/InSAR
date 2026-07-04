@@ -626,7 +626,7 @@ int Evaluation::FFT2(ComplexMat src, ComplexMat& dst, int win_size, int interp_t
 	return 0;
 }
 
-int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, const char* GCP_path, double* lat_abs, double* lat_rel, double* lon_abs, double* lon_rel, double* height_abs, double* height_rel)
+int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, const char* GCP_path, double* lat_abs, double* lat_rel, double* lon_abs, double* lon_rel, double* height_abs, double* height_rel, NewtonProgressCallback cb)
 {
 	FormatConversion conversion; Utils util;
 	int nr, nc, ret, offset_row, offset_col;
@@ -842,9 +842,13 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	Utils::newton_iter_core(15, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	bool success = Utils::newton_iter_core(15, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                        Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                        R_M, R_F, fd, lambda);
+	                        R_M, R_F, fd, lambda, cb);
+	if (!success)
+	{
+		return -2;
+	}
 	Mat GCPs;
 	ret = conversion.read_array_from_h5(GCP_path, "GCP", GCPs);
 	int GCP_count = GCPs.rows;

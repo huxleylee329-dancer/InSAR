@@ -175,7 +175,8 @@ public:
 		double nearRangeTime, double rangeSpacing, double wavelength,
 		double acquisition_start_time, double acquisition_stop_time,
 		const char* DEMpath,
-		int interp_times = 20
+		int interp_times = 20,
+		DeflatProgressCallback cb = nullptr
 	);
 	/*@brief 将WGS84坐标DEM投影到相应的SAR坐标系中
 	* @param DEM84                        84坐标系DEM（short型矩阵）

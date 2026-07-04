@@ -30,6 +30,9 @@ struct RateFieldResult {
     int     num_valid_pixels;   // 有效像素数
 };
 
+// ===== 速率场分析进度回调函数指针类型 =====
+typedef bool (__stdcall *DeformationProgressCallback)(int progress, const char* message);
+
 // ===== 速率场分析主类 =====
 class InSAR_API DeformationRateField {
 public:
@@ -46,7 +49,8 @@ public:
         const cv::Mat& mask,           // 有效像素掩膜
         const cv::Mat& coherence,      // 相干系数矩阵（N_valid × N_times 或 1 × N_valid）
         const RateFieldParams& params,
-        RateFieldResult& result
+        RateFieldResult& result,
+        DeformationProgressCallback cb = nullptr
     );
 
     // 速率不确定性评估（协方差传播法）
@@ -56,9 +60,10 @@ public:
         const cv::Mat& coherence,
         const cv::Mat& velocity,       // 输入速率场（线性或非线性）
         double         confidence_level,
-        cv::Mat& velocity_std,
-        cv::Mat& velocity_lower,
-        cv::Mat& velocity_upper
+        cv::Mat&       velocity_std,
+        cv::Mat&       velocity_lower,
+        cv::Mat&       velocity_upper,
+        DeformationProgressCallback cb = nullptr
     );
 
     // 质量评估（阈值由调用方传入，对应 Node UI 可配置参数）
@@ -91,7 +96,8 @@ public:
         const cv::Mat& coherence,
         const cv::Mat& velocity_linear,  // 来自 SBAS 的线性速率，用于不确定性评估基准
         const RateFieldParams& params,
-        RateFieldResult& result
+        RateFieldResult& result,
+        DeformationProgressCallback cb = nullptr
     );
 };
 

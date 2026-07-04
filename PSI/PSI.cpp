@@ -19,7 +19,8 @@ int PSI::compute_ps_candidates(
     int num_images,
     double da_threshold,
     cv::Mat& ps_mask,
-    cv::Mat& amplitude_dispersion
+    cv::Mat& amplitude_dispersion,
+    PSIProgressCallback cb
 ) {
     if (sum_amplitude.empty() || sum_amplitude_sq.empty()) return -1;
     if (sum_amplitude.type() != CV_32FC1 || sum_amplitude_sq.type() != CV_32FC1) return -1;
@@ -31,8 +32,13 @@ int PSI::compute_ps_candidates(
     ps_mask = cv::Mat::zeros(rows, cols, CV_8UC1);
     amplitude_dispersion = cv::Mat::zeros(rows, cols, CV_32FC1);
 
+    std::atomic<int> completed_rows(0);
+    std::atomic<bool> cancel_flag(false);
+    int step = std::max(1, rows / 100);
+
     #pragma omp parallel for schedule(dynamic)
     for (int r = 0; r < rows; ++r) {
+        if (cancel_flag) continue;
         for (int c = 0; c < cols; ++c) {
             float sum_val = sum_amplitude.at<float>(r, c);
             float sum_sq_val = sum_amplitude_sq.at<float>(r, c);
@@ -51,7 +57,15 @@ int PSI::compute_ps_candidates(
                 amplitude_dispersion.at<float>(r, c) = 999.0f;
             }
         }
+
+        int current = ++completed_rows;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / rows, "Computing PS candidates...")) {
+                cancel_flag = true;
+            }
+        }
     }
+    if (cancel_flag) return -2;
     return 0;
 }
 
@@ -144,7 +158,8 @@ int PSI::compute_ps_phase_diff(
     const std::vector<PS_Edge>& edges,
     const cv::Mat& ps_slc_data,
     const cv::Mat& formation_matrix,
-    cv::Mat& edge_phase_diff
+    cv::Mat& edge_phase_diff,
+    PSIProgressCallback cb
 ) {
     if (ps_slc_data.empty() || formation_matrix.empty()) return -1;
     if (ps_slc_data.type() != CV_32FC2 || formation_matrix.type() != CV_32SC1) return -1;
@@ -159,17 +174,24 @@ int PSI::compute_ps_phase_diff(
     int ps_count = static_cast<int>(ps_points.size());
     cv::Mat ps_phases = cv::Mat::zeros(ps_count, num_images, CV_64FC1);
 
+    std::atomic<bool> cancel_flag(false);
+
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < ps_count; ++i) {
+        if (cancel_flag) continue;
         for (int k = 0; k < num_images; ++k) {
             cv::Vec2f complex_val = ps_slc_data.at<cv::Vec2f>(i, k);
             ps_phases.at<double>(i, k) = std::atan2(complex_val[1], complex_val[0]);
         }
     }
 
+    std::atomic<int> completed_edges(0);
+    int step = std::max(1, num_edges / 100);
+
     // 2. 边相位差计算
     #pragma omp parallel for schedule(dynamic)
     for (int e = 0; e < num_edges; ++e) {
+        if (cancel_flag) continue;
         int idx1 = edges[e].end1;
         int idx2 = edges[e].end2;
 
@@ -184,7 +206,15 @@ int PSI::compute_ps_phase_diff(
             double diff = p1 - p2;
             edge_phase_diff.at<float>(e, m) = static_cast<float>(std::atan2(std::sin(diff), std::cos(diff)));
         }
+
+        int current = ++completed_edges;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / num_edges, "Computing PS edge phase differences...")) {
+                cancel_flag = true;
+            }
+        }
     }
+    if (cancel_flag) return -2;
     return 0;
 }
 
@@ -204,7 +234,8 @@ int PSI::ps_time_series_inversion(
     cv::Mat& deformation_time_series,
     cv::Mat& deformation_velocity,
     cv::Mat& temporal_coherence,
-    cv::Mat& topographic_residual
+    cv::Mat& topographic_residual,
+    PSIProgressCallback cb
 ) {
     int num_edges = static_cast<int>(edges.size());
     int ps_count = static_cast<int>(ps_points.size());
@@ -246,8 +277,11 @@ int PSI::ps_time_series_inversion(
 
     // 2. 预计算模型相位项 W(g, m)
     std::vector<std::vector<std::complex<double>>> W(num_grid, std::vector<std::complex<double>>(num_ifg));
+    std::atomic<bool> cancel_flag(false);
+
     #pragma omp parallel for schedule(static)
     for (int g = 0; g < num_grid; ++g) {
+        if (cancel_flag) continue;
         int vi = g / num_h;
         int hi = g % num_h;
         double v = grid_v[vi];
@@ -270,6 +304,7 @@ int PSI::ps_time_series_inversion(
     std::vector<std::vector<std::complex<double>>> O(num_edges, std::vector<std::complex<double>>(num_ifg));
     #pragma omp parallel for schedule(static)
     for (int e = 0; e < num_edges; ++e) {
+        if (cancel_flag) continue;
         for (int m = 0; m < num_ifg; ++m) {
             double obs_phase = edge_phase_diff.at<float>(e, m);
             O[e][m] = std::complex<double>(std::cos(obs_phase), std::sin(obs_phase));
@@ -281,8 +316,12 @@ int PSI::ps_time_series_inversion(
     cv::Mat edge_h_diff = cv::Mat::zeros(num_edges, 1, CV_64FC1);
     cv::Mat edge_coh = cv::Mat::zeros(num_edges, 1, CV_64FC1);
 
+    std::atomic<int> completed_edges(0);
+    int step = std::max(1, num_edges / 100);
+
     #pragma omp parallel for schedule(dynamic)
     for (int e = 0; e < num_edges; ++e) {
+        if (cancel_flag) continue;
         double best_v = 0.0;
         double best_h = 0.0;
         double max_gamma = -1.0;
@@ -303,7 +342,15 @@ int PSI::ps_time_series_inversion(
         edge_v_diff.at<double>(e) = best_v;
         edge_h_diff.at<double>(e) = best_h;
         edge_coh.at<double>(e) = max_gamma;
+
+        int current = ++completed_edges;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / num_edges, "Running periodogram grid search on edges...")) {
+                cancel_flag = true;
+            }
+        }
     }
+    if (cancel_flag) return -2;
 
     // 5. 空间积分（BFS 积分方法）
     // 以传入的参考点 ref_index 为积分起点，并修正正负号 Bug
@@ -341,6 +388,7 @@ int PSI::ps_time_series_inversion(
     // 6. 输出形变速率与时序赋值
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < ps_count; ++i) {
+        if (cancel_flag) continue;
         deformation_velocity.at<double>(i) = v_results[i];
         topographic_residual.at<double>(i) = h_results[i];
         

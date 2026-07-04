@@ -48,7 +48,8 @@ int DeformationRateField::estimate_nonlinear_velocity(
     const cv::Mat& mask,
     const cv::Mat& coherence,
     const RateFieldParams& params,
-    RateFieldResult& result
+    RateFieldResult& result,
+    DeformationProgressCallback cb
 ) {
     if (time_series.empty() || temporal.empty() || mask.empty()) {
         std::cerr << error_head << "estimate_nonlinear_velocity: empty inputs." << std::endl;
@@ -96,9 +97,14 @@ int DeformationRateField::estimate_nonlinear_velocity(
         A.at<double>(i, 2) = B;
     }
 
+    std::atomic<int> completed_rows(0);
+    std::atomic<bool> cancel_flag(false);
+    int step = std::max(1, N_valid / 100);
+
     // Solve for each pixel using OpenMP parallelization
     #pragma omp parallel for
     for (int idx = 0; idx < N_valid; idx++) {
+        if (cancel_flag) continue;
         int r = valid_coords[idx].first;
         int c = valid_coords[idx].second;
 
@@ -132,7 +138,16 @@ int DeformationRateField::estimate_nonlinear_velocity(
             result.velocity_nonlinear.at<double>(r, c) = 0.0;
             result.acceleration.at<double>(r, c) = 0.0;
         }
+
+        int current = ++completed_rows;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / N_valid, "Estimating nonlinear velocity...")) {
+                cancel_flag = true;
+            }
+        }
     }
+
+    if (cancel_flag) return -2;
 
     return 0;
 }
@@ -145,7 +160,8 @@ int DeformationRateField::estimate_uncertainty(
     double         confidence_level,
     cv::Mat&       velocity_std,
     cv::Mat&       velocity_lower,
-    cv::Mat&       velocity_upper
+    cv::Mat&       velocity_upper,
+    DeformationProgressCallback cb
 ) {
     if (time_series.empty() || temporal.empty() || velocity.empty()) {
         std::cerr << error_head << "estimate_uncertainty: empty inputs." << std::endl;
@@ -193,8 +209,13 @@ int DeformationRateField::estimate_uncertainty(
         A.at<double>(i, 0) = getMatVal(temporal, 0, i) / 365.25;
     }
 
+    std::atomic<int> completed_rows(0);
+    std::atomic<bool> cancel_flag(false);
+    int step = std::max(1, (int)valid_coords.size() / 100);
+
     #pragma omp parallel for
     for (int idx = 0; idx < (int)valid_coords.size(); idx++) {
+        if (cancel_flag) continue;
         int r = valid_coords[idx].first;
         int c = valid_coords[idx].second;
         double v = velocity.at<double>(r, c);
@@ -234,7 +255,16 @@ int DeformationRateField::estimate_uncertainty(
         velocity_std.at<double>(r, c) = sigma_v;
         velocity_lower.at<double>(r, c) = v - z * sigma_v;
         velocity_upper.at<double>(r, c) = v + z * sigma_v;
+
+        int current = ++completed_rows;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / (int)valid_coords.size(), "Estimating velocity uncertainty...")) {
+                cancel_flag = true;
+            }
+        }
     }
+
+    if (cancel_flag) return -2;
 
     return 0;
 }
@@ -354,13 +384,14 @@ int DeformationRateField::analyze_rate_field(
     const cv::Mat& coherence,
     const cv::Mat& velocity_linear,
     const RateFieldParams& params,
-    RateFieldResult& result
+    RateFieldResult& result,
+    DeformationProgressCallback cb
 ) {
     int ret = 0;
     
     // Model Type 2: Quadratic (Nonlinear) Fit
     if (params.model_type == 2) {
-        ret = estimate_nonlinear_velocity(time_series, temporal, spatial, mask, coherence, params, result);
+        ret = estimate_nonlinear_velocity(time_series, temporal, spatial, mask, coherence, params, result, cb);
         if (ret != 0) return ret;
     } 
     // Model Type 1: Linear Mode (reuses velocity_linear)
@@ -374,7 +405,7 @@ int DeformationRateField::analyze_rate_field(
     cv::Mat vel_to_estimate = (params.model_type == 2) ? result.velocity_nonlinear : velocity_linear;
     ret = estimate_uncertainty(time_series, temporal, coherence, vel_to_estimate, 
                                params.confidence_level, result.velocity_std, 
-                               result.velocity_lower, result.velocity_upper);
+                               result.velocity_lower, result.velocity_upper, cb);
     if (ret != 0) return ret;
 
     // Estimate Fallback Temporal Coherence for Quality Assessment 
@@ -395,8 +426,13 @@ int DeformationRateField::analyze_rate_field(
     int N_times = time_series.cols;
     int N_valid = time_series.rows;
     
+    std::atomic<int> completed_rows(0);
+    std::atomic<bool> cancel_flag(false);
+    int step = std::max(1, N_valid / 100);
+
     #pragma omp parallel for
     for (int idx = 0; idx < N_valid; idx++) {
+        if (cancel_flag) continue;
         int r = valid_coords[idx].first;
         int c = valid_coords[idx].second;
         double v = vel_to_estimate.at<double>(r, c);
@@ -416,7 +452,15 @@ int DeformationRateField::analyze_rate_field(
         }
 
         temporal_coherence.at<double>(r, c) = sqrt(real_sum * real_sum + imag_sum * imag_sum) / N_times;
+
+        int current = ++completed_rows;
+        if (cb && current % step == 0) {
+            if (!cb(current * 100 / N_valid, "Estimating temporal coherence...")) {
+                cancel_flag = true;
+            }
+        }
     }
+    if (cancel_flag) return -2;
 
     // Default thresholds for the all-in-one analysis
     double coherence_threshold_high = 0.5;

@@ -457,7 +457,7 @@ public:
 	@param coherence                          相干系数（返回值）
 	@return 成功返回0，否则返回-1
 	*/
-	int real_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence);
+	int real_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 最大似然相干估算器（带估计窗口尺寸接口）
 	
 	@param master_image                       主图像（复）
@@ -471,7 +471,8 @@ public:
 		const ComplexMat& slave_image,
 		int est_wndsize_rg,
 		int est_wndsize_az,
-		Mat& coherence
+		Mat& coherence,
+		NewtonProgressCallback cb = nullptr
 	);
 	/** @brief 频率无关相干估算器
 	
@@ -480,7 +481,7 @@ public:
 	 @param coherence                           相干系数（返回值）
 	 @return 成功返回0，否则返回-1
 	*/
-	int complex_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence);
+	int complex_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 频率无关相干估算器（带估计窗口尺寸接口）
 	
 	@param master_image                         主图像
@@ -495,14 +496,15 @@ public:
 		const ComplexMat& slave_image,
 		int est_wndsize_rg,
 		int est_wndsize_az,
-		Mat& coherence
+		Mat& coherence,
+		NewtonProgressCallback cb = nullptr
 	);
 	/** @brief 根据干涉相位求相关系数
 	@param phase                          输入相位
 	@param coherence                      相关系数（返回值）
 	@return 成功返回0，否则返回-1
 	*/
-	int phase_coherence(Mat& phase, Mat& coherence);
+	int phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 根据干涉相位求相关系数（带估计窗口尺寸接口）
 	
 	@param phase                          输入相位
@@ -515,7 +517,8 @@ public:
 		const Mat& phase,
 		int est_wndsize_rg,
 		int est_wndsize_az,
-		Mat& coherence
+		Mat& coherence,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*求解相位导数方差
 	* 参数1 干涉相位
@@ -722,7 +725,7 @@ public:
 	* 参数3 多视相位
 	* 参数4 多视倍数（大于1）
 	*/
-	int multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times);
+	int multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times, NewtonProgressCallback cb = nullptr);
 	/** @brief InSAR多视处理（不改变图像尺寸）
 	
 	@param master_slc                    主图像
@@ -731,7 +734,7 @@ public:
 	@param multilook_az                  方位向多视倍数
 	@param multilooked_phase             多视相位
 	*/
-	int multilook(const ComplexMat& master, const ComplexMat& slave, int multilook_rg, int multilook_az, Mat& phase);
+	int multilook(const ComplexMat& master, const ComplexMat& slave, int multilook_rg, int multilook_az, Mat& phase, NewtonProgressCallback cb = nullptr);
 	/*@brief InSAR多视处理（改变窗口尺寸）
 	* @param master                      主图像
 	* @param slave                       复图像
@@ -745,7 +748,8 @@ public:
 		const ComplexMat& slave, 
 		int multilook_rg, 
 		int multilook_az,
-		Mat& phase
+		Mat& phase,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 相位多视处理(改变尺寸)
 	* @param phase                      待处理相位
@@ -758,7 +762,8 @@ public:
 		const Mat& phase,
 		Mat& outPhase,
 		int multi_rg,
-		int multi_az
+		int multi_az,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief SAR图像多视
 	* @param amplitude                 SAR图像幅度图
@@ -771,7 +776,8 @@ public:
 		const Mat& amplitude,
 		Mat& outAmplitude,
 		int multilook_rg,
-		int multilook_az
+		int multilook_az,
+		NewtonProgressCallback cb = nullptr
 	);
 	/** @brief 将相位转换成cos和sin（实部和虚部，支持double和float）
 	

@@ -344,6 +344,10 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	if (unwrapped_phase.type() != CV_64F)
+	{
+		unwrapped_phase.convertTo(unwrapped_phase, CV_64F);
+	}
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{

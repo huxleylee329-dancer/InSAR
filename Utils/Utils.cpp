@@ -1981,7 +1981,7 @@ int Utils::gen_mask_pdv(Mat& phase_derivatives_variance, Mat& mask, int wndsize,
 	return 0;
 }
 
-int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
+int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence, NewtonProgressCallback cb)
 {
 	int wa = 3;  //窗口方位向尺寸
 	int wr = 3;  //窗口距离向尺寸
@@ -2005,12 +2005,16 @@ int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
 
-	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, na_new / 100);
 
+	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
 
 #pragma omp parallel for schedule(guided)
 	for (int i = win_a + 1; i <= na - win_a; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = win_r + 1; j <= nr - win_r; j++)
 		{
 			Mat s1, s2, sum1, sum2;
@@ -2032,16 +2036,24 @@ int Utils::real_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
 			}
 
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / na_new, "Computing real coherence (3x3)..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	copyMakeBorder(Coherence, Coherence, 1, 1, 1, 1, BORDER_REFLECT);
 	coherence = Coherence;
 	return 0;
 }
 
-int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slave_image, int est_wndsize_rg, int est_wndsize_az, Mat& coherence)
+int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slave_image, int est_wndsize_rg, int est_wndsize_az, Mat& coherence, NewtonProgressCallback cb)
 {
-
-
 	int na = master_image.GetRows();
 	int nr = master_image.GetCols();
 	if ((na < est_wndsize_az) ||
@@ -2066,12 +2078,16 @@ int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slav
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
 
-	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, na_new / 100);
 
+	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
 
 #pragma omp parallel for schedule(guided)
 	for (int i = win_a + 1; i <= na - win_a; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = win_r + 1; j <= nr - win_r; j++)
 		{
 			Mat s1, s2, sum1, sum2;
@@ -2093,13 +2109,23 @@ int Utils::real_coherence(const ComplexMat& master_image, const ComplexMat& slav
 			}
 
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / na_new, "Computing real coherence..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	copyMakeBorder(Coherence, Coherence, win_a, win_a, win_r, win_r, BORDER_REFLECT);
 	Coherence.copyTo(coherence);
 	return 0;
 }
 
-int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence)
+int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence, NewtonProgressCallback cb)
 {
 	int wa = 3;  //窗口方位向尺寸
 	int wr = 3;  //窗口距离向尺寸
@@ -2124,10 +2150,15 @@ int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
 
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, na_new / 100);
+
 	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
 #pragma omp parallel for schedule(guided)
 	for (int i = win_a + 1; i <= na - win_a; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = win_r + 1; j <= nr - win_r; j++)
 		{
 			Mat planes_master[] = { Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_64F), Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_64F) };
@@ -2155,7 +2186,17 @@ int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence
 			down = sqrt(sum1 * sum2);
 			Coherence.at<double>(i - 1 - win_a, j - 1 - win_r) = up / (down + 0.0000001);
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / na_new, "Computing complex coherence (3x3)..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	copyMakeBorder(Coherence, Coherence, 1, 1, 1, 1, BORDER_REFLECT);
 	coherence = Coherence;
 	return 0;
@@ -2166,7 +2207,8 @@ int Utils::complex_coherence(
 	const ComplexMat& slave_image,
 	int est_wndsize_rg, 
 	int est_wndsize_az,
-	Mat& coherence
+	Mat& coherence,
+	NewtonProgressCallback cb
 )
 {
 	int na = master_image.GetRows();
@@ -2193,12 +2235,18 @@ int Utils::complex_coherence(
 
 	int na_new = na - 2 * win_a;
 	int nr_new = nr - 2 * win_r;
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, na_new / 100);
+
 	if (master_image.type() == CV_64F)
 	{
 		Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
 #pragma omp parallel for schedule(guided)
 		for (int i = win_a + 1; i <= na - win_a; i++)
 		{
+			if (cancel_flag) continue;
 			for (int j = win_r + 1; j <= nr - win_r; j++)
 			{
 				Mat planes_master[] = { Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_64F), Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_64F) };
@@ -2226,7 +2274,17 @@ int Utils::complex_coherence(
 				down = sqrt(sum1 * sum2);
 				Coherence.at<double>(i - 1 - win_a, j - 1 - win_r) = up / (down + 0.0000001);
 			}
+
+			int current = ++completed_rows;
+			if (cb && current % step == 0)
+			{
+				if (!cb(current * 100 / na_new, "Computing complex coherence (64F)..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
+		if (cancel_flag) return -2;
 		copyMakeBorder(Coherence, Coherence, win_a, win_a, win_r, win_r, BORDER_REFLECT);
 		Coherence.copyTo(coherence);
 	}
@@ -2236,6 +2294,7 @@ int Utils::complex_coherence(
 #pragma omp parallel for schedule(guided)
 		for (int i = win_a + 1; i <= na - win_a; i++)
 		{
+			if (cancel_flag) continue;
 			for (int j = win_r + 1; j <= nr - win_r; j++)
 			{
 				Mat planes_master[] = { Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_32F), Mat::zeros(2 * win_a + 1, 2 * win_r + 1, CV_32F) };
@@ -2263,7 +2322,17 @@ int Utils::complex_coherence(
 				down = sqrt(sum1 * sum2);
 				Coherence.at<float>(i - 1 - win_a, j - 1 - win_r) = static_cast<float>(up / (down + 0.0000001));
 			}
+
+			int current = ++completed_rows;
+			if (cb && current % step == 0)
+			{
+				if (!cb(current * 100 / na_new, "Computing complex coherence (32F)..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
+		if (cancel_flag) return -2;
 		copyMakeBorder(Coherence, Coherence, win_a, win_a, win_r, win_r, BORDER_REFLECT);
 		Coherence.copyTo(coherence);
 	}
@@ -2271,7 +2340,7 @@ int Utils::complex_coherence(
 	return 0;
 }
 
-int Utils::phase_coherence(Mat& phase, Mat& coherence)
+int Utils::phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb)
 {
 	if (phase.rows < 3 ||
 		phase.cols < 3 ||
@@ -2291,12 +2360,13 @@ int Utils::phase_coherence(Mat& phase, Mat& coherence)
 	master.SetIm(sin);
 	sin = -sin;
 	slave.SetIm(sin);
-	ret = this->complex_coherence(master, slave, coherence);
+	ret = this->complex_coherence(master, slave, coherence, cb);
+	if (ret == -2) return -2;
 	if (return_check(ret, "complex_coherence(*, *, *)", error_head)) return -1;
 	return 0;
 }
 
-int Utils::phase_coherence(const Mat& phase, int est_wndsize_rg, int est_wndsize_az, Mat& coherence)
+int Utils::phase_coherence(const Mat& phase, int est_wndsize_rg, int est_wndsize_az, Mat& coherence, NewtonProgressCallback cb)
 {
 	if (phase.rows < 3 ||
 		phase.cols < 3 ||
@@ -2319,7 +2389,8 @@ int Utils::phase_coherence(const Mat& phase, int est_wndsize_rg, int est_wndsize
 	master.SetIm(sin);
 	sin = -sin;
 	slave.SetIm(sin);
-	ret = complex_coherence(master, slave, est_wndsize_rg, est_wndsize_az, coherence);
+	ret = complex_coherence(master, slave, est_wndsize_rg, est_wndsize_az, coherence, cb);
+	if (ret == -2) return -2;
 	if (return_check(ret, "complex_coherence(*, *, *)", error_head)) return -1;
 	return 0;
 }
@@ -2946,7 +3017,7 @@ int Utils::bin2cvmat(const char* filename, Mat& dst)
 	return 0;
 }
 
-int Utils::multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times)
+int Utils::multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times, NewtonProgressCallback cb)
 {
 	if (Master.GetRows() != Slave.GetRows() ||
 		Master.GetCols() != Slave.GetCols() ||
@@ -2977,9 +3048,15 @@ int Utils::multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int mult
 	nc = (nc - (nc % multilook_times)) / multilook_times;
 	Mat real = Mat::zeros(nr, nc, CV_64F);
 	Mat imag = Mat::zeros(nr, nc, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
+		if (cancel_flag) continue;
 		for (int j = 0; j < nc; j++)
 		{
 			real.at<double>(i, j) = cv::mean(tmp.re(Range(i * multilook_times, (i + 1) * multilook_times),
@@ -2987,14 +3064,24 @@ int Utils::multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int mult
 			imag.at<double>(i, j) = cv::mean(tmp.im(Range(i * multilook_times, (i + 1) * multilook_times),
 				Range(j * multilook_times, (j + 1) * multilook_times)))[0];
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / nr, "Multilooking..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	tmp.SetRe(real);
 	tmp.SetIm(imag);
 	phase = tmp.GetPhase();
 	return 0;
 }
 
-int Utils::multilook(const ComplexMat& master, const ComplexMat& slave, int multilook_rg, int multilook_az, Mat& phase)
+int Utils::multilook(const ComplexMat& master, const ComplexMat& slave, int multilook_rg, int multilook_az, Mat& phase, NewtonProgressCallback cb)
 {
 	if (master.GetRows() != slave.GetRows() ||
 		master.GetCols() != slave.GetCols() ||
@@ -3025,9 +3112,15 @@ int Utils::multilook(const ComplexMat& master, const ComplexMat& slave, int mult
 	int radius_rg = multilook_rg / 2;
 	int radius_az = multilook_az / 2;
 	phase.create(nr, nc, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr; i++)
 	{
+		if (cancel_flag) continue;
 		int left, right, bottom, top; double real, imag;
 		for (int j = 0; j < nc; j++)
 		{
@@ -3039,7 +3132,17 @@ int Utils::multilook(const ComplexMat& master, const ComplexMat& slave, int mult
 			imag = cv::mean(tmp.im(Range(top, bottom + 1), Range(left, right + 1)))[0];
 			phase.at<double>(i, j) = atan2(imag, real);
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / nr, "Multilooking (sliding window)..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 
@@ -3048,7 +3151,8 @@ int Utils::Multilook(
 	const ComplexMat& slave,
 	int multilook_rg, 
 	int multilook_az,
-	Mat& phase
+	Mat& phase,
+	NewtonProgressCallback cb
 )
 {
 	if (master.GetRows() != slave.GetRows() ||
@@ -3075,19 +3179,21 @@ int Utils::Multilook(
 	ComplexMat tmp;
 	tmp.re = master.re.mul(slave.re) + master.im.mul(slave.im);
 	tmp.im = slave.re.mul(master.im) - master.re.mul(slave.im);
-	//ret = master.Mul(slave, tmp, true);
-	//if (return_check(ret, "Master.Mul(*, *, *)", error_head)) return -1;
 	int nr = tmp.GetRows();
 	int nc = tmp.GetCols();
 	int nr_new = nr / multilook_az;
 	int nc_new = nc / multilook_rg;
 
-	//Mat real = Mat::zeros(nr_new, nc_new, CV_32F);
-	//Mat imag = Mat::zeros(nr_new, nc_new, CV_32F);
 	phase.create(nr_new, nc_new, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr_new / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr_new; i++)
 	{
+		if (cancel_flag) continue;
 		int left, right, bottom, top; double real, imag;
 		top = i * multilook_az; top = top < 0 ? 0 : top;
 		bottom = top + multilook_az; bottom = bottom > nr ? nr : bottom;
@@ -3099,14 +3205,21 @@ int Utils::Multilook(
 			imag = cv::mean(tmp.im(Range(top, bottom), Range(left, right)))[0];
 			phase.at<double>(i, j) = atan2(imag, real);
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / nr_new, "Multilooking (window shrink)..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
-	//tmp.SetRe(real);
-	//tmp.SetIm(imag);
-	//tmp.GetPhase().copyTo(phase);
+	if (cancel_flag) return -2;
 	return 0;
 }
 
-int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az)
+int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az, NewtonProgressCallback cb)
 {
 	if (multi_rg <= 1 && multi_az <= 1)
 	{
@@ -3124,9 +3237,15 @@ int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az
 	int nr_new = nr / multi_az;
 	int nc_new = nc / multi_rg;
 	outPhase.create(nr_new, nc_new, CV_64F);
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr_new / 100);
+
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < nr_new; i++)
 	{
+		if (cancel_flag) continue;
 		int left, right, bottom, top; double real, imag;
 		top = i * multi_az; top = top < 0 ? 0 : top;
 		bottom = top + multi_az; bottom = bottom > nr ? nr : bottom;
@@ -3138,11 +3257,21 @@ int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az
 			imag = cv::mean(slc.im(Range(top, bottom), Range(left, right)))[0];
 			outPhase.at<double>(i, j) = atan2(imag, real);
 		}
+
+		int current = ++completed_rows;
+		if (cb && current % step == 0)
+		{
+			if (!cb(current * 100 / nr_new, "Phase multilooking..."))
+			{
+				cancel_flag = true;
+			}
+		}
 	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 
-int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_rg, int multilook_az)
+int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_rg, int multilook_az, NewtonProgressCallback cb)
 {
 	if (amplitude.empty() ||
 		amplitude.rows < multilook_rg ||
@@ -3158,6 +3287,11 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 	int nc = amplitude.cols;
 	int nr_new = (int)((double)nr / (double)multilook_az);
 	int nc_new = (int)((double)nc / (double)multilook_rg);
+
+	std::atomic<int> completed_rows(0);
+	std::atomic<bool> cancel_flag(false);
+	int step = std::max(1, nr_new / 100);
+
 	Mat tmp;
 	if (amplitude.type() == CV_64F)
 	{
@@ -3165,6 +3299,7 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 #pragma omp parallel for schedule(guided)
 		for (int i = 0; i < nr_new; i++)
 		{
+			if (cancel_flag) continue;
 			int left, right, bottom, top;
 			top = i * multilook_az; top = top < 0 ? 0 : top;
 			bottom = top + multilook_az; bottom = bottom > nr ? nr : bottom;
@@ -3174,6 +3309,15 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 				right = left + multilook_rg; right = right > nc ? nc : right;
 				tmp.at<double>(i, j) = cv::mean(amplitude(Range(top, bottom), Range(left, right)))[0];
 			}
+
+			int current = ++completed_rows;
+			if (cb && current % step == 0)
+			{
+				if (!cb(current * 100 / nr_new, "SAR amplitude multilooking (64F)..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
 	}
 	else
@@ -3182,6 +3326,7 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 #pragma omp parallel for schedule(guided)
 		for (int i = 0; i < nr_new; i++)
 		{
+			if (cancel_flag) continue;
 			int left, right, bottom, top;
 			top = i * multilook_az; top = top < 0 ? 0 : top;
 			bottom = top + multilook_az; bottom = bottom > nr ? nr : bottom;
@@ -3191,8 +3336,18 @@ int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_
 				right = left + multilook_rg; right = right > nc ? nc : right;
 				tmp.at<float>(i, j) = static_cast<float>(cv::mean(amplitude(Range(top, bottom), Range(left, right)))[0]);
 			}
+
+			int current = ++completed_rows;
+			if (cb && current % step == 0)
+			{
+				if (!cb(current * 100 / nr_new, "SAR amplitude multilooking (32F)..."))
+				{
+					cancel_flag = true;
+				}
+			}
 		}
 	}
+	if (cancel_flag) return -2;
 
 	tmp.copyTo(outAmplitude);
 	return 0;
