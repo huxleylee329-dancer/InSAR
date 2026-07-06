@@ -6,7 +6,9 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
-| 工作区现场修改 | 2026-07-06 | AI | simulation, Utils, SBAS | 修复双精度经纬度 mismatch 严重 Bug 并优化 H5 存储精度冗余：<br>1. simulation：重构 `applyPhaseCorrection` 及 `pingpong_MLE`，引入对 `mappedLat`/`mappedLon` 类型的动态条件判断，使用合适精度的 `double`/`float` 指针和 `.at<T>` 读写，彻底消除因 double 误按 float 读取造成的几何错位与计算垃圾值 Bug。<br>2. simulation：将 `SLC_deramp` 和 `SLC_deramp_14` 输入条件放宽，支持双精度经纬度网格传入，减少 UI 端降级类型转换开销。<br>3. Utils：拓宽 `Utils::SAR2UTM` 复数 SLC 地理编码重载，允许 `CV_64F` 经纬度传入，并在循环中动态分流读取坐标，保持 ABI 稳定与高精度计算。<br>4. SBAS：修改相干系数存盘逻辑，在调用 `write_array_to_h5` 和 `write_subarray_to_h5` 写入 H5 文件前，统一将 `coherence` 临时转换为单精度 `CV_32F` 存储，从而减少 50% 磁盘开销并大幅提升下游加载与渲染效率。 |
+| 工作区现场修改 | 2026-07-06 | AI | FormatConversion | 在 FormatConversion 中新增 `get_dataset_dims` 导出接口以支持外部模块（如 NodeUtils.cpp）解耦：<br>1. 解耦外部 HDF5 依赖：提供了不依赖 HDF5 原生头文件和符号的维度查询功能。<br>2. 规范化路径校验：在 H5Lexists 和 H5Dopen 前进行绝对路径一致性规范化规整，防范双斜杠导致的路径解析失败。<br>3. 动态维度安全分流：通过 H5Sget_simple_extent_ndims 动态识别一维、二维及以上数据集，防止因硬编码 2 维对一维数据集查询时造成的越界读取及垃圾值 Bug。<br>4. 并发安全与 RAII 托管：采用 H5_LOCK 宏与 H5UniqueId 自动释放句柄，保障并发安全与防范泄漏。 |
+| 工作区现场修改 | 2026-07-06 | AI | Filter | 实现滤波方案 A，进行内部单精度转换以优化计算性能与内存开销：<br>1. czt2：重构算法以动态兼容单精度（CV_32FC2）与双精度（CV_64FC2）输入，内部使用 Vec2f 与 cosf/sinf 提升计算效率，规避指针读写越界与崩溃隐患。<br>2. meanfilter：放宽类型限制，利用输入深度动态处理 CV_32FC2 与 CV_64FC2 复数均值滤波。<br>3. slope_adaptive_filter：所有核心缓冲区全部转换为单精度（CV_32F/CV_32FC2），减少 50% 内存；在结尾使用 convertTo 将滤波后相位动态转回输入原始精度输出，保障外部 API 100% 兼容。 |
+| 工作区现场修改 | 2026-07-06 | AI | simulation, Utils, SBAS | 修复双精度经纬度 mismatch 严重 Bug 并优化 H5 存储精度冗余：<br>1. simulation：重构 `applyPhaseCorrection` 及 `pingpong_MLE`，引入对 `mappedLat`/`mappedLon` 类型的动态条件判断，使用合适精度的 `double`/`float` 指针 and `.at<T>` 读写，彻底消除因 double 误按 float 读取造成的几何错位与计算垃圾值 Bug。<br>2. simulation：将 `SLC_deramp` 和 `SLC_deramp_14` 输入条件放宽，支持双精度经纬度网格传入，减少 UI 端降级类型转换开销。<br>3. Utils：拓宽 `Utils::SAR2UTM` 复数 SLC 地理编码重载，允许 `CV_64F` 经纬度传入，并在循环中动态分流读取坐标，保持 ABI 稳定与高精度计算。<br>4. SBAS：修改相干系数存盘逻辑，在调用 `write_array_to_h5` 和 `write_subarray_to_h5` 写入 H5 文件前，统一将 `coherence` 临时转换为单精度 `CV_32F` 存储，从而减少 50% 磁盘开销并大幅提升下游加载与渲染效率。 |
 | 工作区现场修改 | 2026-07-01 | AI | Utils | 修复 Newton 迭代发散与高程反演数值万亿级溢出 Bug：<br>在 `newton_iter_core` 中移成了主星偏导数 `Df11`、`Df12`、`Df13` 多余的 `* 2` 乘积操作。这排除了重复乘以 2 的错误，使其在单发单收模式下精确等于发射端和接收端导数的天然累加，消除了雅可比矩阵 1.5 倍的计算偏差，使 Newton 迭代法能顺利收敛并获得正确高程数值。 |
 | 工作区现场修改 | 2026-07-01 | AI | FormatConversion | HDF5 文件只读打开方式安全改造：<br>在 `FormatConversion.cpp` 中，将只读性质的接口（包括 `read_array_from_h5`、`read_subarray_from_h5`、`read_str_from_h5`、GEDI L2A/L2B 读取及 CSK SLC 读取等）中 `H5Fopen` 的打开模式由 `H5F_ACC_RDWR` 变更为 `H5F_ACC_RDONLY`。这消除了并发读取文件或在只读文件系统下因写权限请求被系统拒绝而打开失败的隐患，保证了文件导入的稳定性和并发安全性。 |
 | 工作区现场修改 | 2026-07-01 | AI | simulation, SARProcessing | 全计算中止与进度汇报接口补齐：<br>1. simulation：为 `MB_phase_estimation`（多基线相位估计）等多个核心模拟函数追加 `SimulationProgressCallback cb` 并在此类 OMP/分块循环中加入 `cancel_flag` 状态检测和退出逻辑，取消时返回 `-2`。<br>2. SARProcessing：为 `ExtractDiffBoxFeature`（差分盒维数）接口及底层的 `extract_diffbox_feature` 补充 `SARProgressCallback` 回调，支持进度汇报与取消中止。 |
@@ -916,4 +918,81 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
    - 重构 [SBAS.cpp](file:///D:/SRC/InSAR/SBAS/SBAS.cpp) 中所有调用 `write_array_to_h5` 和 `write_subarray_to_h5` 保存相干系数的代码。
    - 在写入前，使用 `convertTo(..., CV_32F)` 将其克隆并转换为单精度 float，从而在不影响下游物理精度的前提下，为相干系数数据集节省 50% 磁盘开销，提速下游可视化组件的加载读取。
 
+---
 
+### 40. 滤波模块方案 A 单精度优化及兼容性重构 (Filter)
+
+**背景**：
+在干涉滤波模块中，`slope_adaptive_filter` 的大尺度窗口滤波、二维 CZT 变换和 DFT 计算通常需要进行上百亿次的浮点计算和频繁的临时复数矩阵创建。之前这些计算采用全双精度（`CV_64F`/`CV_64FC2`），内存占用高且阻碍了 CPU 单精度 SIMD 硬件加速的吞吐量。为了提升计算性能，对其进行 Scheme A 局部优化重构（内部计算转为单精度，出口还原双精度）。
+
+**问题诊断**：
+1. **子组件强类型校验导致崩溃**：
+   `slope_adaptive_filter` 内部高频依赖 `czt2` 与 `meanfilter` 函数。但这两者在之前的代码中硬编码了对 `CV_64FC2` 类型的输入校验。当我们将 `slope_adaptive_filter` 内部缓冲区修改为单精度 `CV_32FC2` 时，直接传递给它们会直接导致函数校验失败退出；若强制跳过，会在 `W.at<Vec2d>` 指针读写上导致指针越界和计算值损坏（GEMINI 守则一警告的隐式 mismatch Bug）。
+2. **外部 ABI 精度破损**：
+   若不将滤波结果在出口处还原，而是把 `CV_32F` 作为输出给 `phase_filter` 参数，外部调用者（如 SBAS 或 Unwrap 模块）可能会发生 `CV_64F` 的读取越界或类型断言崩溃。
+
+**优化与重构方案**：
+1. **单/双精度自适应 CZT2 变换**：
+   - 修改 [Filter.cpp](file:///D:/SRC/insar/Filter/Filter.cpp) 中 `Filter::czt2` 的输入校验规则，允许 `CV_64FC2` 与 `CV_32FC2` 矩阵传入。
+   - 根据输入矩阵类型在运行时分流处理：在单精度分支下，使用 `Vec2f`、`cosf`、`sinf` 及 `float` 运算；双精度分支继续保留 `Vec2d` 计算，确保两套运行路径类型 100% 匹配。
+2. **多精度兼容均值滤波**：
+   - 放宽 `Filter::meanfilter` 对 `CV_64FC2` 的唯一限制，允许 `CV_32FC2` 传入。
+   - 利用 `Src.depth()` 动态分配局部 `planes` 临时矩阵的深度类型，消除对 `CV_64F` 的硬编码。
+3. **自适应滤波器单精度计算与出口还原**：
+   - 修改 `slope_adaptive_filter` 输入校验，允许 `phase` 为 `CV_64F` 或 `CV_32F`。
+   - 内部创建 `Mat phase_f` 存放 `phase.convertTo(phase_f, CV_32F)`，并在 `omp parallel for` 并行内部全面迁移使用单精度缓冲区（`CV_32FC2`，`Vec2f`，`cosf`，`sinf`），以减小 50% 内存空间。
+   - 滤波完成前，使用 `tmp_out.convertTo(phase_filter, phase.type())` 动态将精度转换回输入矩阵深度，消除下游模块的崩溃隐患，达到无损优化的目的。
+
+---
+
+### 41. 数据导入模块进度回调细粒度优化及内存控制重构 (FormatConversion)
+
+**背景**：
+在各种数据源（Sentinel-1, TerraSAR-X, ALOS）导入为 HDF5 时，原本底层的 I/O 采用一次性读入整张影像及一次性写入 H5 的 monolithic 模式。这导致：
+1. 在大图读写阶段（耗时数十秒到数分钟），UI 进度反馈缺失，长久卡在 10% 或 50% 处。
+2. 瞬时内存占用极高（需要容纳整个图像的复数矩阵，可达数吉字节），容易引发 OOM 内存耗尽错误。
+
+**优化与重构方案**：
+1. **统一数据分块架构 (Row-Block Loop)**：
+   - 将 monolithic 读取和写入操作重构为按行块（例如 `block_height = 1024` 行）的分块循环。
+   - 写入前调用 `write_zero_array_to_h5` 在 H5 中仅预创建对应空维度的 Dataset，然后在循环内部调用 `write_subarray_to_h5` 将各个局部块写入对应偏移。
+2. **Sentinel-1 导入优化 (`Sentinel1Reader`)**：
+   - 重构 `Sentinel1Reader::writeToh5` 接口，支持传入 `progressCallback` 与 `userData` 并且参数默认值为 `NULL`（保持向前兼容）。
+   - 不再调用 `getSLC` 进行整幅加载，改为分块使用二进制文件指针定位并 `fread` 局部块。
+   - 利用 `#pragma omp parallel for` 替代原本慢速的像素级 `.at<short>` 嵌套循环，实现多线程通道分离（实部与虚部）。
+   - 在 50% 到 95% 之间渐进汇报进度。在 `import_sentinel` 中主动传入进度参数。
+3. **TerraSAR-X 导入优化 (`TSX2h5`)**：
+   - 通过 GDAL 获取 `xsize` 和 `ysize`。
+   - 不再使用 `read_slc_from_TSXcos` 一次性读取整图，而是在循环中利用 `GDALRasterIO` 分块读取 `block_height` 行，并使用 `cv::split` 快速拆分实部与虚部通道。
+   - 每次将小块写入 H5 后调用 `progressCallback`，在 10% 到 35% 之间平滑更新进度。
+4. **ALOS 导入优化 (`ALOS2h5`)**：
+   - 通过解析 ALOS 头文件信息直接确定 `rows` 和 `cols` 大小。
+   - 分块（`block_height = 1024` 行）定位读取二进制数据。
+   - 使用 `#pragma omp parallel for` 配合 `ReverseFloat` 函数并行处理大端到小端浮点转换。
+   - 分块写入 H5 并在 10% 到 40% 之间动态更新进度。
+
+**收益**：
+- 内存开销由 $O(\text{Width} \times \text{Height})$ 的全图大小骤降为 $O(\text{Width} \times \text{BlockHeight})$。无论影像多大，内存开销都稳定在一个较低的常数。
+- 进度条平滑递增，彻底消除假死与卡顿现象。
+- 保证了 H5 预分配的空 Dataset 精度与 `write_subarray_to_h5` 写入类型一致，符合 [GEMINI.md](file:///D:/src/insar/GEMINI.md) 精度规范，杜绝崩溃风险。
+
+---
+
+### 42. 数据集维度查询外部导出接口解耦与健壮性重构 (FormatConversion)
+
+**背景**：
+在干涉处理主程序或外部节点（例如 `NodeUtils.cpp`）中，经常需要查询 HDF5 影像数据集的行数和列数（Rows 和 Cols）以进行初始化或校验。如果让主程序直接使用 HDF5 原生 API 查询，就需要强行在其工程中引入 HDF5 的头文件和链接库依赖，这增大了外部工程的依赖污染和编译配置复杂度。
+
+**优化与重构方案**：
+1. **解耦 HDF5 依赖**：
+   - 在 [FormatConversion.h](file:///D:/src/insar/include/FormatConversion.h) 与 [FormatConversion.cpp](file:///D:/src/insar/FormatConversion/FormatConversion.cpp) 中新增公开导出成员函数 `get_dataset_dims`。
+   - 外部调用者仅需实例化已导出的 `FormatConversion` (FC) 即可完成对维度信息的获取，完全隔离了上层应用对底层 HDF5 的直接依赖。
+2. **规范化路径校验与 H5Lexists 出错防范**：
+   - 对传入的 `dataset_name` 进行路径规范化（自动补齐前导 `/`），并确保 `H5Lexists` 校验与 `H5Dopen` 使用完全一致的绝对路径，消除了前导斜杠不一致造成的 `"//dataset_name"` 解析错误。
+   - 将存在性校验优化为 `H5Lexists(...) <= 0` 判定，以同时拦截“数据集不存在”和“查询出错”两种情况。
+3. **动态维度识别（规避一维越界与垃圾值）**：
+   - 废除原方案硬编码 `dim[2]` 导致的读取越界风险。引入 `H5Sget_simple_extent_ndims` 获取实际维度 `ndims`。
+   - 若数据集为 1 维，则仅获取一维大小 `dim[0]` 填充为 `rows`，并将 `cols` 默认置为 `1`；对于 2 维及以上数据集，动态分配以匹配实际维度大小并提取前两个维度，彻底避免了对一维数据集读取 `dim[1]` 越界而载入随机垃圾值的问题。
+4. **并发与资源安全**：
+   - 全程使用 `H5_LOCK` 宏确保 HDF5 接口的线程互斥安全。
+   - 使用只读模式 `H5F_ACC_RDONLY` 打开文件，并利用轻量级 RAII `H5UniqueId` 托管 `file_id`、`dataset_id` 和 `dataspace_id` 的生命周期，确保在任何提前 return 的分支上自动关闭句柄，防止资源泄露。

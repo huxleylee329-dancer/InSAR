@@ -729,6 +729,19 @@ public:
 	@param filename     文件名
 	*/
 	int creat_new_h5(const char* filename);
+	/** @brief 获取 HDF5 数据集维度 (Rows 和 Cols)
+	* @param filename       H5 文件名
+	* @param dataset_name   数据集名
+	* @param rows           输出行数指针
+	* @param cols           输出列数指针
+	* @return 成功返回 0，否则返回 -1
+	*/
+	int get_dataset_dims(
+		const char* filename,
+		const char* dataset_name,
+		int* rows,
+		int* cols
+	);
 	/** @brief 功能：向h5文件中写入零矩阵
 	* @param filename                文件名
 	* @param dataset_name            dataset名
@@ -1873,7 +1886,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int writeToh5(
-		const char* h5File
+		const char* h5File,
+		ProgressCallback progressCallback = NULL,
+		void* userData = NULL
 	);
 
 private:

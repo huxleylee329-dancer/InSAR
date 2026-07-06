@@ -43,7 +43,7 @@ int Filter::czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0,
 		src.rows < 1 ||
 		M < 1 ||
 		N < 1 ||
-		src.type() != CV_64FC2)
+		(src.type() != CV_64FC2 && src.type() != CV_32FC2))
 	{
 		fprintf(stderr, "czt2(): input check failed!\n\n");
 		return -1;
@@ -53,36 +53,66 @@ int Filter::czt2(Mat& src, Mat& dst, int M, int N, double theta0, double phi0,
 	int L = h_dft.cols;
 	int i, j;
 
-	// x(n)加权并补零得到g(n)
-	// 优化 2：利用 W 矩阵的列相关性，将 cos 和 sin 计算提取到列循环外，减少 nc 倍的三角函数计算
-	for (i = 0; i < N; i++)
+	if (src.type() == CV_32FC2)
 	{
-		double val = theta0 * i - phi0 * 0.5 * i * i;
-		double c = cos(val);
-		double s = sin(val);
-		for (j = 0; j < nc; j++)
+		// Float precision implementation
+		for (i = 0; i < N; i++)
 		{
-			W.at<Vec2d>(i, j)[0] = c;/*实部*/
-			W.at<Vec2d>(i, j)[1] = s;/*虚部*/
+			float val = (float)(theta0 * i - phi0 * 0.5 * i * i);
+			float c = cosf(val);
+			float s = sinf(val);
+			for (j = 0; j < nc; j++)
+			{
+				W.at<Vec2f>(i, j)[0] = c;/*实部*/
+				W.at<Vec2f>(i, j)[1] = s;/*虚部*/
+			}
 		}
+		mulSpectrums(W, src, tmp, 0, false);
+		
+		g.setTo(Scalar::all(0));
+		tmp.copyTo(g(Range(0, N), Range(0, nc)));
+
+		transpose(g, g_trans);
+		dft(g_trans, g_trans, DFT_ROWS);
+		
+		mulSpectrums(g_trans, h_dft, g_trans, 0, false);
+		idft(g_trans, g_trans, DFT_ROWS);
+		
+		transpose(g_trans, y);
+
+		mulSpectrums(result_const, y(Range(0, M), Range(0, nc)), dst, 0, false);
+		dst /= (float)(L);
 	}
-	mulSpectrums(W, src, tmp, 0, false);
-	
-	g.setTo(Scalar::all(0));
-	tmp.copyTo(g(Range(0, N), Range(0, nc)));
+	else
+	{
+		// Double precision implementation
+		for (i = 0; i < N; i++)
+		{
+			double val = theta0 * i - phi0 * 0.5 * i * i;
+			double c = cos(val);
+			double s = sin(val);
+			for (j = 0; j < nc; j++)
+			{
+				W.at<Vec2d>(i, j)[0] = c;/*实部*/
+				W.at<Vec2d>(i, j)[1] = s;/*虚部*/
+			}
+		}
+		mulSpectrums(W, src, tmp, 0, false);
+		
+		g.setTo(Scalar::all(0));
+		tmp.copyTo(g(Range(0, N), Range(0, nc)));
 
-	// g(n)进行傅里叶变换得到G(k)，并与H(k)进行频谱乘法
-	transpose(g, g_trans);
-	dft(g_trans, g_trans, DFT_ROWS);
-	
-	mulSpectrums(g_trans, h_dft, g_trans, 0, false);
-	idft(g_trans, g_trans, DFT_ROWS);
-	
-	transpose(g_trans, y);
+		transpose(g, g_trans);
+		dft(g_trans, g_trans, DFT_ROWS);
+		
+		mulSpectrums(g_trans, h_dft, g_trans, 0, false);
+		idft(g_trans, g_trans, DFT_ROWS);
+		
+		transpose(g_trans, y);
 
-	// 优化 1：使用预先计算好的常量 result_const 进行频谱乘法，彻底消除了本函数内最昂贵的 result 循环与三角函数开销
-	mulSpectrums(result_const, y(Range(0, M), Range(0, nc)), dst, 0, false);
-	dst /= double(L);
+		mulSpectrums(result_const, y(Range(0, M), Range(0, nc)), dst, 0, false);
+		dst /= double(L);
+	}
 	return 0;
 }
 
@@ -92,12 +122,13 @@ int Filter::meanfilter(Mat& Src, int WndSize)
 		WndSize < 1 ||
 		Src.rows < 1 ||
 		Src.cols < 1 ||
-		Src.type() != CV_64FC2)
+		(Src.type() != CV_64FC2 && Src.type() != CV_32FC2))
 	{
 		fprintf(stderr, "meanfilter(): input check failed!\n\n");
 		return -1;
 	}
-	Mat planes[] = { Mat::zeros(Src.rows, Src.cols, CV_64F), Mat::zeros(Src.rows, Src.cols, CV_64F) };
+	int depth = Src.depth();
+	Mat planes[] = { Mat::zeros(Src.rows, Src.cols, depth), Mat::zeros(Src.rows, Src.cols, depth) };
 	split(Src, planes);
 	blur(planes[0], planes[0], Size(WndSize, WndSize));
 	blur(planes[1], planes[1], Size(WndSize, WndSize));
@@ -143,12 +174,15 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		wndsize_filter > int(phase.cols / 2) ||
 		wndsize_prefilter > int(phase.rows / 2) ||
 		wndsize_prefilter > int(phase.cols / 2) ||
-		phase.type() != CV_64F ||
+		(phase.type() != CV_64F && phase.type() != CV_32F) ||
 		phase.channels() > 1)
 	{
 		fprintf(stderr, "slope_adaptive_filter(): input check failed!\n\n");
 		return -1;
 	}
+
+	Mat phase_f;
+	phase.convertTo(phase_f, CV_32F);
 
 	// 限制 OpenCV 内部的多线程，避免与外层 OpenMP 产生嵌套并发冲突
 	int prev_threads = cv::getNumThreads();
@@ -157,24 +191,24 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	int nn, mm;
 	nn = getOptimalDFTSize(2 * wndsize_filter);
 	mm = nn;
-	double pi = PI;
+	float pi = (float)PI;
 	int Radius = (wndsize_filter - 1) / 2; /*窗半径*/
-	int nr_orig = phase.rows;/*原始尺寸rows*/
-	int nc_orig = phase.cols;/*原始尺寸cols*/
+	int nr_orig = phase_f.rows;/*原始尺寸rows*/
+	int nc_orig = phase_f.cols;/*原始尺寸cols*/
 	Mat phase_enlarged;
-	copyMakeBorder(phase, phase_enlarged, Radius, Radius, Radius, Radius, BORDER_REFLECT);
+	copyMakeBorder(phase_f, phase_enlarged, Radius, Radius, Radius, Radius, BORDER_REFLECT);
 	int nr_new = phase_enlarged.rows;
 	int nc_new = phase_enlarged.cols;
 
-	Mat phase_update(nr_new, nc_new, CV_64FC2, Scalar::all(0));/*相位矩阵转换为复数*/
+	Mat phase_update(nr_new, nc_new, CV_32FC2, Scalar::all(0));/*相位矩阵转换为复数 (Scheme A)*/
 
 	int i, j;
 	for (i = 0; i < nr_new; i++)
 	{
 		for (j = 0; j < nc_new; j++)
 		{
-			phase_update.at<Vec2d>(i, j)[0] = cos(phase_enlarged.at<double>(i, j));/*实部*/
-			phase_update.at<Vec2d>(i, j)[1] = sin(phase_enlarged.at<double>(i, j));/*虚部*/
+			phase_update.at<Vec2f>(i, j)[0] = cos(phase_enlarged.at<float>(i, j));/*实部*/
+			phase_update.at<Vec2f>(i, j)[1] = sin(phase_enlarged.at<float>(i, j));/*虚部*/
 		}
 	}
 
@@ -184,18 +218,18 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	Mat phase_update_blurred = phase_update.clone();
 	meanfilter(phase_update_blurred, wndsize_prefilter);
 
-	Mat phase_filtered = Mat::zeros(nr_new, nc_new, CV_64F);
+	Mat phase_filtered = Mat::zeros(nr_new, nc_new, CV_32F);
 
-	Mat tempi(wndsize_filter, 1, CV_64F, Scalar::all(0));/*行线性相位网格*/
-	Mat tempj(1, wndsize_filter, CV_64F, Scalar::all(0));/*列线性相位网格*/
+	Mat tempi(wndsize_filter, 1, CV_32F, Scalar::all(0));/*行线性相位网格*/
+	Mat tempj(1, wndsize_filter, CV_32F, Scalar::all(0));/*列线性相位网格*/
 
 	for (i = 0; i < wndsize_filter; i++)
 	{
-		tempi.at<double>(i, 0) = (double)i;
-		tempj.at<double>(0, i) = (double)i;
+		tempi.at<float>(i, 0) = (float)i;
+		tempj.at<float>(0, i) = (float)i;
 	}
 
-	double phi0 = 2.0 * pi / ((double)mn); /*CZT变换参数*/
+	float phi0 = (float)(2.0 * pi / ((double)mn)); /*CZT变换参数*/
 
 	// 优化 2：预计算 czt2 的 h_dft 矩阵
 	int L_val = 1;
@@ -203,18 +237,18 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		L_val *= 2;
 	} while (L_val < 3 * mm + wndsize_filter);
 
-	Mat h_1d = Mat::zeros(L_val, 1, CV_64FC2);
+	Mat h_1d = Mat::zeros(L_val, 1, CV_32FC2);
 	for (i = 0; i < 3 * mm; i++) {
-		h_1d.at<Vec2d>(i, 0)[0] = cos(phi0 * 0.5 * i * i);
-		h_1d.at<Vec2d>(i, 0)[1] = sin(phi0 * 0.5 * i * i);
+		h_1d.at<Vec2f>(i, 0)[0] = cos(phi0 * 0.5f * i * i);
+		h_1d.at<Vec2f>(i, 0)[1] = sin(phi0 * 0.5f * i * i);
 	}
 	for (i = 3 * mm; i < L_val - wndsize_filter + 1; i++) {
-		h_1d.at<Vec2d>(i, 0)[0] = 0;
-		h_1d.at<Vec2d>(i, 0)[1] = 0;
+		h_1d.at<Vec2f>(i, 0)[0] = 0;
+		h_1d.at<Vec2f>(i, 0)[1] = 0;
 	}
 	for (i = L_val - wndsize_filter + 1; i < L_val; i++) {
-		h_1d.at<Vec2d>(i, 0)[0] = cos(phi0 * 0.5 * (L_val - i) * (L_val - i));
-		h_1d.at<Vec2d>(i, 0)[1] = sin(phi0 * 0.5 * (L_val - i) * (L_val - i));
+		h_1d.at<Vec2f>(i, 0)[0] = cos(phi0 * 0.5f * (L_val - i) * (L_val - i));
+		h_1d.at<Vec2f>(i, 0)[1] = sin(phi0 * 0.5f * (L_val - i) * (L_val - i));
 	}
 	Mat h_1d_trans;
 	transpose(h_1d, h_1d_trans); // 1 x L
@@ -227,10 +261,10 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	repeat(h_1d_trans, 3 * mm, 1, h_dft_2); // 3 * mm x L
 
 	// 优化 1：预计算 czt2 的 result 常量矩阵
-	Mat result_1d = Mat::zeros(3 * mm, 1, CV_64FC2);
+	Mat result_1d = Mat::zeros(3 * mm, 1, CV_32FC2);
 	for (i = 0; i < 3 * mm; i++) {
-		result_1d.at<Vec2d>(i, 0)[0] = cos(phi0 * 0.5 * i * i);
-		result_1d.at<Vec2d>(i, 0)[1] = -sin(phi0 * 0.5 * i * i);
+		result_1d.at<Vec2f>(i, 0)[0] = cos(phi0 * 0.5f * i * i);
+		result_1d.at<Vec2f>(i, 0)[1] = -sin(phi0 * 0.5f * i * i);
 	}
 	Mat result_const_1, result_const_2;
 	repeat(result_1d, 1, wndsize_filter, result_const_1); // 3 * mm x wndsize_filter
@@ -246,42 +280,42 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 		if (!parallel_flag) continue;
 
 		// 优化 1：重用线程缓冲区，消除高频堆内存申请。
-		Mat phase_estimation(wndsize_filter, wndsize_filter, CV_64FC2);
-		Mat window_mean_dft = Mat::zeros(nn, nn, CV_64FC2);
-		Mat planes_dft[] = { Mat::zeros(nn, nn, CV_64F), Mat::zeros(nn, nn, CV_64F) };
-		Mat planes_czt[] = { Mat::zeros(3 * mm, 3 * mm, CV_64F), Mat::zeros(3 * mm, 3 * mm, CV_64F) };
-		Mat AA(wndsize_filter, wndsize_filter, CV_64F);
-		Mat phase_0_matrix(wndsize_filter, wndsize_filter, CV_64FC2);
-		Mat aa(wndsize_filter, wndsize_filter, CV_64FC2);
-		Mat phase_0(1, 1, CV_64FC2);
-		Mat one(tempi.rows, tempi.cols, CV_64F, Scalar::all(1));
-		Mat one_t(tempj.rows, tempj.cols, CV_64F, Scalar::all(1));
+		Mat phase_estimation(wndsize_filter, wndsize_filter, CV_32FC2);
+		Mat window_mean_dft = Mat::zeros(nn, nn, CV_32FC2);
+		Mat planes_dft[] = { Mat::zeros(nn, nn, CV_32F), Mat::zeros(nn, nn, CV_32F) };
+		Mat planes_czt[] = { Mat::zeros(3 * mm, 3 * mm, CV_32F), Mat::zeros(3 * mm, 3 * mm, CV_32F) };
+		Mat AA(wndsize_filter, wndsize_filter, CV_32F);
+		Mat phase_0_matrix(wndsize_filter, wndsize_filter, CV_32FC2);
+		Mat aa(wndsize_filter, wndsize_filter, CV_32FC2);
+		Mat phase_0(1, 1, CV_32FC2);
+		Mat one(tempi.rows, tempi.cols, CV_32F, Scalar::all(1));
+		Mat one_t(tempj.rows, tempj.cols, CV_32F, Scalar::all(1));
 
 		// czt2 第 1 次调用的辅助缓冲区
-		Mat g_1 = Mat::zeros(L_val, wndsize_filter, CV_64FC2);
-		Mat g_trans_1 = Mat::zeros(wndsize_filter, L_val, CV_64FC2);
-		Mat y_1 = Mat::zeros(L_val, wndsize_filter, CV_64FC2);
-		Mat W_1 = Mat::zeros(wndsize_filter, wndsize_filter, CV_64FC2);
-		Mat tmp_1 = Mat::zeros(wndsize_filter, wndsize_filter, CV_64FC2);
-		Mat phase_czt1(3 * mm, wndsize_filter, CV_64FC2);
-		Mat phase_czt1_trans = Mat::zeros(wndsize_filter, 3 * mm, CV_64FC2);
+		Mat g_1 = Mat::zeros(L_val, wndsize_filter, CV_32FC2);
+		Mat g_trans_1 = Mat::zeros(wndsize_filter, L_val, CV_32FC2);
+		Mat y_1 = Mat::zeros(L_val, wndsize_filter, CV_32FC2);
+		Mat W_1 = Mat::zeros(wndsize_filter, wndsize_filter, CV_32FC2);
+		Mat tmp_1 = Mat::zeros(wndsize_filter, wndsize_filter, CV_32FC2);
+		Mat phase_czt1(3 * mm, wndsize_filter, CV_32FC2);
+		Mat phase_czt1_trans = Mat::zeros(wndsize_filter, 3 * mm, CV_32FC2);
 
 		// czt2 第 2 次调用的辅助缓冲区
-		Mat g_2 = Mat::zeros(L_val, 3 * mm, CV_64FC2);
-		Mat g_trans_2 = Mat::zeros(3 * mm, L_val, CV_64FC2);
-		Mat y_2 = Mat::zeros(L_val, 3 * mm, CV_64FC2);
-		Mat W_2 = Mat::zeros(wndsize_filter, 3 * mm, CV_64FC2);
-		Mat tmp_2 = Mat::zeros(wndsize_filter, 3 * mm, CV_64FC2);
-		Mat phase_czt2(3 * mm, 3 * mm, CV_64FC2);
-		Mat phase_czt2_trans = Mat::zeros(3 * mm, 3 * mm, CV_64FC2);
+		Mat g_2 = Mat::zeros(L_val, 3 * mm, CV_32FC2);
+		Mat g_trans_2 = Mat::zeros(3 * mm, L_val, CV_32FC2);
+		Mat y_2 = Mat::zeros(L_val, 3 * mm, CV_32FC2);
+		Mat W_2 = Mat::zeros(wndsize_filter, 3 * mm, CV_32FC2);
+		Mat tmp_2 = Mat::zeros(wndsize_filter, 3 * mm, CV_32FC2);
+		Mat phase_czt2(3 * mm, 3 * mm, CV_32FC2);
+		Mat phase_czt2_trans = Mat::zeros(3 * mm, 3 * mm, CV_32FC2);
 
 		for (int j = Radius; j < nc_new - Radius; j++)
 		{
 			if (!parallel_flag) continue;
 			int k, kk;
 			Point peak_loc;
-			double fi, fj, fii, fjj;
-			double theta0_i, theta0_j;
+			float fi, fj, fii, fjj;
+			float theta0_i, theta0_j;
 			
 			phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)).copyTo(phase_estimation);
 			
@@ -300,13 +334,13 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 				continue;
 			}
 			minMaxLoc(planes_dft[0], NULL, NULL, NULL, &peak_loc);
-			fi = ((double)(peak_loc.y - nn / 2 - 1)) / ((double)nn);/*此处减2是为了扩大CZT变换的搜索范围*/
-			fj = ((double)(peak_loc.x - nn / 2 - 1)) / ((double)nn);
+			fi = ((float)(peak_loc.y - nn / 2 - 1)) / ((float)nn);/*此处减2是为了扩大CZT变换的搜索范围*/
+			fj = ((float)(peak_loc.x - nn / 2 - 1)) / ((float)nn);
 
-			theta0_i = 2.0 * pi * fi;
-			theta0_j = 2.0 * pi * fj;
+			theta0_i = (float)(2.0 * pi * fi);
+			theta0_j = (float)(2.0 * pi * fj);
 
-			ret = czt2(phase_estimation, phase_czt1, 3 * mm, phase_estimation.rows, theta0_i, phi0,
+			ret = czt2(phase_estimation, phase_czt1, 3 * mm, phase_estimation.rows, (double)theta0_i, (double)phi0,
 				h_dft_1, result_const_1, g_1, g_trans_1, y_1, W_1, tmp_1);
 			if (ret < 0)
 			{
@@ -316,7 +350,7 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			
 			transpose(phase_czt1, phase_czt1_trans);
 			
-			ret = czt2(phase_czt1_trans, phase_czt2, 3 * mm, phase_czt1_trans.rows, theta0_j, phi0,
+			ret = czt2(phase_czt1_trans, phase_czt2, 3 * mm, phase_czt1_trans.rows, (double)theta0_j, (double)phi0,
 				h_dft_2, result_const_2, g_2, g_trans_2, y_2, W_2, tmp_2);
 			if (ret < 0)
 			{
@@ -329,32 +363,33 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			magnitude(planes_czt[0], planes_czt[1], planes_czt[0]);
 			minMaxLoc(planes_czt[0], NULL, NULL, NULL, &peak_loc);
 
-			fii = fi + ((double)(peak_loc.y) / (double)mn);
-			fjj = fj + ((double)(peak_loc.x) / (double)mn);/*频谱细化后峰值位置*/
+			fii = fi + ((float)(peak_loc.y) / (float)mn);
+			fjj = fj + ((float)(peak_loc.x) / (float)mn);/*频谱细化后峰值位置*/
 
-			theta0_i = 2.0 * pi * fii;
-			theta0_j = 2.0 * pi * fjj;/*更新细化值*/
+			theta0_i = (float)(2.0 * pi * fii);
+			theta0_j = (float)(2.0 * pi * fjj);/*更新细化值*/
 
 			AA = ((tempi * theta0_i) * one_t) + (one * (tempj * theta0_j));
 			for (k = 0; k < wndsize_filter; k++)
 			{
 				for (kk = 0; kk < wndsize_filter; kk++)
 				{
-					aa.at<Vec2d>(k, kk)[0] = cos(AA.at<double>(k, kk));/*实部*/
-					aa.at<Vec2d>(k, kk)[1] = sin(AA.at<double>(k, kk));/*虚部*/
+					aa.at<Vec2f>(k, kk)[0] = cos(AA.at<float>(k, kk));/*实部*/
+					aa.at<Vec2f>(k, kk)[1] = sin(AA.at<float>(k, kk));/*虚部*/
 				}
 			}
 			
 			mulSpectrums(phase_update(Range(i - Radius, i + Radius + 1), Range(j - Radius, j + Radius + 1)), aa, phase_0_matrix, 0, true);
 
-			phase_0.at<Vec2d>(0, 0)[0] = mean(phase_0_matrix)[0];
-			phase_0.at<Vec2d>(0, 0)[1] = mean(phase_0_matrix)[1];
+			Scalar mean_val = mean(phase_0_matrix);
+			phase_0.at<Vec2f>(0, 0)[0] = (float)mean_val[0];
+			phase_0.at<Vec2f>(0, 0)[1] = (float)mean_val[1];
 
 			mulSpectrums(phase_0, aa(Range((wndsize_filter - 3) / 2, (wndsize_filter - 1) / 2),
 				Range((wndsize_filter - 3) / 2, (wndsize_filter - 1) / 2)), phase_0, 0, false);
 
 			/*转换为相位*/
-			phase_filtered.at<double>(i, j) = atan2(phase_0.at<Vec2d>(0, 0)[1], phase_0.at<Vec2d>(0, 0)[0]);
+			phase_filtered.at<float>(i, j) = atan2(phase_0.at<Vec2f>(0, 0)[1], phase_0.at<Vec2f>(0, 0)[0]);
 		}
 
 		int current_completed = ++completed_rows;
@@ -379,7 +414,8 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 	{
 		return -2; // 提前返回 -2 表示用户中止
 	}
-	phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius)).copyTo(phase_filter);
+	Mat tmp_out = phase_filtered(Range(Radius, nr_new - Radius), Range(Radius, nc_new - Radius));
+	tmp_out.convertTo(phase_filter, phase.type());
 	return 0;
 }
 

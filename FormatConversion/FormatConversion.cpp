@@ -316,6 +316,106 @@ namespace
 		if (H5Tequal(h5_type, H5T_NATIVE_UINT8) > 0)  return CV_8U;
 		return -1;
 	}
+
+	inline int write_array_to_h5_by_id(hid_t file_id, const char* dataset_name, const cv::Mat& input_array)
+	{
+		if (file_id < 0 ||
+			dataset_name == nullptr ||
+			input_array.empty() ||
+			input_array.channels() != 1 ||
+			(input_array.type() != CV_64F && input_array.type() != CV_16S && input_array.type() != CV_32S && input_array.type() != CV_32F && input_array.type() != CV_8U)
+			)
+		{
+			fprintf(stderr, "write_array_to_h5_by_id(): input check failed!\n");
+			return -1;
+		}
+		std::string s = "/";
+		s.append(dataset_name);
+		if ((H5Lexists(file_id, dataset_name, H5P_DEFAULT)) == 0)
+		{
+			hsize_t dims[2];
+			dims[0] = input_array.rows;
+			dims[1] = input_array.cols;
+			H5UniqueId dataspace_id = H5Screate_simple(2, dims, NULL);
+			hid_t h5_type = cvTypeToH5TypeForWrite(input_array.type());
+			H5UniqueId dataset_id = H5Dcreate(file_id, s.c_str(), h5_type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+			
+			if (dataset_id < 0)
+			{
+				fprintf(stderr, "write_array_to_h5_by_id(): failed to create dataset %s !\n", dataset_name);
+				return -1;
+			}
+			herr_t status;
+			status = H5Dwrite(dataset_id, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
+			if (status < 0)
+			{
+				fprintf(stderr, "write_array_to_h5_by_id(): failed to write to dataset %s !\n", dataset_name);
+				return -1;
+			}
+		}
+		else
+		{
+			fprintf(stderr, "write_array_to_h5_by_id(): dataset %s already exists!\n", dataset_name);
+			return -1;
+		}
+		return 0;
+	}
+
+	inline int write_double_to_h5_by_id(hid_t file_id, const char* datasetName, double data)
+	{
+		cv::Mat tmp(1, 1, CV_64F);
+		tmp.at<double>(0, 0) = data;
+		return write_array_to_h5_by_id(file_id, datasetName, tmp);
+	}
+
+	inline int write_int_to_h5_by_id(hid_t file_id, const char* datasetName, int data)
+	{
+		cv::Mat tmp(1, 1, CV_32S);
+		tmp.at<int>(0, 0) = data;
+		return write_array_to_h5_by_id(file_id, datasetName, tmp);
+	}
+
+	inline int write_str_to_h5_by_id(hid_t file_id, const char* dataset_name, const char* Str)
+	{
+		if (file_id < 0 ||
+			dataset_name == nullptr ||
+			Str == nullptr
+			)
+		{
+			fprintf(stderr, "write_str_to_h5_by_id(): input check failed!\n");
+			return -1;
+		}
+		hsize_t dims[1] = { 1 };
+		std::string s("/");
+		std::string str(Str);
+		s.append(dataset_name);
+		H5UniqueId filetype = H5Tcopy(H5T_FORTRAN_S1);
+		H5Tset_size(filetype, str.length());
+		H5UniqueId memtype = H5Tcopy(H5T_C_S1);
+		H5Tset_size(memtype, str.length());
+		H5UniqueId space_id = H5Screate_simple(1, dims, NULL);
+		if ((H5Lexists(file_id, dataset_name, H5P_DEFAULT)) == 0)
+		{
+			H5UniqueId dataset_id = H5Dcreate(file_id, s.c_str(), filetype, space_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+			if (dataset_id < 0)
+			{
+				fprintf(stderr, "write_str_to_h5_by_id(): failed to create dataset %s !\n", dataset_name);
+				return -1;
+			}
+			herr_t status = H5Dwrite(dataset_id, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, str.c_str());
+			if (status < 0)
+			{
+				fprintf(stderr, "write_str_to_h5_by_id(): failed to write to dataset %s !\n", dataset_name);
+				return -1;
+			}
+		}
+		else
+		{
+			fprintf(stderr, "write_str_to_h5_by_id(): dataset %s already exists!\n", dataset_name);
+			return -1;
+		}
+		return 0;
+	}
 }
 
 
@@ -431,6 +531,78 @@ int FormatConversion::creat_new_h5(const char* filename)
 		fprintf(stderr, "creat_new_h5(): failed to create %s!\n", filename);
 		return -1;
 	}
+	return 0;
+}
+
+int FormatConversion::get_dataset_dims(const char* filename, const char* dataset_name, int* rows, int* cols)
+{
+	H5_LOCK; // 确保 H5 操作的线程互斥安全
+	if (filename == nullptr || dataset_name == nullptr || rows == nullptr || cols == nullptr)
+	{
+		return -1;
+	}
+
+	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
+	if (file_id < 0)
+	{
+		return -1;
+	}
+
+	// 1. 统一规范路径为绝对路径以防传入 "/dataset_name" 或 "dataset_name"
+	std::string s;
+	if (dataset_name[0] != '/')
+	{
+		s = "/";
+	}
+	s.append(dataset_name);
+
+	// 2. 检查 Link 是否存在 (H5Lexists <= 0 拦截了不存在与出错分支，使用与打开相同的路径 s)
+	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
+	{
+		return -1;
+	}
+
+	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
+	if (dataset_id < 0)
+	{
+		return -1;
+	}
+
+	H5UniqueId dataspace_id = H5Dget_space(dataset_id);
+	if (dataspace_id < 0)
+	{
+		return -1;
+	}
+
+	// 3. 动态获取实际维度数量，防止一维或高维数据集读取越界
+	int ndims = H5Sget_simple_extent_ndims(dataspace_id);
+	if (ndims < 0)
+	{
+		return -1;
+	}
+
+	if (ndims == 1)
+	{
+		hsize_t dim[1];
+		H5Sget_simple_extent_dims(dataspace_id, dim, nullptr);
+		*rows = static_cast<int>(dim[0]);
+		*cols = 1; // 一维数据集默认列数为 1
+	}
+	else if (ndims >= 2)
+	{
+		// 动态分配以匹配实际维度，防止硬编码 2 维溢出
+		std::unique_ptr<hsize_t[]> dims(new hsize_t[ndims]);
+		H5Sget_simple_extent_dims(dataspace_id, dims.get(), nullptr);
+		*rows = static_cast<int>(dims[0]);
+		*cols = static_cast<int>(dims[1]);
+	}
+	else
+	{
+		// 标量 (ndims == 0) 或其他异常维度
+		*rows = 0;
+		*cols = 0;
+	}
+
 	return 0;
 }
 
@@ -1066,19 +1238,137 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	* 写入slc数据
 	*/
 
-	ComplexMat slc;
 	int rows, cols;
 	if (!report_progress(progressCallback, userData, 10, "读取TerraSAR-X SLC数据")) return -2;
-	ret = read_slc_from_TSXcos(cosar_filename, slc);
-	if (return_check(ret, "read_slc_from_TSXcos()", error_head)) return -1;
-	rows = slc.GetRows(); cols = slc.GetCols();
-	ret = write_array_to_h5(dst_h5_filename, "s_re", slc.re);
-	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5_filename, "s_im", slc.im);
-	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	slc.re.release();
-	slc.im.release();
-	if (!report_progress(progressCallback, userData, 35, "写入SLC数据完成")) return -2;
+
+	InitializeGDALOnce();   /* 注册驱动 */
+
+	GDALDatasetH hDataset = GDALOpen(cosar_filename, GA_ReadOnly);
+	if (hDataset == NULL)
+	{
+		fprintf(stderr, "TSX2h5(): failed to open %s!\n", cosar_filename);
+		return -1;
+	}
+
+	int nBand = GDALGetRasterCount(hDataset);
+	if (nBand != 1)
+	{
+		fprintf(stderr, "TSX2h5(): number of Bands != 1\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	/* 获取波段 1 */
+	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
+	if (hBand == NULL)
+	{
+		fprintf(stderr, "TSX2h5(): failed to get band 1\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	int xsize = GDALGetRasterBandXSize(hBand);
+	int ysize = GDALGetRasterBandYSize(hBand);
+
+	if (xsize <= 0 || ysize <= 0)
+	{
+		fprintf(stderr, "TSX2h5(): band rows and cols error!\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	GDALDataType dataType = GDALGetRasterDataType(hBand);
+	if (dataType != GDT_CInt16)
+	{
+		fprintf(stderr, "TSX2h5(): unexpected data type\n");
+		GDALClose(hDataset);
+		return -1;
+	}
+
+	rows = ysize; cols = xsize;
+
+	ret = write_zero_array_to_h5(dst_h5_filename, "s_re", CV_16S, ysize, xsize);
+	if (return_check(ret, "write_zero_array_to_h5(s_re)", error_head)) { GDALClose(hDataset); return -1; }
+	ret = write_zero_array_to_h5(dst_h5_filename, "s_im", CV_16S, ysize, xsize);
+	if (return_check(ret, "write_zero_array_to_h5(s_im)", error_head)) { GDALClose(hDataset); return -1; }
+
+	int block_height = 1024;
+	int num_blocks = (ysize + block_height - 1) / block_height;
+
+	for (int i = 0; i < num_blocks; ++i) {
+		int current_offset = i * block_height;
+		int current_rows = std::min(block_height, ysize - current_offset);
+
+		cv::Mat block_temp;
+		cv::Mat block_re;
+		cv::Mat block_im;
+		try {
+			block_temp.create(current_rows, xsize, CV_16SC2);
+			block_re.create(current_rows, xsize, CV_16S);
+			block_im.create(current_rows, xsize, CV_16S);
+		}
+		catch (const cv::Exception& e) {
+			fprintf(stderr, "TSX2h5(): out of memory in block allocation! (OpenCV exception: %s)\n", e.what());
+			GDALClose(hDataset);
+			return -1;
+		}
+		catch (const std::bad_alloc&) {
+			fprintf(stderr, "TSX2h5(): out of memory in block allocation!\n");
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		/* 读取这一块数据 */
+		if (GDALRasterIO(
+			hBand,
+			GF_Read,
+			0, current_offset,
+			xsize, current_rows,
+			block_temp.data,
+			xsize, current_rows,
+			GDT_CInt16,
+			static_cast<int>(block_temp.elemSize()),
+			static_cast<int>(block_temp.step[0])) != CE_None)
+		{
+			fprintf(stderr, "TSX2h5(): RasterIO failed at offset %d\n", current_offset);
+			GDALClose(hDataset);
+			return -1;
+		}
+
+		/* 分离通道 */
+		cv::Mat channels[2] = { block_re, block_im };
+		cv::split(block_temp, channels);
+
+		/* 写入这一块数据到 HDF5 */
+		ret = write_subarray_to_h5(dst_h5_filename, "s_re", block_re, current_offset, 0, current_rows, xsize);
+		if (return_check(ret, "write_subarray_to_h5(s_re)", error_head)) { GDALClose(hDataset); return -1; }
+		ret = write_subarray_to_h5(dst_h5_filename, "s_im", block_im, current_offset, 0, current_rows, xsize);
+		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { GDALClose(hDataset); return -1; }
+
+		// 释放当前块内存
+		block_temp.release();
+		block_re.release();
+		block_im.release();
+
+		// 渐进更新进度 (10% -> 75% 之间)
+		int progress = 10 + (i + 1) * 65 / num_blocks;
+		if (!report_progress(progressCallback, userData, progress, "正在导入 TerraSAR-X SLC 数据分块...")) {
+			GDALClose(hDataset);
+			return -2; // 支持用户中止
+		}
+	}
+	GDALClose(hDataset);
+	if (!report_progress(progressCallback, userData, 75, "写入SLC数据完成")) return -2;
+
+	/*
+	* 打开 H5 文件进行元数据统一写入
+	*/
+	H5UniqueId file_id = H5Fopen(dst_h5_filename, H5F_ACC_RDWR, H5P_DEFAULT);
+	if (file_id < 0)
+	{
+		fprintf(stderr, "TSX2h5(): failed to open %s for metadata writing!\n", dst_h5_filename);
+		return -1;
+	}
 
 	/*
 	* 写入控制点数据
@@ -1086,14 +1376,14 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	Mat gcps;
 	XMLFile xmldoc;
-	if (!report_progress(progressCallback, userData, 40, "读取TerraSAR-X控制点数据")) return -2;
+	if (!report_progress(progressCallback, userData, 77, "读取TerraSAR-X控制点数据")) return -2;
 	ret = xmldoc.XMLFile_load(GEOREF_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	ret = xmldoc.get_gcps_from_TSX(gcps);
 	if (return_check(ret, "get_gcps_from_TSX", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
+	ret = write_array_to_h5_by_id(file_id, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 50, "写入控制点数据完成")) return -2;
+	if (!report_progress(progressCallback, userData, 80, "写入控制点数据完成")) return -2;
 
 	/*
 	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
@@ -1118,7 +1408,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	row = (row - double(rows) * 0.5) / (double(rows) + 1e-10);
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
-	if (!report_progress(progressCallback, userData, 55, "拟合TerraSAR-X坐标转换系数")) return -2;
+	if (!report_progress(progressCallback, userData, 82, "拟合TerraSAR-X坐标转换系数")) return -2;
 	// 生成5阶范德蒙矩阵
 	Mat A, temp, coefficient;
 	double rms;
@@ -1136,7 +1426,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	temp.at<double>(0, 31) = rms;
 	cv::transpose(coefficient, coefficient);
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-	ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
+	ret = write_array_to_h5_by_id(file_id, "lon_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	// 拟合纬度
@@ -1151,7 +1441,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	temp.at<double>(0, 31) = rms;
 	cv::transpose(coefficient, coefficient);
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-	ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
+	ret = write_array_to_h5_by_id(file_id, "lat_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	//拟合下视角
@@ -1191,7 +1481,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		temp.at<double>(0, 10) = rms;
 		cv::transpose(coefficient, coefficient);
 		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(4, 10)));
-		ret = write_array_to_h5(dst_h5_filename, "inc_coefficient", temp);
+		ret = write_array_to_h5_by_id(file_id, "inc_coefficient", temp);
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
@@ -1282,7 +1572,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		temp.at<double>(0, 31) = rms;
 		cv::transpose(coefficient, coefficient);
 		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "row_coefficient", temp);
+		ret = write_array_to_h5_by_id(file_id, "row_coefficient", temp);
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
@@ -1373,11 +1663,11 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		temp.at<double>(0, 31) = rms;
 		cv::transpose(coefficient, coefficient);
 		coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
-		ret = write_array_to_h5(dst_h5_filename, "col_coefficient", temp);
+		ret = write_array_to_h5_by_id(file_id, "col_coefficient", temp);
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	if (!report_progress(progressCallback, userData, 80, "坐标转换系数写入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 90, "坐标转换系数写入完成")) return -2;
 	/*
 	* 写入轨道数据
 	*/
@@ -1387,7 +1677,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	ret = xmldoc.get_stateVec_from_TSX(stateVec);
 	if (return_check(ret, "get_stateVec_from_TSX()", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5_filename, "state_vec", stateVec);
+	ret = write_array_to_h5_by_id(file_id, "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
@@ -1397,10 +1687,10 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	Mat Dc;
 	ret = xmldoc.get_dopplerCentroid_from_TSX(Dc);
 	if (return_check(ret, "get_dopplerCentroid_from_TSX()", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
+	ret = write_array_to_h5_by_id(file_id, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	if (!report_progress(progressCallback, userData, 90, "写入TerraSAR-X轨道和多普勒参数完成")) return -2;
+	if (!report_progress(progressCallback, userData, 95, "写入TerraSAR-X轨道和多普勒参数完成")) return -2;
 	/*
 	* 写入其他辅助参数
 	*/
@@ -1408,39 +1698,39 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 	
 	//数据类型
-	ret = write_str_to_h5(dst_h5_filename, "file_type", "SLC");
+	ret = write_str_to_h5_by_id(file_id, "file_type", "SLC");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//卫星名称
 	ret = xmldoc.get_str_para("mission", sensor);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "sensor", sensor.c_str());
+	ret = write_str_to_h5_by_id(file_id, "sensor", sensor.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//极化
 	ret = xmldoc.get_str_para("polLayer", polarization);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "polarization", polarization.c_str());
+	ret = write_str_to_h5_by_id(file_id, "polarization", polarization.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//工作模式
 	ret = xmldoc.get_str_para("imagingMode", imaging_mode);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "imaging_mode", imaging_mode.c_str());
+	ret = write_str_to_h5_by_id(file_id, "imaging_mode", imaging_mode.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//视向
 	ret = xmldoc.get_str_para("lookDirection", lookside);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "lookside", lookside.c_str());
+	ret = write_str_to_h5_by_id(file_id, "lookside", lookside.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//轨道方向
 	ret = xmldoc.get_str_para("orbitDirection", orbit_dir);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "orbit_dir", orbit_dir.c_str());
+	ret = write_str_to_h5_by_id(file_id, "orbit_dir", orbit_dir.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 	//处理等级
-	ret = write_str_to_h5(dst_h5_filename, "process_state", "InSAR_0");
+	ret = write_str_to_h5_by_id(file_id, "process_state", "InSAR_0");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//处理描述
-	ret = write_str_to_h5(dst_h5_filename, "comment", "import from TerraSAR-X Single Look Complex, unprocessed.");
+	ret = write_str_to_h5_by_id(file_id, "comment", "import from TerraSAR-X Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 	double carrier_frequency, incidence_center, slant_range_first_pixel,
@@ -1453,7 +1743,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 	//轨道高度,TerraSAR没提供，设置为-1
 	tmp.at<double>(0, 0) = -1;
-	ret = write_array_to_h5(dst_h5_filename, "orbit_altitude", tmp);
+	ret = write_array_to_h5_by_id(file_id, "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	
 	TiXmlElement* pnode, * pchild;
@@ -1463,14 +1753,14 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "acquisition_start_time", pchild->GetText());
+	ret = write_str_to_h5_by_id(file_id, "acquisition_start_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//拍摄结束时间
 	ret = xmldoc.find_node("stop", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
-	ret = write_str_to_h5(dst_h5_filename, "acquisition_stop_time", pchild->GetText());
+	ret = write_str_to_h5_by_id(file_id, "acquisition_stop_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//载频
 	ret = xmldoc.find_node("instrument", pnode);
@@ -1484,49 +1774,49 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		return -1;
 	}
 	tmp.at<double>(0, 0) = carrier_frequency;
-	ret = write_array_to_h5(dst_h5_filename, "carrier_frequency", tmp);
+	ret = write_array_to_h5_by_id(file_id, "carrier_frequency", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//中心下视角
 	ret = xmldoc.get_double_para("incidenceAngle", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
-	ret = write_array_to_h5(dst_h5_filename, "incidence_center", tmp);
+	ret = write_array_to_h5_by_id(file_id, "incidence_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//最近斜距
 	ret = xmldoc.get_double_para("firstPixel", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_first_pixel * 299792458.0 / 2;
-	ret = write_array_to_h5(dst_h5_filename, "slant_range_first_pixel", tmp);
+	ret = write_array_to_h5_by_id(file_id, "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//最远斜距
 	ret = xmldoc.get_double_para("lastPixel", &slant_range_last_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_last_pixel * 299792458.0 / 2;
-	ret = write_array_to_h5(dst_h5_filename, "slant_range_last_pixel", tmp);
+	ret = write_array_to_h5_by_id(file_id, "slant_range_last_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//headingAngle
 	ret = xmldoc.get_double_para("headingAngle", &heading);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = heading;
-	ret = write_array_to_h5(dst_h5_filename, "heading", tmp);
+	ret = write_array_to_h5_by_id(file_id, "heading", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//脉冲重复频率
 	ret = xmldoc.get_double_para("commonPRF", &prf);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = prf;
-	ret = write_array_to_h5(dst_h5_filename, "prf", tmp);
+	ret = write_array_to_h5_by_id(file_id, "prf", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//方位向分辨率
 	ret = xmldoc.get_double_para("azimuthResolution", &azimuth_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = azimuth_resolution;
-	ret = write_array_to_h5(dst_h5_filename, "azimuth_resolution", tmp);
+	ret = write_array_to_h5_by_id(file_id, "azimuth_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//距离向分辨率
 	ret = xmldoc.get_double_para("slantRangeResolution", &range_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = range_resolution;
-	ret = write_array_to_h5(dst_h5_filename, "range_resolution", tmp);
+	ret = write_array_to_h5_by_id(file_id, "range_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//方位向采样间隔
 	ret = xmldoc.find_node("productSpecific", pnode);
@@ -1540,7 +1830,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		return -1;
 	}
 	tmp.at<double>(0, 0) = azimuth_spacing;
-	ret = write_array_to_h5(dst_h5_filename, "azimuth_spacing", tmp);
+	ret = write_array_to_h5_by_id(file_id, "azimuth_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//距离向采样间隔
 	ret = xmldoc._find_node(pnode, "commonRSF", pchild);
@@ -1553,7 +1843,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		return -1;
 	}
 	tmp.at<double>(0, 0) = range_spacing;
-	ret = write_array_to_h5(dst_h5_filename, "range_spacing", tmp);
+	ret = write_array_to_h5_by_id(file_id, "range_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 
@@ -1563,13 +1853,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = xmldoc.get_int_para("numberOfRows", &azimuth_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = azimuth_len;
-	ret = write_array_to_h5(dst_h5_filename, "azimuth_len", tmp_int);
+	ret = write_array_to_h5_by_id(file_id, "azimuth_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//距离向像素点数
 	ret = xmldoc.get_int_para("numberOfColumns", &range_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = range_len;
-	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
+	ret = write_array_to_h5_by_id(file_id, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	if (!report_progress(progressCallback, userData, 100, "TerraSAR-X数据导入完成")) return -2;
 	return 0;
@@ -2608,7 +2898,7 @@ int FormatConversion::import_sentinel(
 	}
 	if (!report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件")) return -2;
 	Sentinel1Reader reader(xml_filename.c_str(), tiff_filename.c_str(), PODFile);
-	ret = reader.writeToh5(dest_h5_file);
+	ret = reader.writeToh5(dest_h5_file, progressCallback, userData);
 	if (return_check(ret, "writeToh5()", error_head)) return -1;
 	if (!report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成")) return -2;
 	return 0;
@@ -3394,17 +3684,119 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	//////////////读取slc数据并写入到目标文件中/////////////
 
-	ComplexMat slc;
+	int rows = 0, cols = 0;
 	if (!report_progress(progressCallback, userData, 10, "读取ALOS SLC数据")) return -2;
-	ret = read_slc_from_ALOS(IMG_file, slc);
-	if (return_check(ret, "read_slc_from_ALOS()", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5, "s_re", slc.re);
-	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	ret = write_array_to_h5(dst_h5, "s_im", slc.im);
-	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	int rows = slc.GetRows(); int cols = slc.GetCols();
-	slc.re.release();
-	slc.im.release();
+
+	FILE* fp_img = NULL;
+	fopen_s(&fp_img, IMG_file, "rb");
+	if (!fp_img)
+	{
+		fprintf(stderr, "ALOS2h5(): failed to open %s!\n", IMG_file);
+		return -1;
+	}
+
+	char buf[2048];
+	memset(buf, 0, 2048);
+	int sarfd_record_length = 0, record_length = 0, sardata_offset = 0;
+
+	fseek(fp_img, 9 - 1, SEEK_SET);
+	if (fread(&sarfd_record_length, 4, 1, fp_img) != 1)
+	{
+		fprintf(stderr, "ALOS2h5(): %s: unknown format!\n", IMG_file);
+		fclose(fp_img);
+		return -1;
+	}
+	sarfd_record_length = Big2Little32(sarfd_record_length);
+	if (sarfd_record_length != 720)
+	{
+		fprintf(stderr, "ALOS2h5(): %s: unknown format!\n", IMG_file);
+		fclose(fp_img);
+		return -1;
+	}
+
+	char* ptr = NULL;
+	fseek(fp_img, 237 - 1, SEEK_SET);
+	fread(buf, 1, 8, fp_img);
+	rows = strtol(buf, &ptr, 0);
+
+	fseek(fp_img, sarfd_record_length + 9 - 1, SEEK_SET);
+	fread(&record_length, 4, 1, fp_img);
+	record_length = Big2Little32(record_length);
+
+	fseek(fp_img, sarfd_record_length + 25 - 1, SEEK_SET);
+	fread(&cols, 4, 1, fp_img);
+	cols = Big2Little32(cols);
+
+	memset(buf, 0, 2048);
+	fseek(fp_img, 277 - 1, SEEK_SET);
+	fread(buf, 1, 4, fp_img);
+	sardata_offset = strtol(buf, &ptr, 0);
+
+	ret = write_zero_array_to_h5(dst_h5, "s_re", CV_32F, rows, cols);
+	if (return_check(ret, "write_zero_array_to_h5(s_re)", error_head)) { fclose(fp_img); return -1; }
+	ret = write_zero_array_to_h5(dst_h5, "s_im", CV_32F, rows, cols);
+	if (return_check(ret, "write_zero_array_to_h5(s_im)", error_head)) { fclose(fp_img); return -1; }
+
+	fseek(fp_img, sarfd_record_length + sardata_offset, SEEK_SET);
+
+	int block_height = 1024;
+	int num_blocks = (rows + block_height - 1) / block_height;
+	size_t block_bytes_limit = (size_t)block_height * record_length;
+	unsigned char* block_buf = (unsigned char*)malloc(block_bytes_limit);
+	if (!block_buf)
+	{
+		fprintf(stderr, "ALOS2h5(): out of memory for block buffer!\n");
+		fclose(fp_img);
+		return -1;
+	}
+
+	for (int i = 0; i < num_blocks; ++i) {
+		int current_offset = i * block_height;
+		int current_rows = std::min(block_height, rows - current_offset);
+
+		size_t read_bytes = fread(block_buf, 1, (size_t)current_rows * record_length, fp_img);
+		if (read_bytes != (size_t)current_rows * record_length) {
+			fprintf(stderr, "ALOS2h5(): warning: fread bytes mismatch!\n");
+		}
+
+		cv::Mat block_re;
+		cv::Mat block_im;
+		try {
+			block_re.create(current_rows, cols, CV_32F);
+			block_im.create(current_rows, cols, CV_32F);
+		}
+		catch (const cv::Exception& e) {
+			fprintf(stderr, "ALOS2h5(): out of memory for sub-matrices! (OpenCV exception: %s)\n", e.what());
+			free(block_buf);
+			fclose(fp_img);
+			return -1;
+		}
+
+		#pragma omp parallel for schedule(guided)
+		for (int r = 0; r < current_rows; ++r) {
+			float* ptr_re = block_re.ptr<float>(r);
+			float* ptr_im = block_im.ptr<float>(r);
+			const float* p_src = (const float*)&block_buf[r * record_length];
+			for (int c = 0; c < cols; ++c) {
+				ptr_re[c] = ReverseFloat(p_src[2 * c]);
+				ptr_im[c] = ReverseFloat(p_src[2 * c + 1]);
+			}
+		}
+
+		ret = write_subarray_to_h5(dst_h5, "s_re", block_re, current_offset, 0, current_rows, cols);
+		if (return_check(ret, "write_subarray_to_h5(s_re)", error_head)) { free(block_buf); fclose(fp_img); return -1; }
+		ret = write_subarray_to_h5(dst_h5, "s_im", block_im, current_offset, 0, current_rows, cols);
+		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { free(block_buf); fclose(fp_img); return -1; }
+
+		int progress = 10 + (i + 1) * 30 / num_blocks; // 10% -> 40% (since next step is 45%)
+		if (!report_progress(progressCallback, userData, progress, "正在写入ALOS复图像分块数据...")) {
+			free(block_buf);
+			fclose(fp_img);
+			return -2;
+		}
+	}
+	free(block_buf);
+	fclose(fp_img);
 
 	//////////////读取并写入轨道数据//////////////////////
 
@@ -3443,7 +3835,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 	///////////读取并写入多普勒中心频率（ALOS只给了多普勒中心频率沿距离向拟合系数）/////////
 
-	char* ptr;
+	// Reuse previously declared ptr variable; removed redeclaration to avoid conflict
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 	char str[2048]; memset(str, 0, 2048);
 	fseek(fp, 720 + 1479 - 1, SEEK_SET);
@@ -9539,7 +9931,7 @@ int Sentinel1Reader::getSLC(ComplexMat& slc)
 	return 0;
 }
 
-int Sentinel1Reader::writeToh5(const char* h5File)
+int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCallback, void* userData)
 {
 	H5_LOCK;
 	int ret;
@@ -9607,11 +9999,90 @@ int Sentinel1Reader::writeToh5(const char* h5File)
 		conversion.write_array_to_h5(h5File, "fine_state_vec", this->preciseOrbitList);
 
 	//写入图像数据
-	ComplexMat slc;
-	ret = getSLC(slc);
-	if (return_check(ret, "getSLC()", error_head)) return -1;
-	ret = conversion.write_slc_to_h5(h5File, slc);
-	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
+	if (this->tiffFile.empty())
+	{
+		fprintf(stderr, "Sentinel1Reader::writeToh5(): tiffFile path is empty!\n");
+		return -1;
+	}
+	FILE* fp_tiff = fopen(this->tiffFile.c_str(), "rb");
+	if (!fp_tiff) {
+		fprintf(stderr, "Sentinel1Reader::writeToh5(): can't open %s\n", tiffFile.c_str());
+		return -1;
+	}
+	int byteOffset;
+	ret = xmldoc.get_int_para("byteOffset", &byteOffset);
+	if (return_check(ret, "get_int_para()", error_head)) {  
+		fclose(fp_tiff);
+		return -1;
+	}
+
+	ret = conversion.write_zero_array_to_h5(h5File, "s_re", CV_16S, this->numberOfLines, this->numberOfSamples);
+	if (return_check(ret, "write_zero_array_to_h5(s_re)", error_head)) { fclose(fp_tiff); return -1; }
+	ret = conversion.write_zero_array_to_h5(h5File, "s_im", CV_16S, this->numberOfLines, this->numberOfSamples);
+	if (return_check(ret, "write_zero_array_to_h5(s_im)", error_head)) { fclose(fp_tiff); return -1; }
+
+	fseek(fp_tiff, byteOffset, SEEK_SET);
+
+	int block_height = 1024;
+	int num_blocks = (this->numberOfLines + block_height - 1) / block_height;
+	size_t block_samples_limit = (size_t)block_height * this->numberOfSamples * 2;
+	short* block_buf = (short*)malloc(block_samples_limit * sizeof(short));
+	if (!block_buf) {
+		fprintf(stderr, "Sentinel1Reader::writeToh5(): out of memory for block buffer!\n");
+		fclose(fp_tiff);
+		return -1;
+	}
+
+	for (int i = 0; i < num_blocks; ++i) {
+		int current_offset = i * block_height;
+		int current_rows = std::min(block_height, this->numberOfLines - current_offset);
+
+		size_t read_count = (size_t)current_rows * this->numberOfSamples * 2;
+		size_t read_bytes = fread(block_buf, sizeof(short), read_count, fp_tiff);
+		if (read_bytes != read_count) {
+			fprintf(stderr, "Sentinel1Reader::writeToh5(): warning: fread bytes mismatch!\n");
+		}
+
+		cv::Mat block_re;
+		cv::Mat block_im;
+		try {
+			block_re.create(current_rows, this->numberOfSamples, CV_16S);
+			block_im.create(current_rows, this->numberOfSamples, CV_16S);
+		}
+		catch (const cv::Exception& e) {
+			fprintf(stderr, "Sentinel1Reader::writeToh5(): out of memory for block matrices! (OpenCV exception: %s)\n", e.what());
+			free(block_buf);
+			fclose(fp_tiff);
+			return -1;
+		}
+
+		#pragma omp parallel for schedule(guided)
+		for (int r = 0; r < current_rows; ++r) {
+			short* ptr_re = block_re.ptr<short>(r);
+			short* ptr_im = block_im.ptr<short>(r);
+			const short* p_src = &block_buf[r * this->numberOfSamples * 2];
+			for (int c = 0; c < this->numberOfSamples; ++c) {
+				ptr_re[c] = p_src[2 * c];
+				ptr_im[c] = p_src[2 * c + 1];
+			}
+		}
+
+		ret = conversion.write_subarray_to_h5(h5File, "s_re", block_re, current_offset, 0, current_rows, this->numberOfSamples);
+		if (return_check(ret, "write_subarray_to_h5(s_re)", error_head)) { free(block_buf); fclose(fp_tiff); return -1; }
+		ret = conversion.write_subarray_to_h5(h5File, "s_im", block_im, current_offset, 0, current_rows, this->numberOfSamples);
+		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { free(block_buf); fclose(fp_tiff); return -1; }
+
+		// 进度更新 (50% -> 95% 之间)
+		int progress = 50 + (i + 1) * 45 / num_blocks;
+		if (!report_progress(progressCallback, userData, progress, "正在写入Sentinel-1 H5复图像分块数据...")) {
+			free(block_buf);
+			fclose(fp_tiff);
+			return -2; // 被用户中止
+		}
+	}
+
+	free(block_buf);
+	fclose(fp_tiff);
 	return 0;
 }
 
