@@ -155,6 +155,18 @@ bool computeTroposphericCorrection(
         return false;
     }
 
+    // 动态类型转换以确保类型安全，规避指针 Mismatch Bug
+    cv::Mat phase_32f = phase;
+    if (phase_32f.type() != CV_32F) phase_32f.convertTo(phase_32f, CV_32F);
+
+    cv::Mat lat_32f = latMat;
+    cv::Mat lon_32f = lonMat;
+    if (lat_32f.type() != CV_32F) lat_32f.convertTo(lat_32f, CV_32F);
+    if (lon_32f.type() != CV_32F) lon_32f.convertTo(lon_32f, CV_32F);
+
+    cv::Mat dem_32f = demMat;
+    if (hasDem && !demMat.empty() && dem_32f.type() != CV_32F) dem_32f.convertTo(dem_32f, CV_32F);
+
     if (cb) cb(10, "正在加载主影像 ERA5 NetCDF 参数...");
     cv::Mat master_T, master_q, master_sp;
     double master_gt[6] = {0};
@@ -186,11 +198,11 @@ bool computeTroposphericCorrection(
     #pragma omp parallel for
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
-            float ph = phase.at<float>(r, c);
+            float ph = phase_32f.at<float>(r, c);
             if (std::isnan(ph) || std::isinf(ph)) continue;
 
-            float lat = latMat.at<float>(r, c);
-            float lon = lonMat.at<float>(r, c);
+            float lat = lat_32f.at<float>(r, c);
+            float lon = lon_32f.at<float>(r, c);
 
             int px_m = 0, py_m = 0;
             int px_s = 0, py_s = 0;
@@ -209,8 +221,8 @@ bool computeTroposphericCorrection(
             float sp_s = slave_sp.at<float>(py_s, px_s);
 
             float h = 0.0f;
-            if (hasDem && !demMat.empty() && !std::isnan(demMat.at<float>(r, c))) {
-                h = demMat.at<float>(r, c);
+            if (hasDem && !dem_32f.empty() && !std::isnan(dem_32f.at<float>(r, c))) {
+                h = dem_32f.at<float>(r, c);
             }
 
             float ztd_m = computeZtd(T_m, q_m, sp_m, h, lat);
@@ -226,13 +238,21 @@ bool computeTroposphericCorrection(
     #pragma omp parallel for
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
-            float ph = phase.at<float>(r, c);
+            float ph = phase_32f.at<float>(r, c);
             float delay = tropo_delay.at<float>(r, c);
             if (std::isnan(ph) || std::isinf(ph)) {
-                correctedPhase.at<float>(r, c) = ph;
+                if (correctedPhase.type() == CV_64F) {
+                    correctedPhase.at<double>(r, c) = ph;
+                } else {
+                    correctedPhase.at<float>(r, c) = ph;
+                }
             } else {
                 float phase_correction = static_cast<float>(delay * factor);
-                correctedPhase.at<float>(r, c) = ph - phase_correction;
+                if (correctedPhase.type() == CV_64F) {
+                    correctedPhase.at<double>(r, c) = ph - phase_correction;
+                } else {
+                    correctedPhase.at<float>(r, c) = ph - phase_correction;
+                }
             }
         }
     }

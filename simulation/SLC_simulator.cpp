@@ -61,16 +61,18 @@ namespace {
 
 			float* re_ptr = slc_re.ptr<float>(i);
 			float* im_ptr = slc_im.ptr<float>(i);
-			const float* lat_ptr = mappedLat.ptr<float>(i);
-			const float* lon_ptr = mappedLon.ptr<float>(i);
+			const double* lat_ptr_d = (mappedLat.type() == CV_64F) ? mappedLat.ptr<double>(i) : nullptr;
+			const double* lon_ptr_d = (mappedLon.type() == CV_64F) ? mappedLon.ptr<double>(i) : nullptr;
+			const float* lat_ptr_f = (mappedLat.type() == CV_32F) ? mappedLat.ptr<float>(i) : nullptr;
+			const float* lon_ptr_f = (mappedLon.type() == CV_32F) ? mappedLon.ptr<float>(i) : nullptr;
 			const short* dem_ptr = mappedDEM.ptr<short>(i);
 			double* r_out_ptr = R_out ? R_out->ptr<double>(i) : nullptr;
 
 			for (int j = 0; j < cols; j++)
 			{
 				Position groundPosition;
-				double lat = lat_ptr[j];
-				double lon = lon_ptr[j];
+				double lat = (lat_ptr_d != nullptr) ? lat_ptr_d[j] : (double)lat_ptr_f[j];
+				double lon = (lon_ptr_d != nullptr) ? lon_ptr_d[j] : (double)lon_ptr_f[j];
 				double height = dem_ptr[j];
 				
 				Utils::ell2xyz(lon, lat, height, groundPosition);
@@ -2415,8 +2417,8 @@ int SLC_simulator::SLC_deramp(
 		mappedDEM.cols != mappedLat.cols ||
 		mappedDEM.cols != mappedLon.cols ||
 		mappedDEM.type() != CV_16S ||
-		mappedLat.type() != CV_32F ||
-		mappedLon.type() != CV_32F ||
+		(mappedLat.type() != CV_32F && mappedLat.type() != CV_64F) ||
+		(mappedLon.type() != CV_32F && mappedLon.type() != CV_64F) ||
 		mappedDEM.empty() ||
 		!slcH5File1 || !slcH5File1_out || !slcH5File2 || !slcH5File2_out || !slcH5File3 ||
 		!slcH5File3_out || !slcH5File4 || !slcH5File4_out
@@ -2482,8 +2484,8 @@ int SLC_simulator::SLC_deramp(
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
-	lat = mappedLat.at<float>(0, 0);
-	lon = mappedLon.at<float>(0, 0);
+	lat = (mappedLat.type() == CV_64F) ? mappedLat.at<double>(0, 0) : (double)mappedLat.at<float>(0, 0);
+	lon = (mappedLon.type() == CV_64F) ? mappedLon.at<double>(0, 0) : (double)mappedLon.at<float>(0, 0);
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
@@ -2603,8 +2605,8 @@ int SLC_simulator::SLC_deramp_14(
 		mappedDEM.cols != mappedLat.cols ||
 		mappedDEM.cols != mappedLon.cols ||
 		mappedDEM.type() != CV_16S ||
-		mappedLat.type() != CV_32F ||
-		mappedLon.type() != CV_32F ||
+		(mappedLat.type() != CV_32F && mappedLat.type() != CV_64F) ||
+		(mappedLon.type() != CV_32F && mappedLon.type() != CV_64F) ||
 		mappedDEM.empty() ||
 		slcH5FilesList.size() != slcH5FilesListOut.size() ||
 		slcH5FilesList.size() < 2 || slcH5FilesList.size() > 8 ||
@@ -2697,8 +2699,8 @@ int SLC_simulator::SLC_deramp_14(
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
-	lat = mappedLat.at<float>(0, 0);
-	lon = mappedLon.at<float>(0, 0);
+	lat = (mappedLat.type() == CV_64F) ? mappedLat.at<double>(0, 0) : (double)mappedLat.at<float>(0, 0);
+	lon = (mappedLon.type() == CV_64F) ? mappedLon.at<double>(0, 0) : (double)mappedLon.at<float>(0, 0);
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
@@ -3084,8 +3086,8 @@ int SLC_simulator::SLC_reramp(
 		mappedDEM.cols != mappedLat.cols ||
 		mappedDEM.cols != mappedLon.cols ||
 		mappedDEM.type() != CV_16S ||
-		mappedLat.type() != CV_32F ||
-		mappedLon.type() != CV_32F ||
+		(mappedLat.type() != CV_32F && mappedLat.type() != CV_64F) ||
+		(mappedLon.type() != CV_32F && mappedLon.type() != CV_64F) ||
 		mappedDEM.empty() ||
 		!slcH5File1 || !slcH5File1_out || !slcH5File2 || !slcH5File2_out || !slcH5File3 ||
 		!slcH5File3_out || !slcH5File4 || !slcH5File4_out
@@ -3151,8 +3153,8 @@ int SLC_simulator::SLC_reramp(
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
-	lat = mappedLat.at<float>(0, 0);
-	lon = mappedLon.at<float>(0, 0);
+	lat = (mappedLat.type() == CV_64F) ? mappedLat.at<double>(0, 0) : (double)mappedLat.at<float>(0, 0);
+	lon = (mappedLon.type() == CV_64F) ? mappedLon.at<double>(0, 0) : (double)mappedLon.at<float>(0, 0);
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
@@ -3677,8 +3679,8 @@ int SLC_simulator::pingpong_MLE(
 	double dopplerFrequency = 0.0;
 	Position groundPosition;
 	double lat, lon, height;
-	lat = mappedLat.at<float>(0, 0);
-	lon = mappedLon.at<float>(0, 0);
+	lat = (mappedLat.type() == CV_64F) ? mappedLat.at<double>(0, 0) : (double)mappedLat.at<float>(0, 0);
+	lon = (mappedLon.type() == CV_64F) ? mappedLon.at<double>(0, 0) : (double)mappedLon.at<float>(0, 0);
 	lon = lon > 180.0 ? (lon - 360.0) : lon;
 	height = mappedDEM.at<short>(0, 0);
 	Utils::ell2xyz(lon, lat, height, groundPosition);
@@ -3724,8 +3726,10 @@ int SLC_simulator::pingpong_MLE(
 		double s2y = sate2.at<double>(i, 1);
 		double s2z = sate2.at<double>(i, 2);
 
-		const float* lat_ptr = mappedLat.ptr<float>(i);
-		const float* lon_ptr = mappedLon.ptr<float>(i);
+		const double* lat_ptr_d = (mappedLat.type() == CV_64F) ? mappedLat.ptr<double>(i) : nullptr;
+		const double* lon_ptr_d = (mappedLon.type() == CV_64F) ? mappedLon.ptr<double>(i) : nullptr;
+		const float* lat_ptr_f = (mappedLat.type() == CV_32F) ? mappedLat.ptr<float>(i) : nullptr;
+		const float* lon_ptr_f = (mappedLon.type() == CV_32F) ? mappedLon.ptr<float>(i) : nullptr;
 		const short* dem_ptr = mappedDEM.ptr<short>(i);
 
 		double* r1_ptr = R1.ptr<double>(i);
@@ -3738,8 +3742,8 @@ int SLC_simulator::pingpong_MLE(
 		for (int j = 0; j < sceneWidth; j++)
 		{
 			Position groundPosition;
-			double lat = lat_ptr[j];
-			double lon = lon_ptr[j];
+			double lat = (lat_ptr_d != nullptr) ? lat_ptr_d[j] : (double)lat_ptr_f[j];
+			double lon = (lon_ptr_d != nullptr) ? lon_ptr_d[j] : (double)lon_ptr_f[j];
 			double height = dem_ptr[j];
 
 			Utils::ell2xyz(lon, lat, height, groundPosition);

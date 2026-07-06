@@ -13929,8 +13929,8 @@ int Utils::SAR2UTM(
 		slc.GetRows() < 2 ||
 		slc.GetCols() < 2 ||
 		(slc.type() != CV_16S && slc.type() != CV_32F) ||
-		mapped_lat.type() != CV_32F ||
-		mapped_lon.type() != CV_32F
+		mapped_lat.type() != mapped_lon.type() ||
+		(mapped_lon.type() != CV_32F && mapped_lon.type() != CV_64F)
 		)
 	{
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
@@ -14007,41 +14007,87 @@ int Utils::SAR2UTM(
 	//开始地理编码
 	if (slc.type() == CV_16S)
 	{
-		for (int i = 0; i < rows; i++)
+		if (mapped_lon.type() == CV_32F)
 		{
-			for (int j = 0; j < cols; j++)
+			for (int i = 0; i < rows; i++)
 			{
-				double lon, lat;
-				int row, col;
-				lon = mapped_lon.at<float>(i, j);
-				lat = mapped_lat.at<float>(i, j);
-				row = (int)round((lat - min_lat) / lat_interval);
-				lon = fabs(lon - west);
-				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
-				mapped_slc.re.at<short>(row, col) = slc.re.at<short>(i, j);
-				mapped_slc.im.at<short>(row, col) = slc.im.at<short>(i, j);
-				b_filled.at<uchar>(row, col) = 1;
+				for (int j = 0; j < cols; j++)
+				{
+					double lon, lat;
+					int row, col;
+					lon = mapped_lon.at<float>(i, j);
+					lat = mapped_lat.at<float>(i, j);
+					row = (int)round((lat - min_lat) / lat_interval);
+					lon = fabs(lon - west);
+					lon = lon > 180.0 ? 360.0 - lon : lon;
+					col = (int)round(lon / lon_interval);
+					mapped_slc.re.at<short>(row, col) = slc.re.at<short>(i, j);
+					mapped_slc.im.at<short>(row, col) = slc.im.at<short>(i, j);
+					b_filled.at<uchar>(row, col) = 1;
+				}
+			}
+		}
+		else
+		{
+			for (int i = 0; i < rows; i++)
+			{
+				for (int j = 0; j < cols; j++)
+				{
+					double lon, lat;
+					int row, col;
+					lon = mapped_lon.at<double>(i, j);
+					lat = mapped_lat.at<double>(i, j);
+					row = (int)round((lat - min_lat) / lat_interval);
+					lon = fabs(lon - west);
+					lon = lon > 180.0 ? 360.0 - lon : lon;
+					col = (int)round(lon / lon_interval);
+					mapped_slc.re.at<short>(row, col) = slc.re.at<short>(i, j);
+					mapped_slc.im.at<short>(row, col) = slc.im.at<short>(i, j);
+					b_filled.at<uchar>(row, col) = 1;
+				}
 			}
 		}
 	}
 	else
 	{
-		for (int i = 0; i < rows; i++)
+		if (mapped_lon.type() == CV_32F)
 		{
-			for (int j = 0; j < cols; j++)
+			for (int i = 0; i < rows; i++)
 			{
-				double lon, lat;
-				int row, col;
-				lon = mapped_lon.at<float>(i, j);
-				lat = mapped_lat.at<float>(i, j);
-				row = (int)round((lat - min_lat) / lat_interval);
-				lon = fabs(lon - west);
-				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
-				mapped_slc.re.at<float>(row, col) = slc.re.at<float>(i, j);
-				mapped_slc.im.at<float>(row, col) = slc.im.at<float>(i, j);
-				b_filled.at<uchar>(row, col) = 1;
+				for (int j = 0; j < cols; j++)
+				{
+					double lon, lat;
+					int row, col;
+					lon = mapped_lon.at<float>(i, j);
+					lat = mapped_lat.at<float>(i, j);
+					row = (int)round((lat - min_lat) / lat_interval);
+					lon = fabs(lon - west);
+					lon = lon > 180.0 ? 360.0 - lon : lon;
+					col = (int)round(lon / lon_interval);
+					mapped_slc.re.at<float>(row, col) = slc.re.at<float>(i, j);
+					mapped_slc.im.at<float>(row, col) = slc.im.at<float>(i, j);
+					b_filled.at<uchar>(row, col) = 1;
+				}
+			}
+		}
+		else
+		{
+			for (int i = 0; i < rows; i++)
+			{
+				for (int j = 0; j < cols; j++)
+				{
+					double lon, lat;
+					int row, col;
+					lon = mapped_lon.at<double>(i, j);
+					lat = mapped_lat.at<double>(i, j);
+					row = (int)round((lat - min_lat) / lat_interval);
+					lon = fabs(lon - west);
+					lon = lon > 180.0 ? 360.0 - lon : lon;
+					col = (int)round(lon / lon_interval);
+					mapped_slc.re.at<float>(row, col) = slc.re.at<float>(i, j);
+					mapped_slc.im.at<float>(row, col) = slc.im.at<float>(i, j);
+					b_filled.at<uchar>(row, col) = 1;
+				}
 			}
 		}
 	}

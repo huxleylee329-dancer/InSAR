@@ -1172,8 +1172,14 @@ int SBAS::generate_high_coherence_mask(
 		{
 			ret = util.phase_coherence(phase, wndsize_rg, wndsize_az, coherence);
 			if (return_check(ret, "phase_coherence()", error_head)) return -1;
-			ret = conversion.write_array_to_h5(phaseFiles[i].c_str(), "coherence", coherence);
+			cv::Mat coherence_32f;
+			coherence.convertTo(coherence_32f, CV_32F);
+			ret = conversion.write_array_to_h5(phaseFiles[i].c_str(), "coherence", coherence_32f);
 			if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+		}
+		if (coherence.type() != CV_64F)
+		{
+			coherence.convertTo(coherence, CV_64F);
 		}
 		
 		if (i == 0)
@@ -1281,17 +1287,19 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 
 int SBAS::set_weight_by_coherence(const Mat& coherence, vector<SBAS_node>& nodes, vector<SBAS_edge>& edges)
 {
-	if (coherence.type() != CV_64F ||
+	if ((coherence.type() != CV_64F && coherence.type() != CV_32F) ||
 		nodes.size() < 3 ||
 		edges.size() < 3)
 	{
 		fprintf(stderr, "set_weight_by_coherence(): input check failed!\n");
 		return -1;
 	}
+	cv::Mat coh_64f = coherence;
+	if (coh_64f.type() != CV_64F) coh_64f.convertTo(coh_64f, CV_64F);
 	int num_nodes = static_cast<int>(nodes.size());
 	int num_edges = static_cast<int>(edges.size());
-	int rows = coherence.rows;
-	int cols = coherence.cols;
+	int rows = coh_64f.rows;
+	int cols = coh_64f.cols;
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < num_edges; i++)
 	{
@@ -1301,11 +1309,11 @@ int SBAS::set_weight_by_coherence(const Mat& coherence, vector<SBAS_node>& nodes
 		weight = 0.0;
 		row = rows - static_cast<int>(round(nodes[edges[i].end1 - 1].y));
 		col = static_cast<int>(round(nodes[edges[i].end1 - 1].x)) - 1;
-		weight += coherence.at<double>(row, col);
+		weight += coh_64f.at<double>(row, col);
 
 		row = rows - static_cast<int>(round(nodes[edges[i].end2 - 1].y));
 		col = static_cast<int>(round(nodes[edges[i].end2 - 1].x)) - 1;
-		weight += coherence.at<double>(row, col);
+		weight += coh_64f.at<double>(row, col);
 
 		weight = weight / 2.0;
 
@@ -1568,7 +1576,9 @@ int SBAS::generate_interferograms(
 				ret = conversion.creat_new_h5(h5file.c_str());
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
 				if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", coherence);
+				cv::Mat coherence_32f;
+				coherence.convertTo(coherence_32f, CV_32F);
+				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", coherence_32f);
 				ret = conversion.write_int_to_h5(h5file.c_str(), "offset_row", offset_row);
 				if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
 				ret = conversion.write_int_to_h5(h5file.c_str(), "offset_col", offset_col);
@@ -1712,7 +1722,9 @@ int SBAS::adaptive_multilooking(
 				//预先填充相位和相关系数
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
 				if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", phase);
+				cv::Mat phase_32f;
+				phase.convertTo(phase_32f, CV_32F);
+				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", phase_32f);
 				if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 				ret = conversion.write_int_to_h5(h5file.c_str(), "offset_row", offset_row);
 				if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
@@ -1865,9 +1877,14 @@ int SBAS::adaptive_multilooking(
 				{
 					if (formation_matrix.at<int>(iii, jjj) == 1)
 					{
-						coherence_series[kk](cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
-						ret = conversion.write_subarray_to_h5(h5file_list[kk].c_str(), "coherence", ph, top, left, bottom - top, right - left);
-						if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
+						if (b_coh_est && !coherence_series.empty() && !coherence_series[kk].empty())
+						{
+							cv::Mat coh_sub = coherence_series[kk](cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad));
+							cv::Mat coh_32f;
+							coh_sub.convertTo(coh_32f, CV_32F);
+							ret = conversion.write_subarray_to_h5(h5file_list[kk].c_str(), "coherence", coh_32f, top, left, bottom - top, right - left);
+							if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
+						}
 						ret = util.multilook(slc_series_filter[iii], slc_series_filter[jjj], 1, 1, phase);
 						if (return_check(ret, "multilook()", error_head)) return -1;
 						phase(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
@@ -1908,10 +1925,9 @@ int SBAS::adaptive_multilooking(
 					ret = util.savephase(h5file.c_str(), "jet", phase);
 					if (return_check(ret, "savephase()", error_head)) return -1;
 					//相关系数
-					sprintf(str, "\\%d_%d.h5", iii + 1, jjj + 1);
-					h5file = path + str;
 					ret = conversion.read_array_from_h5(h5file.c_str(), "coherence", phase);
 					if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+					if (phase.type() != CV_64F) phase.convertTo(phase, CV_64F);
 					sprintf(str, "\\%d_%d_coh.jpg", iii + 1, jjj + 1);
 					h5file = path + str;
 					ret = util.savephase(h5file.c_str(), "jet", phase);
@@ -1932,12 +1948,14 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 		unwrapped_phase.empty() ||
 		unwrapped_phase.type() != CV_64F ||
 		mask.type() != CV_32S ||
-		coherence.type() != CV_64F
+		(coherence.type() != CV_64F && coherence.type() != CV_32F)
 		)
 	{
 		fprintf(stderr, "refinement_and_reflattening(): input check failed!\n");
 		return -1;
 	}
+	cv::Mat coh_64f = coherence;
+	if (coh_64f.type() != CV_64F) coh_64f.convertTo(coh_64f, CV_64F);
 	int mask_count = cv::countNonZero(mask);
 	Mat A(mask_count, 3, CV_64F), b(mask_count, 1, CV_64F);
 	A = 1.0;
@@ -1946,7 +1964,7 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 	{
 		for (int j = 0; j < cols; j++)
 		{
-			if (mask.at<int>(i, j) == 1 && coherence.at<double>(i, j) > coh_thresh)
+			if (mask.at<int>(i, j) == 1 && coh_64f.at<double>(i, j) > coh_thresh)
 			{
 				A.at<double>(count, 1) = (double)i;
 				A.at<double>(count, 2) = (double)j;

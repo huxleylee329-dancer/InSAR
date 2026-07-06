@@ -53,6 +53,23 @@ bool computePhaseElevationRegression(
         return false;
     }
 
+    // 动态类型转换以确保类型安全，规避指针 Mismatch Bug
+    cv::Mat phase_32f = phase;
+    if (phase_32f.type() != CV_32F) phase_32f.convertTo(phase_32f, CV_32F);
+
+    cv::Mat coherence_32f = coherence;
+    if (hasCoherence && coherence_32f.type() != CV_32F) coherence_32f.convertTo(coherence_32f, CV_32F);
+
+    cv::Mat dem_32f = dem;
+    if (hasDem && dem_32f.type() != CV_32F) dem_32f.convertTo(dem_32f, CV_32F);
+
+    cv::Mat lat_32f = latMat;
+    cv::Mat lon_32f = lonMat;
+    if (hasLatLon) {
+        if (lat_32f.type() != CV_32F) lat_32f.convertTo(lat_32f, CV_32F);
+        if (lon_32f.type() != CV_32F) lon_32f.convertTo(lon_32f, CV_32F);
+    }
+
     int rows = phase.rows;
     int cols = phase.cols;
 
@@ -77,25 +94,25 @@ bool computePhaseElevationRegression(
 
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
-            float ph = phase.at<float>(r, c);
+            float ph = phase_32f.at<float>(r, c);
             if (std::isnan(ph) || std::isinf(ph)) continue;
 
             // 相干性掩膜过滤
             if (hasCoherence) {
-                float coh = coherence.at<float>(r, c);
+                float coh = coherence_32f.at<float>(r, c);
                 if (coh < params.coherenceThresh || std::isnan(coh)) continue;
             }
 
             double elev_val = 0.0;
             if (hasDem) {
-                elev_val = static_cast<double>(dem.at<float>(r, c));
+                elev_val = static_cast<double>(dem_32f.at<float>(r, c));
                 if (std::isnan(elev_val) || std::isinf(elev_val)) continue;
             }
 
             double lat_val = 0.0, lon_val = 0.0;
             if (hasLatLon) {
-                lat_val = static_cast<double>(latMat.at<float>(r, c));
-                lon_val = static_cast<double>(lonMat.at<float>(r, c));
+                lat_val = static_cast<double>(lat_32f.at<float>(r, c));
+                lon_val = static_cast<double>(lon_32f.at<float>(r, c));
                 if (std::isnan(lat_val) || std::isnan(lon_val)) continue;
             }
 
@@ -192,7 +209,11 @@ bool computePhaseElevationRegression(
         }
         int r = valid_rows_idx[i];
         int c = valid_cols_idx[i];
-        correctedPhase.at<float>(r, c) = static_cast<float>(valid_phase_vals[i] - aps);
+        if (correctedPhase.type() == CV_64F) {
+            correctedPhase.at<double>(r, c) = valid_phase_vals[i] - aps;
+        } else {
+            correctedPhase.at<float>(r, c) = static_cast<float>(valid_phase_vals[i] - aps);
+        }
     }
 
     if (cb) cb(100, "相位-高程多项式回归与去轨道趋势计算完成。");

@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-06 | AI | simulation, Utils, SBAS | 修复双精度经纬度 mismatch 严重 Bug 并优化 H5 存储精度冗余：<br>1. simulation：重构 `applyPhaseCorrection` 及 `pingpong_MLE`，引入对 `mappedLat`/`mappedLon` 类型的动态条件判断，使用合适精度的 `double`/`float` 指针和 `.at<T>` 读写，彻底消除因 double 误按 float 读取造成的几何错位与计算垃圾值 Bug。<br>2. simulation：将 `SLC_deramp` 和 `SLC_deramp_14` 输入条件放宽，支持双精度经纬度网格传入，减少 UI 端降级类型转换开销。<br>3. Utils：拓宽 `Utils::SAR2UTM` 复数 SLC 地理编码重载，允许 `CV_64F` 经纬度传入，并在循环中动态分流读取坐标，保持 ABI 稳定与高精度计算。<br>4. SBAS：修改相干系数存盘逻辑，在调用 `write_array_to_h5` 和 `write_subarray_to_h5` 写入 H5 文件前，统一将 `coherence` 临时转换为单精度 `CV_32F` 存储，从而减少 50% 磁盘开销并大幅提升下游加载与渲染效率。 |
 | 工作区现场修改 | 2026-07-01 | AI | Utils | 修复 Newton 迭代发散与高程反演数值万亿级溢出 Bug：<br>在 `newton_iter_core` 中移成了主星偏导数 `Df11`、`Df12`、`Df13` 多余的 `* 2` 乘积操作。这排除了重复乘以 2 的错误，使其在单发单收模式下精确等于发射端和接收端导数的天然累加，消除了雅可比矩阵 1.5 倍的计算偏差，使 Newton 迭代法能顺利收敛并获得正确高程数值。 |
 | 工作区现场修改 | 2026-07-01 | AI | FormatConversion | HDF5 文件只读打开方式安全改造：<br>在 `FormatConversion.cpp` 中，将只读性质的接口（包括 `read_array_from_h5`、`read_subarray_from_h5`、`read_str_from_h5`、GEDI L2A/L2B 读取及 CSK SLC 读取等）中 `H5Fopen` 的打开模式由 `H5F_ACC_RDWR` 变更为 `H5F_ACC_RDONLY`。这消除了并发读取文件或在只读文件系统下因写权限请求被系统拒绝而打开失败的隐患，保证了文件导入的稳定性和并发安全性。 |
 | 工作区现场修改 | 2026-07-01 | AI | simulation, SARProcessing | 全计算中止与进度汇报接口补齐：<br>1. simulation：为 `MB_phase_estimation`（多基线相位估计）等多个核心模拟函数追加 `SimulationProgressCallback cb` 并在此类 OMP/分块循环中加入 `cancel_flag` 状态检测和退出逻辑，取消时返回 `-2`。<br>2. SARProcessing：为 `ExtractDiffBoxFeature`（差分盒维数）接口及底层的 `extract_diffbox_feature` 补充 `SARProgressCallback` 回调，支持进度汇报与取消中止。 |
@@ -891,4 +892,28 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
    - 更新 [SARProcessor.h](file:///D:/SRC/insar/include/SARProcessor.h)、[SARProcessing.cpp](file:///D:/SRC/insar/SARProcessing/SARProcessing.cpp) 及其依赖文件。
    - 针对 `SARProcessor::ExtractDiffBoxFeature` 和底层的 `extract_diffbox_feature`（差分盒维数 DBC 分形特征提取），添加 `SARProgressCallback cb = nullptr`。
    - 在 DBC 计算的主循环（尺度 `data` 迭代）中，按进度比例更新回调。若回调返回 `false` 则提前返回 `-2.0`（利用 vector 的 RAII 自动释放内存，无资源泄漏风险）。
+
+---
+
+### 39. 双精度经纬度 Mismatch 修复与 H5 存储精度冗余优化 (simulation, Utils, SBAS)
+
+**问题诊断**：
+1. **经纬度指针读取 Mismatch Bug**：
+   在 `SLC_simulator.cpp` 中，`applyPhaseCorrection` 以及 `pingpong_MLE` 使用了 `demMapping` 产生的 `mappedLat` 和 `mappedLon`。然而这两个矩阵在 `Deflat::demMapping` 内部被分配为 `CV_64F` (double) 类型。在之前的代码中，程序没有进行类型转换，便直接使用 `float*` 指针操作和 `.at<float>` 进行数据访问。导致 8 字节的双精度浮点数仅有前 4 字节被以 float 格式读出，解释出了错乱的垃圾值，最终导致三维坐标转换错误、斜距偏差和零多普勒计算失效，是一个严重的计算正确性 Bug。
+2. **硬编码限制与类型降级**：
+   在 `SLC_simulator.cpp` 的 `SLC_deramp` / `SLC_deramp_14` 和 `Utils.cpp` 的复影像地理编码 `Utils::SAR2UTM` 中，输入参数的类型校验强制限定为 `CV_32F` (float)。这迫使上层调用者（如 UI）必须丢弃高精度的 `demMapping` 坐标，对其进行降级类型转换后才能运行去斜或地理编码。
+3. **HDF5 数据精度冗余与空间浪费**：
+   在 `SBAS.cpp` 中计算得到的时序干涉图相干系数图，因内部在 `CV_64F` 精度下运算，直接被作为双精度 `CV_64F` 矩阵写入 H5 数据库，导致文件所占存储空间无意义地增加了一倍。
+
+**修复方案**：
+1. **动态类型读取分流**：
+   - 重构 [SLC_simulator.cpp](file:///D:/SRC/InSAR/simulation/SLC_simulator.cpp) 辅助函数 `applyPhaseCorrection` 以及主函数 `pingpong_MLE` 中的指针声明与数据获取循环。
+   - 增加对 `mappedLat` 和 `mappedLon` 类型的检测，若为 `CV_64F`，使用 `double*` 指针和 `.at<double>` 读取数据；若为 `CV_32F`，则退避使用 `float*` 对应操作读取，解决指针类型 mismatch 漏洞。
+2. **放宽输入坐标矩阵类型检查**：
+   - 将 `SLC_deramp`/`SLC_deramp_14` 和复数地理编码 `Utils::SAR2UTM` 的类型校验由单精度限定修改为同时允许 `CV_32F` 与 `CV_64F` 传入。
+   - 在 [Utils.cpp](file:///D:/SRC/InSAR/Utils/Utils.cpp) 的复数地理编码 `SAR2UTM` 中，将地理编码循环按坐标类型分流，动态使用 `.at<float>` 或 `.at<double>` 安全读取数据，既保持了 ABI 兼容，又省去了调用方的显式类型降级转换。
+3. **相干系数降级为单精度 H5 写入**：
+   - 重构 [SBAS.cpp](file:///D:/SRC/InSAR/SBAS/SBAS.cpp) 中所有调用 `write_array_to_h5` 和 `write_subarray_to_h5` 保存相干系数的代码。
+   - 在写入前，使用 `convertTo(..., CV_32F)` 将其克隆并转换为单精度 float，从而在不影响下游物理精度的前提下，为相干系数数据集节省 50% 磁盘开销，提速下游可视化组件的加载读取。
+
 

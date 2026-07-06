@@ -83,3 +83,9 @@ All source files (`.cpp`, `.h`, `.hpp`) in this repository are unified as UTF-8 
 
 4. **External library path encoding follows actual API conventions**: Check whether external libraries support UTF-8 paths or require wide-character interfaces. For OpenCV, HDF5, GDAL, etc., handle path encoding based on actual project usage.
 
+
+## Precision and performance rules
+
+Refer to [gemini.md](file:///D:/SRC/InSAR/gemini.md) for detailed guidelines on when to use double precision (`CV_64F`) vs. single precision (`CV_32F`) in calculations and HDF5 storage. Always ensure that the HDF5 dataset initialization type matches the subarray write type to prevent datatype mismatches.
+
+

@@ -541,6 +541,12 @@ int DEMSourceManager::convert_dem_to_ecef(
     int rows = dem_data.rows;
     int cols = dem_data.cols;
 
+    // 动态类型转换以确保类型安全，规避指针 Mismatch Bug
+    cv::Mat dem_32f = dem_data;
+    if (dem_32f.type() != CV_32F) {
+        dem_32f.convertTo(dem_32f, CV_32F);
+    }
+
     dem_x.create(rows, cols, CV_32FC1);
     dem_y.create(rows, cols, CV_32FC1);
     dem_z.create(rows, cols, CV_32FC1);
@@ -554,7 +560,7 @@ int DEMSourceManager::convert_dem_to_ecef(
             // 应用严密的仿射变换公式（支持图像旋转，中心采样含 0.5 偏置）
             x_arr[c] = geo_transform[0] + (c + 0.5) * geo_transform[1] + (r + 0.5) * geo_transform[2];
             y_arr[c] = geo_transform[3] + (c + 0.5) * geo_transform[4] + (r + 0.5) * geo_transform[5];
-            z_arr[c] = dem_data.at<float>(r, c);
+            z_arr[c] = dem_32f.at<float>(r, c);
         }
 
         // 行级分批投影转换以大幅提高性能

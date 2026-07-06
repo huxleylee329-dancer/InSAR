@@ -76,7 +76,9 @@ bool computeIonosphericCorrection(
     // 辅助 Lambda：确保将输入矩阵转换为双通道复数 (CV_32FC2)
     auto toComplex2Ch = [](const cv::Mat& src, cv::Mat& dst, int r, int c) -> bool {
         if (src.channels() == 1) {
-            std::vector<cv::Mat> channels = {src, cv::Mat::zeros(r, c, CV_32FC1)};
+            cv::Mat src_32f = src;
+            if (src_32f.type() != CV_32F) src_32f.convertTo(src_32f, CV_32F);
+            std::vector<cv::Mat> channels = {src_32f, cv::Mat::zeros(r, c, CV_32FC1)};
             cv::merge(channels, dst);
         } else if (src.channels() == 2) {
             if (src.type() == CV_32FC2) {

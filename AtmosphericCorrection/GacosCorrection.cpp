@@ -136,6 +136,15 @@ bool applyGacosCorrection(
         return false;
     }
 
+    // 动态类型转换以确保类型安全，规避指针 Mismatch Bug
+    cv::Mat phase_32f = phase;
+    if (phase_32f.type() != CV_32F) phase_32f.convertTo(phase_32f, CV_32F);
+
+    cv::Mat lat_32f = latMat;
+    cv::Mat lon_32f = lonMat;
+    if (!latMat.empty() && lat_32f.type() != CV_32F) lat_32f.convertTo(lat_32f, CV_32F);
+    if (!lonMat.empty() && lon_32f.type() != CV_32F) lon_32f.convertTo(lon_32f, CV_32F);
+
     int rows = phase.rows;
     int cols = phase.cols;
 
@@ -242,18 +251,18 @@ bool applyGacosCorrection(
     if (cb) cb(50, "正在进行经纬度投影匹配与重采样插值...");
 
     cv::Mat ztd_delay(rows, cols, CV_32FC1, cv::Scalar(0));
-    bool use_geo_mapping = has_geotransform && !latMat.empty() && !lonMat.empty();
+    bool use_geo_mapping = has_geotransform && !lat_32f.empty() && !lon_32f.empty();
 
     if (use_geo_mapping) {
         // 模式 A：使用实际经纬度格网逐像素双线性查找插值 (保证雷达/地理几何对齐)
         #pragma omp parallel for
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
-                float ph = phase.at<float>(r, c);
+                float ph = phase_32f.at<float>(r, c);
                 if (std::isnan(ph) || std::isinf(ph)) continue;
 
-                float lat = latMat.at<float>(r, c);
-                float lon = lonMat.at<float>(r, c);
+                float lat = lat_32f.at<float>(r, c);
+                float lon = lon_32f.at<float>(r, c);
                 if (std::isnan(lat) || std::isnan(lon)) continue;
 
                 double px = 0.0, py = 0.0;
@@ -279,13 +288,21 @@ bool applyGacosCorrection(
     #pragma omp parallel for
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < cols; c++) {
-            float ph = phase.at<float>(r, c);
+            float ph = phase_32f.at<float>(r, c);
             if (std::isnan(ph) || std::isinf(ph)) {
-                correctedPhase.at<float>(r, c) = ph;
+                if (correctedPhase.type() == CV_64F) {
+                    correctedPhase.at<double>(r, c) = ph;
+                } else {
+                    correctedPhase.at<float>(r, c) = ph;
+                }
             } else {
                 float ztd = ztd_delay.at<float>(r, c);
                 float phase_correction = static_cast<float>(ztd * factor);
-                correctedPhase.at<float>(r, c) = ph - phase_correction; // 扣除延迟相位
+                if (correctedPhase.type() == CV_64F) {
+                    correctedPhase.at<double>(r, c) = ph - phase_correction; // 扣除延迟相位
+                } else {
+                    correctedPhase.at<float>(r, c) = ph - phase_correction; // 扣除延迟相位
+                }
             }
         }
     }
