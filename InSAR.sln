@@ -1,7 +1,6 @@
-
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.6.11822.322 stable
+VisualStudioVersion = 18.6.11822.322
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Registration", "Registration\Registration.vcxproj", "{15214729-7277-466D-AB38-0058FA1E31BC}"
 EndProject
@@ -43,7 +42,6 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GCPManager", "GCPManager\GC
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "AtmosphericCorrection", "AtmosphericCorrection\AtmosphericCorrection.vcxproj", "{9E1F0360-15EE-4EA3-BE9F-18CD6066B96D}"
 EndProject
-
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|ARM = Debug|ARM
@@ -133,7 +131,6 @@ Global
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Debug|Win32.ActiveCfg = Debug|x64
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Debug|Win32.Build.0 = Debug|x64
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Debug|x64.ActiveCfg = Debug|x64
-		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Debug|x64.Build.0 = Debug|x64
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Release|ARM.ActiveCfg = Release|ARM
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Release|ARM.Build.0 = Release|ARM
 		{CB90DDDB-EC14-4E96-818D-E6AEB48E3AC7}.Release|Mixed Platforms.ActiveCfg = Release|Win32
@@ -161,7 +158,6 @@ Global
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Debug|Win32.ActiveCfg = Debug|Win32
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Debug|Win32.Build.0 = Debug|Win32
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Debug|x64.ActiveCfg = Debug|x64
-		{338141CC-C23A-4B34-8E77-B064545BD634}.Debug|x64.Build.0 = Debug|x64
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Release|ARM.ActiveCfg = Release|Win32
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Release|Mixed Platforms.ActiveCfg = Release|Win32
 		{338141CC-C23A-4B34-8E77-B064545BD634}.Release|Mixed Platforms.Build.0 = Release|Win32
@@ -175,7 +171,6 @@ Global
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Debug|Win32.ActiveCfg = Debug|Win32
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Debug|Win32.Build.0 = Debug|Win32
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Debug|x64.ActiveCfg = Debug|x64
-		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Debug|x64.Build.0 = Debug|x64
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Release|ARM.ActiveCfg = Release|Win32
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Release|Mixed Platforms.ActiveCfg = Release|Win32
 		{70058159-A0F3-4B8E-A3D2-1101A5645F86}.Release|Mixed Platforms.Build.0 = Release|Win32

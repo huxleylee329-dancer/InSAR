@@ -8822,6 +8822,116 @@ int Utils::getSRTMDEM(
 	double latSpacing = 5.0 / 6000.0;
 	double lonSpacing = 5.0 / 6000.0;
 	if (!filepath || !lonUL || !latUL) return -1;
+
+	// 1. 判断是目录还是文件
+	DWORD dwAttrs = GetFileAttributesA(filepath);
+	bool isDirectory = false;
+	if (dwAttrs != INVALID_FILE_ATTRIBUTES)
+	{
+		isDirectory = ((dwAttrs & FILE_ATTRIBUTE_DIRECTORY) != 0);
+	}
+	else
+	{
+		// 路径不存在时，如果无常见文件扩展名，则视为目录以触发原有自动创建和下载逻辑
+		std::string pathStr(filepath);
+		size_t dotPos = pathStr.find_last_of(".");
+		size_t sepPos = pathStr.find_last_of("\\/");
+		if (dotPos == std::string::npos || (sepPos != std::string::npos && dotPos < sepPos))
+		{
+			isDirectory = true;
+		}
+	}
+
+	if (!isDirectory)
+	{
+		// ----------------------------------------------------
+		// 现代单文件模式 (使用 GDAL 统一读取单文件/VRT，并自动规整分辨率为 5.0 / 6000.0)
+		// ----------------------------------------------------
+		InitializeGDALAndProjOnce();
+		GDALDataset* poDataset = (GDALDataset*)GDALOpen(filepath, GA_ReadOnly);
+		if (poDataset == nullptr)
+		{
+			return -1; // 无法打开 DEM 文件
+		}
+
+		GDALRasterBand* poBand = poDataset->GetRasterBand(1);
+		if (poBand == nullptr)
+		{
+			GDALClose(poDataset);
+			return -1;
+		}
+
+		double adfGeoTransform[6];
+		poDataset->GetGeoTransform(adfGeoTransform);
+
+		int demTotalWidth = poDataset->GetRasterXSize();
+		int demTotalHeight = poDataset->GetRasterYSize();
+
+		// 假定等经纬度投影无旋转 (gt[2] == 0, gt[4] == 0, gt[5] < 0)
+		int xOff = static_cast<int>(std::floor((lonMin - adfGeoTransform[0]) / adfGeoTransform[1]));
+		int yOff = static_cast<int>(std::floor((latMax - adfGeoTransform[3]) / adfGeoTransform[5]));
+		int xSize = static_cast<int>(std::ceil((lonMax - lonMin) / adfGeoTransform[1]));
+		int ySize = static_cast<int>(std::ceil((latMin - latMax) / adfGeoTransform[5]));
+
+		// 端点裁剪保护（彻底解决边缘坐标平移 Bug）
+		int srcXOff = std::max(0, xOff);
+		int srcYOff = std::max(0, yOff);
+		int srcXEnd = std::min(demTotalWidth, xOff + xSize);
+		int srcYEnd = std::min(demTotalHeight, yOff + ySize);
+		int srcXSize = srcXEnd - srcXOff;
+		int srcYSize = srcYEnd - srcYOff;
+
+		if (srcXSize <= 0 || srcYSize <= 0)
+		{
+			GDALClose(poDataset);
+			return -2; // 经纬度范围与该 DEM 无交集
+		}
+
+		// 计算读取区域 of the actual geo boundary
+		double lonStart = adfGeoTransform[0] + srcXOff * adfGeoTransform[1];
+		double latStart = adfGeoTransform[3] + srcYOff * adfGeoTransform[5];
+		double lonEnd = adfGeoTransform[0] + srcXEnd * adfGeoTransform[1];
+		double latEnd = adfGeoTransform[3] + srcYEnd * adfGeoTransform[5];
+
+		// 重采样规整：计算符合 5.0/6000.0 分辨率的目标矩阵大小（彻底解决分辨率漂移 Bug）
+		const double targetSpacing = 5.0 / 6000.0;
+		int targetXSize = std::max(1, static_cast<int>(std::round((lonEnd - lonStart) / targetSpacing)));
+		int targetYSize = std::max(1, static_cast<int>(std::round((latStart - latEnd) / targetSpacing)));
+
+		// 初始化输出矩阵为 short (CV_16S)，契合底层算子
+		DEM_out.create(targetYSize, targetXSize, CV_16S);
+
+		// 使用 GDAL 自动将 srcXSize*srcYSize 的区域插值读取到 targetXSize*targetYSize 的内存中
+		// 并显式指定双线性插值以获得更好的地形模拟平滑度
+		GDALRasterIOExtraArg extraArgs;
+		INIT_RASTERIO_EXTRA_ARG(extraArgs);
+		extraArgs.eResampleAlg = GRIORA_Bilinear;
+
+		CPLErr err = poBand->RasterIO(
+			GF_Read, 
+			srcXOff, srcYOff, 
+			srcXSize, srcYSize, 
+			DEM_out.data, 
+			targetXSize, targetYSize, 
+			GDT_Int16, 
+			0, 0,
+			&extraArgs
+		);
+
+		if (err != CE_None)
+		{
+			GDALClose(poDataset);
+			return -3; // 读取数据失败
+		}
+
+		// 输出契合 90m 等经纬度网格起点的地理坐标
+		*lonUL = lonStart;
+		*latUL = latStart;
+
+		GDALClose(poDataset);
+		return 0; // 读取成功
+	}
+
 	//this->DEMPath = filepath;
 	if (GetFileAttributesA(filepath) == -1)
 	{
