@@ -521,6 +521,7 @@ int Deflat::deflat(
 
 	std::atomic<bool> cancel_flag(false);
 	std::atomic<int> completed_rows(0);
+	std::atomic<int> max_reported_pct(0);
 	int step = std::max(1, rows / 100);
 
 #pragma omp parallel for schedule(guided)
@@ -543,9 +544,20 @@ int Deflat::deflat(
 		int current = ++completed_rows;
 		if (cb && current % step == 0)
 		{
-			if (!cb(current * 100 / rows, "Computing flat phase..."))
+			int current_pct = current * 100 / rows;
+			int prev = max_reported_pct.load();
+			while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
 			{
-				cancel_flag = true;
+			}
+			if (current_pct > prev)
+			{
+				#pragma omp critical(deflat_progress_lock)
+				{
+					if (!cb(current_pct, "Computing flat phase..."))
+					{
+						cancel_flag = true;
+					}
+				}
 			}
 		}
 	}
@@ -821,6 +833,30 @@ int Deflat::topo_removal(
 	return 0;
 }
 
+namespace {
+	// 线程局部变量存储原始的 cb 回调指针，解决 __stdcall 仿函数 Lambda 转换失败的问题
+	thread_local DeflatProgressCallback t_original_cb = nullptr;
+}
+
+// 无捕获的静态回调函数，带有 __stdcall 约定
+static bool __stdcall dem_mapping_wrapper_cb(int progress, const char* msg)
+{
+	if (t_original_cb)
+	{
+		return t_original_cb(progress * 70 / 100, msg);
+	}
+	return true;
+}
+
+static bool __stdcall topo_sim_wrapper_cb(int progress, const char* msg)
+{
+	if (t_original_cb)
+	{
+		return t_original_cb(70 + progress * 30 / 100, msg);
+	}
+	return true;
+}
+
 int Deflat::topography_simulation(
 	Mat& topography_phase, 
 	Mat& statevector1,
@@ -872,20 +908,39 @@ int Deflat::topography_simulation(
 	if (return_check(ret, "computeImageGeoBoundry()", error_head)) return -1;
 	ret = getSRTMDEM(DEMpath, dem, &lon_upperleft, &lat_upperleft, lonMin, lonMax, latMin, latMax);
 	if (return_check(ret, "getSRTMDEM()", error_head)) return -1;
+
+	// 保存原始回调指针到 TLS 变量
+	t_original_cb = cb;
+
 	ret = demMapping(dem, dem_out, lon_upperleft, lat_upperleft, offset_row, offset_col,
 		sceneHeight, sceneWidth, prf1, rangeSpacing, wavelength,
 		nearRangeTime, acquisition_start_time, acquisition_stop_time, statevector1, interp_times,
-		5.0 / 6000.0, 5.0 / 6000.0, cb);
-	if (ret == -2) return -2;
-	if (return_check(ret, "demMapping()", error_head)) return -1;
+		5.0 / 6000.0, 5.0 / 6000.0, dem_mapping_wrapper_cb);
+	if (ret == -2)
+	{
+		t_original_cb = nullptr;
+		return -2;
+	}
+	if (return_check(ret, "demMapping()", error_head))
+	{
+		t_original_cb = nullptr;
+		return -1;
+	}
 	//Mat out; dem_out.convertTo(out, CV_64F);
 	//util.cvmat2bin("E:\\zgb1\\functions\\out.bin", out);
 	ret = util.baseline_estimation(statevector1, statevector2, lon_cofficient, lat_cofficient, offset_row,
 		offset_col, dem_out.rows, dem_out.cols,
 		1 / prf1, 1 / prf2, &B_effect, &B_para);
-	if (return_check(ret, "baseline_estimation()", error_head)) return -1;
+	if (return_check(ret, "baseline_estimation()", error_head))
+	{
+		t_original_cb = nullptr;
+		return -1;
+	}
+
 	ret = topography_phase_simulation(dem_out, topography_phase, inc_cofficient, B_effect, nearRangeTime,
-		offset_row, offset_col, wavelength, rangeSpacing, cb);
+		offset_row, offset_col, wavelength, rangeSpacing, topo_sim_wrapper_cb);
+
+	t_original_cb = nullptr; // 执行完毕，清理 TLS
 	if (ret == -2) return -2;
 	if (return_check(ret, "topography_phase_simulation()", error_head)) return -1;
 	return 0;

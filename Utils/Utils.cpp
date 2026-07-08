@@ -2152,6 +2152,7 @@ int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence
 
 	std::atomic<int> completed_rows(0);
 	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> max_reported_pct(0);
 	int step = std::max(1, na_new / 100);
 
 	Mat Coherence(na_new, nr_new, CV_64F, Scalar::all(0));
@@ -2190,9 +2191,20 @@ int Utils::complex_coherence(ComplexMat& Mast, ComplexMat& Slave, Mat& coherence
 		int current = ++completed_rows;
 		if (cb && current % step == 0)
 		{
-			if (!cb(current * 100 / na_new, "Computing complex coherence (3x3)..."))
+			int current_pct = current * 100 / na_new;
+			int prev = max_reported_pct.load();
+			while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
 			{
-				cancel_flag = true;
+			}
+			if (current_pct > prev)
+			{
+				#pragma omp critical(coherence_progress_lock)
+				{
+					if (!cb(current_pct, "Computing complex coherence (3x3)..."))
+					{
+						cancel_flag = true;
+					}
+				}
 			}
 		}
 	}
@@ -2238,6 +2250,7 @@ int Utils::complex_coherence(
 
 	std::atomic<int> completed_rows(0);
 	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> max_reported_pct(0);
 	int step = std::max(1, na_new / 100);
 
 	if (master_image.type() == CV_64F)
@@ -2278,9 +2291,20 @@ int Utils::complex_coherence(
 			int current = ++completed_rows;
 			if (cb && current % step == 0)
 			{
-				if (!cb(current * 100 / na_new, "Computing complex coherence (64F)..."))
+				int current_pct = current * 100 / na_new;
+				int prev = max_reported_pct.load();
+				while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
 				{
-					cancel_flag = true;
+				}
+				if (current_pct > prev)
+				{
+					#pragma omp critical(coherence_progress_64f_lock)
+					{
+						if (!cb(current_pct, "Computing complex coherence (64F)..."))
+						{
+							cancel_flag = true;
+						}
+					}
 				}
 			}
 		}
@@ -2326,9 +2350,20 @@ int Utils::complex_coherence(
 			int current = ++completed_rows;
 			if (cb && current % step == 0)
 			{
-				if (!cb(current * 100 / na_new, "Computing complex coherence (32F)..."))
+				int current_pct = current * 100 / na_new;
+				int prev = max_reported_pct.load();
+				while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
 				{
-					cancel_flag = true;
+				}
+				if (current_pct > prev)
+				{
+					#pragma omp critical(coherence_progress_32f_lock)
+					{
+						if (!cb(current_pct, "Computing complex coherence (32F)..."))
+						{
+							cancel_flag = true;
+						}
+					}
 				}
 			}
 		}
