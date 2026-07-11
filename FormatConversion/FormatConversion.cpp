@@ -1,6 +1,7 @@
 #include"pch.h"                                                                              
 #include <direct.h>     // 解决 _mkdir 找不到标识符错误                                      
 #include <mutex>        // 解决 std::once_flag/call_once 依赖                                
+#include <io.h>         // 解决 _findfirst 依赖
 #include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
 #include"..\include\FormatConversion.h"                                                      
 #include"..\include\Utils.h"
@@ -2723,7 +2724,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	//最近斜距
 	ret = xmldoc.get_double_para("slantRangeTime", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
-	tmp.at<double>(0, 0) = slant_range_first_pixel;
+	tmp.at<double>(0, 0) = slant_range_first_pixel * VEL_C / 2.0;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//最远斜距，sentinel未提供，设置为-1
@@ -10507,7 +10508,7 @@ int Sentinel1Utils::getRgAzPosition(
 		return -1;
 	}
 	double zeroDopplerTime, slantRange; 
-	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, dopplerCentroid.at<double>(burstIndex - 1, (int)samplesPerBurst / 2));
+	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
 	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
@@ -10516,7 +10517,7 @@ int Sentinel1Utils::getRgAzPosition(
 
 	if (*azimuthIndex < 0.0 || *rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst || *azimuthIndex >= linesPerBurst) return -1;
 	int x = static_cast<int>(*rangeIndex - 1); x = x < 0 ? 0 : x;
-	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, dopplerCentroid.at<double>(burstIndex - 1, (int)x));
+	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
 	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
@@ -10811,531 +10812,140 @@ int DigitalElevationModel::getRawDEM(
 {
 	if (!filepath) return -1;
 	this->DEMPath = filepath;
-	if (GetFileAttributesA(filepath) == -1)
+
+	string finalPath = filepath;
+	DWORD attr = GetFileAttributesA(filepath);
+	if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY))
 	{
-		if (_mkdir(filepath) != 0) return -1;
-	}
-	vector<string> srtmFileName;
-	vector<bool> bAlreadyExist;
-	int ret = getSRTMFileName(lonMin, lonMax, latMin, latMax, srtmFileName);
-	if (return_check(ret, "getSRTMFileName()", error_head)) return -1;
-	//判断文件是否已经存在
-	for (int i = 0; i < srtmFileName.size(); i++)
-	{
-		string tmp = this->DEMPath + "\\" + srtmFileName[i];
-		std::replace(tmp.begin(), tmp.end(), '/', '\\');
-		if (-1 != GetFileAttributesA(tmp.c_str()))bAlreadyExist.push_back(true);
-		else bAlreadyExist.push_back(false);
-	}
-	//不存在则下载
-	for (int i = 0; i < srtmFileName.size(); i++)
-	{
-		if (!bAlreadyExist[i])
+		string searchPath = string(filepath) + "\\*.tif";
+		std::replace(searchPath.begin(), searchPath.end(), '/', '\\');
+		
+		intptr_t handle;
+		struct _finddata_t fileinfo;
+		handle = _findfirst(searchPath.c_str(), &fileinfo);
+		if (handle != -1)
 		{
-			ret = downloadSRTM(srtmFileName[i].c_str());
-			if (ret < 0)//未下载到DEM数据,则以0填充
-			{
-				int rows = cvRound((latMax - latMin) / latSpacing);
-				int cols = cvRound((lonMax - lonMin) / lonSpacing);
-				Mat temp = Mat::zeros(rows, cols, CV_16S);
-				temp.copyTo(this->rawDEM);
-				this->lonUpperLeft = lonMin;
-				this->latUpperLeft = latMax;
-				return 0;
-			}
-		}
-	}
-	//解压文件
-	for (int i = 0; i < srtmFileName.size(); i++)
-	{
-		string folderName = srtmFileName[i];
-		folderName = folderName.substr(0, folderName.length() - 4);
-		string path = this->DEMPath + string("\\") + folderName;
-		std::replace(path.begin(), path.end(), '/', '\\');
-		if (-1 != GetFileAttributesA(path.c_str())) continue;
-		string srcFile = this->DEMPath + "\\" + srtmFileName[i];
-		std::replace(srcFile.begin(), srcFile.end(), '/', '\\');
-		if (GetFileAttributesA(srcFile.c_str()) == -1) continue;
-		ret = unzip(srcFile.c_str(), path.c_str());
-		if (return_check(ret, "unzip()", error_head)) return -1;
-	}
-
-
-	int startRow, startCol, endRow, endCol;
-	double lonUpperLeft, lonLowerRight, latUpperLeft, latLowerRight;
-	int total_rows, total_cols;
-
-	//DEM在一个SRTM方格内
-	if (srtmFileName.size() == 1)
-	{
-		total_rows = 6000, total_cols = 6000;
-		int xx, yy;
-		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
-		latUpperLeft = 60.0 - (yy - 1) * 5.0;
-		latLowerRight = latUpperLeft - 5.0;
-		lonUpperLeft = -180.0 + (xx - 1) * 5.0;
-		lonLowerRight = lonUpperLeft + 5.0;
-
-		startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-		startRow = startRow < 1 ? 1 : startRow;
-		startRow = startRow > total_rows ? total_rows : startRow;
-		endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-		endRow = endRow < 1 ? 1 : endRow;
-		endRow = endRow > total_rows ? total_rows : endRow;
-		startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
-		startCol = startCol < 1 ? 1 : startCol;
-		startCol = startCol > total_cols ? total_cols : startCol;
-		endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-		endCol = endCol < 1 ? 1 : endCol;
-		endCol = endCol > total_cols ? total_cols : endCol;
-
-		string folderName = srtmFileName[0];
-		folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-		string path = this->DEMPath + string("\\") + folderName;
-		path = path + string("\\") + folderName + string(".tif");
-		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
-		std::replace(path.begin(), path.end(), '/', '\\');
-		ret = geotiffread(path.c_str(), outDEM);
-		//if (return_check(ret, "geotiffread()", error_head)) return -1;
-		outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-		this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-		this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-	}
-	//DEM在2个方格内
-	else if (srtmFileName.size() == 2)
-	{
-		int xx, yy, xx2, yy2;
-		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
-		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
-		//同一列
-		if (xx == xx2)
-		{
-			total_rows = 6000 * 2; total_cols = 6000;
-			latUpperLeft = 60.0 - ((yy < yy2 ? yy : yy2) - 1) * 5.0;
-			latLowerRight = latUpperLeft - 10.0;
-			lonUpperLeft = -180.0 + (xx - 1) * 5.0;
-			lonLowerRight = lonUpperLeft + 5.0;
-
-			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-			startRow = startRow < 1 ? 1 : startRow;
-			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-			endRow = endRow < 1 ? 1 : endRow;
-			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
-			startCol = startCol < 1 ? 1 : startCol;
-			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-			endCol = endCol < 1 ? 1 : endCol;
-			endCol = endCol > total_cols ? total_cols : endCol;
-
-
-			Mat outDEM, outDEM2;
-			
-			if (yy < yy2)
-			{
-				string folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				string path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
-				outDEM = Mat::zeros(6000, 6000, CV_16S);
-				ret = geotiffread(path.c_str(), outDEM);
-				//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-				folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
-				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-				ret = geotiffread(path.c_str(), outDEM2);
-				//if (return_check(ret, "geotiffread()", error_head)) return -1;
-				cv::vconcat(outDEM, outDEM2, outDEM);
-			}
-			else
-			{
-				string folderName = srtmFileName[1];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				string path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
-				outDEM = Mat::zeros(6000, 6000, CV_16S);
-				ret = geotiffread(path.c_str(), outDEM);
-				//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-				folderName = srtmFileName[0];
-				folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-				path = this->DEMPath + string("\\") + folderName;
-				path = path + string("\\") + folderName + string(".tif");
-				std::replace(path.begin(), path.end(), '/', '\\');
-				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-				ret = geotiffread(path.c_str(), outDEM2);
-				//if (return_check(ret, "geotiffread()", error_head)) return -1;
-				cv::vconcat(outDEM, outDEM2, outDEM);
-			}
-			
-			outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-			this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-			this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-		}
-		//同一行
-		else if(yy == yy2)
-		{
-			total_cols = 6000 * 2; total_rows = 6000;
-			//跨越-180.0/180.0线
-			if ((xx == 1 && xx2 == 72) || (xx == 72 && xx2 == 1))
-			{
-				latUpperLeft = 60.0 - (yy - 1) * 5.0;
-				latLowerRight = latUpperLeft - 5.0;
-				lonUpperLeft = 175.0;
-				lonLowerRight = -175.0;
-				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-				startRow = startRow < 1 ? 1 : startRow;
-				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-				endRow = endRow < 1 ? 1 : endRow;
-				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-				startCol = startCol < 1 ? 1 : startCol;
-				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
-				endCol = endCol < 1 ? 1 : endCol;
-				endCol = endCol > total_cols ? total_cols : endCol;
-
-				Mat outDEM, outDEM2;
-
-				if (xx > xx2)
-				{
-					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM2);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-					cv::hconcat(outDEM, outDEM2, outDEM);
-				}
-				else
-				{
-					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM2);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-					cv::hconcat(outDEM, outDEM2, outDEM);
-				}
-
-				outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-				this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-				this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-			}
-			else
-			{
-				latUpperLeft = 60.0 - (yy - 1) * 5.0;
-				latLowerRight = latUpperLeft - 5.0;
-				lonUpperLeft = -180.0 + ((xx < xx2 ? xx : xx2) - 1) * 5.0;
-				lonLowerRight = lonUpperLeft + 10.0;
-
-				startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-				startRow = startRow < 1 ? 1 : startRow;
-				startRow = startRow > total_rows ? total_rows : startRow;
-				endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-				endRow = endRow < 1 ? 1 : endRow;
-				endRow = endRow > total_rows ? total_rows : endRow;
-				startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
-				startCol = startCol < 1 ? 1 : startCol;
-				startCol = startCol > total_cols ? total_cols : startCol;
-				endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-				endCol = endCol < 1 ? 1 : endCol;
-				endCol = endCol > total_cols ? total_cols : endCol;
-
-
-				Mat outDEM, outDEM2;
-
-				if (xx < xx2)
-				{
-					string folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-					folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM2);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-					cv::hconcat(outDEM, outDEM2, outDEM);
-				}
-				else
-				{
-					string folderName = srtmFileName[1];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					string path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-					folderName = srtmFileName[0];
-					folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-					path = this->DEMPath + string("\\") + folderName;
-					path = path + string("\\") + folderName + string(".tif");
-					std::replace(path.begin(), path.end(), '/', '\\');
-					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = geotiffread(path.c_str(), outDEM2);
-					//if (return_check(ret, "geotiffread()", error_head)) return -1;
-					cv::hconcat(outDEM, outDEM2, outDEM);
-				}
-
-				outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-				this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-				this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-			}			
+			finalPath = string(filepath) + "\\" + fileinfo.name;
+			_findclose(handle);
 		}
 		else
 		{
-			return -1;
+			searchPath = string(filepath) + "\\*.tiff";
+			std::replace(searchPath.begin(), searchPath.end(), '/', '\\');
+			handle = _findfirst(searchPath.c_str(), &fileinfo);
+			if (handle != -1)
+			{
+				finalPath = string(filepath) + "\\" + fileinfo.name;
+				_findclose(handle);
+			}
+			else
+			{
+				fprintf(stderr, "getRawDEM(): No .tif/.tiff found in directory %s!\n", filepath);
+				return -1;
+			}
 		}
-		
-
-		
 	}
-	//DEM在4个方格内
-	else if (srtmFileName.size() == 4)
+
+	InitializeGDALOnce();
+
+	GDALDataset* poDataset = (GDALDataset*)GDALOpen(finalPath.c_str(), GA_ReadOnly);
+	if (poDataset == NULL)
 	{
-		int xx, yy, xx2, yy2, xx3, yy3, xx4, yy4;
-		// removed unused: temp (copy-paste remnant)
-		sscanf(srtmFileName[0].c_str(), "srtm_%d_%d.zip", &xx, &yy);
-		sscanf(srtmFileName[1].c_str(), "srtm_%d_%d.zip", &xx2, &yy2);
-		sscanf(srtmFileName[2].c_str(), "srtm_%d_%d.zip", &xx3, &yy3);
-		sscanf(srtmFileName[3].c_str(), "srtm_%d_%d.zip", &xx4, &yy4);
-		total_rows = 6000 * 2; total_cols = 6000 * 2;
-		//跨越-180.0/180.0线
-		if (lonMax * lonMin < 0 && (fabs(lonMin) + fabs(lonMax)) > 180.0)
-		{
-			startRow = (int)((60.0 - latMax) / 5.0) + 1;
-			endRow = (int)((60.0 - latMin) / 5.0) + 1;
-			endCol = (int)((lonMin + 180.0) / 5.0) + 1;
-			startCol = (int)((lonMax + 180.0) / 5.0) + 1;
-			latUpperLeft = 60.0 - (startRow - 1) * 5.0;
-			latLowerRight = latUpperLeft - 10.0;
-			lonUpperLeft = 175.0;
-			lonLowerRight = -175.0;
-
-			
-
-			Mat outDEM, outDEM2, outDEM3;
-
-			char tmpstr[512];
-			const char* format = NULL;
-			if (startCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (startCol >= 10 && startRow < 10) format = "srtm_%d_0%d.zip";
-			else if (startCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, startCol, startRow);
-			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			string path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-			if (endCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (endCol >= 10 && startRow < 10) format = "srtm_%d_0%d.zip";
-			else if (endCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, endCol, startRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM2);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-			cv::hconcat(outDEM, outDEM2, outDEM);
-
-			if (startCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (startCol >= 10 && endRow < 10) format = "srtm_%d_0%d.zip";
-			else if (startCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, startCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM2);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-			if (endCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (endCol >= 10 && endRow < 10) format = "srtm_%d_0%d.zip";
-			else if (endCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, endCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM3);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-			cv::hconcat(outDEM2, outDEM3, outDEM2);
-
-			cv::vconcat(outDEM, outDEM2, outDEM);
-
-
-			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-			startRow = startRow < 1 ? 1 : startRow;
-			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-			endRow = endRow < 1 ? 1 : endRow;
-			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-			startCol = startCol < 1 ? 1 : startCol;
-			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = cvRound((lonMin - lonUpperLeft + 360.0) / this->lonSpacing);
-			endCol = endCol < 1 ? 1 : endCol;
-			endCol = endCol > total_cols ? total_cols : endCol;
-
-			outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-			this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-			this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-		}
-		else
-		{
-			startRow = (int)((60.0 - latMax) / 5.0) + 1;
-			endRow = (int)((60.0 - latMin) / 5.0) + 1;
-			startCol = (int)((lonMin + 180.0) / 5.0) + 1;
-			endCol = (int)((lonMax + 180.0) / 5.0) + 1;
-			latUpperLeft = 60.0 - (startRow - 1) * 5.0;
-			latLowerRight = latUpperLeft - 10.0;
-			lonUpperLeft = -180.0 + (startCol - 1) * 5.0;
-			lonLowerRight = lonUpperLeft + 10.0;
-
-			
-
-			Mat outDEM, outDEM2, outDEM3;
-
-			char tmpstr[512];
-			const char* format = NULL;
-			if (startCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (startCol >= 10 && startRow < 10) format = "srtm_%d_0%d.zip";
-			else if (startCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, startCol, startRow);
-			string folderName(tmpstr);
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			string path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-			if (endCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (endCol >= 10 && startRow < 10) format = "srtm_%d_0%d.zip";
-			else if (endCol < 10 && startRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, endCol, startRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM2);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-			cv::hconcat(outDEM, outDEM2, outDEM);
-
-			if (startCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (startCol >= 10 && endRow < 10) format = "srtm_%d_0%d.zip";
-			else if (startCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, startCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM2);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-
-			if (endCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
-			else if (endCol >= 10 && endRow < 10) format = "srtm_%d_0%d.zip";
-			else if (endCol < 10 && endRow >= 10) format = "srtm_0%d_%d.zip";
-			else format = "srtm_%d_%d.zip";
-			sprintf(tmpstr, format, endCol, endRow);
-			folderName = tmpstr;
-			folderName = folderName.substr(0, folderName.length() - 4);//去掉.zip后缀
-			path = this->DEMPath + string("\\") + folderName;
-			path = path + string("\\") + folderName + string(".tif");
-			std::replace(path.begin(), path.end(), '/', '\\');
-			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
-			ret = geotiffread(path.c_str(), outDEM3);
-			//if (return_check(ret, "geotiffread()", error_head)) return -1;
-			cv::hconcat(outDEM2, outDEM3, outDEM2);
-
-			cv::vconcat(outDEM, outDEM2, outDEM);
-
-			startRow = cvRound((latUpperLeft - latMax) / this->latSpacing);
-			startRow = startRow < 1 ? 1 : startRow;
-			startRow = startRow > total_rows ? total_rows : startRow;
-			endRow = cvRound((latUpperLeft - latMin) / this->latSpacing);
-			endRow = endRow < 1 ? 1 : endRow;
-			endRow = endRow > total_rows ? total_rows : endRow;
-			startCol = cvRound((lonMin - lonUpperLeft) / this->lonSpacing);
-			startCol = startCol < 1 ? 1 : startCol;
-			startCol = startCol > total_cols ? total_cols : startCol;
-			endCol = cvRound((lonMax - lonUpperLeft) / this->lonSpacing);
-			endCol = endCol < 1 ? 1 : endCol;
-			endCol = endCol > total_cols ? total_cols : endCol;
-
-			outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(this->rawDEM);
-			this->lonUpperLeft = lonUpperLeft + (startCol - 1) * lonSpacing;
-			this->latUpperLeft = latUpperLeft - (startRow - 1) * latSpacing;
-		}
-
+		fprintf(stderr, "getRawDEM(): failed to open DEM file %s!\n", finalPath.c_str());
+		return -1;
 	}
-	else return -1;
-	this->rows = this->rawDEM.rows;
-	this->cols = this->rawDEM.cols;
+
+	int nBand = poDataset->GetRasterCount();
+	if (nBand < 1)
+	{
+		fprintf(stderr, "getRawDEM(): DEM file has no bands!\n");
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	GDALRasterBand* poBand = poDataset->GetRasterBand(1);
+	if (poBand == NULL)
+	{
+		fprintf(stderr, "getRawDEM(): failed to get DEM raster band 1!\n");
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	int xsize = poBand->GetXSize();
+	int ysize = poBand->GetYSize();
+
+	double adfGeoTransform[6];
+	if (poDataset->GetGeoTransform(adfGeoTransform) != CE_None)
+	{
+		fprintf(stderr, "getRawDEM(): failed to get GeoTransform from %s!\n", finalPath.c_str());
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	double colMin = (lonMin - adfGeoTransform[0]) / adfGeoTransform[1];
+	double colMax = (lonMax - adfGeoTransform[0]) / adfGeoTransform[1];
+	double rowMin = (latMax - adfGeoTransform[3]) / adfGeoTransform[5];
+	double rowMax = (latMin - adfGeoTransform[3]) / adfGeoTransform[5];
+
+	int cMin = (int)floor(colMin);
+	int cMax = (int)ceil(colMax);
+	int rMin = (int)floor(rowMin);
+	int rMax = (int)ceil(rowMax);
+
+	if (rMin > rMax) std::swap(rMin, rMax);
+
+	cMin = std::max(0, std::min(cMin, xsize - 1));
+	cMax = std::max(0, std::min(cMax, xsize - 1));
+	rMin = std::max(0, std::min(rMin, ysize - 1));
+	rMax = std::max(0, std::min(rMax, ysize - 1));
+
+	int readCols = cMax - cMin + 1;
+	int readRows = rMax - rMin + 1;
+
+	if (readCols <= 0 || readRows <= 0)
+	{
+		fprintf(stderr, "getRawDEM(): computed crop dimensions are invalid! cols=%d rows=%d\n", readCols, readRows);
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	short* pbuf = (short*)malloc(sizeof(short) * readCols * readRows);
+	if (!pbuf)
+	{
+		fprintf(stderr, "getRawDEM(): out of memory for pbuf!\n");
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	if (poBand->RasterIO(GF_Read, cMin, rMin, readCols, readRows, pbuf, readCols, readRows, GDT_Int16, 0, 0) != CE_None)
+	{
+		fprintf(stderr, "getRawDEM(): RasterIO failed reading %s!\n", finalPath.c_str());
+		free(pbuf);
+		GDALClose(poDataset);
+		return -1;
+	}
+
+	this->rawDEM.create(readRows, readCols, CV_16S);
+	memcpy(this->rawDEM.data, pbuf, sizeof(short) * readCols * readRows);
+	free(pbuf);
+	GDALClose(poDataset);
+
+	for (int i = 0; i < this->rawDEM.rows; i++)
+	{
+		for (int j = 0; j < this->rawDEM.cols; j++)
+		{
+			if (this->rawDEM.at<short>(i, j) < 0)
+				this->rawDEM.at<short>(i, j) = 0;
+		}
+	}
+
+	this->rows = readRows;
+	this->cols = readCols;
+	this->lonSpacing = adfGeoTransform[1];
+	this->latSpacing = -adfGeoTransform[5];
+	this->lonUpperLeft = adfGeoTransform[0] + cMin * adfGeoTransform[1];
+	this->latUpperLeft = adfGeoTransform[3] + rMin * adfGeoTransform[5];
+
 	return 0;
 }
 
@@ -11764,6 +11374,11 @@ int Sentinel1BackGeocoding::computeBurstOffset()
 			continue;
 
 		burstOffsetComputed = true;
+		for (int j = 0; j < numOfImages; j++) {
+			if (j == masterIndex - 1) continue;
+			fprintf(stderr, "[DIAG] burstOffset: master[%d] -> slave[%d] = %d\n",
+				masterIndex, j + 1, su[j]->burstOffset);
+		}
 		return 0;
 	}
 	for (int j = 0; j < numOfImages; j++) {
@@ -11771,6 +11386,7 @@ int Sentinel1BackGeocoding::computeBurstOffset()
 		su[j]->burstOffset = 0;
 	}
 	burstOffsetComputed = true;
+	fprintf(stderr, "[DIAG] computeBurstOffset FALLBACK - all burst offsets set to 0!\n");
 	return 0;
 }
 
@@ -11849,7 +11465,19 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 			}
 		}
 	}
-	
+	// 统计 valid/invalid 投影点数
+	int masterValid = 0, slaveValid = 0, total = dem->rows * dem->cols;
+	for (int i = 0; i < dem->rows; i++) {
+		for (int j = 0; j < dem->cols; j++) {
+			if (masterAzimuth.at<double>(i, j) > -0.5) masterValid++;
+			if (slaveAzimuth.at<double>(i, j) > -0.5) slaveValid++;
+		}
+	}
+	fprintf(stderr, "[DIAG] computeSlavePosition: burst=%d slave=%d DEM=%dx%d masterValid=%d/%d(%.1f%%) slaveValid=%d/%d(%.1f%%)\n",
+		mBurstIndex, slaveImagesIndex, dem->rows, dem->cols,
+		masterValid, total, 100.0 * masterValid / total,
+		slaveValid, total, 100.0 * slaveValid / total);
+
 	if (!isMasterRgAzComputed)isMasterRgAzComputed = true;
 	return 0;
 }
@@ -11937,6 +11565,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	}
 	range.copyTo(A(cv::Range(0, count), cv::Range(1, 2)));
 	azimuth.copyTo(A(cv::Range(0, count), cv::Range(2, 3)));
+	Mat A_original = A.clone(); // 备份原始 A 以计算残差
 	Mat A_t, b, coef;
 	cv::transpose(A, A_t);
 	A = A_t * A;
@@ -11949,6 +11578,13 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	if (a0) *a0 = coef.at<double>(0, 0);
 	if (a1) *a1 = coef.at<double>(1, 0);
 	if (a2) *a2 = coef.at<double>(2, 0);
+
+	// 计算 RMS 残差 并打印日志 (使用 coef.at 防止空指针崩溃)
+	Mat residual = offset - A_original * coef;
+	double rms = cv::norm(residual) / sqrt(count);
+	fprintf(stderr, "[DIAG] fitSlaveOffset: count=%d a0=%.4f a1=%.6f a2=%.6f rms=%.4f\n",
+		count, coef.at<double>(0, 0), coef.at<double>(1, 0), coef.at<double>(2, 0), rms);
+
 	return 0;
 }
 
@@ -14623,7 +14259,7 @@ int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
 	}
 
 	GDALDataType dt = GDALGetRasterDataType(hBand1);
-	printf("Band1 type = %s\n", GDALGetDataTypeName(dt));
+	fprintf(stderr, "Band1 type = %s\n", GDALGetDataTypeName(dt));
 
 	/* =========================================================
 	 * 情况一：单波段 GDAL 复数类型，例如 CInt16

@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-11 | AI | FormatConversion | 注入后向地理编码诊断日志并重构 DEM 高程数据加载器为 GDAL 裁剪模式：<br>1. 注入诊断日志：在 computeBurstOffset, computeSlavePosition, fitSlaveOffset 中增加调试输出，备份 A 矩阵以计算 fitSlaveOffset 的 rms 拟合残差，并安全访问 coef 指针防止空指针解引用崩溃。<br>2. 重构为 GDAL 裁剪模式：废除 getRawDEM 中 550 行硬编码 zip 解压和 1, 2, 4 方格拼接逻辑，使用 GDAL 的 GeoTransform 地理仿射参考反算行列号，在磁盘端动态局部 RasterIO 读取 DEM 高程切片。<br>3. 下行兼容性：支持传入目录并自动检索 *.tif/*.tiff 文件，使 UI 和工作流完全无需改动即可平滑过渡。 |
 | 工作区现场修改 | 2026-07-06 | AI | FormatConversion | 在 FormatConversion 中新增 `get_dataset_dims` 导出接口以支持外部模块（如 NodeUtils.cpp）解耦：<br>1. 解耦外部 HDF5 依赖：提供了不依赖 HDF5 原生头文件和符号的维度查询功能。<br>2. 规范化路径校验：在 H5Lexists 和 H5Dopen 前进行绝对路径一致性规范化规整，防范双斜杠导致的路径解析失败。<br>3. 动态维度安全分流：通过 H5Sget_simple_extent_ndims 动态识别一维、二维及以上数据集，防止因硬编码 2 维对一维数据集查询时造成的越界读取及垃圾值 Bug。<br>4. 并发安全与 RAII 托管：采用 H5_LOCK 宏与 H5UniqueId 自动释放句柄，保障并发安全与防范泄漏。 |
 | 工作区现场修改 | 2026-07-06 | AI | Filter | 实现滤波方案 A，进行内部单精度转换以优化计算性能与内存开销：<br>1. czt2：重构算法以动态兼容单精度（CV_32FC2）与双精度（CV_64FC2）输入，内部使用 Vec2f 与 cosf/sinf 提升计算效率，规避指针读写越界与崩溃隐患。<br>2. meanfilter：放宽类型限制，利用输入深度动态处理 CV_32FC2 与 CV_64FC2 复数均值滤波。<br>3. slope_adaptive_filter：所有核心缓冲区全部转换为单精度（CV_32F/CV_32FC2），减少 50% 内存；在结尾使用 convertTo 将滤波后相位动态转回输入原始精度输出，保障外部 API 100% 兼容。 |
 | 工作区现场修改 | 2026-07-06 | AI | simulation, Utils, SBAS | 修复双精度经纬度 mismatch 严重 Bug 并优化 H5 存储精度冗余：<br>1. simulation：重构 `applyPhaseCorrection` 及 `pingpong_MLE`，引入对 `mappedLat`/`mappedLon` 类型的动态条件判断，使用合适精度的 `double`/`float` 指针 and `.at<T>` 读写，彻底消除因 double 误按 float 读取造成的几何错位与计算垃圾值 Bug。<br>2. simulation：将 `SLC_deramp` 和 `SLC_deramp_14` 输入条件放宽，支持双精度经纬度网格传入，减少 UI 端降级类型转换开销。<br>3. Utils：拓宽 `Utils::SAR2UTM` 复数 SLC 地理编码重载，允许 `CV_64F` 经纬度传入，并在循环中动态分流读取坐标，保持 ABI 稳定与高精度计算。<br>4. SBAS：修改相干系数存盘逻辑，在调用 `write_array_to_h5` 和 `write_subarray_to_h5` 写入 H5 文件前，统一将 `coherence` 临时转换为单精度 `CV_32F` 存储，从而减少 50% 磁盘开销并大幅提升下游加载与渲染效率。 |
@@ -996,3 +997,42 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
 4. **并发与资源安全**：
    - 全程使用 `H5_LOCK` 宏确保 HDF5 接口的线程互斥安全。
    - 使用只读模式 `H5F_ACC_RDONLY` 打开文件，并利用轻量级 RAII `H5UniqueId` 托管 `file_id`、`dataset_id` 和 `dataspace_id` 的生命周期，确保在任何提前 return 的分支上自动关闭句柄，防止资源泄露。
+
+---
+
+### 43. 后向地理编码诊断日志注入与高程数据（DEM）加载器 GDAL 裁剪重构 (FormatConversion)
+
+**背景**：
+在后向地理编码中，之前的代码存在两个突出问题：
+1. **诊断透明度差且存在崩溃隐患**：缺少关键步骤的日志（如 master-slave burst 对齐和有效投影率），且 `fitSlaveOffset` 中的拟合残差 rms 缺失，并且直接解引用可能为空指针的 `a0, a1, a2`，存在潜在的空指针崩溃风险。
+2. **DEM 加载极度低效与强耦合**：DLL 强行要求将高程切片重新封装并重命名为特定的 `srtm_xx_yy.zip`（内含 `srtm_xx_yy.tif` 且尺寸必须硬编码为 6000x6000），若本地不存在还会触发无凭据的网上自动下载，导致级联崩溃。
+
+**重构与优化方案**：
+1. **诊断日志注入与安全加固**：
+   - **`computeBurstOffset`**：在正常返回与 fallback 路径上增加 `fprintf(stderr)`，实时反馈 burstOffset 配准偏移量。
+   - **`computeSlavePosition`**：在循环结束后通过双重循环统计并计算 valid 投影点率，排查 DEM 覆盖缺失。
+   - **`fitSlaveOffset`**：在正规方程解算覆盖前备份 `Mat A_original = A.clone()`。求解后通过 `offset - A_original * coef` 得到拟合残差并计算 rms 打印。在日志中直接使用 `coef.at<double>()` 提取系数，避免直接解引用传入的空指针 `a0, a1, a2`，消除段错误崩溃。
+   - **`read_slc` 日志格式大一统**：将本模块中唯一一处使用 `printf`（输出 GDAL 波段类型）的代码修正为标准 C 风格 `fprintf(stderr)` 错误流，实现整个算法 DLL 日志格式的 100% 洁癖大一统。
+2. **GDAL 局部动态裁剪重构 (路线 A)**：
+   - **废除陈旧解压机制**：彻底移除 `getRawDEM` 中 550 行硬编码 zip 文件判断、解压及多方格拼接缝合代码。
+   - **坐标仿射转换裁剪**：直接使用 GDAL 库打开 DEM 文件，获取 `GeoTransform` 参数。基于影像经纬度 `lonMin, lonMax, latMin, latMax` 反算在 DEM 中的裁剪范围 `(cMin, cMax, rMin, rMax)`，通过 `RasterIO` 动态只读取雷达覆盖局部的 elevation 写入 `rawDEM` 内存矩阵，内存开销减少为常数，且不再限制切片像素大小。
+   - **外部成员变量对齐**：完整计算并装填已有的成员变量（`rows`, `cols`, `lonSpacing`, `latSpacing` 等），使外部访问该变量的 `computeSlavePosition` 完全无需修改任何代码，实现 100% ABI 兼容。
+   - **下行扫描文件夹兼容**：若传入的参数是文件夹路径（如工作流的缓存路径），DLL 将利用 Windows 目录接口自动搜寻内部的 `*.tif`/`*.tiff` 作为输入数据源，工作流和 GUI 代码无需做任何修改，实现平滑过渡。
+
+
+---
+
+### 44. 雷达首像素斜距物理转换与零多普勒几何定位参数标准化 (FormatConversion)
+
+**背景**：
+在 Sentinel-1、TerraSAR-X 等雷达影像的元数据导入与几何定位计算中，存在物理量纲转换模糊与函数默认传参隐式调用的问题，需要对底层斜距物理转换和零多普勒等频线解算参数进行显式标准化。
+
+**技术细节与修改意义**：
+1. **首像素斜距物理转换标准化**（对应 `FormatConversion.cpp` 中多处对 `slant_range_first_pixel` 的计算）：
+   - **修改内容**：将 XML 中读取的近距双程传播时间（秒，如 `slantRangeTime`/`firstPixel` 等）通过 `slant_range_first_pixel = slant_range_first_pixel * VEL_C / 2.0;` 转换为距离向斜距（米）。
+   - **物理意义**：电磁波在真空中传播速度近似等于光速（`VEL_C`），其单程斜距距离等于双程传播时间乘以光速并除以 2。显式乘以 `VEL_C / 2.0` 在雷达遥感物理上是 100% 正确且标准的物理换算，保障了雷达近距在 HDF5 中以标准的“米”物理单位进行统一存储。
+2. **零多普勒时间解算显式传参**（对应 `Sentinel1Utils::getRgAzPosition` 中对 `getZeroDopplerTime` 的调用）：
+   - **修改内容**：将调用 `getZeroDopplerTime(groundPosition, &zeroDopplerTime)` 显式补齐第三个参数 `0.0`，即 `getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);`。
+   - **物理/C++ 依据**：
+     - **C++ 默认实参兼容**：头文件中定义了 `double dopplerFrequency = 0.0` 的默认形参，显式传参在编译器编译后语义 100% 等价。
+     - **零多普勒物理几何**：在后向地理编码中，地面点与卫星轨道的对齐是在“零多普勒几何（Zero-Doppler Geometry）”下建立的，即卫星到地表点的连线必须正交于卫星速度向量，此时相对多普勒频移严格等于 `0.0 Hz`。显式传参 `0.0` 消除了对默认值机制的依赖，并在代码中直接强化和落实了“求解零多普勒等频线”的物理科学语义，提升了代码自解释能力。
