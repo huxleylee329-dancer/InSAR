@@ -402,9 +402,18 @@ int Filter::slope_adaptive_filter(Mat& phase, Mat& phase_filter, int wndsize_fil
 			}
 		}
 
-#pragma omp critical(stdout_print)
+		if (!cb)
 		{
-			fprintf(stdout, "process: %lf %%\n", double(current_completed) / double(total_rows) * 100);
+			int last_pct = (current_completed - 1) * 100 / total_rows;
+			int current_pct = current_completed * 100 / total_rows;
+			if ((current_pct / 10 > last_pct / 10) || current_completed == total_rows)
+			{
+				int print_pct = (current_completed == total_rows) ? 100 : (current_pct / 10 * 10);
+#pragma omp critical(stdout_print)
+				{
+					fprintf(stdout, "process: %d %%\n", print_pct);
+				}
+			}
 		}
 	}
 	// 恢复 OpenCV 线程设置

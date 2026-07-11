@@ -612,13 +612,22 @@ int FormatConversion::write_zero_array_to_h5(const char* filename, const char* d
 	H5_LOCK;
 	if (filename == NULL ||
 		dataset_name == NULL ||
-		(type != CV_64F && type != CV_16S && type != CV_32S && type != CV_32F && type != CV_8U)
+		(type != CV_64F && type != CV_16S && type != CV_32S && type != CV_32F && type != CV_8U) ||
+		rows <= 0 || cols <= 0
 		)
 	{
-		fprintf(stderr, "write_zero_array_to_h5(): input check  failed!\n");
+		fprintf(stderr, "write_zero_array_to_h5(): input check failed!\n");
 		return -1;
 	}
-	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
+
+	// 先检查文件是否在磁盘上已存在，避免触发 HDF5 库对非存在文件 Open 时的 stderr 诊断报错堆栈
+	bool fileExists = (_access(filename, 0) == 0);
+	H5UniqueId file_id = -1;
+	if (fileExists)
+	{
+		file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
+	}
+
 	if (file_id < 0)
 	{
 		int ret = creat_new_h5(filename);
@@ -628,31 +637,222 @@ int FormatConversion::write_zero_array_to_h5(const char* filename, const char* d
 			return -1;
 		}
 		file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
-	}
-	string s = "/";
-	s.append(dataset_name);
-	if ((H5Lexists(file_id, dataset_name, H5P_DEFAULT)) == 0)
-	{
-		hsize_t dims[2];
-		dims[0] = rows;
-		dims[1] = cols;
-		H5UniqueId dataspace_id = H5Screate_simple(2, dims, NULL);
-		hid_t h5_type = cvTypeToH5TypeForWrite(type);
-		H5UniqueId dataset_id = H5Dcreate(file_id, s.c_str(), h5_type, dataspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
-
-		if (dataset_id < 0)
+		if (file_id < 0)
 		{
-			fprintf(stderr, "write_array_to_h5(): failed to create dataset %s !\n", dataset_name);
+			fprintf(stderr, "write_zero_array_to_h5(): can't open newly created %s\n", filename);
 			return -1;
 		}
 	}
+
+	std::string s = "/";
+	if (dataset_name[0] != '/')
+	{
+		s.append(dataset_name);
+	}
 	else
 	{
-		fprintf(stderr, "write_zero_array_to_h5(): dataset %s already exists!\n", dataset_name);
+		s = dataset_name;
+	}
+
+	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) > 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): dataset %s already exists!\n", s.c_str());
 		return -1;
 	}
+
+	// 1. 创建 2D 数据空间
+	hsize_t dims[2] = { static_cast<hsize_t>(rows), static_cast<hsize_t>(cols) };
+	H5UniqueId dataspace_id = H5Screate_simple(2, dims, nullptr);
+	if (dataspace_id < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to create dataspace!\n");
+		return -1;
+	}
+
+	// 2. 映射 H5 数据类型
+	hid_t h5Type = cvTypeToH5TypeForWrite(type);
+	if (h5Type < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): unsupported data type: %d!\n", type);
+		return -1;
+	}
+
+	// 3. 配置延迟分配属性列表
+	H5UniqueId plistId = H5Pcreate(H5P_DATASET_CREATE);
+	if (plistId < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to create dataset creation property list!\n");
+		return -1;
+	}
+
+	// 设定分块大小（自动收缩保护，分块不可超越数据集本身尺寸）
+	hsize_t chunkDims[2] = { 256, 256 };
+	if (chunkDims[0] > static_cast<hsize_t>(rows)) chunkDims[0] = rows;
+	if (chunkDims[1] > static_cast<hsize_t>(cols)) chunkDims[1] = cols;
+
+	herr_t status = H5Pset_chunk(plistId, 2, chunkDims);
+	if (status < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to set chunk layout!\n");
+		return -1;
+	}
+
+	// A. 物理增量分配（写时分配）
+	status = H5Pset_alloc_time(plistId, H5D_ALLOC_TIME_INCR);
+	if (status < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to set incremental allocation time!\n");
+		return -1;
+	}
+
+	// B. 核心兼容点：向 HDF5 注册填充值 0.0
+	// 任何 8 字节全 0 内存对于 native numeric 类型的 0 表示都是兼容的
+	double fill_val = 0.0;
+	status = H5Pset_fill_value(plistId, h5Type, &fill_val);
+	if (status < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to set fill value!\n");
+		return -1;
+	}
+
+	// C. 核心提速点：设定仅在逻辑上返回填充值，而【绝不在磁盘上真正写入填充数据】
+	status = H5Pset_fill_time(plistId, H5D_FILL_TIME_IFSET);
+	if (status < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to set fill time to IFSET!\n");
+		return -1;
+	}
+
+	// 4. 创建数据集
+	H5UniqueId datasetId = H5Dcreate2(file_id, s.c_str(), h5Type, dataspace_id, H5P_DEFAULT, plistId, H5P_DEFAULT);
+	if (datasetId < 0)
+	{
+		fprintf(stderr, "write_zero_array_to_h5(): failed to create dataset %s!\n", s.c_str());
+		return -1;
+	}
+
 	return 0;
 }
+
+int FormatConversion::create_empty_dataset(const char* filePath, const char* datasetName, int rows, int cols, int dataType, int chunkRows, int chunkCols)
+{
+	H5_LOCK; // 1. 并发安全锁保护
+
+	// 2. 参数合法性校验
+	if (filePath == nullptr || datasetName == nullptr || rows <= 0 || cols <= 0 || chunkRows <= 0 || chunkCols <= 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Invalid input parameters (dimensions must be positive)!\n");
+		return -1;
+	}
+
+	// 3. 映射 OpenCV 类型至 HDF5 类型 (支持 CV_16S, CV_8U, CV_32S, CV_32F, CV_64F)
+	hid_t h5Type = cvTypeToH5TypeForWrite(dataType);
+	if (h5Type < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Unsupported OpenCV data type: %d!\n", dataType);
+		return -1;
+	}
+
+	// 4. 打开或新建 H5 文件（先检查文件是否存在，避免触发 HDF5 的 stderr 诊断报错，且不使用 ACC_TRUNC 直接截断覆盖已有文件）
+	bool fileExists = (_access(filePath, 0) == 0);
+	H5UniqueId fileId = -1;
+	if (fileExists)
+	{
+		fileId = H5Fopen(filePath, H5F_ACC_RDWR, H5P_DEFAULT);
+	}
+
+	if (fileId < 0)
+	{
+		int ret = creat_new_h5(filePath);
+		if (ret < 0)
+		{
+			fprintf(stderr, "create_empty_dataset(): Failed to create file: %s. Please check if the directory exists and is writable.\n", filePath);
+			return -1;
+		}
+		fileId = H5Fopen(filePath, H5F_ACC_RDWR, H5P_DEFAULT);
+		if (fileId < 0)
+		{
+			fprintf(stderr, "create_empty_dataset(): File was created but failed to open for RDWR: %s\n", filePath);
+			return -1;
+		}
+	}
+
+	// 规范化 Dataset 路径
+	std::string s = "/";
+	if (datasetName[0] != '/')
+	{
+		s.append(datasetName);
+	}
+	else
+	{
+		s = datasetName;
+	}
+
+	// 5. 校验 Dataset 是否已存在，防范重复创建冲突
+	if (H5Lexists(fileId, s.c_str(), H5P_DEFAULT) > 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Dataset %s already exists!\n", s.c_str());
+		return -1;
+	}
+
+	// 6. 创建 2D 数据空间
+	hsize_t dims[2] = { static_cast<hsize_t>(rows), static_cast<hsize_t>(cols) };
+	H5UniqueId dataspaceId = H5Screate_simple(2, dims, nullptr);
+	if (dataspaceId < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to create dataspace!\n");
+		return -1;
+	}
+
+	// 7. 配置 Dataset 属性列表以实现真正的物理延迟分配与自适应分块
+	H5UniqueId plistId = H5Pcreate(H5P_DATASET_CREATE);
+	if (plistId < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to create dataset creation property list!\n");
+		return -1;
+	}
+
+	// 设定分块大小（自动收缩保护，分块不可超越数据集本身尺寸）
+	hsize_t chunkDims[2] = { static_cast<hsize_t>(chunkRows), static_cast<hsize_t>(chunkCols) };
+	if (chunkDims[0] > static_cast<hsize_t>(rows)) chunkDims[0] = rows;
+	if (chunkDims[1] > static_cast<hsize_t>(cols)) chunkDims[1] = cols;
+
+	herr_t status = H5Pset_chunk(plistId, 2, chunkDims);
+	if (status < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to set chunk layout with dims [%llu, %llu]!\n", chunkDims[0], chunkDims[1]);
+		return -1;
+	}
+
+	// 【物理延迟分配核心优化】
+	// H5D_ALLOC_TIME_INCR: 指示 HDF5 仅在数据真实写入磁盘时才按需分配物理分块
+	status = H5Pset_alloc_time(plistId, H5D_ALLOC_TIME_INCR);
+	if (status < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to set incremental allocation time!\n");
+		return -1;
+	}
+
+	// H5D_FILL_TIME_NEVER: 绝不向未分配的分块中填充 0 垃圾值，避免不必要的 I/O 动作
+	status = H5Pset_fill_time(plistId, H5D_FILL_TIME_NEVER);
+	if (status < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to set fill time to NEVER!\n");
+		return -1;
+	}
+
+	// 8. 创建并注册 Dataset（H5UniqueId 自动析构管理）
+	H5UniqueId datasetId = H5Dcreate2(fileId, s.c_str(), h5Type, dataspaceId, H5P_DEFAULT, plistId, H5P_DEFAULT);
+	if (datasetId < 0)
+	{
+		fprintf(stderr, "create_empty_dataset(): Failed to create dataset %s!\n", s.c_str());
+		return -1;
+	}
+
+	// 所有 H5UniqueId 在出作用域时均会自动安全关闭句柄，无泄漏之虞
+	return 0;
+}
+
 
 int FormatConversion::write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array)
 {
@@ -753,6 +953,10 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	}
 	string s = "/";
 	s.append(dataset_name);
+	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
+	{
+		return -1;
+	}
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
 	if (dataset_id < 0)
 	{
@@ -1050,6 +1254,10 @@ int FormatConversion::read_str_from_h5(const char* filename, const char* dataset
 	}
 	string s("/");
 	s.append(dataset_name);
+	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
+	{
+		return -1;
+	}
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
 	if (dataset_id < 0)
 	{

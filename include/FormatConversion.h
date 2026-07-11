@@ -751,6 +751,25 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int write_zero_array_to_h5(const char* filename, const char* dataset_name, int type, int rows, int cols);
+	/** @brief 在 H5 文件中创建一个空的且延迟分配物理空间的二维 Dataset 结构
+	* @param filePath                      H5 文件路径
+	* @param datasetName                   数据集名称
+	* @param rows                          数据集总行数
+	* @param cols                          数据集总列数
+	* @param dataType                      OpenCV 数据类型 (CV_32F, CV_64F, CV_16S 等)
+	* @param chunkRows                     分块行数（默认256，可根据 Burst 写入尺寸优化）
+	* @param chunkCols                     分块列数（默认256，可根据 Burst 写入尺寸优化）
+	* @return 成功返回0， 否则返回-1
+	*/
+	int create_empty_dataset(
+		const char* filePath,
+		const char* datasetName,
+		int rows,
+		int cols,
+		int dataType,
+		int chunkRows = 256,
+		int chunkCols = 256
+	);
 	/*
 	* 功能：向h5文件中写入实数矩阵（干涉相位，相干系数等）,input_array可以是16位整型或者double/float型
 	* 参数1：文件名

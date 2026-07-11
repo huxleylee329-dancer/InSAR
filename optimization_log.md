@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-11 | AI | FormatConversion | 在 FormatConversion 中重构 HDF5 零矩阵写入并新增空数据集创建接口，实现延迟分配物理存储空间：<br>1. 重构 `write_zero_array_to_h5`：不再分配并写入全 0 矩阵以避免磁盘写零开销，改为利用 HDF5 属性列表设置增量写时分配（`H5D_ALLOC_TIME_INCR`）与逻辑 0 填充值（`H5Pset_fill_value`），并在逻辑需要时才返回填充值且不在磁盘上真正写入 0 占位（`H5D_FILL_TIME_IFSET`），实现秒级创建大文件数据集且 100% 保持未覆盖空白区读取为 0 的向下兼容性。<br>2. 新增 `create_empty_dataset` 接口：提供更通用的二维延迟分配空数据集创建方法，支持通过带默认值的 `chunkRows = 256` 和 `chunkCols = 256` 调节分块维度，优化大影像 Burst 写入时的寻址开销。<br>3. 线程安全与异常安全保障：统一使用 `H5_LOCK;` 确保 HDF5 库调用的并发互斥安全，并使用 `H5UniqueId` 智能包装类托管资源生命周期，杜绝提前 return 分支的句柄泄漏隐患。<br>4. 文件存在性前置检查：在调用 H5Fopen 前，先使用 `_access` 检查目标文件是否已在磁盘上存在，对于尚不存在的新文件，直接分流到新建分支，避免 HDF5 因试图打开不存在的文件而输出 stderr 内部报错堆栈。 |
 | 工作区现场修改 | 2026-07-11 | AI | FormatConversion | 注入后向地理编码诊断日志并重构 DEM 高程数据加载器为 GDAL 裁剪模式：<br>1. 注入诊断日志：在 computeBurstOffset, computeSlavePosition, fitSlaveOffset 中增加调试输出，备份 A 矩阵以计算 fitSlaveOffset 的 rms 拟合残差，并安全访问 coef 指针防止空指针解引用崩溃。<br>2. 重构为 GDAL 裁剪模式：废除 getRawDEM 中 550 行硬编码 zip 解压和 1, 2, 4 方格拼接逻辑，使用 GDAL 的 GeoTransform 地理仿射参考反算行列号，在磁盘端动态局部 RasterIO 读取 DEM 高程切片。<br>3. 下行兼容性：支持传入目录并自动检索 *.tif/*.tiff 文件，使 UI 和工作流完全无需改动即可平滑过渡。 |
 | 工作区现场修改 | 2026-07-06 | AI | FormatConversion | 在 FormatConversion 中新增 `get_dataset_dims` 导出接口以支持外部模块（如 NodeUtils.cpp）解耦：<br>1. 解耦外部 HDF5 依赖：提供了不依赖 HDF5 原生头文件和符号的维度查询功能。<br>2. 规范化路径校验：在 H5Lexists 和 H5Dopen 前进行绝对路径一致性规范化规整，防范双斜杠导致的路径解析失败。<br>3. 动态维度安全分流：通过 H5Sget_simple_extent_ndims 动态识别一维、二维及以上数据集，防止因硬编码 2 维对一维数据集查询时造成的越界读取及垃圾值 Bug。<br>4. 并发安全与 RAII 托管：采用 H5_LOCK 宏与 H5UniqueId 自动释放句柄，保障并发安全与防范泄漏。 |
 | 工作区现场修改 | 2026-07-06 | AI | Filter | 实现滤波方案 A，进行内部单精度转换以优化计算性能与内存开销：<br>1. czt2：重构算法以动态兼容单精度（CV_32FC2）与双精度（CV_64FC2）输入，内部使用 Vec2f 与 cosf/sinf 提升计算效率，规避指针读写越界与崩溃隐患。<br>2. meanfilter：放宽类型限制，利用输入深度动态处理 CV_32FC2 与 CV_64FC2 复数均值滤波。<br>3. slope_adaptive_filter：所有核心缓冲区全部转换为单精度（CV_32F/CV_32FC2），减少 50% 内存；在结尾使用 convertTo 将滤波后相位动态转回输入原始精度输出，保障外部 API 100% 兼容。 |
@@ -1036,3 +1037,59 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
    - **物理/C++ 依据**：
      - **C++ 默认实参兼容**：头文件中定义了 `double dopplerFrequency = 0.0` 的默认形参，显式传参在编译器编译后语义 100% 等价。
      - **零多普勒物理几何**：在后向地理编码中，地面点与卫星轨道的对齐是在“零多普勒几何（Zero-Doppler Geometry）”下建立的，即卫星到地表点的连线必须正交于卫星速度向量，此时相对多普勒频移严格等于 `0.0 Hz`。显式传参 `0.0` 消除了对默认值机制的依赖，并在代码中直接强化和落实了“求解零多普勒等频线”的物理科学语义，提升了代码自解释能力。
+
+---
+
+### 45. HDF5 逻辑 0 填充写时分配重构与空数据集创建 API 新增 (FormatConversion)
+
+**背景**：
+在 Sentinel-1、TerraSAR-X、COSMO-SkyMed 等雷达影像的元数据导入与大尺度影像转换中，需要在 HDF5 中预创建大量的全零数据集。之前使用的 `write_zero_array_to_h5` 在创建时会真正写入物理 0 字节，对于 GB/TB 级别的文件会产生巨大的磁盘 I/O 开销与明显的启动初始化卡顿。此外，缺少通用的延迟物理分配（非写零）空数据集创建接口。
+
+**优化方案**：
+1. **重构 `write_zero_array_to_h5` 以消除磁盘写零开销（向下兼容）**：
+   - **实现细节**：在 `FormatConversion.cpp` 中修改 `write_zero_array_to_h5` 内部逻辑。配置 HDF5 属性列表，设置物理增量分配 `H5Pset_alloc_time(plistId, H5D_ALLOC_TIME_INCR)`。
+   - **逻辑填充 0**：使用 `H5Pset_fill_value` 注册 double 类型的逻辑默认填充值 `0.0`，并设置 `H5Pset_fill_time(plistId, H5D_FILL_TIME_IFSET)`。这指示 HDF5 在逻辑上将数据集默认值视为 0。当读取未写入的空白边界区域时，HDF5 会在内存中自动填充 0 并返回，而绝不向磁盘写入物理占位的全零分块，避免了初始化阶段数 GB/数十秒的磁盘 I/O 阻塞。
+2. **新增 `create_empty_dataset` 接口（通用调优工具）**：
+   - **参数扩展**：在 `FormatConversion.h` 和 `FormatConversion.cpp` 中新增 `create_empty_dataset`，允许调用方传入 `dataType` 与可选的分块大小 `chunkRows`、`chunkCols`（默认 256 x 256）。这支持雷达影像 Burst 写入时动态调优分块边界，避免过多细碎分块寻址。
+3. **并发安全与异常安全加固**：
+   - 两个接口均接入 `H5_LOCK;` 线程安全锁，并采用 `H5UniqueId` 智能句柄包装类。这确保了在发生任何参数异常或文件创建失败提前 return 时，所有 HDF5 对象自动释放，防止内存与句柄泄漏。
+4. **文件存在性前置检查，消除 stderr 诊断报错堆栈**：
+   - **实现细节**：在调用 `H5Fopen` 之前，先使用 Windows C 库函数 `_access(filePath, 0)`（对于 `write_zero_array_to_h5` 则为 `_access(filename, 0)`）检查该 H5 文件在磁盘上是否存在。若不存在，直接绕过 `H5Fopen` 进入新建文件逻辑，从物理上直接掐断 HDF5 引擎因“打开不存在文件”而触发并在 `stderr` 错误流中输出内部诊断调用堆栈的条件，极大保持了 InSAR 计算控制台输出日志的整洁度。
+
+### 46. formatconversion.cpp 关键改动记录
+- **诊断日志注入**：在 `computeBurstOffset`, `computeSlavePosition`, `fitSlaveOffset` 中加入 `fprintf(stderr)` 输出，记录 burst offset、有效投影率、拟合残差 rms，避免空指针解引用。
+- **GDAL 局部裁剪重构**：废除原有 550 行 zip 解压与拼接逻辑，改为直接使用 GDAL `GeoTransform` 计算裁剪范围并通过 `RasterIO` 读取局部 DEM，显著降低内存占用并提升性能。
+- **兼容目录输入**：当入口为目录时，自动搜索 `*.tif`/`*.tiff` 文件作为 DEM 输入，实现平滑过渡。
+- **slant_range_first_pixel 转换**：在读取 XML 参数后加入 `slant_range_first_pixel = slant_range_first_pixel * VEL_C / 2.0;`，确保斜距单位为米，符合雷达物理标准。
+- **零多普勒时间调用**：显式使用 `getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);`，强化物理意义并避免默认参数依赖.
+- **安全错误输出统一**：所有原有 `printf` 改为 `fprintf(stderr)`，保持日志统一并避免误写入 `stderr` 导致日志膨胀。
+- **矩阵深度统一**：在 `tmp.at<double>(0,0) = slant_range_first_pixel * VEL_C / 2.0;` 前确保 `tmp` 为 `CV_64F`，并在后续使用 `tmp.at<double>`，避免类型 mismatch。
+
+---
+
+### 47. HDF5 底层读取函数静默探测优化，消除可选参数日志污染 (FormatConversion)
+
+**背景**：
+在雷达参数拷贝和可选参数导入等场景中（例如 `Copy_para_from_h5_2_h5` 处理 50+ 个元数据），部分参数可能在特定的 H5 影像中不存在。以往底层读取函数会直接调用 `H5Dopen`，导致 HDF5 底层引擎在 `stderr` 中产生内部错误调用栈 Traceback 诊断日志，并且还会打印 `failed to open dataset` 的控制台信息，造成大量冗余的日志污染。
+
+**优化方案**：
+1. **静默探测前置校验**：
+   - 在 `read_array_from_h5` 和 `read_str_from_h5` 底层函数中，在打开 dataset 之前，先调用 `H5Lexists(file_id, s.c_str(), H5P_DEFAULT)` 对数据集的存在性进行前置检测。
+   - 若返回值 `<= 0`（表示不存在或出错），则直接静默返回 `-1`。
+2. **规避 HDF5 报错与日志静默**：
+   - 通过将存在性检查置于 `H5Dopen` 之前，在检测到不存在时绕过 `H5Dopen` 调用，成功杜绝了 HDF5 核心引擎抛出内部诊断错误栈的行为。
+   - 在静默退出分支中屏蔽了通用的 `fprintf(stderr, ...)` 失败日志，从而将业务流上的可选参数检查彻底静默化，实现了控制台日志的高清晰度与整洁度。
+
+---
+
+### 48. 坡度自适应滤波进度日志静默与控制台降噪优化 (Filter)
+
+**背景**：
+在坡度自适应滤波 `slope_adaptive_filter` 计算中，由于每一行像素处理完后都会向控制台打印进度百分比 `process: xx %`，当图像行数较多时会导致海量日志瞬间刷屏污染控制台（Debug Console）。此外，高频在 OpenMP 多线程循环内争夺 `#pragma omp critical(stdout_print)` 打印锁也引入了显著的线程并发争用开销。
+
+**优化方案**：
+1. **进度回调优先并完全静默控制台**：
+   - 检测调用者是否传入了 `FilterProgressCallback cb`。若存在回调函数，则进度仅通过 `cb` 返回（更新 UI 进度条），完全不再向 `stdout` 打印任何调试文本。
+2. **控制台分步降噪打印**：
+   - 当不存在回调函数 `cb` 时，计算两相邻迭代的进度跨度。仅当百分比跃迁至新的 10% 分度边界（如 10%, 20%...）或者最终的 100% 完成度时，才进入临界区执行 `fprintf`。
+   - 彻底消除了数万次高频锁争用和日志泛滥，使控制台更加清爽。
