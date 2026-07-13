@@ -6,6 +6,7 @@
 
 ## 历史提交与修复概览（当前分支已完成部分）
 
+| 工作区现场修改 | 2026-07-13 | AI | FormatConversion, UI (Sentinel1OrbitNode) | 补全哨兵一号 Burst 模式下源属性（`source_1`）与修复 `read_POD` 轨道对齐时间计算 Bug：<br>1. 补全 `source_1` 属性：在 `Sentinel1Reader::writeToh5` 中，将原始 XML 路径写入 `source_1` 元数据中。这使得下游 UI 节点能够正确提取卫星平台（S1A/S1B）和成像日期。<br>2. 修复 `read_POD` 占位符时间过滤 Bug：在 `FormatConversion::read_POD` 内部实现防呆机制，当检测到外部传入的起止时间为 `0.0`/`1e12` 时，主动从 H5 中提取真实的 `acquisition_start/stop_time` 并转成 GPS 时间进行过滤，避免因时间差异过大而导致匹配点数 count 始终为 0 并抛出 `orbit mismatch!` 报错。<br>3. UI 节点传参规范化：在 `Sentinel1OrbitNode.cpp` 节点中，将起止时间读取并转换为正确的 GPS 时间再传递给 `read_POD`，实现了 C++ DLL 与 UI 两端调用的双向安全闭环。 |
 | 工作区现场修改 | 2026-07-11 | AI | FormatConversion | 在 FormatConversion 中重构 HDF5 零矩阵写入并新增空数据集创建接口，实现延迟分配物理存储空间：<br>1. 重构 `write_zero_array_to_h5`：不再分配并写入全 0 矩阵以避免磁盘写零开销，改为利用 HDF5 属性列表设置增量写时分配（`H5D_ALLOC_TIME_INCR`）与逻辑 0 填充值（`H5Pset_fill_value`），并在逻辑需要时才返回填充值且不在磁盘上真正写入 0 占位（`H5D_FILL_TIME_IFSET`），实现秒级创建大文件数据集且 100% 保持未覆盖空白区读取为 0 的向下兼容性。<br>2. 新增 `create_empty_dataset` 接口：提供更通用的二维延迟分配空数据集创建方法，支持通过带默认值的 `chunkRows = 256` 和 `chunkCols = 256` 调节分块维度，优化大影像 Burst 写入时的寻址开销。<br>3. 线程安全与异常安全保障：统一使用 `H5_LOCK;` 确保 HDF5 库调用的并发互斥安全，并使用 `H5UniqueId` 智能包装类托管资源生命周期，杜绝提前 return 分支的句柄泄漏隐患。<br>4. 文件存在性前置检查：在调用 H5Fopen 前，先使用 `_access` 检查目标文件是否已在磁盘上存在，对于尚不存在的新文件，直接分流到新建分支，避免 HDF5 因试图打开不存在的文件而输出 stderr 内部报错堆栈。 |
 | 工作区现场修改 | 2026-07-11 | AI | FormatConversion | 注入后向地理编码诊断日志并重构 DEM 高程数据加载器为 GDAL 裁剪模式：<br>1. 注入诊断日志：在 computeBurstOffset, computeSlavePosition, fitSlaveOffset 中增加调试输出，备份 A 矩阵以计算 fitSlaveOffset 的 rms 拟合残差，并安全访问 coef 指针防止空指针解引用崩溃。<br>2. 重构为 GDAL 裁剪模式：废除 getRawDEM 中 550 行硬编码 zip 解压和 1, 2, 4 方格拼接逻辑，使用 GDAL 的 GeoTransform 地理仿射参考反算行列号，在磁盘端动态局部 RasterIO 读取 DEM 高程切片。<br>3. 下行兼容性：支持传入目录并自动检索 *.tif/*.tiff 文件，使 UI 和工作流完全无需改动即可平滑过渡。 |
 | 工作区现场修改 | 2026-07-06 | AI | FormatConversion | 在 FormatConversion 中新增 `get_dataset_dims` 导出接口以支持外部模块（如 NodeUtils.cpp）解耦：<br>1. 解耦外部 HDF5 依赖：提供了不依赖 HDF5 原生头文件和符号的维度查询功能。<br>2. 规范化路径校验：在 H5Lexists 和 H5Dopen 前进行绝对路径一致性规范化规整，防范双斜杠导致的路径解析失败。<br>3. 动态维度安全分流：通过 H5Sget_simple_extent_ndims 动态识别一维、二维及以上数据集，防止因硬编码 2 维对一维数据集查询时造成的越界读取及垃圾值 Bug。<br>4. 并发安全与 RAII 托管：采用 H5_LOCK 宏与 H5UniqueId 自动释放句柄，保障并发安全与防范泄漏。 |
@@ -1093,3 +1094,57 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
 2. **控制台分步降噪打印**：
    - 当不存在回调函数 `cb` 时，计算两相邻迭代的进度跨度。仅当百分比跃迁至新的 10% 分度边界（如 10%, 20%...）或者最终的 100% 完成度时，才进入临界区执行 `fprintf`。
    - 彻底消除了数万次高频锁争用和日志泛滥，使控制台更加清爽。
+
+---
+
+### 49. Sentinel-1 分块（Burst）按需导入与对称 UTC 时间重构 (FormatConversion)
+
+**背景**：
+在 Sentinel-1 数据处理流程中，原始的 `import_sentinel` 接口和底层的 `Sentinel1Reader::writeToh5` 均不支持指定导入部分 burst 分块。这导致用户必须一次性导入全部 burst（整幅影像，通常包含 9 到 10 个 burst），产生高昂的磁盘 I/O 耗时与内存开销。若在 GUI 层面强行对分块进行裁剪，但在底层导入接口和 H5 全局时间元数据中保留原样，会导致卫星轨道插值时间基准严重漂移，使后续配准（back-geocoding）和地球物理定位产生数十公里的偏差。此外，原系统的时间解析与格式化在 `UTC2GPS` 中使用 `mktime`，这依赖于操作系统的本地时区，会导致在非 UTC 时区的机器上发生转换时区偏移。
+
+**优化与重构方案**：
+1. **新增接口与默认参数（向后兼容）**：
+   - 在 [FormatConversion.h](file:///D:/src/insar/include/FormatConversion.h) 中修改 `FormatConversion::import_sentinel` 和 `Sentinel1Reader::writeToh5` 声明，新增 `start_burst` 和 `end_burst` 参数并指定默认值为 `-1`（默认导入全部 burst），实现旧客户端与 GUI 的完全兼容。
+   - 在 [FormatConversion.cpp](file:///D:/src/insar/FormatConversion/FormatConversion.cpp) 中实现对应的函数体分流。
+2. **全局 UTC 时间元数据校正（消除几何定位漂移）**：
+   - 在 `writeToh5` 确定导入部分 burst（即 `num_selected_bursts < original_burstCount`）时，重新获取并校正 H5 的全局成像开始时间（`startTime`）与结束时间（`stopTime`）：
+     - `new_start_time = burstAzimuthTime[start_burst]`
+     - `new_end_time = new_start_time + num_selected_bursts * linesPerBurst * azimuthTimeInterval`
+   - 将转换后的 UTC 格式时间字符串写入 H5 元数据，使得下游模块在反算任意行所对应的绝对卫星轨道时间时没有偏差，彻底根除了空间定位漂移 Bug。
+3. **对称 UTC 时间互转设计 (gmtime_s 与 timegm)**：
+   - 彻底修复 `UTC2GPS` 及 `FormatConversion::utc2gps` 中的时区隐患，使用时区无关的跨平台 API `_mkgmtime` / `timegm` 替代 `mktime`。
+   - 在源文件中新增 `gps2utc` 辅助函数，采用 `gmtime_s` / `gmtime_r` 转换。
+   - 统一使用 `315964809`（包含 9 秒闰秒偏移量）进行正反向换算，确保时间转换的完全对称与时区无关。
+   - **秒数进位防范**：在 `gps2utc` 内部将微秒四舍五入。当微秒进位满 1 秒时，手动对 Unix 整数秒递增，从根本上杜绝了浮点舍入可能产生的 `60.000000` 秒 H5/XML 写入格式解析错误。
+4. **元数据矩阵与控制点 (GCP) 裁剪平移**：
+   - 在 `writeToh5` 内部自动切片裁剪 burst 属性矩阵（如 `firstValidLine`、`burstAzimuthTime` 等），使其行数契合子图大小。
+   - **平移不裁剪 GCP（防止亏秩）**：保留全部 GCP 点以保证全局二乘拟合矩阵的满秩状态，仅对所有控制点在方位向上的行坐标做整体归零平移（`-= start_line`）。
+   - **防覆盖执行顺序**：规定先执行 `updateGeolocationGridPoint`（防止重算时覆盖平移值），再对 GCP 行坐标执行偏移减法，最后调用 `fitCoordinateConversionCoefficient` 拟合多项式系数，确保多项式映射参数准确无误。
+5. **大文件寻址防溢出**：
+   - 计算 TIFF 文件的像素字节偏移量时，统一使用 `size_t`，并在 MSVC 下使用 Windows 安全 64 位寻址函数 `_fseeki64`（其他平台使用 `fseeko`）替换 `fseek`，防止寻找大图像数据指针时发生 32 位整型溢出。
+6. **HDF5 错误显示增强**：
+   - 在 `read_array_from_h5` 的静默失败路径中，当发现 Dataset 不存在时向 `stderr` 详细输出文件名和 Dataset 名字，方便下游异常排查。
+
+---
+
+### 50. 哨兵一号 Burst 模式下源属性（`source_1`）补全与精密轨道读取（`read_POD`）对齐优化 (FormatConversion, UI-Sentinel1OrbitNode)
+
+**背景**：
+在哨兵一号的分块（Burst）数据批量导入与精密轨道（Apply Orbit）应用过程中，存在两个关联的 Bug 导致流程受阻：
+1. **源文件路径丢失**：在 `Sentinel1Reader::writeToh5` 进行 burst 分块导入时，未写入 `source_1` 属性。这导致下游的 UI 节点层无法解析原始 `.SAFE` 数据包以提取卫星平台（S1A/S1B）和成像日期，从而无法确定应下载/匹配哪个精密轨道（POEORB）文件。
+2. **零占位起止时间导致时间过滤失效**：在外部节点层（`Sentinel1OrbitNode.cpp`）调用 `read_POD` 写入精密轨道时，为了避免在外部提取成像时间，硬编码传入了 `start_time = 0.0` 和 `stop_time = 1e12`。但在 `FormatConversion::read_POD` 内部，匹配轨道点的逻辑严格限定了时间窗口 Light 边界：
+   `if (gps_time <= start_time && fabs(gps_time - start_time) <= 100.0) start = true;`
+   由于哨兵-1 实际成像的 GPS 时间通常在 14.4 亿秒左右，这与 `0.0` 的时间差巨大，导致匹配变量 `start` 永远无法为 `true`，匹配到的轨道点数量 `count` 始终为 `0`，从而抛出 `orbit mismatch! please check if POD file!` 的错误。
+
+**优化与重构方案**：
+1. **源属性 `source_1` 写入补全（DLL端）**：
+   - 在 [FormatConversion.cpp](file:///D:/src/insar/FormatConversion/FormatConversion.cpp#L10246) 的 `Sentinel1Reader::writeToh5` 中，写入 `sensor` 属性后，同步追加写入 `source_1` 属性，把构造函数中传入并加载的原始 XML 文件绝对路径（`this->m_xmlFileName`）记录进去，提供对原始数据源的完整溯源支持。
+2. **占位符时间容错与 H5 前置读取 fallback（DLL端）**：
+   - 重构 [FormatConversion::read_POD](file:///D:/src/insar/FormatConversion/FormatConversion.cpp#L2191) 内部的时间窗口初始化逻辑。
+   - 当检测到外部传入的 `start_time <= 0.0` 或 `stop_time >= 1e11`（占位时间）时，DLL 会主动使用 `read_str_from_h5` 从目标 H5 文件中读取 `acquisition_start_time` 和 `acquisition_stop_time` 字符串。
+   - 通过 `utc2gps` 将其转换为正确的 GPS 秒数并赋值给 `actual_start` 和 `actual_stop`。
+   - 后续的 OSV 状态向量过滤使用 `actual_start` 与 `actual_stop`，确保当外部节点以默认起止时间调用时也能够完全正确且无损地检索和加载轨道点。
+3. **UI 节点层传参规范化（UI端）**：
+   - 在 UI 工程的 [Sentinel1OrbitNode.cpp](file:///D:/SRC/InSAR_UI/Sentinel1OrbitNode.cpp#L671) 中，同步重构调用逻辑。
+   - 在读取 `acquisition_start_time` 的同时，增加读取 `acquisition_stop_time` 属性值。
+   - 使用 `FC.utc2gps` 将它们转换为相应的双精度 GPS 秒数 `start_t` 和 `stop_t`，然后将其作为参数传给 `read_POD`，实现了两端对齐的规范化传参。

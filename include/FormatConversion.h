@@ -1010,7 +1010,9 @@ public:
 		const char* subswath_name,
 		const char* polarization,
 		const char* dest_h5_file,
-		const char* PODFile = NULL
+		const char* PODFile = NULL,
+		int start_burst = -1,
+		int end_burst = -1
 	);
 	int import_sentinel(
 		const char* manifest,
@@ -1019,7 +1021,9 @@ public:
 		const char* dest_h5_file,
 		const char* PODFile,
 		ProgressCallback progressCallback,
-		void* userData
+		void* userData,
+		int start_burst = -1,
+		int end_burst = -1
 	);
 	/** @brief 读出一个burst数据
 	* 
@@ -1906,6 +1910,8 @@ public:
 	*/
 	int writeToh5(
 		const char* h5File,
+		int start_burst = -1,
+		int end_burst = -1,
 		ProgressCallback progressCallback = NULL,
 		void* userData = NULL
 	);

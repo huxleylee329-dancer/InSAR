@@ -10,9 +10,43 @@
 //#include<tchar.h>                                                                          
 #include<urlmon.h>                                                                           
 #pragma comment(lib,"URlmon")   
+#include <windows.h>
+
 
 static std::recursive_mutex g_h5_mutex;
 #define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex);
+
+#ifdef _WIN32
+  #define timegm _mkgmtime
+#endif
+
+static std::string gps2utc(double gps_time) {
+	double total_unix_time = gps_time + 315964809.0;
+	time_t unix_time = (time_t)floor(total_unix_time);
+	double subsec = total_unix_time - (double)unix_time;
+
+	long long subsec_us = (long long)floor(subsec * 1000000.0 + 0.5);
+	if (subsec_us >= 1000000LL) {
+		unix_time += 1;
+		subsec_us -= 1000000LL;
+	}
+	if (subsec_us < 0) {
+		subsec_us = 0;
+	}
+
+	tm TM;
+#ifdef _WIN32
+	gmtime_s(&TM, &unix_time);
+#else
+	gmtime_r(&unix_time, &TM);
+#endif
+
+	char buf[64];
+	sprintf(buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06lld", 
+			TM.tm_year + 1900, TM.tm_mon + 1, TM.tm_mday, 
+			TM.tm_hour, TM.tm_min, TM.tm_sec, subsec_us);
+	return std::string(buf);
+}
 
 static std::once_flag g_gdal_init_flag;
 static void InitializeGDALOnce()                                                             
@@ -471,7 +505,7 @@ int UTC2GPS(const char* utc_time, double* gps_time)
 	TM.tm_min = minute;
 	TM.tm_sec = second;
 	TM.tm_isdst = 0;
-	*gps_time = double(mktime(&TM) - 315964809) + sec;
+	*gps_time = double(timegm(&TM) - 315964809) + sec;
 	return 0;
 }
 
@@ -514,7 +548,7 @@ int FormatConversion::utc2gps(const char* utc_time, double* gps_time)
 	TM.tm_min = minute;
 	TM.tm_sec = second;
 	TM.tm_isdst = 0;
-	*gps_time = double(mktime(&TM) - 315964809) + sec;
+	*gps_time = double(timegm(&TM) - 315964809) + sec;
 	return 0;
 }
 
@@ -857,6 +891,13 @@ int FormatConversion::create_empty_dataset(const char* filePath, const char* dat
 int FormatConversion::write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array)
 {
 	H5_LOCK;
+
+	char debug_buf[1024];
+	sprintf_s(debug_buf, "[DLL Debug] write_array_to_h5 start. file: %s, dataset: %s\n", 
+		filename ? filename : "NULL", 
+		dataset_name ? dataset_name : "NULL");
+	OutputDebugStringA(debug_buf);
+
 	if (filename == NULL ||
 		dataset_name == NULL ||
 		input_array.empty() ||
@@ -864,18 +905,35 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 		(input_array.type() != CV_64F && input_array.type() != CV_16S && input_array.type() != CV_32S && input_array.type() != CV_32F && input_array.type() != CV_8U)
 		)
 	{
+		OutputDebugStringA("[DLL Debug] Input check failed!\n");
 		fprintf(stderr, "write_array_to_h5(): input check  failed!\n");
 		return -1;
 	}
 	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
 	if (file_id < 0)
 	{
+		sprintf_s(debug_buf, "[DLL Debug] H5Fopen failed for file: %s\n", filename ? filename : "NULL");
+		OutputDebugStringA(debug_buf);
 		fprintf(stderr, "write_array_to_h5(): can't open %s\n", filename);
 		return -1;
 	}
 	string s = "/"; 
 	s.append(dataset_name);	
-	if ((H5Lexists(file_id, dataset_name, H5P_DEFAULT)) == 0)
+
+	htri_t exists = H5Lexists(file_id, dataset_name, H5P_DEFAULT);
+	sprintf_s(debug_buf, "[DLL Debug] H5Lexists returned: %d\n", (int)exists);
+	OutputDebugStringA(debug_buf);
+
+	if (exists > 0)
+	{
+		OutputDebugStringA("[DLL Debug] Dataset already exists, calling H5Ldelete to allow overwrite.\n");
+		H5Ldelete(file_id, dataset_name, H5P_DEFAULT);
+		exists = H5Lexists(file_id, dataset_name, H5P_DEFAULT);
+		sprintf_s(debug_buf, "[DLL Debug] After H5Ldelete, H5Lexists returned: %d\n", (int)exists);
+		OutputDebugStringA(debug_buf);
+	}
+
+	if (exists == 0)
 	{
 		hsize_t dims[2];
 		dims[0] = input_array.rows;
@@ -886,6 +944,8 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 		
 		if (dataset_id < 0)
 		{
+			sprintf_s(debug_buf, "[DLL Debug] H5Dcreate failed for dataset: %s\n", dataset_name ? dataset_name : "NULL");
+			OutputDebugStringA(debug_buf);
 			fprintf(stderr, "write_array_to_h5(): failed to create dataset %s !\n", dataset_name);
 			return -1;
 		}
@@ -893,15 +953,20 @@ int FormatConversion::write_array_to_h5(const char* filename, const char* datase
 		status = H5Dwrite(dataset_id, h5_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)input_array.data);
 		if (status < 0)
 		{
+			sprintf_s(debug_buf, "[DLL Debug] H5Dwrite failed. status: %d\n", (int)status);
+			OutputDebugStringA(debug_buf);
 			fprintf(stderr, "write_array_to_h5(): failed to write to dataset %s !\n", dataset_name);
 			return -1;
 		}
 	}
 	else
 	{
+		sprintf_s(debug_buf, "[DLL Debug] Dataset already exists or exists check failed. exists: %d\n", (int)exists);
+		OutputDebugStringA(debug_buf);
 		fprintf(stderr, "write_array_to_h5(): dataset %s already exists!\n", dataset_name);
 		return -1;
 	}
+	OutputDebugStringA("[DLL Debug] write_array_to_h5 success!\n");
 	return 0;
 }
 
@@ -955,6 +1020,7 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	s.append(dataset_name);
 	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
 	{
+		fprintf(stderr, "read_array_from_h5(): dataset %s does not exist in %s!\n", dataset_name, filename);
 		return -1;
 	}
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
@@ -2167,6 +2233,19 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 		return -1;
 	}
 
+	double actual_start = start_time;
+	double actual_stop = stop_time;
+	if (start_time <= 0.0 || stop_time >= 1e11)
+	{
+		string start_str, stop_str;
+		if (read_str_from_h5(dst_h5_filename, "acquisition_start_time", start_str) == 0 &&
+			read_str_from_h5(dst_h5_filename, "acquisition_stop_time", stop_str) == 0)
+		{
+			utc2gps(start_str.c_str(), &actual_start);
+			utc2gps(stop_str.c_str(), &actual_stop);
+		}
+	}
+
 	/*
 	* 读取精密轨道数据
 	*/
@@ -2205,8 +2284,8 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 		str = str.substr(4);
 		ret = utc2gps(str.c_str(), &gps_time);
 		if (return_check(ret, "utc2gps()", error_head)) return -1;
-		if (gps_time <= start_time && fabs(gps_time - start_time) <= 100.0) start = true;
-		if (gps_time >= stop_time && fabs(gps_time - stop_time) >= 100.0) stop = true;
+		if (gps_time <= actual_start && fabs(gps_time - actual_start) <= 100.0) start = true;
+		if (gps_time >= actual_stop && fabs(gps_time - actual_stop) >= 100.0) stop = true;
 
 		if (start && !stop)//开始记录
 		{
@@ -2993,11 +3072,13 @@ int FormatConversion::import_sentinel(
 	const char* subswath_name,
 	const char* polarization,
 	const char* dest_h5_file,
-	const char* PODFile
+	const char* PODFile,
+	int start_burst,
+	int end_burst
 )
 {
 	H5_LOCK;
-	return import_sentinel(manifest, subswath_name, polarization, dest_h5_file, PODFile, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL));
+	return import_sentinel(manifest, subswath_name, polarization, dest_h5_file, PODFile, static_cast<ProgressCallback>(NULL), static_cast<void*>(NULL), start_burst, end_burst);
 }
 
 int FormatConversion::import_sentinel(
@@ -3007,7 +3088,9 @@ int FormatConversion::import_sentinel(
 	const char* dest_h5_file,
 	const char* PODFile,
 	ProgressCallback progressCallback,
-	void* userData
+	void* userData,
+	int start_burst,
+	int end_burst
 )
 {
 	H5_LOCK;
@@ -3107,7 +3190,7 @@ int FormatConversion::import_sentinel(
 	}
 	if (!report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件")) return -2;
 	Sentinel1Reader reader(xml_filename.c_str(), tiff_filename.c_str(), PODFile);
-	ret = reader.writeToh5(dest_h5_file, progressCallback, userData);
+	ret = reader.writeToh5(dest_h5_file, start_burst, end_burst, progressCallback, userData);
 	if (return_check(ret, "writeToh5()", error_head)) return -1;
 	if (!report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成")) return -2;
 	return 0;
@@ -10140,7 +10223,7 @@ int Sentinel1Reader::getSLC(ComplexMat& slc)
 	return 0;
 }
 
-int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCallback, void* userData)
+int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burst, ProgressCallback progressCallback, void* userData)
 {
 	H5_LOCK;
 	int ret;
@@ -10155,6 +10238,48 @@ int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCall
 		else ret = prepareData(PODFile.c_str());
 		if (return_check(ret, "prepareData()", error_head)) return -1;
 	}
+
+	// Validate burst range
+	if (start_burst < 0) start_burst = 0;
+	if (end_burst < 0) end_burst = this->burstCount - 1;
+	if (start_burst >= this->burstCount || end_burst >= this->burstCount || start_burst > end_burst) {
+		fprintf(stderr, "Sentinel1Reader::writeToh5(): invalid burst range [%d, %d]! Total bursts: %d\n", start_burst, end_burst, this->burstCount);
+		return -1;
+	}
+
+	int num_selected_bursts = end_burst - start_burst + 1;
+	int original_burstCount = this->burstCount;
+	int original_linesPerBurst = this->linesPerBurst;
+
+	if (num_selected_bursts < original_burstCount) {
+		// 1. Sync global UTC start/stop time to prevent orbit drift
+		double new_start_gps = this->burstAzimuthTime.at<double>(start_burst, 0);
+		double new_stop_gps = new_start_gps + (double)num_selected_bursts * original_linesPerBurst * this->azimuthTimeInterval;
+		this->startTime = gps2utc(new_start_gps);
+		this->stopTime = gps2utc(new_stop_gps);
+
+		// 2. Slice burst-specific metadata matrices
+		cv::Range r(start_burst, end_burst + 1);
+		this->firstValidLine = this->firstValidLine(r, cv::Range::all()).clone();
+		this->firstValidSample = this->firstValidSample(r, cv::Range::all()).clone();
+		this->lastValidLine = this->lastValidLine(r, cv::Range::all()).clone();
+		this->lastValidSample = this->lastValidSample(r, cv::Range::all()).clone();
+		this->burstAzimuthTime = this->burstAzimuthTime(r, cv::Range::all()).clone();
+
+		// 3. Shift all GCP row coordinates and re-fit geometric polynomials (no filtering to prevent rank-deficiency failure)
+		this->updateGeolocationGridPoint(); // Sync/align baseline coordinates first
+		
+		double start_line = (double)start_burst * original_linesPerBurst;
+		for (int i = 0; i < this->geolocationGridPoint.rows; i++) {
+			this->geolocationGridPoint.at<double>(i, 3) -= start_line; // Shift row coordinate to subset system
+		}
+		
+		this->fitCoordinateConversionCoefficient(); // Re-fit polynomials with the shifted coordinates
+
+		// 4. Update overall dimensions
+		this->burstCount = num_selected_bursts;
+		this->numberOfLines = num_selected_bursts * original_linesPerBurst;
+	}
 	
 	FormatConversion conversion;
 	ret = conversion.creat_new_h5(h5File);
@@ -10165,6 +10290,7 @@ int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCall
 	conversion.write_str_to_h5(h5File, "swath", swath.c_str());
 	conversion.write_str_to_h5(h5File, "imaging_mode", "TOPS");
 	conversion.write_str_to_h5(h5File, "sensor", sensor.c_str());
+	conversion.write_str_to_h5(h5File, "source_1", this->m_xmlFileName);
 	conversion.write_str_to_h5(h5File, "acquisition_start_time", startTime.c_str());
 	conversion.write_str_to_h5(h5File, "acquisition_stop_time", stopTime.c_str());
 
@@ -10182,6 +10308,44 @@ int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCall
 	conversion.write_int_to_h5(h5File, "samplesPerBurst", this->numberOfSamples);
 	conversion.write_int_to_h5(h5File, "range_len", this->numberOfSamples);
 	conversion.write_int_to_h5(h5File, "azimuth_len", this->numberOfLines);
+	conversion.write_int_to_h5(h5File, "offset_row", 0);
+	conversion.write_int_to_h5(h5File, "offset_col", 0);
+
+	// 从GCP网格计算四角经纬度
+	if (!geolocationGridPoint.empty() && geolocationGridPoint.rows >= 4) {
+		double rows = (double)this->numberOfLines - 1.0;
+		double cols = (double)this->numberOfSamples - 1.0;
+		double tl_dist = DBL_MAX, tr_dist = DBL_MAX, bl_dist = DBL_MAX, br_dist = DBL_MAX;
+		double tl_lon = 0, tl_lat = 0, tr_lon = 0, tr_lat = 0;
+		double bl_lon = 0, bl_lat = 0, br_lon = 0, br_lat = 0;
+		for (int i = 0; i < geolocationGridPoint.rows; i++) {
+			double r = geolocationGridPoint.at<double>(i, 3);
+			double c = geolocationGridPoint.at<double>(i, 4);
+			double lon = geolocationGridPoint.at<double>(i, 0);
+			double lat = geolocationGridPoint.at<double>(i, 1);
+			double dr, dc, d;
+			// TL: (0, 0)
+			dr = r; dc = c; d = dr * dr + dc * dc;
+			if (d < tl_dist) { tl_dist = d; tl_lon = lon; tl_lat = lat; }
+			// TR: (0, cols)
+			dr = r; dc = c - cols; d = dr * dr + dc * dc;
+			if (d < tr_dist) { tr_dist = d; tr_lon = lon; tr_lat = lat; }
+			// BL: (rows, 0)
+			dr = r - rows; dc = c; d = dr * dr + dc * dc;
+			if (d < bl_dist) { bl_dist = d; bl_lon = lon; bl_lat = lat; }
+			// BR: (rows, cols)
+			dr = r - rows; dc = c - cols; d = dr * dr + dc * dc;
+			if (d < br_dist) { br_dist = d; br_lon = lon; br_lat = lat; }
+		}
+		conversion.write_double_to_h5(h5File, "topLeftLon", tl_lon);
+		conversion.write_double_to_h5(h5File, "topLeftLat", tl_lat);
+		conversion.write_double_to_h5(h5File, "topRightLon", tr_lon);
+		conversion.write_double_to_h5(h5File, "topRightLat", tr_lat);
+		conversion.write_double_to_h5(h5File, "bottomLeftLon", bl_lon);
+		conversion.write_double_to_h5(h5File, "bottomLeftLat", bl_lat);
+		conversion.write_double_to_h5(h5File, "bottomRightLon", br_lon);
+		conversion.write_double_to_h5(h5File, "bottomRightLat", br_lat);
+	}
 
 	conversion.write_array_to_h5(h5File, "antennaPattern_elevationAngle", this->antennaPattern_elevationAngle);
 	conversion.write_array_to_h5(h5File, "antennaPattern_slantRangeTime", this->antennaPattern_slantRangeTime);
@@ -10230,7 +10394,12 @@ int Sentinel1Reader::writeToh5(const char* h5File, ProgressCallback progressCall
 	ret = conversion.write_zero_array_to_h5(h5File, "s_im", CV_16S, this->numberOfLines, this->numberOfSamples);
 	if (return_check(ret, "write_zero_array_to_h5(s_im)", error_head)) { fclose(fp_tiff); return -1; }
 
-	fseek(fp_tiff, byteOffset, SEEK_SET);
+	size_t start_pixel_offset = (size_t)start_burst * original_linesPerBurst * this->numberOfSamples * 2;
+#ifdef _MSC_VER
+	_fseeki64(fp_tiff, (__int64)byteOffset + (__int64)start_pixel_offset * sizeof(short), SEEK_SET);
+#else
+	fseeko(fp_tiff, (off_t)byteOffset + (off_t)start_pixel_offset * sizeof(short), SEEK_SET);
+#endif
 
 	int block_height = 1024;
 	int num_blocks = (this->numberOfLines + block_height - 1) / block_height;
