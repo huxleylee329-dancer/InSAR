@@ -11001,17 +11001,41 @@ int Sentinel1Utils::computeImageGeoBoundry(double* lonMin, double* lonMax, doubl
 	*lonMax = -181.0;
 	*latMin = 91.0;
 	*latMax = -91.0;
-	int start_row, end_row, cols_num;
-	cols_num = geolocationGridPoint.rows / (this->burstCount + 1);
-	start_row = cols_num * (burstIndex - 1); end_row = start_row + cols_num;
-	for (int i = start_row; i < end_row; i++)
+	// 根据 GCPs 对应的方位向行号（第 3 列）精准匹配当前 burst 的行范围
+	// 避免在用户部分导入 burst 时，使用 geolocationGridPoint.rows 均分行数导致的索引偏移 bug
+	bool found = false;
+	double minR = (burstIndex - 1) * this->linesPerBurst;
+	double maxR = burstIndex * this->linesPerBurst;
+	for (int i = 0; i < geolocationGridPoint.rows; i++)
 	{
-		double lon = geolocationGridPoint.at<double>(i, 0);
-		double lat = geolocationGridPoint.at<double>(i, 1);
-		*lonMin = *lonMin > lon ? lon : *lonMin;
-		*lonMax = *lonMax < lon ? lon : *lonMax;
-		*latMin = *latMin > lat ? lat : *latMin;
-		*latMax = *latMax < lat ? lat : *latMax;
+		double r = geolocationGridPoint.at<double>(i, 3);
+		if (r >= minR && r < maxR)
+		{
+			double lon = geolocationGridPoint.at<double>(i, 0);
+			double lat = geolocationGridPoint.at<double>(i, 1);
+			*lonMin = *lonMin > lon ? lon : *lonMin;
+			*lonMax = *lonMax < lon ? lon : *lonMax;
+			*latMin = *latMin > lat ? lat : *latMin;
+			*latMax = *latMax < lat ? lat : *latMax;
+			found = true;
+		}
+	}
+	if (!found)
+	{
+		// 备用均分逻辑
+		int cols_num = geolocationGridPoint.rows / (this->burstCount + 1);
+		int start_row = cols_num * (burstIndex - 1);
+		int end_row = start_row + cols_num;
+		if (end_row > geolocationGridPoint.rows) end_row = geolocationGridPoint.rows;
+		for (int i = start_row; i < end_row; i++)
+		{
+			double lon = geolocationGridPoint.at<double>(i, 0);
+			double lat = geolocationGridPoint.at<double>(i, 1);
+			*lonMin = *lonMin > lon ? lon : *lonMin;
+			*lonMax = *lonMax < lon ? lon : *lonMax;
+			*latMin = *latMin > lat ? lat : *latMin;
+			*latMax = *latMax < lat ? lat : *latMax;
+		}
 	}
 	double extra = 5.0 / 6000;
 	*lonMin = *lonMin - extra * 50;
