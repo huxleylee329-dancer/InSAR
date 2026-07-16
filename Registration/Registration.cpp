@@ -193,7 +193,104 @@ namespace
 		double lower = v10 + (v11 - v10) * (col - nn);
 		return upper + (lower - upper) * (row - mm);
 	}
+
+	bool ComputeSubBlockCoherence(
+		const cv::Mat& M_re, const cv::Mat& M_im,
+		const cv::Mat& S_re, const cv::Mat& S_im,
+		cv::Mat& out_coherence,
+		double& out_mean_coh
+	) {
+		if (M_re.empty() || M_im.empty() || S_re.empty() || S_im.empty()) return false;
+
+		// 1. Element-wise intermediate products
+		cv::Mat num_re, num_im, den_M, den_S;
+		cv::multiply(M_re, S_re, num_re);
+		cv::multiply(M_im, S_im, num_im);
+		cv::Mat M_re_S_im, M_im_S_re;
+		cv::multiply(M_re, S_im, M_re_S_im);
+		cv::multiply(M_im, S_re, M_im_S_re);
+
+		// num_re = M_re * S_re + M_im * S_im
+		num_re = num_re + num_im;
+		// num_im = M_im * S_re - M_re * S_im
+		num_im = M_im_S_re - M_re_S_im;
+
+		// den_M = M_re^2 + M_im^2
+		cv::multiply(M_re, M_re, den_M);
+		cv::Mat tmp;
+		cv::multiply(M_im, M_im, tmp);
+		den_M = den_M + tmp;
+
+		// den_S = S_re^2 + S_im^2
+		cv::multiply(S_re, S_re, den_S);
+		cv::multiply(S_im, S_im, tmp);
+		den_S = den_S + tmp;
+
+		// 2. Box filtering over a 5x5 window (normalize = false means sum)
+		cv::Size ksize(5, 5);
+		cv::Mat sum_num_re, sum_num_im, sum_den_M, sum_den_S;
+		cv::boxFilter(num_re, sum_num_re, CV_32F, ksize, cv::Point(-1, -1), false);
+		cv::boxFilter(num_im, sum_num_im, CV_32F, ksize, cv::Point(-1, -1), false);
+		cv::boxFilter(den_M, sum_den_M, CV_32F, ksize, cv::Point(-1, -1), false);
+		cv::boxFilter(den_S, sum_den_S, CV_32F, ksize, cv::Point(-1, -1), false);
+
+		// 3. Magnitude and Denominator square root
+		cv::Mat num_mag;
+		cv::magnitude(sum_num_re, sum_num_im, num_mag);
+
+		cv::Mat den_prod;
+		cv::multiply(sum_den_M, sum_den_S, den_prod);
+		cv::Mat den_sqrt;
+		cv::sqrt(den_prod, den_sqrt);
+
+		// 4. Divide (coherence = num_mag / (den_sqrt + eps))
+		out_coherence = num_mag / (den_sqrt + 1e-12f);
+
+		// 5. Threshold coherence values to [0.0, 1.0] just in case of numerical noise
+		cv::threshold(out_coherence, out_coherence, 1.0, 1.0, cv::THRESH_TRUNC);
+		cv::threshold(out_coherence, out_coherence, 0.0, 0.0, cv::THRESH_TOZERO);
+
+		// 6. Compute mean on the valid inner region to avoid border artifacts
+		// boxFilter with 5x5 size has 2 pixels border artifacts
+		int border = 2;
+		if (out_coherence.rows > 2 * border && out_coherence.cols > 2 * border) {
+			cv::Rect inner_rect(border, border, out_coherence.cols - 2 * border, out_coherence.rows - 2 * border);
+			cv::Mat inner_coh = out_coherence(inner_rect);
+			out_mean_coh = cv::mean(inner_coh)[0];
+		} else {
+			out_mean_coh = cv::mean(out_coherence)[0];
+		}
+
+		return true;
+	}
+
+	void NormalizeAndClamp2Sigma(
+		const cv::Mat& src_amplitude,
+		cv::Mat& dst_normalized
+	) {
+		if (src_amplitude.empty()) return;
+
+		cv::Scalar mean_scalar, stddev_scalar;
+		cv::meanStdDev(src_amplitude, mean_scalar, stddev_scalar);
+		double mean = mean_scalar[0];
+		double stddev = stddev_scalar[0];
+
+		double min_val = mean - 2.0 * stddev;
+		double max_val = mean + 2.0 * stddev;
+
+		if (min_val < 0.0) min_val = 0.0;
+		if (max_val <= min_val) max_val = min_val + 1.0;
+
+		cv::Mat clamped;
+		cv::threshold(src_amplitude, clamped, max_val, max_val, cv::THRESH_TRUNC);
+		cv::max(clamped, min_val, clamped);
+
+		// Normalize to [0, 255]
+		double scale = 255.0 / (max_val - min_val);
+		clamped.convertTo(dst_normalized, CV_8U, scale, -min_val * scale);
+	}
 }
+
 
 
 
@@ -2381,4 +2478,481 @@ int Registration::performSincResampling(
 
 	return 0;
 }
+
+// ==========================================
+// 外部导出 API 接口具体实现
+// ==========================================
+
+extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
+	const char* master_h5_path,
+	Point2D* out_points,
+	int points_count
+) {
+	if (master_h5_path == nullptr || out_points == nullptr || points_count != 5)
+	{
+		return -1;
+	}
+
+	FormatConversion fc;
+	int rows = 0;
+	int cols = 0;
+	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	{
+		return -2;
+	}
+
+	int stepY = rows / 6;
+	int stepX = cols / 6;
+
+	// 定义 5 个区域中格点的搜索顺序，确保空间分布均匀性
+	// 5个区域对应：左上、右上、中心、左下、右下
+	std::vector<std::vector<std::pair<int, int>>> search_regions = {
+		// 左上区域
+		{ {1, 1}, {1, 2}, {2, 1}, {2, 2} },
+		// 右上区域
+		{ {1, 5}, {1, 4}, {2, 5}, {2, 4} },
+		// 中心区域
+		{ {3, 3}, {3, 2}, {3, 4}, {2, 3}, {4, 3}, {2, 2}, {2, 4}, {4, 2}, {4, 4} },
+		// 左下区域
+		{ {5, 1}, {5, 2}, {4, 1}, {4, 2} },
+		// 右下区域
+		{ {5, 5}, {5, 4}, {4, 5}, {4, 4} }
+	};
+
+	int found_count = 0;
+	for (int k = 0; k < 5; ++k)
+	{
+		bool found_in_region = false;
+		for (const auto& grid_pos : search_regions[k])
+		{
+			int i = grid_pos.first;
+			int j = grid_pos.second;
+
+			int center_y = i * stepY;
+			int center_x = j * stepX;
+
+			// 边界安全校验，并读取 3x3 的微型区域
+			int y_start = center_y - 1;
+			int x_start = center_x - 1;
+			if (y_start < 0 || x_start < 0 || y_start + 3 > rows || x_start + 3 > cols)
+			{
+				continue;
+			}
+
+			cv::Mat re_mat, im_mat;
+			if (fc.read_subarray_from_h5(master_h5_path, "s_re", y_start, x_start, 3, 3, re_mat) == 0 &&
+				fc.read_subarray_from_h5(master_h5_path, "s_im", y_start, x_start, 3, 3, im_mat) == 0)
+			{
+				// 转换为 CV_32F 并进行安全校验以符合 GEMINI.md 守则一
+				if (re_mat.type() != CV_32F) re_mat.convertTo(re_mat, CV_32F);
+				if (im_mat.type() != CV_32F) im_mat.convertTo(im_mat, CV_32F);
+
+				// 检查微型区域内是否有非零有效强度的反射值
+				bool is_valid = false;
+				for (int r = 0; r < re_mat.rows; ++r)
+				{
+					for (int c = 0; c < re_mat.cols; ++c)
+					{
+						float val_re = re_mat.at<float>(r, c);
+						float val_im = im_mat.at<float>(r, c);
+						if (std::abs(val_re) > 1e-4f || std::abs(val_im) > 1e-4f)
+						{
+							is_valid = true;
+							break;
+						}
+					}
+					if (is_valid) break;
+				}
+
+				if (is_valid)
+				{
+					out_points[k].y = center_y;
+					out_points[k].x = center_x;
+					found_in_region = true;
+					found_count++;
+					break;
+				}
+			}
+		}
+
+		// 容错降级：如果该区域内没有搜寻到非零样点，则强制设置中心默认格点，防止返回空点
+		if (!found_in_region)
+		{
+			out_points[k].y = search_regions[k][0].first * stepY;
+			out_points[k].x = search_regions[k][0].second * stepX;
+			found_count++;
+		}
+	}
+
+	return found_count;
+}
+
+extern "C" InSAR_API int CalculateOffsetAndCoherence(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const Point2D* sample_points,
+	int points_count,
+	int template_size,
+	int search_size,
+	AlignmentResult* out_results
+) {
+	if (master_h5_path == nullptr || slave_h5_path == nullptr || sample_points == nullptr ||
+		out_results == nullptr || points_count != 5 || template_size <= 0 || search_size <= template_size)
+	{
+		return -1;
+	}
+
+	FormatConversion fc;
+	int rows = 0;
+	int cols = 0;
+	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	{
+		return -2;
+	}
+
+	for (int i = 0; i < points_count; ++i)
+	{
+		// 初始化指针为 nullptr，以防出错时调用 Free 发生异常
+		out_results[i].heatmap_rgb = nullptr;
+		out_results[i].overlay_rgb = nullptr;
+
+		Point2D pt = sample_points[i];
+		int tr = template_size / 2;
+		int sr = search_size / 2;
+
+		// 1. 计算 Master（模板）与 Slave（搜索）区域的起始偏移量并进行安全边界剪裁
+		int m_row = pt.y - tr;
+		int m_col = pt.x - tr;
+		int s_row = pt.y - sr;
+		int s_col = pt.x - sr;
+
+		if (m_row < 0) m_row = 0;
+		if (m_col < 0) m_col = 0;
+		if (m_row + template_size > rows) m_row = rows - template_size;
+		if (m_col + template_size > cols) m_col = cols - template_size;
+
+		if (s_row < 0) s_row = 0;
+		if (s_col < 0) s_col = 0;
+		if (s_row + search_size > rows) s_row = rows - search_size;
+		if (s_col + search_size > cols) s_col = cols - search_size;
+
+		// 2. 从 H5 文件分块读取主副影像的实部/虚部数据
+		cv::Mat M_re, M_im, S_re, S_im;
+		if (fc.read_subarray_from_h5(master_h5_path, "s_re", m_row, m_col, template_size, template_size, M_re) != 0 ||
+			fc.read_subarray_from_h5(master_h5_path, "s_im", m_row, m_col, template_size, template_size, M_im) != 0 ||
+			fc.read_subarray_from_h5(slave_h5_path, "s_re", s_row, s_col, search_size, search_size, S_re) != 0 ||
+			fc.read_subarray_from_h5(slave_h5_path, "s_im", s_row, s_col, search_size, search_size, S_im) != 0)
+		{
+			return -3;
+		}
+
+		// 强制转换为 CV_32F (单精度)，严防 direct pointer type mismatch 导致的 Bug
+		if (M_re.type() != CV_32F) M_re.convertTo(M_re, CV_32F);
+		if (M_im.type() != CV_32F) M_im.convertTo(M_im, CV_32F);
+		if (S_re.type() != CV_32F) S_re.convertTo(S_re, CV_32F);
+		if (S_im.type() != CV_32F) S_im.convertTo(S_im, CV_32F);
+
+		// 3. 计算幅度矩阵
+		cv::Mat Amp_M, Amp_S;
+		cv::magnitude(M_re, M_im, Amp_M);
+		cv::magnitude(S_re, S_im, Amp_S);
+
+		/* 备份老代码 - 直接对原始振幅匹配相关系数过低且易产生斑噪随机偏置
+		// 4. 执行模板匹配搜索偏差量
+		cv::Mat match_res;
+		cv::matchTemplate(Amp_S, Amp_M, match_res, cv::TM_CCOEFF_NORMED);
+		*/
+
+		// 新改动：做 5x5 均值滤波平滑（多视处理，压制相干斑噪声）后进行匹配以提升稳定度
+		cv::Mat Amp_M_smooth, Amp_S_smooth;
+		cv::blur(Amp_M, Amp_M_smooth, cv::Size(5, 5));
+		cv::blur(Amp_S, Amp_S_smooth, cv::Size(5, 5));
+
+		// 4. 执行模板匹配搜索偏差量
+		cv::Mat match_res;
+		cv::matchTemplate(Amp_S_smooth, Amp_M_smooth, match_res, cv::TM_CCOEFF_NORMED);
+
+		double maxVal = 0.0;
+		cv::Point maxLoc;
+		cv::minMaxLoc(match_res, nullptr, &maxVal, nullptr, &maxLoc);
+
+		// 结算匹配偏差偏移量 (dy, dx)
+		int dy = maxLoc.y - (search_size - template_size) / 2;
+		int dx = maxLoc.x - (search_size - template_size) / 2;
+
+		out_results[i].maxCorrelation = maxVal;
+		out_results[i].offsetY = dy;
+		out_results[i].offsetX = dx;
+		out_results[i].imageWidth = template_size;
+		out_results[i].imageHeight = template_size;
+
+		// 5. 零位移相干性结算 (读取未偏移的同尺寸 Slave 块)
+		cv::Mat S_re_zero, S_im_zero;
+		if (fc.read_subarray_from_h5(slave_h5_path, "s_re", m_row, m_col, template_size, template_size, S_re_zero) != 0 ||
+			fc.read_subarray_from_h5(slave_h5_path, "s_im", m_row, m_col, template_size, template_size, S_im_zero) != 0)
+		{
+			return -4;
+		}
+		if (S_re_zero.type() != CV_32F) S_re_zero.convertTo(S_re_zero, CV_32F);
+		if (S_im_zero.type() != CV_32F) S_im_zero.convertTo(S_im_zero, CV_32F);
+
+		cv::Mat coh_zero_map;
+		double coh_zero_mean = 0.0;
+		ComputeSubBlockCoherence(M_re, M_im, S_re_zero, S_im_zero, coh_zero_map, coh_zero_mean);
+		out_results[i].coherenceZeroShift = coh_zero_mean;
+
+		// 6. 最佳位移相干性结算 (读取偏移后对齐的 Slave 块)
+		int s_opt_row = m_row + dy;
+		int s_opt_col = m_col + dx;
+		if (s_opt_row < 0) s_opt_row = 0;
+		if (s_opt_col < 0) s_opt_col = 0;
+		if (s_opt_row + template_size > rows) s_opt_row = rows - template_size;
+		if (s_opt_col + template_size > cols) s_opt_col = cols - template_size;
+
+		cv::Mat S_re_opt, S_im_opt;
+		if (fc.read_subarray_from_h5(slave_h5_path, "s_re", s_opt_row, s_opt_col, template_size, template_size, S_re_opt) != 0 ||
+			fc.read_subarray_from_h5(slave_h5_path, "s_im", s_opt_row, s_opt_col, template_size, template_size, S_im_opt) != 0)
+		{
+			return -5;
+		}
+		if (S_re_opt.type() != CV_32F) S_re_opt.convertTo(S_re_opt, CV_32F);
+		if (S_im_opt.type() != CV_32F) S_im_opt.convertTo(S_im_opt, CV_32F);
+
+		cv::Mat coh_opt_map;
+		double coh_opt_mean = 0.0;
+		ComputeSubBlockCoherence(M_re, M_im, S_re_opt, S_im_opt, coh_opt_map, coh_opt_mean);
+		out_results[i].coherenceOptimal = coh_opt_mean;
+
+		// 7. 渲染相干性热力图 (Heatmap)
+		cv::Mat coh_8u;
+		coh_opt_map.convertTo(coh_8u, CV_8U, 255.0);
+		cv::Mat heatmap_bgr, heatmap_rgb;
+		cv::applyColorMap(coh_8u, heatmap_bgr, cv::COLORMAP_JET);
+		cv::cvtColor(heatmap_bgr, heatmap_rgb, cv::COLOR_BGR2RGB);
+
+		int img_bytes = template_size * template_size * 3;
+		out_results[i].heatmap_rgb = new unsigned char[img_bytes];
+		std::memcpy(out_results[i].heatmap_rgb, heatmap_rgb.data, img_bytes);
+
+		// 8. 渲染红-青叠合对比图 (Red-Cyan Overlay Map)
+		cv::Mat Amp_M_norm, Amp_S_opt, Amp_S_norm;
+		NormalizeAndClamp2Sigma(Amp_M, Amp_M_norm);
+		cv::magnitude(S_re_opt, S_im_opt, Amp_S_opt);
+		NormalizeAndClamp2Sigma(Amp_S_opt, Amp_S_norm);
+
+		std::vector<cv::Mat> channels = { Amp_S_norm, Amp_S_norm, Amp_M_norm }; // BGR order
+		cv::Mat overlay_bgr, overlay_rgb;
+		cv::merge(channels, overlay_bgr);
+		cv::cvtColor(overlay_bgr, overlay_rgb, cv::COLOR_BGR2RGB);
+
+		out_results[i].overlay_rgb = new unsigned char[img_bytes];
+		std::memcpy(out_results[i].overlay_rgb, overlay_rgb.data, img_bytes);
+	}
+
+	return 0;
+}
+
+extern "C" InSAR_API void FreeAlignmentResults(
+	AlignmentResult* results,
+	int count
+) {
+	if (results == nullptr) return;
+	for (int i = 0; i < count; ++i)
+	{
+		if (results[i].heatmap_rgb != nullptr)
+		{
+			delete[] results[i].heatmap_rgb;
+			results[i].heatmap_rgb = nullptr;
+		}
+		if (results[i].overlay_rgb != nullptr)
+		{
+			delete[] results[i].overlay_rgb;
+			results[i].overlay_rgb = nullptr;
+		}
+	}
+}
+
+extern "C" InSAR_API int AnalyzeCropRegistration(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const char* output_coherence_jpg,
+	const char* output_phase_jpg,
+	double thres_mean_pass,
+	double thres_ratio_pass,
+	double thres_mean_warn,
+	double thres_ratio_warn,
+	CropEvalResult* out_result
+) {
+	if (master_h5_path == nullptr || slave_h5_path == nullptr ||
+		output_coherence_jpg == nullptr || output_phase_jpg == nullptr || out_result == nullptr)
+	{
+		return -1;
+	}
+
+	// 1. 设置阈值默认缺省值
+	double t_mean_pass = (thres_mean_pass < 0.0) ? 0.5 : thres_mean_pass;
+	double t_ratio_pass = (thres_ratio_pass < 0.0) ? 0.50 : thres_ratio_pass;
+	double t_mean_warn = (thres_mean_warn < 0.0) ? 0.3 : thres_mean_warn;
+	double t_ratio_warn = (thres_ratio_warn < 0.0) ? 0.30 : thres_ratio_warn;
+
+	FormatConversion fc;
+	int rows = 0;
+	int cols = 0;
+	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	{
+		return -2;
+	}
+	if (rows <= 0 || cols <= 0)
+	{
+		return -2;
+	}
+
+	// 2. 从 H5 读取全图实部与虚部数据
+	cv::Mat M_re, M_im;
+	if (fc.read_array_from_h5(master_h5_path, "s_re", M_re) != 0 ||
+		fc.read_array_from_h5(master_h5_path, "s_im", M_im) != 0)
+	{
+		return -3;
+	}
+
+	cv::Mat S_re, S_im;
+	if (fc.read_array_from_h5(slave_h5_path, "s_re", S_re) != 0 ||
+		fc.read_array_from_h5(slave_h5_path, "s_im", S_im) != 0)
+	{
+		return -4;
+	}
+
+	// 3. 精度强制转换为 CV_32F，保障指针操作安全，规避 mismatch
+	if (M_re.type() != CV_32F) M_re.convertTo(M_re, CV_32F);
+	if (M_im.type() != CV_32F) M_im.convertTo(M_im, CV_32F);
+	if (S_re.type() != CV_32F) S_re.convertTo(S_re, CV_32F);
+	if (S_im.type() != CV_32F) S_im.convertTo(S_im, CV_32F);
+
+	// 4. 并行干涉相位矩阵计算 (OpenMP 行级并行加速)
+	cv::Mat phase_mat(rows, cols, CV_32F);
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < rows; ++i)
+	{
+		const float* m_re = M_re.ptr<float>(i);
+		const float* m_im = M_im.ptr<float>(i);
+		const float* s_re = S_re.ptr<float>(i);
+		const float* s_im = S_im.ptr<float>(i);
+		float* p_out = phase_mat.ptr<float>(i);
+		for (int j = 0; j < cols; ++j)
+		{
+			// Re(M * S*) = M_re * S_re + M_im * S_im
+			float re = m_re[j] * s_re[j] + m_im[j] * s_im[j];
+			// Im(M * S*) = M_im * S_re - M_re * S_im
+			float im = m_im[j] * s_re[j] - m_re[j] * s_im[j];
+			p_out[j] = std::atan2(im, re);
+		}
+	}
+
+	// 5. 并行相干性矩阵计算 (复用 ComputeSubBlockCoherence)
+	cv::Mat coh_mat;
+	double coh_mean = 0.0;
+	if (!ComputeSubBlockCoherence(M_re, M_im, S_re, S_im, coh_mat, coh_mean))
+	{
+		return -5;
+	}
+
+	// 6. 直方图统计法估算中位数与高相干像素占比 (O(N) 复杂度)
+	int hist[10000] = { 0 };
+#pragma omp parallel
+	{
+		int local_hist[10000] = { 0 };
+#pragma omp for nowait
+		for (int r = 0; r < rows; ++r)
+		{
+			const float* ptr = coh_mat.ptr<float>(r);
+			for (int c = 0; c < cols; ++c)
+			{
+				float val = ptr[c];
+				int idx = static_cast<int>(val * 9999.0f);
+				if (idx < 0) idx = 0;
+				if (idx > 9999) idx = 9999;
+				local_hist[idx]++;
+			}
+		}
+#pragma omp critical
+		{
+			for (int i = 0; i < 10000; ++i)
+			{
+				hist[i] += local_hist[i];
+			}
+		}
+	}
+
+	long long total_pixels = static_cast<long long>(rows) * cols;
+	long long target_half = total_pixels / 2;
+	long long accum = 0;
+	int median_bin = 0;
+	for (int i = 0; i < 10000; ++i)
+	{
+		accum += hist[i];
+		if (accum >= target_half)
+		{
+			median_bin = i;
+			break;
+		}
+	}
+	double coh_median = median_bin / 9999.0;
+
+	// 高相干阈值 (>0.5，对应直方图索引 >= 5000)
+	long long high_coh_pixels = 0;
+	for (int i = 5000; i < 10000; ++i)
+	{
+		high_coh_pixels += hist[i];
+	}
+	double high_coh_pct = static_cast<double>(high_coh_pixels) / total_pixels;
+
+	// 获取最大相干性
+	double max_coh = 0.0;
+	cv::minMaxLoc(coh_mat, nullptr, &max_coh);
+
+	// 7. 评估状态计算
+	int status = 2; // FAILED
+	if (coh_mean >= t_mean_pass && high_coh_pct >= t_ratio_pass)
+	{
+		status = 0; // PASS
+	}
+	else if (coh_mean >= t_mean_warn && high_coh_pct >= t_ratio_warn)
+	{
+		status = 1; // WARNING
+	}
+
+	out_result->meanCoherence = coh_mean;
+	out_result->medianCoherence = coh_median;
+	out_result->maxCoherence = max_coh;
+	out_result->highCoherencePct = high_coh_pct;
+	out_result->assessmentStatus = status;
+
+	// 8. 图像直接落盘保存 (JPG 质量 95，静默覆盖)
+	// (1) 保存干涉相位图
+	cv::Mat phase_8u;
+	phase_mat.convertTo(phase_8u, CV_8U, 255.0 / (2.0 * INSAR_PI), 127.5);
+	cv::Mat phase_color;
+	cv::applyColorMap(phase_8u, phase_color, cv::COLORMAP_JET);
+	
+	std::vector<int> compression_params;
+	compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
+	compression_params.push_back(95);
+
+	if (!cv::imwrite(output_phase_jpg, phase_color, compression_params))
+	{
+		return -6;
+	}
+
+	// (2) 保存相干系数图
+	cv::Mat coh_8u;
+	coh_mat.convertTo(coh_8u, CV_8U, 255.0);
+	if (!cv::imwrite(output_coherence_jpg, coh_8u, compression_params))
+	{
+		return -7;
+	}
+
+	return 0;
+}
+
+
 

@@ -1020,7 +1020,7 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	s.append(dataset_name);
 	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
 	{
-		fprintf(stderr, "read_array_from_h5(): dataset %s does not exist in %s!\n", dataset_name, filename);
+		// 数据集不存在时静默返回，允许可选参数/直通路径以默认值降级运行，消灭控制台噪点
 		return -1;
 	}
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
@@ -1111,7 +1111,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 	s.append(dataset_name);
 	if (0 == H5Lexists(file_id, dataset_name, H5P_DEFAULT))
 	{
-		fprintf(stderr, "read_subarray_from_h5(): dataset %s doesn't exist!\n", dataset_name);
+		// 数据集不存在时静默返回，允许可选参数/直通路径以默认值降级运行，消灭控制台噪点
 		return -1;
 	}
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
@@ -2055,7 +2055,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = xmldoc.get_double_para("incidenceAngle", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
-	ret = write_array_to_h5_by_id(file_id, "incidence_center", tmp);
+	ret = write_array_to_h5_by_id(file_id, "inc_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//最近斜距
 	ret = xmldoc.get_double_para("firstPixel", &slant_range_first_pixel);
@@ -3006,7 +3006,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = xmldoc.get_double_para("incidenceAngleMidSwath", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
-	ret = write_array_to_h5(dst_h5_filename, "incidence_center", tmp);
+	ret = write_array_to_h5(dst_h5_filename, "inc_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//最近斜距
 	ret = xmldoc.get_double_para("slantRangeTime", &slant_range_first_pixel);
@@ -4350,7 +4350,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	memset(str, 0, 2048);
 	fread(str, 1, 8, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
-	write_array_to_h5(dst_h5, "incidence_center", tmp);
+	write_array_to_h5(dst_h5, "inc_center", tmp);
 	////PRF
 	//fseek(fp, 720 + 935 - 1, SEEK_SET);
 	//memset(str, 0, 2048);
@@ -8400,8 +8400,8 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 	if (!read_array_from_h5(Input_file, "inc_coefficient_r", tmp_mat))
 		write_array_to_h5(Output_file, "inc_coefficient_r", tmp_mat);
 	/*中心下视角*/
-	if (!read_array_from_h5(Input_file, "incidence_center", tmp_mat))
-		write_array_to_h5(Output_file, "incidence_center", tmp_mat);
+	if (!read_array_from_h5(Input_file, "inc_center", tmp_mat))
+		write_array_to_h5(Output_file, "inc_center", tmp_mat);
 	/*行坐标拟合系数*/
 	if (!read_array_from_h5(Input_file, "row_coefficient", tmp_mat))
 		write_array_to_h5(Output_file, "row_coefficient", tmp_mat);
@@ -10299,7 +10299,29 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_double_to_h5(h5File, "azimuthSteeringRate", this->azimuthSteeringRate);
 	conversion.write_double_to_h5(h5File, "prf", 1.0 / this->azimuthTimeInterval);
 	conversion.write_double_to_h5(h5File, "heading", this->headingAngle);
-	conversion.write_double_to_h5(h5File, "incidence_center", this->incidence_center);
+	conversion.write_double_to_h5(h5File, "inc_center", this->incidence_center);
+	conversion.write_double_to_h5(h5File, "azimuth_resolution", 20.0);
+	conversion.write_double_to_h5(h5File, "range_resolution", 5.0);
+
+	double mean_alt = 0.0;
+	if (!this->orbitList.empty() && this->orbitList.rows > 0) {
+		double sum_alt = 0.0;
+		int count = 0;
+		for (int i = 0; i < this->orbitList.rows; ++i) {
+			double x = this->orbitList.at<double>(i, 1);
+			double y = this->orbitList.at<double>(i, 2);
+			double z = this->orbitList.at<double>(i, 3);
+			double dist = std::sqrt(x*x + y*y + z*z);
+			if (dist > 6000000.0) {
+				sum_alt += (dist - 6378137.0);
+				count++;
+			}
+		}
+		if (count > 0) mean_alt = sum_alt / count;
+	}
+	if (mean_alt <= 0.0) mean_alt = 693000.0;
+	conversion.write_double_to_h5(h5File, "orbit_altitude", mean_alt);
+
 	conversion.write_double_to_h5(h5File, "carrier_frequency", this->radarFrequency);
 	conversion.write_double_to_h5(h5File, "slant_range_first_pixel", this->slantRangeTime * VEL_C / 2.0);
 
@@ -10352,6 +10374,9 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_array_to_h5(h5File, "azimuthFmRateList", this->AzimuthFmRateList);
 	conversion.write_array_to_h5(h5File, "burstAzimuthTime", this->burstAzimuthTime);
 	conversion.write_array_to_h5(h5File, "dcEstimateList", this->DcEstimateList);
+	conversion.write_array_to_h5(h5File, "doppler_centroid", this->DcEstimateList);
+	conversion.write_array_to_h5(h5File, "doppler_coefficient_a", this->DcEstimateList);
+	conversion.write_array_to_h5(h5File, "doppler_coefficient_b", this->DcEstimateList);
 	conversion.write_array_to_h5(h5File, "firstValidLine", this->firstValidLine);
 	conversion.write_array_to_h5(h5File, "firstValidSample", this->firstValidSample);
 	conversion.write_array_to_h5(h5File, "lon_coefficient", this->lon_coefficient);

@@ -8,7 +8,80 @@
 // 定义 Registration 专用的进度回调函数指针类型
 typedef bool (__stdcall *RegistrationProgressCallback)(int progress, const char* message, void* userData);
 
+#pragma pack(push, 8) // 确保 8 字节对齐，防止不同编译器结构体填充（padding）不一致
+
+// 2D 像素坐标点
+struct Point2D {
+	int x; // 列坐标 (Column / Range)
+	int y; // 行坐标 (Row / Azimuth)
+};
+
+// 单个样点的分析计算结果
+struct AlignmentResult {
+	// 1. 定量偏差与相干性指标
+	double maxCorrelation;      // 最大相关度 (TM_CCORR_NORMED 峰值)
+	int offsetY;                // 垂直向配准偏差 / 方位向行偏移量 (dy)
+	int offsetX;                // 水平向配准偏差 / 距离向列偏移量 (dx)
+	double coherenceZeroShift;  // 零位移平均相干系数
+	double coherenceOptimal;    // 最佳位移平均相干系数
+
+	// 2. 图像渲染输出属性（伪彩色图与红青叠合图均与模板块 template_size 尺寸一致，如 200x200）
+	int imageWidth;             // 图像像素宽度
+	int imageHeight;            // 图像像素高度
+
+	// 3. RGB 原始像素数据指针 (大小均为 imageWidth * imageHeight * 3 字节，由 DLL 内部使用 new[] 分配)
+	unsigned char* heatmap_rgb; // 2D 相干热力图 RGB 原始像素数据指针
+	unsigned char* overlay_rgb; // 红-青叠合对比图 RGB 原始像素数据指针
+};
+
+// 裁剪节点配准评估结果指标结构体
+struct CropEvalResult {
+	double meanCoherence;       // 裁剪区域的相干系数均值 (值域 0.0 ~ 1.0)
+	double medianCoherence;     // 裁剪区域的相干系数中位数 (通过直方图法 O(N) 快速估算)
+	double maxCoherence;        // 裁剪区域的最大相干系数值 (值域 0.0 ~ 1.0)
+	double highCoherencePct;    // 相干系数 > 0.5 的像素百分比 (值域 0.0 ~ 1.0)
+	int assessmentStatus;       // 评估状态: 0-成功(PASS), 1-提醒(WARNING), 2-失败(FAILED)
+};
+
+#pragma pack(pop)
+
+// C 兼容导出 API
+extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
+	const char* master_h5_path,
+	Point2D* out_points,
+	int points_count
+);
+
+extern "C" InSAR_API int CalculateOffsetAndCoherence(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const Point2D* sample_points,
+	int points_count,
+	int template_size,
+	int search_size,
+	AlignmentResult* out_results
+);
+
+extern "C" InSAR_API void FreeAlignmentResults(
+	AlignmentResult* results,
+	int count
+);
+
+extern "C" InSAR_API int AnalyzeCropRegistration(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const char* output_coherence_jpg,
+	const char* output_phase_jpg,
+	double thres_mean_pass,
+	double thres_ratio_pass,
+	double thres_mean_warn,
+	double thres_ratio_warn,
+	CropEvalResult* out_result
+);
+
+
 class InSAR_API Registration
+
 {
 public:
 	Registration();

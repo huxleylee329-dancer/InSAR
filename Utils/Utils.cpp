@@ -6472,7 +6472,7 @@ int Utils::get_AOI_from_h5slc(const char* h5_file, double lon_center, double lat
 	ret = conversion.read_array_from_h5(h5_file, "range_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	range_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "incidence_center", tmp);
+	ret = conversion.read_array_from_h5(h5_file, "inc_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
 	//确定AOI中心图像坐标
@@ -6544,7 +6544,7 @@ int Utils::get_AOI_size(const char* h5_file, double lon_center, double lat_cente
 	ret = conversion.read_array_from_h5(h5_file, "range_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	range_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "incidence_center", tmp);
+	ret = conversion.read_array_from_h5(h5_file, "inc_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
 	//确定AOI中心图像坐标
@@ -12313,8 +12313,8 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	conversion.read_double_from_h5(IW3_h5file, "azimuth_spacing", &range_spacing);
 	conversion.write_double_to_h5(merged_phase_h5file, "azimuth_spacing", range_spacing);
 	//中心下视角
-	conversion.read_double_from_h5(IW2_h5file, "incidence_center", &range_spacing);
-	conversion.write_double_to_h5(merged_phase_h5file, "incidence_center", range_spacing);
+	conversion.read_double_from_h5(IW2_h5file, "inc_center", &range_spacing);
+	conversion.write_double_to_h5(merged_phase_h5file, "inc_center", range_spacing);
 	//prf
 	conversion.write_double_to_h5(merged_phase_h5file, "prf", prf);
 	//载频
@@ -12867,7 +12867,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	// removed unused: samplesPerBurst (H5 read commented out)
 	conversion.read_double_from_h5(frame1_h5, "carrier_frequency", &carrier_frequency);
 	conversion.read_double_from_h5(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel);
-	conversion.read_double_from_h5(frame1_h5, "incidence_center", &incidence_center);
+	conversion.read_double_from_h5(frame1_h5, "inc_center", &incidence_center);
 	conversion.read_double_from_h5(frame1_h5, "heading", &heading);
 	conversion.read_double_from_h5(frame1_h5, "prf", &prf);
 	conversion.read_int_from_h5(frame1_h5, "burstCount", &burstCount1);
@@ -12876,7 +12876,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	//conversion.read_int_from_h5(frame1_h5, "samplesPerBurst", &samplesPerBurst);
 	conversion.write_double_to_h5(outframe_h5, "slant_range_first_pixel", slant_range_first_pixel);
 	conversion.write_double_to_h5(outframe_h5, "carrier_frequency", carrier_frequency);
-	conversion.write_double_to_h5(outframe_h5, "incidence_center", incidence_center);
+	conversion.write_double_to_h5(outframe_h5, "inc_center", incidence_center);
 	conversion.write_double_to_h5(outframe_h5, "heading", heading);
 	conversion.write_double_to_h5(outframe_h5, "prf", prf);
 	conversion.write_int_to_h5(outframe_h5, "burstCount", burstCount1 + burstCount2);
