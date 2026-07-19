@@ -1,8 +1,8 @@
 #pragma once
 #include "Package.h"
+#include "Cancellation.h"
 
 // 定义 SARProcessing 专用的进度回调函数指针类型
-typedef bool (__stdcall *SARProgressCallback)(int progress, const char* message);
 
 // 基础特征结构体（GLCM + FFT）
 struct BasicFeatures {
@@ -20,7 +20,11 @@ public:
     // imgGray: 输入灰度图 (CV_8UC1)
     // sigma8: 噪声标准差（建议值，内部会自动估计）
     // 返回: 降噪后的图像 (CV_8UC1)，失败返回空 Mat
-    static cv::Mat DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProgressCallback cb = nullptr);
+    static int DenoiseGray(const cv::Mat& imgGray, double sigma8, cv::Mat& output,
+                           IsCancelledCallback is_cancelled = nullptr,
+                           void* cancel_context = nullptr,
+                           InSARProgressCallback progress = nullptr,
+                           void* progress_context = nullptr);
 
     // ============ 特征提取 ============
 
@@ -28,7 +32,11 @@ public:
     static BasicFeatures ExtractBasicFeatures(const cv::Mat& imgGray);
 
     // 提取差分盒维数（DBC）分形特征
-    static double ExtractDiffBoxFeature(const cv::Mat& imgGray, SARProgressCallback cb = nullptr);
+    static int ExtractDiffBoxFeature(const cv::Mat& imgGray, double& feature,
+                                     IsCancelledCallback is_cancelled = nullptr,
+                                     void* cancel_context = nullptr,
+                                     InSARProgressCallback progress = nullptr,
+                                     void* progress_context = nullptr);
 
     // ============ 目标检测（ONNX 推理）============
 
@@ -40,12 +48,16 @@ public:
     // resultText: [out] 结果描述缓冲区（调用方分配）
     // resultTextSize: 缓冲区大小（字节）
     // 返回: true=成功, false=失败
-    static bool DetectShip(const char* imagePath,
-                           const char* modelPath,
-                           float threshold,
-                           float& shipProb,
-                           char* resultText,
-                           int resultTextSize);
+    static int DetectShip(const char* imagePath,
+                          const char* modelPath,
+                          float threshold,
+                          float& shipProb,
+                          char* resultText,
+                          int resultTextSize,
+                          IsCancelledCallback is_cancelled = nullptr,
+                          void* cancel_context = nullptr,
+                          InSARProgressCallback progress = nullptr,
+                          void* progress_context = nullptr);
 
     // 批量船舶检测（同步，复用同一 ONNX Session 以提升性能）
     // imagePaths: 图像路径数组
@@ -68,7 +80,11 @@ public:
                                char* results,
                                int resultTextSize,
                                bool* successFlags,
-                               SARProgressCallback cb = nullptr);
+                               int& successCount,
+                               IsCancelledCallback is_cancelled = nullptr,
+                               void* cancel_context = nullptr,
+                               InSARProgressCallback progress = nullptr,
+                               void* progress_context = nullptr);
 
     // ============ 评价指标 ============
 

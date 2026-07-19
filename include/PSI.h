@@ -7,6 +7,7 @@
 #endif
 
 #include "..\include\Package.h"
+#include "..\include\Cancellation.h"
 #include <vector>
 #include <string>
 #include <opencv2/opencv.hpp>
@@ -48,7 +49,6 @@ struct PSI_API PS_Edge {
 };
 
 // ===== PSI 进度回调函数指针类型 =====
-typedef bool (__stdcall *PSIProgressCallback)(int progress, const char* message);
 
 // ===== PSI 主算法类 =====
 class PSI_API PSI {
@@ -74,7 +74,10 @@ public:
         double da_threshold,
         cv::Mat& ps_mask,
         cv::Mat& amplitude_dispersion,
-        PSIProgressCallback cb = nullptr
+        IsCancelledCallback is_cancelled = nullptr,
+        void* cancel_context = nullptr,
+        InSARProgressCallback progress = nullptr,
+        void* progress_context = nullptr
     );
 
     /**
@@ -88,7 +91,11 @@ public:
         const cv::Mat& ps_mask,
         std::vector<PS_Point>& ps_points,
         std::vector<PS_Edge>& edges,
-        double max_edge_length = 1000.0
+        double max_edge_length = 1000.0,
+        IsCancelledCallback is_cancelled = nullptr,
+        void* cancel_context = nullptr,
+        InSARProgressCallback progress = nullptr,
+        void* progress_context = nullptr
     );
 
     /**
@@ -105,7 +112,10 @@ public:
         const cv::Mat& ps_slc_data,
         const cv::Mat& formation_matrix,
         cv::Mat& edge_phase_diff,
-        PSIProgressCallback cb = nullptr
+        IsCancelledCallback is_cancelled = nullptr,
+        void* cancel_context = nullptr,
+        InSARProgressCallback progress = nullptr,
+        void* progress_context = nullptr
     );
 
     /**
@@ -142,7 +152,10 @@ public:
         cv::Mat& deformation_velocity,
         cv::Mat& temporal_coherence,
         cv::Mat& topographic_residual,
-        PSIProgressCallback cb = nullptr
+        IsCancelledCallback is_cancelled = nullptr,
+        void* cancel_context = nullptr,
+        InSARProgressCallback progress = nullptr,
+        void* progress_context = nullptr
     );
 
     /**
@@ -161,6 +174,10 @@ public:
         cv::Mat& filtered_velocity,
         cv::Mat& filtered_coherence,
         cv::Mat& filtered_topographic_residual,
-        cv::Mat& filtered_deformation_time_series
+        cv::Mat& filtered_deformation_time_series,
+        IsCancelledCallback is_cancelled = nullptr,
+        void* cancel_context = nullptr,
+        InSARProgressCallback progress = nullptr,
+        void* progress_context = nullptr
     );
 };

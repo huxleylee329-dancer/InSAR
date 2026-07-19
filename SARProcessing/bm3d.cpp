@@ -73,7 +73,9 @@ BM3D::BM3D(
 	row_cnt = h;	// avoid processing without the noisy image initialization
 }
 
-bool BM3D::run(ImageType *clean, SARProgressCallback cb)
+int BM3D::run(ImageType *clean, IsCancelledCallback is_cancelled,
+	void* cancel_context, InSARProgressCallback progress_callback,
+	void* progress_context)
 {
 	gtime = 0;
 	ftime = 0;
@@ -88,16 +90,17 @@ bool BM3D::run(ImageType *clean, SARProgressCallback cb)
 
 	while (next_line(clean) >= 0)
 	{
-		if (cb && row_cnt % step == 0)
+		if (is_cancelled && is_cancelled(cancel_context))
+		{
+			return -2;
+		}
+		if (progress_callback && row_cnt % step == 0)
 		{
 			int progress = (row_cnt * 50) / total_rows;
-			if (!cb(progress, "Denoising (Hard-thresholding)..."))
-			{
-				return false;
-			}
+			progress_callback(progress_context, progress, "Denoising (Hard-thresholding)...");
 		}
 	}
-	return true;
+	return 0;
 }
 
 void BM3D::reset()

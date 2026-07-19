@@ -56,9 +56,12 @@ public:
 		);
 
 	/* Denoise a whole grayscale image and write out the result. */
-	bool run(
+	int run(
 		ImageType *clean,			// pointer of the output denoised grayscale image
-		SARProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 		);
 
 	/* grouping step of a single patch */

@@ -4,7 +4,21 @@
 #include <complex>
 #include <queue>
 #include <algorithm>
+#include <atomic>
 #include <vector>
+
+namespace {
+bool is_cancelled(IsCancelledCallback callback, void* context) noexcept {
+    return callback != nullptr && callback(context);
+}
+
+void report_progress(InSARProgressCallback callback, void* context, int progress,
+                     const char* message) noexcept {
+    if (callback != nullptr) {
+        callback(context, progress, message);
+    }
+}
+}
 
 PSI::PSI() {
     error_head = "[PSI-DLL]";
@@ -20,11 +34,16 @@ int PSI::compute_ps_candidates(
     double da_threshold,
     cv::Mat& ps_mask,
     cv::Mat& amplitude_dispersion,
-    PSIProgressCallback cb
+    IsCancelledCallback is_cancelled_callback,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context
 ) {
     if (sum_amplitude.empty() || sum_amplitude_sq.empty()) return -1;
     if (sum_amplitude.type() != CV_32FC1 || sum_amplitude_sq.type() != CV_32FC1) return -1;
     if (sum_amplitude.size() != sum_amplitude_sq.size()) return -1;
+    if (num_images <= 0) return -1;
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     int rows = sum_amplitude.rows;
     int cols = sum_amplitude.cols;
@@ -38,8 +57,17 @@ int PSI::compute_ps_candidates(
 
     #pragma omp parallel for schedule(dynamic)
     for (int r = 0; r < rows; ++r) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         for (int c = 0; c < cols; ++c) {
+            if ((c & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             float sum_val = sum_amplitude.at<float>(r, c);
             float sum_sq_val = sum_amplitude_sq.at<float>(r, c);
             
@@ -59,13 +87,13 @@ int PSI::compute_ps_candidates(
         }
 
         int current = ++completed_rows;
-        if (cb && current % step == 0) {
-            if (!cb(current * 100 / rows, "Computing PS candidates...")) {
-                cancel_flag = true;
-            }
+        if (current % step == 0) {
+            report_progress(progress_callback, progress_context,
+                            current * 100 / rows, "Computing PS candidates...");
         }
     }
-    if (cancel_flag) return -2;
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
     return 0;
 }
 
@@ -74,33 +102,48 @@ int PSI::build_ps_network(
     const cv::Mat& ps_mask,
     std::vector<PS_Point>& ps_points,
     std::vector<PS_Edge>& edges,
-    double max_edge_length
+    double max_edge_length,
+    IsCancelledCallback is_cancelled_callback,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context
 ) {
     if (ps_mask.empty() || ps_mask.type() != CV_8UC1) return -1;
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     int rows = ps_mask.rows;
     int cols = ps_mask.cols;
     int index = 0;
+    std::vector<PS_Point> built_points;
+    std::vector<PS_Edge> built_edges;
 
     // 1. 建立位置到索引的快速查找表，并将查找表初始化为 -1
     cv::Mat ps_indices = cv::Mat::ones(rows, cols, CV_32SC1) * -1;
 
     // 2. 收集 PS 点行列号
     for (int r = 0; r < rows; ++r) {
+        if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
         for (int c = 0; c < cols; ++c) {
+            if ((c & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) return -2;
             if (ps_mask.at<uchar>(r, c) == 1) {
                 ps_indices.at<int>(r, c) = index;
-                ps_points.push_back(PS_Point(r, c, index++));
+                built_points.push_back(PS_Point(r, c, index++));
             }
+        }
+        if (r % std::max(1, rows / 100) == 0) {
+            report_progress(progress_callback, progress_context,
+                            r * 100 / rows, "Collecting PS candidates...");
         }
     }
 
-    if (ps_points.empty()) return -1;
+    if (built_points.empty()) return -1;
 
     // 3. 利用 OpenCV Subdiv2D 执行 Delaunay 三角剖分
     cv::Rect rect(0, 0, cols, rows);
     cv::Subdiv2D subdiv(rect);
-    for (const auto& pt : ps_points) {
+    for (const auto& pt : built_points) {
+        if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
         subdiv.insert(cv::Point2f(static_cast<float>(pt.col), static_cast<float>(pt.row)));
     }
 
@@ -109,7 +152,9 @@ int PSI::build_ps_network(
 
     // 4. 构建稀疏网络边集
     int edge_num = 0;
-    for (const auto& e : edgeList) {
+    for (size_t edge_index = 0; edge_index < edgeList.size(); ++edge_index) {
+        if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+        const auto& e = edgeList[edge_index];
         cv::Point2f p1(e[0], e[1]);
         cv::Point2f p2(e[2], e[3]);
 
@@ -143,12 +188,20 @@ int PSI::build_ps_network(
         edge.weight = 1.0 / (dist + 1.0);
         edge.is_boundary = false;
         
-        edges.push_back(edge);
+        built_edges.push_back(edge);
 
         // 更新点-边邻接关系
-        ps_points[idx1].neigh_edges.push_back(edge.num);
-        ps_points[idx2].neigh_edges.push_back(edge.num);
+        built_points[idx1].neigh_edges.push_back(edge.num);
+        built_points[idx2].neigh_edges.push_back(edge.num);
+        if (edge_index % std::max<size_t>(1, edgeList.size() / 100) == 0) {
+            report_progress(progress_callback, progress_context,
+                            static_cast<int>(edge_index * 100 / edgeList.size()),
+                            "Building PS network...");
+        }
     }
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+    ps_points.swap(built_points);
+    edges.swap(built_edges);
     return 0;
 }
 
@@ -159,10 +212,14 @@ int PSI::compute_ps_phase_diff(
     const cv::Mat& ps_slc_data,
     const cv::Mat& formation_matrix,
     cv::Mat& edge_phase_diff,
-    PSIProgressCallback cb
+    IsCancelledCallback is_cancelled_callback,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context
 ) {
     if (ps_slc_data.empty() || formation_matrix.empty()) return -1;
     if (ps_slc_data.type() != CV_32FC2 || formation_matrix.type() != CV_32SC1) return -1;
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     int num_edges = static_cast<int>(edges.size());
     int num_ifg = formation_matrix.rows;
@@ -178,8 +235,17 @@ int PSI::compute_ps_phase_diff(
 
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < ps_count; ++i) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         for (int k = 0; k < num_images; ++k) {
+            if ((k & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             cv::Vec2f complex_val = ps_slc_data.at<cv::Vec2f>(i, k);
             ps_phases.at<double>(i, k) = std::atan2(complex_val[1], complex_val[0]);
         }
@@ -191,11 +257,20 @@ int PSI::compute_ps_phase_diff(
     // 2. 边相位差计算
     #pragma omp parallel for schedule(dynamic)
     for (int e = 0; e < num_edges; ++e) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         int idx1 = edges[e].end1;
         int idx2 = edges[e].end2;
 
         for (int m = 0; m < num_ifg; ++m) {
+            if ((m & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             int im1 = formation_matrix.at<int>(m, 0); // 主影像索引
             int im2 = formation_matrix.at<int>(m, 1); // 辅影像索引
 
@@ -208,13 +283,14 @@ int PSI::compute_ps_phase_diff(
         }
 
         int current = ++completed_edges;
-        if (cb && current % step == 0) {
-            if (!cb(current * 100 / num_edges, "Computing PS edge phase differences...")) {
-                cancel_flag = true;
-            }
+        if (current % step == 0) {
+            report_progress(progress_callback, progress_context,
+                            current * 100 / std::max(1, num_edges),
+                            "Computing PS edge phase differences...");
         }
     }
-    if (cancel_flag) return -2;
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
     return 0;
 }
 
@@ -235,13 +311,17 @@ int PSI::ps_time_series_inversion(
     cv::Mat& deformation_velocity,
     cv::Mat& temporal_coherence,
     cv::Mat& topographic_residual,
-    PSIProgressCallback cb
+    IsCancelledCallback is_cancelled_callback,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context
 ) {
     int num_edges = static_cast<int>(edges.size());
     int ps_count = static_cast<int>(ps_points.size());
     int num_ifg = formation_matrix.rows;
 
     if (ref_index < 0 || ref_index >= ps_count) return -1;
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     // 分配输出存储
     deformation_time_series = cv::Mat::zeros(ps_count, num_images, CV_64FC1);
@@ -281,13 +361,22 @@ int PSI::ps_time_series_inversion(
 
     #pragma omp parallel for schedule(static)
     for (int g = 0; g < num_grid; ++g) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         int vi = g / num_h;
         int hi = g % num_h;
         double v = grid_v[vi];
         double h = grid_h[hi];
 
         for (int m = 0; m < num_ifg; ++m) {
+            if ((m & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             double b_temp = get_baseline_val(temporal_baseline, m) / 365.25; // 年
             double b_perp = get_baseline_val(spatial_baseline, m);
 
@@ -299,17 +388,30 @@ int PSI::ps_time_series_inversion(
             W[g][m] = std::complex<double>(std::cos(-model_phase), std::sin(-model_phase));
         }
     }
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     // 3. 预计算边观测相位项 O(e, m)
     std::vector<std::vector<std::complex<double>>> O(num_edges, std::vector<std::complex<double>>(num_ifg));
     #pragma omp parallel for schedule(static)
     for (int e = 0; e < num_edges; ++e) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         for (int m = 0; m < num_ifg; ++m) {
+            if ((m & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             double obs_phase = edge_phase_diff.at<float>(e, m);
             O[e][m] = std::complex<double>(std::cos(obs_phase), std::sin(obs_phase));
         }
     }
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     // 4. 针对每条边做周期图网格搜索算法（复数点乘快速优化）
     cv::Mat edge_v_diff = cv::Mat::zeros(num_edges, 1, CV_64FC1);
@@ -321,12 +423,21 @@ int PSI::ps_time_series_inversion(
 
     #pragma omp parallel for schedule(dynamic)
     for (int e = 0; e < num_edges; ++e) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         double best_v = 0.0;
         double best_h = 0.0;
         double max_gamma = -1.0;
 
         for (int g = 0; g < num_grid; ++g) {
+            if ((g & 0x3f) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             std::complex<double> sum_phase(0.0, 0.0);
             for (int m = 0; m < num_ifg; ++m) {
                 sum_phase += O[e][m] * W[g][m];
@@ -344,13 +455,14 @@ int PSI::ps_time_series_inversion(
         edge_coh.at<double>(e) = max_gamma;
 
         int current = ++completed_edges;
-        if (cb && current % step == 0) {
-            if (!cb(current * 100 / num_edges, "Running periodogram grid search on edges...")) {
-                cancel_flag = true;
-            }
+        if (current % step == 0) {
+            report_progress(progress_callback, progress_context,
+                            current * 100 / std::max(1, num_edges),
+                            "Running periodogram grid search on edges...");
         }
     }
-    if (cancel_flag) return -2;
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     // 5. 空间积分（BFS 积分方法）
     // 以传入的参考点 ref_index 为积分起点，并修正正负号 Bug
@@ -363,6 +475,7 @@ int PSI::ps_time_series_inversion(
     visited[ref_index] = true;
 
     while (!q.empty()) {
+        if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
         int u = q.front();
         q.pop();
 
@@ -388,7 +501,11 @@ int PSI::ps_time_series_inversion(
     // 6. 输出形变速率与时序赋值
     #pragma omp parallel for schedule(static)
     for (int i = 0; i < ps_count; ++i) {
-        if (cancel_flag) continue;
+        if (cancel_flag.load(std::memory_order_relaxed) ||
+            is_cancelled(is_cancelled_callback, cancel_context)) {
+            cancel_flag.store(true, std::memory_order_relaxed);
+            continue;
+        }
         deformation_velocity.at<double>(i) = v_results[i];
         topographic_residual.at<double>(i) = h_results[i];
         
@@ -397,11 +514,19 @@ int PSI::ps_time_series_inversion(
         temporal_coherence.at<double>(i) = visited[i] ? 0.85 : 0.2; 
 
         for (int k = 0; k < num_images; ++k) {
+            if ((k & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) {
+                cancel_flag.store(true, std::memory_order_relaxed);
+                break;
+            }
             // 计算自首景以来的时间差（年）并得到线性形变序列
             double t = get_baseline_val(temporal_baseline, k) / 365.25; 
             deformation_time_series.at<double>(i, k) = v_results[i] * t;
         }
     }
+
+    if (cancel_flag.load(std::memory_order_relaxed) ||
+        is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     return 0;
 }
@@ -420,8 +545,13 @@ int PSI::filter_ps_results(
     cv::Mat& filtered_velocity,
     cv::Mat& filtered_coherence,
     cv::Mat& filtered_topographic_residual,
-    cv::Mat& filtered_deformation_time_series
+    cv::Mat& filtered_deformation_time_series,
+    IsCancelledCallback is_cancelled_callback,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context
 ) {
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
     final_ps_mask = cv::Mat::zeros(rows, cols, CV_8UC1);
     mask_count_map = cv::Mat::ones(rows, cols, CV_32SC1) * -1; // -1 代表非 PS 点
 
@@ -433,6 +563,8 @@ int PSI::filter_ps_results(
     
     int new_index = 0;
     for (int i = 0; i < old_ps_count; ++i) {
+        if ((i & 0x1ff) == 0 &&
+            is_cancelled(is_cancelled_callback, cancel_context)) return -2;
         double coh = temporal_coherence.at<double>(i);
         if (coh >= coherence_threshold) {
             int r = ps_points[i].row;
@@ -451,15 +583,26 @@ int PSI::filter_ps_results(
     filtered_deformation_time_series = cv::Mat(new_ps_count, num_images, CV_64FC1);
 
     for (int i = 0; i < new_ps_count; ++i) {
+        if ((i & 0x1ff) == 0 &&
+            is_cancelled(is_cancelled_callback, cancel_context)) return -2;
         int orig_idx = keep_indices[i];
         filtered_velocity.at<double>(i) = deformation_velocity.at<double>(orig_idx);
         filtered_coherence.at<double>(i) = temporal_coherence.at<double>(orig_idx);
         filtered_topographic_residual.at<double>(i) = topographic_residual.at<double>(orig_idx);
         
         for (int k = 0; k < num_images; ++k) {
+            if ((k & 0x3ff) == 0 &&
+                is_cancelled(is_cancelled_callback, cancel_context)) return -2;
             filtered_deformation_time_series.at<double>(i, k) = deformation_time_series.at<double>(orig_idx, k);
         }
+        if (i % std::max(1, new_ps_count / 100) == 0) {
+            report_progress(progress_callback, progress_context,
+                            i * 100 / std::max(1, new_ps_count),
+                            "Filtering PS results...");
+        }
     }
+
+    if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
     return 0;
 }

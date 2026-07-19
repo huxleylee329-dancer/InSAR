@@ -51,7 +51,9 @@ BM3D_WIE::BM3D_WIE(
 	row_cnt = h;	// avoid processing without the noisy image initialization
 }
 
-bool BM3D_WIE::run(ImageType *clean, SARProgressCallback cb)
+int BM3D_WIE::run(ImageType *clean, IsCancelledCallback is_cancelled,
+	void* cancel_context, InSARProgressCallback progress_callback,
+	void* progress_context)
 {
 	gtime = 0;
 	ftime = 0;
@@ -66,16 +68,17 @@ bool BM3D_WIE::run(ImageType *clean, SARProgressCallback cb)
 
 	while (next_line(clean) >= 0)
 	{
-		if (cb && row_cnt % step == 0)
+		if (is_cancelled && is_cancelled(cancel_context))
+		{
+			return -2;
+		}
+		if (progress_callback && row_cnt % step == 0)
 		{
 			int progress = 50 + (row_cnt * 50) / total_rows;
-			if (!cb(progress, "Denoising (Wiener filtering)..."))
-			{
-				return false;
-			}
+			progress_callback(progress_context, progress, "Denoising (Wiener filtering)...");
 		}
 	}
-	return true;
+	return 0;
 }
 
 void BM3D_WIE::reset()

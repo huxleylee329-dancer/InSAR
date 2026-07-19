@@ -3,6 +3,19 @@
 #include"..\include\FormatConversion.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Filter.h"
+
+namespace {
+bool is_cancelled(IsCancelledCallback callback, void* context) noexcept {
+	return callback != nullptr && callback(context);
+}
+
+void report_progress(InSARProgressCallback callback, void* context, int progress,
+	const char* message) noexcept {
+	if (callback != nullptr) {
+		callback(context, progress, message);
+	}
+}
+}
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -700,7 +713,10 @@ int SBAS::generate_interferograms(
 	int multilook_rg, 
 	const char* ifgSavePath,
 	bool b_save_images,
-	SBASProgressCallback cb
+	IsCancelledCallback is_cancelled_callback,
+	void* cancel_context,
+	InSARProgressCallback progress_callback,
+	void* progress_context
 )
 {
 	if (edges.size() < 3 ||
@@ -726,13 +742,9 @@ int SBAS::generate_interferograms(
 	int num_edges = static_cast<int>(edges.size());
 	for (int i = 0; i < num_edges; i++)
 	{
-		if (cb)
-		{
-			if (!cb(i * 100 / num_edges, "Generating interferograms..."))
-			{
-				return -2;
-			}
-		}
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+		report_progress(progress_callback, progress_context,
+			i * 100 / std::max(1, num_edges), "Generating interferograms...");
 		if (nodes[edges[i].end1 - 1].B_temporal > nodes[edges[i].end2 - 1].B_temporal)
 		{
 			master_ix = edges[i].end1;slave_ix = edges[i].end2;
@@ -747,21 +759,30 @@ int SBAS::generate_interferograms(
 		}
 		ret = conversion.read_slc_from_h5(SLCH5Files[master_ix - 1].c_str(), master);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.read_int_from_h5(SLCH5Files[master_ix - 1].c_str(), "offset_row", &offset_row);
 		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.read_int_from_h5(SLCH5Files[master_ix - 1].c_str(), "offset_col", &offset_col);
 		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.read_slc_from_h5(SLCH5Files[slave_ix - 1].c_str(), slave);
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		if (master.type() != CV_64F) master.convertTo(master, CV_64F);
 		if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 		ret = util.Multilook(master, slave, multilook_rg, multilook_az, phase);
 		if (return_check(ret, "Multilook()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		snprintf(str, sizeof(str), "\\%d.h5", i + 1);
 		h5file = path + str;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.creat_new_h5(h5file.c_str());
+		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.write_int_to_h5(h5file.c_str(), "offset_row", offset_row);
 		if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
 		ret = conversion.write_int_to_h5(h5file.c_str(), "offset_col", offset_col);
@@ -780,10 +801,12 @@ int SBAS::generate_interferograms(
 		if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(SLCH5Files[master_ix - 1].c_str(), h5file.c_str());
 		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		
 		//是否保存为图片
 		if (b_save_images)
 		{
+			if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 			sprintf(str, "\\%d.jpg", i + 1);
 			h5file = path + str;
 			ret = util.savephase(h5file.c_str(), "jet", phase);
@@ -810,7 +833,10 @@ int SBAS::saveGradientStack(
 	vector<SBAS_node>& nodes, 
 	vector<SBAS_edge>& edges,
 	const char* dstH5File,
-	SBASProgressCallback cb
+	IsCancelledCallback is_cancelled_callback,
+	void* cancel_context,
+	InSARProgressCallback progress_callback,
+	void* progress_context
 )
 {
 	if (phaseFiles.size() < 3 ||
@@ -833,24 +859,29 @@ int SBAS::saveGradientStack(
 	Mat gradient = Mat::zeros(1, num_edges, CV_64F);
 	ret = conversion.creat_new_h5(dstH5File);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	for (int i = 0; i < num_ifgs; i++)
 	{
-		if (cb && !cb(i * 100 / num_ifgs, "Saving gradient stack..."))
-		{
-			return -2;
-		}
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+		report_progress(progress_callback, progress_context,
+			i * 100 / std::max(1, num_ifgs), "Saving gradient stack...");
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "phase", phase);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = set_high_coherence_node_phase(mask, nodes, edges, phase);
 		if (return_check(ret, "set_high_coherence_node_phase()", error_head)) return -1;
 		sprintf(str, "ifg_gradient_%d", i + 1);
 #pragma omp parallel for schedule(guided)
 		for (int j = 0; j < num_edges; j++)
 		{
+			if ((j & 0x3ff) == 0 &&
+				is_cancelled(is_cancelled_callback, cancel_context)) continue;
 			gradient.at<double>(0, j) = edges[j].phase_gradient;
 		}
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		ret = conversion.write_array_to_h5(dstH5File, str, gradient);
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	}
 
 	return 0;
@@ -1139,7 +1170,10 @@ int SBAS::generate_high_coherence_mask(
 	double coherence_thresh,
 	double count_thresh,
 	Mat& mask,
-	SBASProgressCallback cb
+	IsCancelledCallback is_cancelled_callback,
+	void* cancel_context,
+	InSARProgressCallback progress_callback,
+	void* progress_context
 )
 {
 	if (phaseFiles.size() < 1 ||
@@ -1160,12 +1194,12 @@ int SBAS::generate_high_coherence_mask(
 	int num_images = static_cast<int>(phaseFiles.size());
 	for (int i = 0; i < num_images; i++)
 	{
-		if (cb && !cb(i * 100 / num_images, "Generating high coherence mask..."))
-		{
-			return -2;
-		}
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+		report_progress(progress_callback, progress_context,
+			i * 100 / std::max(1, num_images), "Generating high coherence mask...");
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "phase", phase);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		int rows = phase.rows; int cols = phase.cols;
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "coherence", coherence);
 		if (ret < 0)
@@ -1176,6 +1210,7 @@ int SBAS::generate_high_coherence_mask(
 			coherence.convertTo(coherence_32f, CV_32F);
 			ret = conversion.write_array_to_h5(phaseFiles[i].c_str(), "coherence", coherence_32f);
 			if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+			if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		}
 		if (coherence.type() != CV_64F)
 		{
@@ -1190,27 +1225,34 @@ int SBAS::generate_high_coherence_mask(
 #pragma omp parallel for schedule(guided)
 		for (int j = 0; j < rows; j++)
 		{
+			if (is_cancelled(is_cancelled_callback, cancel_context)) continue;
 			for (int k = 0; k < cols; k++)
 			{
 				if (coherence.at<double>(j, k) > coherence_thresh) mask.at<int>(j, k) = mask.at<int>(j, k) + 1;
 			}
 		}
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	}
 	int rows = mask.rows; int cols = mask.cols;
 	int count = static_cast<int>(num_images * count_thresh);
 #pragma omp parallel for schedule(guided)
 	for (int j = 0; j < rows; j++)
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) continue;
 		for (int k = 0; k < cols; k++)
 		{
 			if (mask.at<int>(j, k) > count) mask.at<int>(j, k) = 1;
 			else mask.at<int>(j, k) = 0;
 		}
 	}
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	return 0;
 }
 
-int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, int start, bool b_zero_start, SBASProgressCallback cb)
+int SBAS::floodFillUnwrap(
+	vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, int start, bool b_zero_start,
+	IsCancelledCallback is_cancelled_callback, void* cancel_context,
+	InSARProgressCallback progress_callback, void* progress_context)
 {
 	if (nodes.size() < 3 ||
 		edges.size() < 3 ||
@@ -1231,6 +1273,7 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 	int step = std::max(1, num_nodes / 100);
 	while (!node_que.empty())
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		node_ix = node_que.front();
 		node_que.pop();
 		nodes[node_ix - 1].b_unwrapped = true;
@@ -1274,12 +1317,10 @@ int SBAS::floodFillUnwrap(vector<SBAS_node>& nodes, vector<SBAS_edge>& edges, in
 			}
 		}
 		completed++;
-		if (cb && completed % step == 0)
+		if (completed % step == 0)
 		{
-			if (!cb(completed * 100 / num_nodes, "Flood fill unwrapping..."))
-			{
-				return -2;
-			}
+			report_progress(progress_callback, progress_context,
+				completed * 100 / num_nodes, "Flood fill unwrapping...");
 		}
 	}
 	return 0;
@@ -1508,7 +1549,10 @@ int SBAS::generate_interferograms(
 	const char* ifgSavePath,
 	bool b_save_images,
 	double alpha,
-	SBASProgressCallback cb
+	IsCancelledCallback is_cancelled_callback,
+	void* cancel_context,
+	InSARProgressCallback progress_callback,
+	void* progress_context
 )
 {
 	if (formation_matrix.type() != CV_32S ||
@@ -1544,10 +1588,9 @@ int SBAS::generate_interferograms(
 		{
 			if (formation_matrix.at<int>(i, j) == 1)
 			{
-				if (cb && !cb(current_pair * 100 / std::max(1, pair_count), "Generating interferograms..."))
-				{
-					return -2;
-				}
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+				report_progress(progress_callback, progress_context,
+					current_pair * 100 / std::max(1, pair_count), "Generating interferograms...");
 				current_pair++;
 				master_ix = i + 1; slave_ix = j + 1;
 				B_temporal = temporal_baseline.at<double>(i, j);
@@ -1555,12 +1598,16 @@ int SBAS::generate_interferograms(
 
 				ret = conversion.read_slc_from_h5(SLCH5Files[master_ix - 1].c_str(), master);
 				if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_int_from_h5(SLCH5Files[master_ix - 1].c_str(), "offset_row", &offset_row);
 				if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_int_from_h5(SLCH5Files[master_ix - 1].c_str(), "offset_col", &offset_col);
 				if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_slc_from_h5(SLCH5Files[slave_ix - 1].c_str(), slave);
 				if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				if (master.type() != CV_32F) master.convertTo(master, CV_32F);
 				if (slave.type() != CV_32F) slave.convertTo(slave, CV_32F);
 				ret = util.Multilook(master, slave, multilook_rg, multilook_az, phase);
@@ -1571,11 +1618,16 @@ int SBAS::generate_interferograms(
 				//计算相关系数
 				ret = util.phase_coherence(phase, coherence);
 				if (return_check(ret, "phase_coherence()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.creat_new_h5(h5file.c_str());
+				if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
 				if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				cv::Mat coherence_32f;
 				coherence.convertTo(coherence_32f, CV_32F);
 				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", coherence_32f);
@@ -1597,6 +1649,7 @@ int SBAS::generate_interferograms(
 				if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
 				ret = conversion.Copy_para_from_h5_2_h5(SLCH5Files[master_ix - 1].c_str(), h5file.c_str());
 				if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_array_from_h5(SLCH5Files[master_ix - 1].c_str(), "mapped_lat", mapped_lat);
 				if (ret == 0 && !b_mappedLatLon_written)
 				{
@@ -1608,6 +1661,7 @@ int SBAS::generate_interferograms(
 				//是否保存为图片
 				if (b_save_images)
 				{
+					if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 					sprintf(str, "\\%d_%d.jpg", i + 1, j + 1);
 					h5file = path + str;
 					ret = util.savephase(h5file.c_str(), "jet", phase);
@@ -1656,7 +1710,10 @@ int SBAS::adaptive_multilooking(
 	double thresh_c1_to_c2, 
 	bool b_normalize,
 	bool b_save_images,
-	SBASProgressCallback cb
+	IsCancelledCallback is_cancelled_callback,
+	void* cancel_context,
+	InSARProgressCallback progress_callback,
+	void* progress_context
 )
 {
 	if (coregis_slc_files.size() < 2 ||
@@ -1693,18 +1750,22 @@ int SBAS::adaptive_multilooking(
 
 	ret = conversion.read_int_from_h5(coregis_slc_files[0].c_str(), "range_len", &range_len);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	ret = conversion.read_int_from_h5(coregis_slc_files[0].c_str(), "azimuth_len", &azimuth_len);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	Mat phase = Mat::zeros(azimuth_len, range_len, CV_64F);
 	nr = azimuth_len; nc = range_len;
 	Mat mask = Mat::zeros(azimuth_len, range_len, CV_32S); mask.copyTo(out_mask); mask.release();
 
 	for (int i = 0; i < n_images; i++)
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		for (int j = 0; j < i; j++)
 		{
 			if (formation_matrix.at<int>(i, j) == 1)
 			{
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				count++;
 				master_ix = i + 1; slave_ix = j + 1;
 				B_temporal = temporal_baseline.at<double>(i, j);
@@ -1712,12 +1773,16 @@ int SBAS::adaptive_multilooking(
 
 				ret = conversion.read_int_from_h5(coregis_slc_files[master_ix - 1].c_str(), "offset_row", &offset_row);
 				if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_int_from_h5(coregis_slc_files[master_ix - 1].c_str(), "offset_col", &offset_col);
 				if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
 				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
 				ret = conversion.creat_new_h5(h5file.c_str());
+				if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				h5file_list.push_back(h5file);
 				//预先填充相位和相关系数
 				ret = conversion.write_array_to_h5(h5file.c_str(), "phase", phase);
@@ -1770,11 +1835,13 @@ int SBAS::adaptive_multilooking(
 	else block_num_col = int(floor((double)nc / (double)blocksize_col)) + 1;
 	for (int i = 0; i < block_num_row; i++)
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		if (cancel_flag) {
 			break;
 		}
 		for (int j = 0; j < block_num_col; j++)
 		{
+			if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 			if (cancel_flag) {
 				break;
 			}
@@ -1790,12 +1857,15 @@ int SBAS::adaptive_multilooking(
 			//读取数据
 			for (int k = 0; k < n_images; k++)
 			{
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_re",
 					top_pad, left_pad, bottom_pad - top_pad, right_pad - left_pad, slc.re);
 				if (return_check(ret, "read_subarray_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				ret = conversion.read_subarray_from_h5(coregis_slc_files[k].c_str(), "s_im",
 					top_pad, left_pad, bottom_pad - top_pad, right_pad - left_pad, slc.im);
 				if (return_check(ret, "read_subarray_from_h5()", error_head)) return -1;
+				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				if (slc.type() != CV_64F) slc.convertTo(slc, CV_64F);
 				slc_series.push_back(slc);
 				slc_series_filter.push_back(slc);
@@ -1814,12 +1884,19 @@ int SBAS::adaptive_multilooking(
 #pragma omp parallel for schedule(guided)
 			for (int ii = (top - top_pad); ii < (bottom - top_pad); ii++)
 			{
-				if (cancel_flag) {
+				if (cancel_flag.load(std::memory_order_relaxed) ||
+					is_cancelled(is_cancelled_callback, cancel_context)) {
+					cancel_flag.store(true, std::memory_order_relaxed);
 					continue;
 				}
 				ComplexMat coherence_matrix, eigenvector; Mat eigenvalue; int ret1, count_parallel;
 				for (int jj = (left - left_pad); jj < (right - left_pad); jj++)
 				{
+					if ((jj & 0x3f) == 0 &&
+						is_cancelled(is_cancelled_callback, cancel_context)) {
+						cancel_flag.store(true, std::memory_order_relaxed);
+						break;
+					}
 					ret1 = util.coherence_matrix_estimation(slc_series, coherence_matrix, homogeneous_test_wnd, homogeneous_test_wnd, ii, jj);
 					if (ret1 == 0)
 					{
@@ -1859,15 +1936,15 @@ int SBAS::adaptive_multilooking(
 				}
 
 				int current_completed = ++completed_rows;
-				if (cb && current_completed % step == 0)
+				if (current_completed % step == 0)
 				{
 					int progress = current_completed * 100 / nr;
-					if (!cb(progress, "Adaptive multilooking..."))
-					{
-						cancel_flag = true;
-					}
+					report_progress(progress_callback, progress_context,
+						progress, "Adaptive multilooking...");
 				}
 			}
+			if (cancel_flag.load(std::memory_order_relaxed) ||
+				is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
 			//储存
 			int kk = 0;
@@ -1877,6 +1954,7 @@ int SBAS::adaptive_multilooking(
 				{
 					if (formation_matrix.at<int>(iii, jjj) == 1)
 					{
+						if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 						if (b_coh_est && !coherence_series.empty() && !coherence_series[kk].empty())
 						{
 							cv::Mat coh_sub = coherence_series[kk](cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad));
@@ -1884,12 +1962,14 @@ int SBAS::adaptive_multilooking(
 							coh_sub.convertTo(coh_32f, CV_32F);
 							ret = conversion.write_subarray_to_h5(h5file_list[kk].c_str(), "coherence", coh_32f, top, left, bottom - top, right - left);
 							if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
+							if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 						}
 						ret = util.multilook(slc_series_filter[iii], slc_series_filter[jjj], 1, 1, phase);
 						if (return_check(ret, "multilook()", error_head)) return -1;
 						phase(cv::Range(top - top_pad, bottom - top_pad), cv::Range(left - left_pad, right - left_pad)).copyTo(ph);
 						ret = conversion.write_subarray_to_h5(h5file_list[kk].c_str(), "phase", ph, top, left, bottom - top, right - left);
 						if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
+						if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 						kk++;
 					}
 				}
@@ -1909,12 +1989,14 @@ int SBAS::adaptive_multilooking(
 	//是否保存为图片
 	if (b_save_images)
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		for (int iii = 0; iii < n_images; iii++)
 		{
 			for (int jjj = 0; jjj < iii; jjj++)
 			{
 				if (formation_matrix.at<int>(iii, jjj) == 1)
 				{
+					if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 					//相位
 					sprintf(str, "\\%d_%d.h5", iii + 1, jjj + 1);
 					h5file = path + str;
@@ -1941,7 +2023,10 @@ int SBAS::adaptive_multilooking(
 	return 0;
 }
 
-int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, const Mat& coherence, double coh_thresh)
+int SBAS::refinement_and_reflattening(
+	Mat& unwrapped_phase, const Mat& mask, const Mat& coherence, double coh_thresh,
+	IsCancelledCallback is_cancelled_callback, void* cancel_context,
+	InSARProgressCallback progress_callback, void* progress_context)
 {
 	if (unwrapped_phase.size() != mask.size() ||
 		unwrapped_phase.size() != coherence.size() ||
@@ -1954,6 +2039,7 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 		fprintf(stderr, "refinement_and_reflattening(): input check failed!\n");
 		return -1;
 	}
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 	cv::Mat coh_64f = coherence;
 	if (coh_64f.type() != CV_64F) coh_64f.convertTo(coh_64f, CV_64F);
 	int mask_count = cv::countNonZero(mask);
@@ -1962,8 +2048,11 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 	int count = 0, rows = mask.rows, cols = mask.cols;
 	for (int i = 0; i < rows; i++)
 	{
+		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 		for (int j = 0; j < cols; j++)
 		{
+			if ((j & 0x3ff) == 0 &&
+				is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 			if (mask.at<int>(i, j) == 1 && coh_64f.at<double>(i, j) > coh_thresh)
 			{
 				A.at<double>(count, 1) = (double)i;
@@ -1971,6 +2060,10 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 				b.at<double>(count, 0) = unwrapped_phase.at<double>(i, j);
 				count++;
 			}
+		}
+		if (i % std::max(1, rows / 100) == 0) {
+			report_progress(progress_callback, progress_context,
+				i * 50 / std::max(1, rows), "Fitting reflattening plane...");
 		}
 	}
 	
@@ -1989,6 +2082,7 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 	{
 		return 0;
 	}
+	if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 
 	//找到参考点坐标
 	//int ref_i, ref_j;
@@ -2008,14 +2102,30 @@ int SBAS::refinement_and_reflattening(Mat& unwrapped_phase, const Mat& mask, con
 	double coef_intercept = x.at<double>(0, 0);
 	double coef_row = x.at<double>(1, 0);
 	double coef_col = x.at<double>(2, 0);
-#pragma omp parallel for schedule(guided)
+	Mat refined_phase = unwrapped_phase.clone();
+	std::atomic<bool> cancel_flag(false);
+	#pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (cancel_flag.load(std::memory_order_relaxed) ||
+			is_cancelled(is_cancelled_callback, cancel_context)) {
+			cancel_flag.store(true, std::memory_order_relaxed);
+			continue;
+		}
 		for (int j = 0; j < cols; j++)
 		{
-			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) - (coef_intercept + coef_row * double(i) + coef_col * double(j));
+			if ((j & 0x3ff) == 0 &&
+				is_cancelled(is_cancelled_callback, cancel_context)) {
+				cancel_flag.store(true, std::memory_order_relaxed);
+				break;
+			}
+			refined_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) -
+				(coef_intercept + coef_row * double(i) + coef_col * double(j));
 		}
 	}
+	if (cancel_flag.load(std::memory_order_relaxed) ||
+		is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+	refined_phase.copyTo(unwrapped_phase);
 	//unwrapped_phase = unwrapped_phase - (unwrapped_phase.at<double>(ref_i, ref_j) - phase_ref);
 
 	return 0;

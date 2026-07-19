@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "..\..\include\Cancellation.h"
 
 typedef uint8_t ImageType;				// data-type of the input/ouput image (up to 12 bits for integer version)
 typedef uint32_t DistType;				// data-type of the distance between two patches
@@ -31,7 +32,5 @@ typedef float PatchType;
 
 
 // 定义 SARProcessing 专用的进度回调函数指针类型
-typedef bool (__stdcall *SARProgressCallback)(int progress, const char* message);
 
 #endif
-

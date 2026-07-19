@@ -57,10 +57,12 @@ static double calcMedian(const cv::Mat& img)
     return 0.0;
 }
 
-static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8, SARProgressCallback cb)
+static int bm3dCoreDenoise(const cv::Mat& img8U, double sigma8, cv::Mat& clean,
+                           IsCancelledCallback is_cancelled, void* cancel_context,
+                           InSARProgressCallback progress_callback, void* progress_context)
 {
     if (img8U.empty() || img8U.type() != CV_8UC1) {
-        return cv::Mat();
+        return -1;
     }
 
     int width = img8U.cols;
@@ -68,7 +70,7 @@ static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8, SARProgressC
 
     cv::Mat noisy = img8U.clone();
     cv::Mat basic(height, width, CV_8UC1);
-    cv::Mat clean(height, width, CV_8UC1);
+    clean.create(height, width, CV_8UC1);
 
     int sigma = cvRound(sigma8);
     if (sigma < 1) sigma = 1;
@@ -76,30 +78,39 @@ static cv::Mat bm3dCoreDenoise(const cv::Mat& img8U, double sigma8, SARProgressC
     // 第一阶段：硬阈值
     BM3D bm3d(width, height, 16, 8, 3, 16, 1, 16, 1);
     bm3d.load(noisy.ptr<ImageType>(), sigma, 2500);
-    if (!bm3d.run(basic.ptr<ImageType>(), cb)) {
-        return cv::Mat(); // User canceled
-    }
+    int ret = bm3d.run(basic.ptr<ImageType>(), is_cancelled, cancel_context,
+                       progress_callback, progress_context);
+    if (ret != 0) return ret;
 
     // 第二阶段：Wiener 滤波
     BM3D_WIE bm3d_wie(width, height, 32, 8, 3, 16, 1, 16, 1);
     bm3d_wie.load(noisy.ptr<ImageType>(), basic.ptr<ImageType>(), sigma, 400);
-    if (!bm3d_wie.run(clean.ptr<ImageType>(), cb)) {
-        return cv::Mat(); // User canceled
-    }
+    ret = bm3d_wie.run(clean.ptr<ImageType>(), is_cancelled, cancel_context,
+                       progress_callback, progress_context);
+    if (ret != 0) return ret;
 
-    return clean;
+    return 0;
 }
 
 // ONNX 单次推理内部实现（复用已有的 Env 和 Session）
-static bool detectShipInternal(Ort::Session& session,
+static int detectShipInternal(Ort::Session& session,
                                const cv::Mat& img,
                                float threshold,
                                float& shipProb,
                                char* resultText,
-                               int resultTextSize)
+                               int resultTextSize,
+                               IsCancelledCallback is_cancelled,
+                               void* cancel_context,
+                               InSARProgressCallback progress_callback,
+                               void* progress_context)
 {
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
     BasicFeatures feats = extract_basic_features(img);
-    double difbox = extract_diffbox_feature(img);
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+    double difbox = 0.0;
+    int ret = extract_diffbox_feature(img, difbox, is_cancelled, cancel_context,
+                                      progress_callback, progress_context);
+    if (ret != 0) return ret;
 
     std::vector<float> inputTensorValues = {
         static_cast<float>(feats.fphr),
@@ -132,6 +143,8 @@ static bool detectShipInternal(Ort::Session& session,
         2
     );
 
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+
     auto type_info = outputTensors[1].GetTensorTypeAndShapeInfo();
     size_t elem_count = type_info.GetElementCount();
     float* probArr = outputTensors[1].GetTensorMutableData<float>();
@@ -147,17 +160,21 @@ static bool detectShipInternal(Ort::Session& session,
     const char* label = shipProb >= threshold ? "Ship" : "Sea";
     std::strncpy(resultText, label, resultTextSize - 1);
     resultText[resultTextSize - 1] = '\0';
-    return true;
+    return 0;
 }
 
 // ============ SARProcessor 公开 API 实现 ============
 
 // BM3D 降噪（含前后处理：log 变换、噪声估计、逆 log、亮度保持）
-cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProgressCallback cb)
+int SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, cv::Mat& output,
+                               IsCancelledCallback is_cancelled, void* cancel_context,
+                               InSARProgressCallback progress_callback, void* progress_context)
 {
+    output.release();
     if (imgGray.empty()) {
-        return cv::Mat();
+        return -1;
     }
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
 
     cv::Mat inputGray;
     if (imgGray.type() != CV_8UC1) {
@@ -197,11 +214,12 @@ cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProg
     cv::Mat img8U;
     imgNorm.convertTo(img8U, CV_8U, 255.0);
     double sigma8Final = sigmaFinal * 255.0;
-    cv::Mat den8U = bm3dCoreDenoise(img8U, sigma8Final, cb);
+    cv::Mat den8U;
+    int ret = bm3dCoreDenoise(img8U, sigma8Final, den8U, is_cancelled,
+                              cancel_context, progress_callback, progress_context);
 
-    if (den8U.empty()) {
-        return cv::Mat();
-    }
+    if (ret != 0) return ret;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
 
     // 后处理：逆 log 变换 + 亮度保持
     cv::Mat denNorm;
@@ -222,7 +240,9 @@ cv::Mat SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, SARProg
 
     cv::Mat output8U;
     imgOut.convertTo(output8U, CV_8U);
-    return output8U;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+    output = output8U;
+    return 0;
 }
 
 // 特征提取：GLCM + FFT
@@ -232,28 +252,36 @@ BasicFeatures SARProcessor::ExtractBasicFeatures(const cv::Mat& imgGray)
 }
 
 // 特征提取：差分盒维数
-double SARProcessor::ExtractDiffBoxFeature(const cv::Mat& imgGray, SARProgressCallback cb)
+int SARProcessor::ExtractDiffBoxFeature(const cv::Mat& imgGray, double& feature,
+                                         IsCancelledCallback is_cancelled, void* cancel_context,
+                                         InSARProgressCallback progress_callback, void* progress_context)
 {
-    return extract_diffbox_feature(imgGray, cb);
+    return extract_diffbox_feature(imgGray, feature, is_cancelled, cancel_context,
+                                   progress_callback, progress_context);
 }
 
 // 单张图像船舶检测
-bool SARProcessor::DetectShip(const char* imagePath,
+int SARProcessor::DetectShip(const char* imagePath,
                                const char* modelPath,
                                float threshold,
                                float& shipProb,
                                char* resultText,
-                               int resultTextSize)
+                               int resultTextSize,
+                               IsCancelledCallback is_cancelled,
+                               void* cancel_context,
+                               InSARProgressCallback progress_callback,
+                               void* progress_context)
 {
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
     if (!imagePath || !modelPath || !resultText || resultTextSize <= 0) {
-        return false;
+        return -1;
     }
 
     cv::Mat img = cv::imread(imagePath, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
     if (img.empty()) {
         std::strncpy(resultText, "Failed to read image.", resultTextSize - 1);
         resultText[resultTextSize - 1] = '\0';
-        return false;
+        return -1;
     }
 
     try {
@@ -269,15 +297,22 @@ bool SARProcessor::DetectShip(const char* imagePath,
         Ort::Session session(env, modelPathStr.c_str(), sessionOptions);
 #endif
 
-        return detectShipInternal(session, img, threshold, shipProb, resultText, resultTextSize);
+        if (is_cancelled && is_cancelled(cancel_context)) return -2;
+        if (progress_callback) progress_callback(progress_context, 0, "Detecting ship...");
+        int ret = detectShipInternal(session, img, threshold, shipProb, resultText,
+                                     resultTextSize, is_cancelled, cancel_context,
+                                     progress_callback, progress_context);
+        if (is_cancelled && is_cancelled(cancel_context)) return -2;
+        if (progress_callback) progress_callback(progress_context, 100, "Detecting ship...");
+        return ret;
     }
     catch (const Ort::Exception& e) {
         std::snprintf(resultText, resultTextSize, "ONNX Runtime Error: %s", e.what());
-        return false;
+        return -1;
     }
     catch (const std::exception& e) {
         std::snprintf(resultText, resultTextSize, "Detection Error: %s", e.what());
-        return false;
+        return -1;
     }
 }
 
@@ -290,10 +325,15 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
                                    char* results,
                                    int resultTextSize,
                                    bool* successFlags,
-                                   SARProgressCallback cb)
+                                   int& successCount,
+                                   IsCancelledCallback is_cancelled,
+                                   void* cancel_context,
+                                   InSARProgressCallback progress_callback,
+                                   void* progress_context)
 {
+    successCount = 0;
     if (!imagePaths || imageCount <= 0 || !modelPath || !shipProbs || !results || !successFlags) {
-        return 0;
+        return -1;
     }
 
     // 创建一次 Env 和 Session，循环内复用
@@ -308,11 +348,10 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
     Ort::Session session(env, modelPathStr.c_str(), sessionOptions);
 #endif
 
-    int successCount = 0;
     for (int i = 0; i < imageCount; ++i) {
-        if (cb && !cb(i * 100 / imageCount, "Detecting ships...")) {
-            return successCount;
-        }
+        if (is_cancelled && is_cancelled(cancel_context)) return -2;
+        if (progress_callback) progress_callback(progress_context,
+            i * 100 / imageCount, "Detecting ships...");
         char* resultPtr = results + i * resultTextSize;
         shipProbs[i] = 0.0f;
         successFlags[i] = false;
@@ -326,7 +365,11 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
         }
 
         try {
-            if (detectShipInternal(session, img, threshold, shipProbs[i], resultPtr, resultTextSize)) {
+            int ret = detectShipInternal(session, img, threshold, shipProbs[i], resultPtr,
+                                         resultTextSize, is_cancelled, cancel_context,
+                                         progress_callback, progress_context);
+            if (ret == -2) return -2;
+            if (ret == 0) {
                 successFlags[i] = true;
                 successCount++;
             }
@@ -336,7 +379,9 @@ int SARProcessor::DetectShipBatch(const char** imagePaths,
         }
     }
 
-    return successCount;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+    if (progress_callback) progress_callback(progress_context, 100, "Detecting ships...");
+    return 0;
 }
 
 // 计算等效视数 (ENL)

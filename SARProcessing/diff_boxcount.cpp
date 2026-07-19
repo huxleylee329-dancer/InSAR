@@ -22,8 +22,14 @@ double polyfit_slope(const std::vector<double>& x, const std::vector<double>& y)
     return (n * sum_xy - sum_x * sum_y) / denominator;
 }
 
-double extract_diffbox_feature(const cv::Mat& img_gray, SARProgressCallback cb) {
-    if (img_gray.empty()) return 0.0;
+int extract_diffbox_feature(const cv::Mat& img_gray, double& feature,
+                             IsCancelledCallback is_cancelled,
+                             void* cancel_context,
+                             InSARProgressCallback progress_callback,
+                             void* progress_context) {
+    feature = 0.0;
+    if (img_gray.empty()) return -1;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
 
     // 1. 转为浮点型并计算极差
     cv::Mat img_float;
@@ -32,7 +38,7 @@ double extract_diffbox_feature(const cv::Mat& img_gray, SARProgressCallback cb) 
     double min_val_f, max_val_f;
     cv::minMaxLoc(img_float, &min_val_f, &max_val_f);
     double delta = max_val_f - min_val_f;
-    if (delta == 0.0) return 0.0;
+    if (delta == 0.0) return 0;
 
     // 2. 灰度拉伸到 0-255 并转回 uint8
     cv::Mat src = img_float * 255.0 / delta;
@@ -53,11 +59,10 @@ double extract_diffbox_feature(const cv::Mat& img_gray, SARProgressCallback cb) 
     int iterations = 0;
     int total_iterations = std::max(1, (upper_limit > 2) ? ((upper_limit - 3) / 2 + 1) : 1);
     for (int data = 2; data < upper_limit; data += 2) {
-        if (cb) {
+        if (is_cancelled && is_cancelled(cancel_context)) return -2;
+        if (progress_callback) {
             int progress = iterations * 100 / total_iterations;
-            if (!cb(progress, "Extracting fractal features...")) {
-                return -2.0; // Early return on cancellation (std::vectors will automatically release memory via RAII)
-            }
+            progress_callback(progress_context, progress, "Extracting fractal features...");
         }
         iterations++;
 
@@ -94,5 +99,7 @@ double extract_diffbox_feature(const cv::Mat& img_gray, SARProgressCallback cb) 
         log_NRlist[i] = std::log(NRlist[i]);
     }
 
-    return polyfit_slope(log_rlist, log_NRlist);
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+    feature = polyfit_slope(log_rlist, log_NRlist);
+    return 0;
 }

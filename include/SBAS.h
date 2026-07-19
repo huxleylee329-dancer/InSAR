@@ -2,6 +2,7 @@
 #ifndef __SBAS__H__
 #define __SBAS__H__
 #include"..\include\Package.h"
+#include"..\include\Cancellation.h"
 #include"..\include\ComplexMat.h"
 
 
@@ -9,7 +10,6 @@
 /*          小基线集三角网络节点          */
 /*----------------------------------------*/
 // 定义 SBAS 专用的进度回调函数指针类型
-typedef bool (__stdcall *SBASProgressCallback)(int progress, const char* message);
 
 class InSAR_API SBAS_node
 {
@@ -231,7 +231,10 @@ public:
 		int multilook_rg,
 		const char* ifgSavePath,
 		bool b_save_images = false,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 根据高相干掩膜矩阵写入三角网节点文件
 	* @param mask                     高相干掩膜矩阵(int型)
@@ -309,7 +312,10 @@ public:
 		vector<SBAS_node>& nodes,
 		vector<SBAS_edge>& edges,
 		const char* dstH5File,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 估计差分干涉相位数据堆栈相关系数并生成高相干掩膜
 	* @param phaseFiles               差分干涉相位数据堆栈文件
@@ -327,7 +333,10 @@ public:
 		double coherence_thresh,
 		double count_thresh,
 		Mat& mask,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 洪水淹没法高相干点积分解缠（三角网络边梯度已经用MCF求解过）
 	* @param nodes                   高相干点三角网络节点
@@ -341,7 +350,10 @@ public:
 		vector<SBAS_edge>& edges,
 		int start,
 		bool b_zero_start = false,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 用相干系数设置高相干点三角网络边的权重
 	* @param coherence               相干系数
@@ -437,7 +449,10 @@ public:
 		const char* ifgSavePath,
 		bool b_save_images = false,
 		double alpha = 0.8,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 计算时间相关系数（temporal_coherence），评估时间序列估计效果
 	* @param estimated_phase_series              时间序列差分相位估计结果(n×1)
@@ -479,7 +494,10 @@ public:
 		double thresh_c1_to_c2 = 0.7,
 		bool b_normalize = true,
 		bool b_save_images = true,
-		SBASProgressCallback cb = nullptr
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 	/*@brief 轨道精炼重去平（一阶拟合）
 	* @param unwrapped_phase                       解缠相位
@@ -492,7 +510,11 @@ public:
 		Mat& unwrapped_phase,
 		const Mat& mask,
 		const Mat& coherence,
-		double coh_thresh
+		double coh_thresh,
+		IsCancelledCallback is_cancelled = nullptr,
+		void* cancel_context = nullptr,
+		InSARProgressCallback progress = nullptr,
+		void* progress_context = nullptr
 	);
 private:
 	std::string error_head;
