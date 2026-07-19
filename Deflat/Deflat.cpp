@@ -5,6 +5,7 @@
 #include"..\include\Deflat.h"
 #include"..\include\FormatConversion.h"
 #include<direct.h>
+#include <mutex>
 #include<Windows.h>
 #include<SensAPI.h>
 #include<urlmon.h>
@@ -835,24 +836,27 @@ int Deflat::topo_removal(
 
 namespace {
 	// 线程局部变量存储原始的 cb 回调指针，解决 __stdcall 仿函数 Lambda 转换失败的问题
-	thread_local DeflatProgressCallback t_original_cb = nullptr;
+	std::atomic<DeflatProgressCallback> g_original_cb(nullptr);
+	std::mutex g_topography_callback_mutex;
 }
 
 // 无捕获的静态回调函数，带有 __stdcall 约定
 static bool __stdcall dem_mapping_wrapper_cb(int progress, const char* msg)
 {
-	if (t_original_cb)
+	DeflatProgressCallback cb = g_original_cb.load(std::memory_order_acquire);
+	if (cb)
 	{
-		return t_original_cb(progress * 70 / 100, msg);
+		return cb(progress * 70 / 100, msg);
 	}
 	return true;
 }
 
 static bool __stdcall topo_sim_wrapper_cb(int progress, const char* msg)
 {
-	if (t_original_cb)
+	DeflatProgressCallback cb = g_original_cb.load(std::memory_order_acquire);
+	if (cb)
 	{
-		return t_original_cb(70 + progress * 30 / 100, msg);
+		return cb(70 + progress * 30 / 100, msg);
 	}
 	return true;
 }
@@ -910,7 +914,8 @@ int Deflat::topography_simulation(
 	if (return_check(ret, "getSRTMDEM()", error_head)) return -1;
 
 	// 保存原始回调指针到 TLS 变量
-	t_original_cb = cb;
+	std::lock_guard<std::mutex> callbackLock(g_topography_callback_mutex);
+	g_original_cb.store(cb, std::memory_order_release);
 
 	ret = demMapping(dem, dem_out, lon_upperleft, lat_upperleft, offset_row, offset_col,
 		sceneHeight, sceneWidth, prf1, rangeSpacing, wavelength,
@@ -918,12 +923,12 @@ int Deflat::topography_simulation(
 		5.0 / 6000.0, 5.0 / 6000.0, dem_mapping_wrapper_cb);
 	if (ret == -2)
 	{
-		t_original_cb = nullptr;
+		g_original_cb.store(nullptr, std::memory_order_release);
 		return -2;
 	}
 	if (return_check(ret, "demMapping()", error_head))
 	{
-		t_original_cb = nullptr;
+		g_original_cb.store(nullptr, std::memory_order_release);
 		return -1;
 	}
 	//Mat out; dem_out.convertTo(out, CV_64F);
@@ -933,14 +938,14 @@ int Deflat::topography_simulation(
 		1 / prf1, 1 / prf2, &B_effect, &B_para);
 	if (return_check(ret, "baseline_estimation()", error_head))
 	{
-		t_original_cb = nullptr;
+		g_original_cb.store(nullptr, std::memory_order_release);
 		return -1;
 	}
 
 	ret = topography_phase_simulation(dem_out, topography_phase, inc_cofficient, B_effect, nearRangeTime,
 		offset_row, offset_col, wavelength, rangeSpacing, topo_sim_wrapper_cb);
 
-	t_original_cb = nullptr; // 执行完毕，清理 TLS
+	g_original_cb.store(nullptr, std::memory_order_release);
 	if (ret == -2) return -2;
 	if (return_check(ret, "topography_phase_simulation()", error_head)) return -1;
 	return 0;
@@ -1888,6 +1893,7 @@ int Deflat::SLCs_deramp(
 	Mat mappedLon, mappedLat;
 	ret = demMapping(dem, mappedDem, mappedLat, mappedLon, lon_upperleft, lat_upperleft, offset_row, offset_col, sceneHeight, sceneWidth,
 		prf, rangeSpacing, wavelength, nearRangeTime, start, end, statevec, 20);
+	if (ret == -2) return -2;
 	if (return_check(ret, "demMapping()", error_head)) return -1;
 	ret = conversion.write_array_to_h5(outSLCH5Files[reference - 1].c_str(), "mapped_lat", mappedLat);
 	ret = conversion.write_array_to_h5(outSLCH5Files[reference - 1].c_str(), "mapped_lon", mappedLon);

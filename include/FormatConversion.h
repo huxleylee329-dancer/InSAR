@@ -1,6 +1,8 @@
 #pragma once
 #ifndef __FORMATCONVERSION__H__
 #define __FORMATCONVERSION__H__
+
+#include <atomic>
 #include<string>
 #include<memory>
 #include"..\include\Package.h"
@@ -1421,7 +1423,7 @@ public:
 	/** @brief 更新轨道信息
 	* @return 成功返回0，否则返回-1
 	*/
-	int applyOrbit();
+	int applyOrbit(ProgressCallback progressCallback = nullptr, void* userData = nullptr);
 
 	/** @brief 零多普勒时间搜索算法（移自 Utils 以消除循环依赖）
 	* @param stateVectors                  轨道数据
@@ -2016,6 +2018,101 @@ private:
 /*------------------------------------------------*/
 /*                哨兵一号计算工具                */
 /*------------------------------------------------*/
+enum SentinelZeroDopplerFailureReason
+{
+	SENTINEL_ZERO_DOPPLER_NONE = 0,
+	SENTINEL_ZERO_DOPPLER_INVALID_INPUT = 1,
+	SENTINEL_ZERO_DOPPLER_NO_BRACKET = 2,
+	SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT = 3
+};
+
+enum SentinelZeroDopplerCallPath
+{
+	SENTINEL_ZERO_DOPPLER_CALL_UNKNOWN = 0,
+	SENTINEL_ZERO_DOPPLER_CALL_MASTER_RG_AZ = 1,
+	SENTINEL_ZERO_DOPPLER_CALL_SLAVE_RG_AZ = 2
+};
+
+enum SentinelBurstQualityCode
+{
+	SENTINEL_BURST_NOT_PROCESSED = 0,
+	SENTINEL_BURST_NOMINAL = 1,
+	SENTINEL_BURST_WARNING_PARTIAL_INVALID = 2,
+	SENTINEL_BURST_WARNING_ZERO_OFFSET_FALLBACK = 3,
+	SENTINEL_BURST_FAILED = 4
+};
+
+struct SentinelZeroDopplerDiagnostic
+{
+	int reason;
+	int returnCode;
+	int callPath;
+	int imageIndex;
+	int burstIndex;
+	int line;
+	int sample;
+	Position groundPosition;
+	double targetDoppler;
+	double orbitStartTime;
+	double orbitStopTime;
+	double nearestOrbitTime;
+	int stateVectorCount;
+	char scene[260];
+	char swath[32];
+	char polarization[32];
+
+	SentinelZeroDopplerDiagnostic()
+		: reason(SENTINEL_ZERO_DOPPLER_NONE), returnCode(0), callPath(SENTINEL_ZERO_DOPPLER_CALL_UNKNOWN),
+		imageIndex(0), burstIndex(0), line(-1), sample(-1),
+		targetDoppler(0.0), orbitStartTime(0.0),
+		orbitStopTime(0.0), nearestOrbitTime(0.0), stateVectorCount(0)
+	{
+		memset(scene, 0, sizeof(scene));
+		memset(swath, 0, sizeof(swath));
+		memset(polarization, 0, sizeof(polarization));
+	}
+};
+
+struct SentinelZeroDopplerFailureStatistic
+{
+	int imageIndex;
+	int burstIndex;
+	int reason;
+	int callPath;
+	int returnCode;
+	int count;
+
+	SentinelZeroDopplerFailureStatistic()
+		: imageIndex(0), burstIndex(0), reason(SENTINEL_ZERO_DOPPLER_NONE),
+		callPath(SENTINEL_ZERO_DOPPLER_CALL_UNKNOWN), returnCode(0), count(0)
+	{
+	}
+};
+
+struct SentinelBurstQualityStatus
+{
+	int imageIndex;
+	int burstIndex;
+	int attemptedPoints;
+	int validPoints;
+	int invalidPoints;
+	int zeroDopplerFailures;
+	int rangeOrBurstFailures;
+	int fitPointCount;
+	double fitRms;
+	int qualityCode;
+
+	SentinelBurstQualityStatus()
+		: imageIndex(0), burstIndex(0), attemptedPoints(0), validPoints(0), invalidPoints(0),
+		zeroDopplerFailures(0), rangeOrBurstFailures(0), fitPointCount(0), fitRms(0.0),
+		qualityCode(SENTINEL_BURST_NOT_PROCESSED)
+	{
+	}
+};
+
+/*------------------------------------------------*/
+/*                哨兵一号计算工具                */
+/*------------------------------------------------*/
 class InSAR_API Sentinel1Utils
 {
 public:
@@ -2407,6 +2504,22 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int backGeoCodingCoregistration();
+	/** @brief Thread-safe cooperative cancellation. Cancelled operations return -2. */
+	void requestCancel() noexcept;
+	void clearCancelRequest() noexcept;
+	bool isCancelRequested() const noexcept;
+	/** @brief 获取最近一次零多普勒求解失败的诊断信息
+	* @return 有诊断信息返回0，否则返回-1
+	*/
+	int getLastZeroDopplerDiagnostic(SentinelZeroDopplerDiagnostic& diagnostic) const;
+	/** @brief Get zero-Doppler failure counts grouped by image, burst, reason, and call path.
+	* @return 0 on success, -1 when no diagnostic state exists.
+	*/
+	int getZeroDopplerFailureStatistics(vector<SentinelZeroDopplerFailureStatistic>& statistics) const;
+	/** @brief 获取当前任务的burst几何质量状态
+	* @return 成功返回0，否则返回-1
+	*/
+	int getBurstQualityStatus(vector<SentinelBurstQualityStatus>& status) const;
 
 public:
 
@@ -2448,6 +2561,9 @@ public:
 	double invalidOffset = -9999.0;
 	bool burstOffsetComputed;
 	char error_head[256];
+
+private:
+	std::atomic<bool> cancelRequested;
 
 };
 

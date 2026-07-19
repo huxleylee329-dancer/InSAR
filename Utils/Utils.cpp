@@ -11853,9 +11853,11 @@ int Utils::S1_subswath_merge(
 	const char* IW1_h5file,
 	const char* IW2_h5file,
 	const char* IW3_h5file, 
-	const char* merged_phase_h5file
+	const char* merged_phase_h5file,
+	NewtonProgressCallback cb
 )
 {
+	if (cb && !cb(0, "Preparing Sentinel-1 subswath merge...")) return -2;
 	if (!IW1_h5file || !IW2_h5file || !IW3_h5file || !merged_phase_h5file)
 	{
 		fprintf(stderr, "S1_subswath_merge(): input check failed\n");
@@ -11959,6 +11961,7 @@ int Utils::S1_subswath_merge(
 	Mat lat_tmp(total_rows, total_cols, CV_32F); lat_tmp = 360.0;
 	Mat phase1, phase2, mapped_lon1, mapped_lon2, mapped_lat1, mapped_lat2;
 	ret = conversion.read_array_from_h5(IW1_h5file, "phase", phase1);
+	if (cb && !cb(30, "Reading Sentinel-1 subswaths...")) return -2;
 	ret = conversion.read_array_from_h5(IW2_h5file, "phase", phase2);
 	ret = conversion.read_array_from_h5(IW1_h5file, "mapped_lon", mapped_lon1);
 	ret += conversion.read_array_from_h5(IW1_h5file, "mapped_lat", mapped_lat1);
@@ -12020,6 +12023,7 @@ int Utils::S1_subswath_merge(
 	mapped_lat2.create(total_rows, total_cols, CV_32F); mapped_lat2 = 360.0;
 	mapped_lon2.create(total_rows, total_cols, CV_32F); mapped_lon2 = 360.0;
 	ret = conversion.read_array_from_h5(IW3_h5file, "phase", phase2);
+	if (cb && !cb(65, "Merging Sentinel-1 subswaths...")) return -2;
 	ret = conversion.read_array_from_h5(IW3_h5file, "mapped_lon", mapped_lon1);
 	ret += conversion.read_array_from_h5(IW3_h5file, "mapped_lat", mapped_lat1);
 	temp_ret += ret;
@@ -12062,6 +12066,7 @@ int Utils::S1_subswath_merge(
 		(phase1(cv::Range(0, phase2.rows), cv::Range(col_end_last, total_cols)));
 	}
 	ret = conversion.creat_new_h5(merged_phase_h5file);
+	if (cb && !cb(85, "Writing merged Sentinel-1 subswath...")) return -2;
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_array_to_h5(merged_phase_h5file, "phase", phase1);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
@@ -12093,11 +12098,13 @@ int Utils::S1_subswath_merge(
 	ret = conversion.read_str_from_h5(IW3_h5file, "source_1", source_1);
 	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_2_IW3", source_2.c_str());
 
+	if (cb && !cb(100, "Sentinel-1 subswath merge complete.")) return -2;
 	return 0;
 }
 
-int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file, const char* IW3_h5file, const char* merged_phase_h5file)
+int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file, const char* IW3_h5file, const char* merged_phase_h5file, NewtonProgressCallback cb)
 {
+	if (cb && !cb(0, "Preparing Sentinel-1 SLC subswath merge...")) return -2;
 	if (!IW1_h5file || !IW2_h5file || !IW3_h5file || !merged_phase_h5file)
 	{
 		fprintf(stderr, "S1_subswath_merge_slc(): input check failed\n");
@@ -12189,6 +12196,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	ComplexMat slc1, slc2, slc3, slc_tmp, slc_tmp2;
 	ret = conversion.read_slc_from_h5(IW1_h5file, slc1);
 	ret = conversion.read_slc_from_h5(IW2_h5file, slc2);
+	if (cb && !cb(30, "Reading Sentinel-1 SLC subswaths...")) return -2;
 	if (slc1.type() != slc2.type())
 	{
 		fprintf(stderr, "S1_subswath_merge_slc(): data type mismatch!\n");
@@ -12234,6 +12242,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	slc_tmp2.re.create(total_rows, total_cols, slc1.type()); slc_tmp2.im.create(total_rows, total_cols, slc1.type());
 	slc_tmp2.re = 0; slc_tmp2.im = 0;
 	ret = conversion.read_slc_from_h5(IW3_h5file, slc2);
+	if (cb && !cb(60, "Merging Sentinel-1 SLC subswaths...")) return -2;
 	if (slc1.type() != slc2.type())
 	{
 		fprintf(stderr, "S1_subswath_merge_slc(): data type mismatch!\n");
@@ -12264,6 +12273,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		(slc_tmp2.im(cv::Range(0, slc2.im.rows), cv::Range(col_end_last, total_cols)));
 	}
 	ret = conversion.creat_new_h5(merged_phase_h5file);
+	if (cb && !cb(85, "Writing merged Sentinel-1 SLC...")) return -2;
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(merged_phase_h5file, slc_tmp2);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
@@ -12368,11 +12378,13 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	conversion.write_double_to_h5(merged_phase_h5file, "bottomRightLon", bottomright_lon);
 
 
+	if (cb && !cb(100, "Sentinel-1 SLC subswath merge complete.")) return -2;
 	return 0;
 }
 
-int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
+int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5, NewtonProgressCallback cb)
 {
+	if (cb && !cb(0, "Preparing Sentinel-1 frame merge...")) return -2;
 	if (h5files.size() < 2 || !merged_phase_h5)
 	{
 		fprintf(stderr, "S1_frame_merge(): input check failed!\n");
@@ -12386,6 +12398,7 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 	FormatConversion conversion;
 	for (int i = 0; i < num_files; i++)
 	{
+		if (cb && !cb(i * 20 / std::max(1, num_files), "Reading Sentinel-1 frame metadata...")) return -2;
 		ret = conversion.read_str_from_h5(h5files[i].c_str(), "acquisition_start_time", start_time);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
 		ret = conversion.utc2gps(start_time.c_str(), &start);
@@ -12486,11 +12499,13 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5)
 	conversion.write_double_to_h5(merged_phase_h5, "prf", prf);
 	conversion.write_double_to_h5(merged_phase_h5, "range_spacing", range_spacing);
 	conversion.write_double_to_h5(merged_phase_h5, "slant_range_first_pixel", first_pixel1);
+	if (cb && !cb(100, "Sentinel-1 frame merge complete.")) return -2;
 	return 0;
 }
 
-int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const char* outframe_h5)
+int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const char* outframe_h5, NewtonProgressCallback cb)
 {
+	if (cb && !cb(0, "Preparing Sentinel-1 two-frame merge...")) return -2;
 	if (!frame1_h5 || !frame2_h5 || !outframe_h5)
 	{
 		fprintf(stderr, "S1_frame_merge(): input check failed!\n");
@@ -12550,8 +12565,9 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	if (start1 < start2)
 	{
 		int t_remain = azimuthFmRateList1.rows - 1;
-		for (int i = 0; i < azimuthFmRateList1.rows; i++)
-		{
+	for (int i = 0; i < azimuthFmRateList1.rows; i++)
+	{
+		if (cb && i % 64 == 0 && !cb(30, "Merging azimuth FM rate lists...")) return -2;
 			if (azimuthFmRateList2.at<double>(0, 0) <= azimuthFmRateList1.at<double>(i, 0))
 			{
 				t_remain = i; break;
@@ -12564,8 +12580,9 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	else
 	{
 		int t_remain = azimuthFmRateList2.rows - 1;
-		for (int i = 0; i < azimuthFmRateList2.rows; i++)
-		{
+	for (int i = 0; i < azimuthFmRateList2.rows; i++)
+	{
+		if (cb && i % 64 == 0 && !cb(30, "Merging azimuth FM rate lists...")) return -2;
 			if ((azimuthFmRateList1.at<double>(0, 0) <= azimuthFmRateList2.at<double>(i, 0)))
 			{
 				t_remain = i; break;
@@ -12584,8 +12601,9 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	if (start1 < start2)
 	{
 		int t_remain = dcEstimateList1.rows - 1;
-		for (int i = 0; i < dcEstimateList1.rows; i++)
-		{
+	for (int i = 0; i < dcEstimateList1.rows; i++)
+	{
+		if (cb && i % 64 == 0 && !cb(55, "Merging Doppler estimate lists...")) return -2;
 			if ((dcEstimateList2.at<double>(0, 0) <= dcEstimateList1.at<double>(i, 0)))
 			{
 				t_remain = i; break;
@@ -12598,8 +12616,9 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	else
 	{
 		int t_remain = dcEstimateList2.rows - 1;
-		for (int i = 0; i < dcEstimateList2.rows; i++)
-		{
+	for (int i = 0; i < dcEstimateList2.rows; i++)
+	{
+		if (cb && i % 64 == 0 && !cb(55, "Merging Doppler estimate lists...")) return -2;
 			if ((dcEstimateList1.at<double>(0, 0) <= dcEstimateList2.at<double>(i, 0)))
 			{
 				t_remain = i; break;
@@ -12620,6 +12639,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		int t_remain = state_vec1.rows - 1;
 		for (int i = 0; i < state_vec1.rows; i++)
 		{
+			if (cb && i % 64 == 0 && !cb(72, "Merging Sentinel-1 orbit vectors...")) return -2;
 			if (state_vec2.at<double>(0, 0) <= state_vec1.at<double>(i, 0))
 			{
 				t_remain = i; break;
@@ -12641,6 +12661,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		int t_remain = state_vec2.rows - 1;
 		for (int i = 0; i < state_vec2.rows; i++)
 		{
+			if (cb && i % 64 == 0 && !cb(72, "Merging Sentinel-1 orbit vectors...")) return -2;
 			if (state_vec1.at<double>(0, 0) <= state_vec2.at<double>(i, 0))
 			{
 				t_remain = i; break;
@@ -12669,6 +12690,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			int t_remain = fine_state_vec1.rows - 1;
 			for (int i = 0; i < fine_state_vec1.rows; i++)
 			{
+				if (cb && i % 64 == 0 && !cb(76, "Merging Sentinel-1 precise orbit vectors...")) return -2;
 				if (fine_state_vec2.at<double>(0, 0) <= fine_state_vec1.at<double>(i, 0))
 				{
 					t_remain = i; break;
@@ -12690,6 +12712,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			int t_remain = fine_state_vec2.rows - 1;
 			for (int i = 0; i < fine_state_vec2.rows; i++)
 			{
+				if (cb && i % 64 == 0 && !cb(76, "Merging Sentinel-1 precise orbit vectors...")) return -2;
 				if (fine_state_vec1.at<double>(0, 0) <= fine_state_vec2.at<double>(i, 0))
 				{
 					t_remain = i; break;
@@ -12706,6 +12729,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	}
 	
 	//融合gcps
+	if (cb && !cb(82, "Merging Sentinel-1 geolocation points...")) return -2;
 	Mat gcps1, gcps2;
 	int rows1, rows2;
 	ret = conversion.read_int_from_h5(frame1_h5, "azimuth_len", &rows1);
@@ -12721,6 +12745,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		int t;
 		for (int i = 0; i < gcps2.rows; i++)
 		{
+			if (cb && i % 64 == 0 && !cb(84, "Merging Sentinel-1 control points...")) return -2;
 			if (fabs(gcps2.at<double>(i, 3)) > 1.0)
 			{
 				t = i; break;
@@ -12737,6 +12762,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		int t;
 		for (int i = 0; i < gcps1.rows; i++)
 		{
+			if (cb && i % 64 == 0 && !cb(84, "Merging Sentinel-1 control points...")) return -2;
 			if (fabs(gcps1.at<double>(i, 3)) > 1.0)
 			{
 				t = i; break;
@@ -12898,6 +12924,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	conversion.write_str_to_h5(outframe_h5, "imaging_mode", imaging_mode.c_str());
 
 	//s_re, s_im
+	if (cb && !cb(92, "Writing merged Sentinel-1 SLC...")) return -2;
 	Mat s_re, s_re2;
 	conversion.read_array_from_h5(frame1_h5, "s_re", s_re);
 	conversion.read_array_from_h5(frame2_h5, "s_re", s_re2);
@@ -12944,6 +12971,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		cv::vconcat(s_re2, s_re, s_re);
 	}
 	conversion.write_array_to_h5(outframe_h5, "s_im", s_re);
+	if (cb && !cb(96, "Fitting merged Sentinel-1 metadata...")) return -2;
 
 
 	//拟合系数
@@ -13379,6 +13407,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		conversion.write_array_to_h5(outframe_h5, "col_coefficient", col_coefficient);
 	}
 	
+	if (cb && !cb(100, "Sentinel-1 two-frame merge complete.")) return -2;
 	return 0;
 }
 
@@ -14974,9 +15003,11 @@ int Utils::geo_transformation(
 	Mat& prior_DTM,
 	Mat& mapped_DTM,
 	int SAR_extent_x,
-	int SAR_extent_y
+	int SAR_extent_y,
+	NewtonProgressCallback cb
 )
 {
+	if (cb && !cb(0, "Preparing geographic transformation...")) return -2;
 	if (!grille_file || DTM.empty() || xllcorner < 0 || yllcorner < 0)
 	{
 		fprintf(stderr, "geo_transformation(): input check failed!\n");
@@ -15018,10 +15049,16 @@ int Utils::geo_transformation(
 	DTM_mapped_X = -1;
 	DTM_mapped_Y = -1;
 	std::atomic<int> count(0);
+	std::atomic<bool> cancel_flag(false);
 	Mat mask = Mat::zeros(DTM_rows, DTM_cols, CV_8UC1);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < SAR_extent_y; i++)
 	{
+		if (cancel_flag.load(std::memory_order_relaxed)) continue;
+		if (cb && i % 16 == 0 && !cb(i * 100 / std::max(1, SAR_extent_y), "Transforming geographic grid...")) {
+			cancel_flag.store(true, std::memory_order_relaxed);
+			continue;
+		}
 		for (int j = 0; j < SAR_extent_x; j++)
 		{
 			//首先确定DTM值是否有效
@@ -15250,6 +15287,8 @@ int Utils::geo_transformation(
 //	}
 	
 
+	if (cancel_flag.load(std::memory_order_relaxed)) return -2;
+	if (cb && !cb(100, "Geographic transformation complete.")) return -2;
 	return 0;
 }
 
@@ -15263,9 +15302,11 @@ int Utils::geo_transformation(
 	Mat& prior_DTM,
 	Mat& mapped_DTM,
 	int SAR_extent_x,
-	int SAR_extent_y
+	int SAR_extent_y,
+	NewtonProgressCallback cb
 )
 {
+	if (cb && !cb(0, "Preparing geographic transformation...")) return -2;
 	if (!grille_file || DTM.empty() || fabs(lon_upleft) > 180.0 || fabs(lat_upleft) > 90.0)
 	{
 		fprintf(stderr, "geo_transformation(): input check failed!\n");
@@ -15308,6 +15349,7 @@ int Utils::geo_transformation(
 	DTM_mapped_X = -1;
 	DTM_mapped_Y = -1;
 	std::atomic<int> count(0);
+	std::atomic<bool> cancel_flag(false);
 	//Mat mask = Mat::zeros(DTM_rows, DTM_cols, CV_8UC1);
 	InitializeGDALAndProjOnce();
 	OGRSpatialReference monUtm;
@@ -15330,6 +15372,11 @@ int Utils::geo_transformation(
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < SAR_extent_y; i++)
 	{
+		if (cancel_flag.load(std::memory_order_relaxed)) continue;
+		if (cb && i % 16 == 0 && !cb(i * 100 / std::max(1, SAR_extent_y), "Transforming geographic grid...")) {
+			cancel_flag.store(true, std::memory_order_relaxed);
+			continue;
+		}
 		for (int j = 0; j < SAR_extent_x; j++)
 		{
 			//首先确定DTM值是否有效
@@ -15476,6 +15523,8 @@ int Utils::geo_transformation(
 			delete coordTransList[t];
 		}
 	}
+	if (cancel_flag.load(std::memory_order_relaxed)) return -2;
+	if (cb && !cb(100, "Geographic transformation complete.")) return -2;
 	return 0;
 }
 

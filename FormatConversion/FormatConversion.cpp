@@ -2,6 +2,9 @@
 #include <direct.h>     // 解决 _mkdir 找不到标识符错误                                      
 #include <mutex>        // 解决 std::once_flag/call_once 依赖                                
 #include <io.h>         // 解决 _findfirst 依赖
+#include <map>
+#include <limits>
+#include <algorithm>
 #include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
 #include"..\include\FormatConversion.h"                                                      
 #include"..\include\Utils.h"
@@ -15,6 +18,201 @@
 
 static std::recursive_mutex g_h5_mutex;
 #define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex);
+
+static std::mutex g_sentinel_diagnostic_mutex;
+struct SentinelBackGeocodingDiagnosticState
+{
+	std::vector<SentinelBurstQualityStatus> burstStatus;
+	std::vector<SentinelZeroDopplerFailureStatistic> zeroDopplerFailureStatistics;
+	SentinelZeroDopplerDiagnostic lastZeroDopplerDiagnostic;
+	bool hasZeroDopplerDiagnostic;
+	bool zeroOffsetFallback;
+
+	SentinelBackGeocodingDiagnosticState() : hasZeroDopplerDiagnostic(false), zeroOffsetFallback(false) {}
+};
+static std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState> g_sentinel_diagnostic_state;
+static thread_local int g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
+static thread_local SentinelZeroDopplerDiagnostic g_thread_zero_doppler_diagnostic;
+static thread_local bool g_has_thread_zero_doppler_diagnostic = false;
+
+struct ZeroDopplerFailureAccumulator
+{
+	int counts[SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT + 1];
+	SentinelZeroDopplerDiagnostic diagnostics[SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT + 1];
+	bool hasDiagnostic[SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT + 1];
+
+	ZeroDopplerFailureAccumulator()
+	{
+		memset(counts, 0, sizeof(counts));
+		memset(hasDiagnostic, 0, sizeof(hasDiagnostic));
+	}
+
+	void add(const SentinelZeroDopplerDiagnostic& diagnostic)
+	{
+		const int reason = diagnostic.reason;
+		if (reason <= SENTINEL_ZERO_DOPPLER_NONE || reason > SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT)
+			return;
+		++counts[reason];
+		if (!hasDiagnostic[reason])
+		{
+			diagnostics[reason] = diagnostic;
+			hasDiagnostic[reason] = true;
+		}
+	}
+
+	void merge(const ZeroDopplerFailureAccumulator& other)
+	{
+		for (int reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+			reason <= SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT; ++reason)
+		{
+			counts[reason] += other.counts[reason];
+			if (!hasDiagnostic[reason] && other.hasDiagnostic[reason])
+			{
+				diagnostics[reason] = other.diagnostics[reason];
+				hasDiagnostic[reason] = true;
+			}
+		}
+	}
+};
+
+static void record_zero_doppler_diagnostic(const Sentinel1Utils* utils, const Position& groundPosition,
+	double targetDoppler, int reason)
+{
+	SentinelZeroDopplerDiagnostic diagnostic;
+	diagnostic.reason = reason;
+	diagnostic.returnCode = -1;
+	diagnostic.groundPosition = groundPosition;
+	diagnostic.targetDoppler = targetDoppler;
+	if (utils)
+	{
+		diagnostic.stateVectorCount = utils->stateVectors ? utils->stateVectors->newStateVectors.rows : 0;
+		if (utils->stateVectors && !utils->stateVectors->newStateVectors.empty())
+		{
+			diagnostic.orbitStartTime = utils->stateVectors->newStateVectors.at<double>(0, 0);
+			diagnostic.orbitStopTime = utils->stateVectors->newStateVectors.at<double>(diagnostic.stateVectorCount - 1, 0);
+			diagnostic.nearestOrbitTime = (diagnostic.orbitStartTime + diagnostic.orbitStopTime) * 0.5;
+		}
+		strncpy_s(diagnostic.scene, utils->h5File.c_str(), _TRUNCATE);
+		strncpy_s(diagnostic.swath, utils->swath.c_str(), _TRUNCATE);
+		strncpy_s(diagnostic.polarization, utils->polarization.c_str(), _TRUNCATE);
+	}
+	g_thread_zero_doppler_diagnostic = diagnostic;
+	g_has_thread_zero_doppler_diagnostic = true;
+}
+
+static int validate_sentinel_metadata(const Sentinel1Utils* utils)
+{
+	if (!utils || utils->h5File.empty() || utils->burstCount <= 0 || utils->linesPerBurst <= 0 ||
+		utils->samplesPerBurst <= 0 || !std::isfinite(utils->azimuthTimeInterval) ||
+		utils->azimuthTimeInterval <= 0.0 || !utils->stateVectors ||
+		utils->burstAzimuthTime.rows < utils->burstCount || utils->burstAzimuthTime.type() != CV_64F ||
+		utils->firstValidLine.rows < utils->burstCount || utils->lastValidLine.rows < utils->burstCount ||
+		utils->firstValidLine.type() != CV_32S || utils->lastValidLine.type() != CV_32S ||
+		utils->stateVectors->newStateVectors.rows < 2 || utils->stateVectors->newStateVectors.cols < 7)
+	{
+		return -1;
+	}
+	for (int i = 0; i < utils->burstCount; i++)
+	{
+		double burstTime = utils->burstAzimuthTime.at<double>(i, 0);
+		int firstValidLine = utils->firstValidLine.at<int>(i, 0);
+		int lastValidLine = utils->lastValidLine.at<int>(i, 0);
+		if (!std::isfinite(burstTime) || firstValidLine < 1 || lastValidLine < firstValidLine ||
+			lastValidLine > utils->linesPerBurst ||
+			(i > 0 && burstTime <= utils->burstAzimuthTime.at<double>(i - 1, 0)))
+		{
+			return -1;
+		}
+	}
+	for (int i = 0; i < utils->stateVectors->newStateVectors.rows; i++)
+	{
+		if (!std::isfinite(utils->stateVectors->newStateVectors.at<double>(i, 0)) ||
+			(i > 0 && utils->stateVectors->newStateVectors.at<double>(i, 0) <=
+			utils->stateVectors->newStateVectors.at<double>(i - 1, 0)))
+		{
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static void record_burst_quality(const Sentinel1BackGeocoding* backGeocoding,
+	const SentinelBurstQualityStatus& status)
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	std::vector<SentinelBurstQualityStatus>& statuses = g_sentinel_diagnostic_state[backGeocoding].burstStatus;
+	for (size_t i = 0; i < statuses.size(); i++)
+	{
+		if (statuses[i].imageIndex == status.imageIndex && statuses[i].burstIndex == status.burstIndex)
+		{
+			statuses[i] = status;
+			return;
+		}
+	}
+	statuses.push_back(status);
+}
+
+static void clear_zero_doppler_failure_statistics(const Sentinel1BackGeocoding* backGeocoding,
+	int imageIndex, int burstIndex)
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	std::vector<SentinelZeroDopplerFailureStatistic>& statistics =
+		g_sentinel_diagnostic_state[backGeocoding].zeroDopplerFailureStatistics;
+	statistics.erase(std::remove_if(statistics.begin(), statistics.end(),
+		[imageIndex, burstIndex](const SentinelZeroDopplerFailureStatistic& statistic)
+		{
+			return statistic.imageIndex == imageIndex && statistic.burstIndex == burstIndex;
+		}), statistics.end());
+}
+
+static void record_zero_doppler_failure(const Sentinel1BackGeocoding* backGeocoding,
+	const SentinelZeroDopplerDiagnostic& diagnostic, int count = 1)
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	SentinelBackGeocodingDiagnosticState& state = g_sentinel_diagnostic_state[backGeocoding];
+	state.lastZeroDopplerDiagnostic = diagnostic;
+	state.hasZeroDopplerDiagnostic = true;
+	for (size_t i = 0; i < state.zeroDopplerFailureStatistics.size(); ++i)
+	{
+		SentinelZeroDopplerFailureStatistic& statistic = state.zeroDopplerFailureStatistics[i];
+		if (statistic.imageIndex == diagnostic.imageIndex && statistic.burstIndex == diagnostic.burstIndex &&
+			statistic.reason == diagnostic.reason && statistic.callPath == diagnostic.callPath &&
+			statistic.returnCode == diagnostic.returnCode)
+		{
+			statistic.count += count;
+			return;
+		}
+	}
+	SentinelZeroDopplerFailureStatistic statistic;
+	statistic.imageIndex = diagnostic.imageIndex;
+	statistic.burstIndex = diagnostic.burstIndex;
+	statistic.reason = diagnostic.reason;
+	statistic.callPath = diagnostic.callPath;
+	statistic.returnCode = diagnostic.returnCode;
+	statistic.count = count;
+	state.zeroDopplerFailureStatistics.push_back(statistic);
+}
+
+static bool collect_zero_doppler_failure(ZeroDopplerFailureAccumulator& accumulator,
+	int imageIndex, int burstIndex, int line, int sample, int callPath,
+	const Position& groundPosition)
+{
+	if (g_zero_doppler_failure_reason == SENTINEL_ZERO_DOPPLER_NONE)
+		return false;
+	SentinelZeroDopplerDiagnostic diagnostic;
+	if (g_has_thread_zero_doppler_diagnostic)
+		diagnostic = g_thread_zero_doppler_diagnostic;
+	diagnostic.reason = g_zero_doppler_failure_reason;
+	diagnostic.returnCode = -1;
+	diagnostic.callPath = callPath;
+	diagnostic.imageIndex = imageIndex;
+	diagnostic.burstIndex = burstIndex;
+	diagnostic.line = line;
+	diagnostic.sample = sample;
+	diagnostic.groundPosition = groundPosition;
+	accumulator.add(diagnostic);
+	return true;
+}
 
 #ifdef _WIN32
   #define timegm _mkgmtime
@@ -10613,6 +10811,7 @@ int Sentinel1Utils::init()
 		this->stateVectors = new orbitStateVectors(orbitList, startTime, stopTime);
 	}
 	ret = this->stateVectors->applyOrbit();
+	if (ret == -2) return -2;
 	if (return_check(ret, "applyOrbit()", error_head)) return -1;
 	bInitialized = true;
 	computeDopplerCentroid();
@@ -10879,17 +11078,30 @@ int Sentinel1Utils::getDopplerFrequency(
 
 int Sentinel1Utils::getZeroDopplerTime(Position groundPosition, double* zeroDopplerTime, double dopplerFrequency)
 {
-	// removed unused: ret (direct computation, no API calls needing error checks)
-	if (!bInitialized || !zeroDopplerTime)
+	g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
+	g_has_thread_zero_doppler_diagnostic = false;
+	if (!bInitialized || !zeroDopplerTime || !stateVectors || !std::isfinite(radarFrequency) || radarFrequency <= 0.0 ||
+		!std::isfinite(azimuthTimeInterval) || azimuthTimeInterval <= 0.0)
 	{
-		fprintf(stderr, "getZeroDopplerTime(): input check failed!");
+		if (zeroDopplerTime) *zeroDopplerTime = std::numeric_limits<double>::quiet_NaN();
+		g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+		record_zero_doppler_diagnostic(this, groundPosition, dopplerFrequency, g_zero_doppler_failure_reason);
 		return -1;
 	}
 
 	double wavelength = VEL_C / radarFrequency;
 	double distance;
 	if (!orbitStateVectors::findZeroDopplerTime(*stateVectors, groundPosition, wavelength, azimuthTimeInterval, dopplerFrequency, *zeroDopplerTime, distance, 0.01)) {
-		fprintf(stderr, "getZeroDopplerTime(): zeroDopplerTime out of legal range!\n");
+		*zeroDopplerTime = std::numeric_limits<double>::quiet_NaN();
+		g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NO_BRACKET;
+		record_zero_doppler_diagnostic(this, groundPosition, dopplerFrequency, g_zero_doppler_failure_reason);
+		return -1;
+	}
+	if (!std::isfinite(*zeroDopplerTime) || !std::isfinite(distance))
+	{
+		*zeroDopplerTime = std::numeric_limits<double>::quiet_NaN();
+		g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT;
+		record_zero_doppler_diagnostic(this, groundPosition, dopplerFrequency, g_zero_doppler_failure_reason);
 		return -1;
 	}
 
@@ -10904,14 +11116,17 @@ int Sentinel1Utils::getRgAzPosition(
 )
 {
 	int ret;
+	g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
+	g_has_thread_zero_doppler_diagnostic = false;
 	if (!bInitialized || !rangeIndex || !azimuthIndex)
 	{
-		fprintf(stderr, "getRgAzPosition(): input check failed!");
+		g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
 		return -1;
 	}
 	double zeroDopplerTime, slantRange; 
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
-	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
+	if (return_failed(ret)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
 	if (return_check(ret, "getSlantRange()", error_head)) return -1;
@@ -10920,7 +11135,7 @@ int Sentinel1Utils::getRgAzPosition(
 	if (*azimuthIndex < 0.0 || *rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst || *azimuthIndex >= linesPerBurst) return -1;
 	int x = static_cast<int>(*rangeIndex - 1); x = x < 0 ? 0 : x;
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
-	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
+	if (return_failed(ret)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
 	if (return_check(ret, "getSlantRange()", error_head)) return -1;
@@ -10957,7 +11172,7 @@ int Sentinel1Utils::getBurstIndice(Position groundPosition, BurstIndices& burstI
 	int ret;
 	double zeroDopplerTime;
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime);
-	if (return_check(ret, "getZeroDopplerTime()", error_head)) return -1;
+	if (return_failed(ret)) return -1;
 	int k = 0;
 	double burstFirstLineTime, burstLastLineTime;
 	for (int i = 0; i < burstCount; i++) {
@@ -11082,6 +11297,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 
 	FormatConversion conversion;
 	int ret = conversion.creat_new_h5(outFile);
+	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	Mat start(this->burstCount, 1, CV_32S), end(this->burstCount, 1, CV_32S);
 	start.at<int>(0, 0) = 1;
 	end.at<int>(0, 0) = this->lastValidLine.at<int>(0, 0);
@@ -11580,6 +11796,7 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 
 Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 {
+	cancelRequested.store(false, std::memory_order_relaxed);
 	memset(this->error_head, 0, 256);
 	strcpy(this->error_head, "FORMATCONVERSION_DLL_ERROR: error happens when using ");
 	this->dem = NULL;
@@ -11588,6 +11805,25 @@ Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 	this->isdeBurstConfig = false;
 	this->masterIndex = 1;
 	this->numOfImages = 0;
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		g_sentinel_diagnostic_state[this] = SentinelBackGeocodingDiagnosticState();
+	}
+}
+
+void Sentinel1BackGeocoding::requestCancel() noexcept
+{
+	cancelRequested.store(true, std::memory_order_release);
+}
+
+void Sentinel1BackGeocoding::clearCancelRequest() noexcept
+{
+	cancelRequested.store(false, std::memory_order_release);
+}
+
+bool Sentinel1BackGeocoding::isCancelRequested() const noexcept
+{
+	return cancelRequested.load(std::memory_order_acquire);
 }
 
 Sentinel1BackGeocoding::~Sentinel1BackGeocoding()
@@ -11603,6 +11839,10 @@ Sentinel1BackGeocoding::~Sentinel1BackGeocoding()
 			delete su[i]; su[i] = NULL;
 		}
 	}
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		g_sentinel_diagnostic_state.erase(this);
+	}
 }
 
 int Sentinel1BackGeocoding::init(
@@ -11612,16 +11852,48 @@ int Sentinel1BackGeocoding::init(
 	int masterIndex
 )
 {
+	clearCancelRequest();
+	if (h5Files.size() < 2 || outFiles.size() != h5Files.size() || !DEMPath || !*DEMPath ||
+		masterIndex < 1 || masterIndex > static_cast<int>(h5Files.size()))
+	{
+		fprintf(stderr, "Sentinel1BackGeocoding::init(): input contract check failed!\n");
+		return -1;
+	}
+	for (size_t i = 0; i < h5Files.size(); i++)
+	{
+		if (h5Files[i].empty() || outFiles[i].empty())
+		{
+			fprintf(stderr, "Sentinel1BackGeocoding::init(): input contract check failed!\n");
+			return -1;
+		}
+	}
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		SentinelBackGeocodingDiagnosticState& diagnosticState = g_sentinel_diagnostic_state[this];
+		diagnosticState.burstStatus.clear();
+		diagnosticState.zeroDopplerFailureStatistics.clear();
+		diagnosticState.hasZeroDopplerDiagnostic = false;
+		diagnosticState.zeroOffsetFallback = false;
+	}
 	int ret;
 	ret = loadData(h5Files);
 	if (return_check(ret, "loadData()", error_head)) return -1;
+	for (int i = 0; i < numOfImages; i++)
+	{
+		if (validate_sentinel_metadata(su[i]) < 0)
+		{
+			fprintf(stderr, "Sentinel1BackGeocoding::init(): Sentinel metadata contract check failed for image %d!\n", i + 1);
+			return -1;
+		}
+	}
 	ret = setDEMPath(DEMPath);
 	if (return_check(ret, "setDEMPath()", error_head)) return -1;
 	ret = loadOutFiles(outFiles);
 	if (return_check(ret, "loadOutFiles()", error_head)) return -1;
 	ret = setMasterIndex(masterIndex);
 	if (return_check(ret, "setMasterIndex()", error_head)) return -1;
-	deBurstConfig();
+	ret = deBurstConfig();
+	if (return_check(ret, "deBurstConfig()", error_head)) return -1;
 	ret = prepareOutFiles();
 	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
 
@@ -11706,8 +11978,12 @@ int Sentinel1BackGeocoding::loadOutFiles(vector<string>& outFiles)
 
 int Sentinel1BackGeocoding::prepareOutFiles()
 {
-	if (!isdeBurstConfig) deBurstConfig();
 	int ret; FormatConversion conversion;
+	if (!isdeBurstConfig)
+	{
+		ret = deBurstConfig();
+		if (return_check(ret, "deBurstConfig()", error_head)) return -1;
+	}
 	if (numOfImages < 2) return -1;
 	ComplexMat tmp, tmp2, slc;
 	ret = conversion.read_slc_from_h5(su[masterIndex - 1]->h5File.c_str(), tmp);
@@ -11723,7 +11999,8 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 	}
 	for (int i = 0; i < numOfImages; i++)
 	{
-		conversion.creat_new_h5(this->outFiles[i].c_str());
+		ret = conversion.creat_new_h5(this->outFiles[i].c_str());
+			if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_slc_to_h5(this->outFiles[i].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	}
@@ -11812,6 +12089,10 @@ int Sentinel1BackGeocoding::computeBurstOffset()
 		su[j]->burstOffset = 0;
 	}
 	burstOffsetComputed = true;
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		g_sentinel_diagnostic_state[this].zeroOffsetFallback = true;
+	}
 	fprintf(stderr, "[DIAG] computeBurstOffset FALLBACK - all burst offsets set to 0!\n");
 	return 0;
 }
@@ -11854,9 +12135,31 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 		masterRange.create(dem->rows, dem->cols, CV_64F);
 		slaveRange.create(dem->rows, dem->cols, CV_64F);
 	}
-#pragma omp parallel for schedule(guided)
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		g_sentinel_diagnostic_state[this].hasZeroDopplerDiagnostic = false;
+	}
+	if (!isMasterRgAzComputed)
+		clear_zero_doppler_failure_statistics(this, masterIndex, mBurstIndex);
+	clear_zero_doppler_failure_statistics(this, slaveImagesIndex, sBurstIndex);
+	int zeroDopplerFailures = 0;
+	int rangeOrBurstFailures = 0;
+	int masterZeroDopplerFailures = 0;
+	int masterRangeOrBurstFailures = 0;
+	ZeroDopplerFailureAccumulator masterFailures;
+	ZeroDopplerFailureAccumulator slaveFailures;
+#pragma omp parallel
+	{
+		ZeroDopplerFailureAccumulator localMasterFailures;
+		ZeroDopplerFailureAccumulator localSlaveFailures;
+		int localZeroDopplerFailures = 0;
+		int localRangeOrBurstFailures = 0;
+		int localMasterZeroDopplerFailures = 0;
+		int localMasterRangeOrBurstFailures = 0;
+#pragma omp for schedule(guided)
 	for (int i = 0; i < dem->rows; i++)
 	{
+		if (isCancelRequested()) continue;
 		double lon, lat, elevation, rangeIndex, azimuthIndex;
 		Position earthPoint;
 		for (int j = 0; j < dem->cols; j++)
@@ -11877,6 +12180,11 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 				{
 					masterAzimuth.at<double>(i, j) = invalidRgAzIndex;
 					masterRange.at<double>(i, j) = invalidRgAzIndex;
+					if (collect_zero_doppler_failure(localMasterFailures, masterIndex, mBurstIndex, i, j,
+						SENTINEL_ZERO_DOPPLER_CALL_MASTER_RG_AZ, earthPoint))
+						localMasterZeroDopplerFailures++;
+					else
+						localMasterRangeOrBurstFailures++;
 				}
 			}
 			if (su[slaveImagesIndex - 1]->getRgAzPosition(sBurstIndex, earthPoint, &rangeIndex, &azimuthIndex) == 0)
@@ -11886,23 +12194,85 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 			}
 			else
 			{
-				slaveAzimuth.at<double>(i, j) = invalidRgAzIndex;
-				slaveRange.at<double>(i, j) = invalidRgAzIndex;
+				 slaveAzimuth.at<double>(i, j) = invalidRgAzIndex;
+				 slaveRange.at<double>(i, j) = invalidRgAzIndex;
+				if (collect_zero_doppler_failure(localSlaveFailures, slaveImagesIndex, sBurstIndex, i, j,
+					SENTINEL_ZERO_DOPPLER_CALL_SLAVE_RG_AZ, earthPoint))
+					localZeroDopplerFailures++;
+				else
+					localRangeOrBurstFailures++;
 			}
 		}
 	}
-	// 统计 valid/invalid 投影点数
+	// 统计有效/无效投影点数；现有无效坐标语义保持不变。
+#pragma omp critical(sentinel_zero_doppler_accumulator)
+	{
+		masterFailures.merge(localMasterFailures);
+		slaveFailures.merge(localSlaveFailures);
+		masterZeroDopplerFailures += localMasterZeroDopplerFailures;
+		masterRangeOrBurstFailures += localMasterRangeOrBurstFailures;
+		zeroDopplerFailures += localZeroDopplerFailures;
+		rangeOrBurstFailures += localRangeOrBurstFailures;
+	}
+	}
+	if (isCancelRequested()) return -2;
+	for (int reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+		reason <= SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT; ++reason)
+	{
+		if (masterFailures.counts[reason] > 0)
+			record_zero_doppler_failure(this, masterFailures.diagnostics[reason], masterFailures.counts[reason]);
+		if (slaveFailures.counts[reason] > 0)
+			record_zero_doppler_failure(this, slaveFailures.diagnostics[reason], slaveFailures.counts[reason]);
+	}
 	int masterValid = 0, slaveValid = 0, total = dem->rows * dem->cols;
 	for (int i = 0; i < dem->rows; i++) {
 		for (int j = 0; j < dem->cols; j++) {
-			if (masterAzimuth.at<double>(i, j) > -0.5) masterValid++;
-			if (slaveAzimuth.at<double>(i, j) > -0.5) slaveValid++;
+			if (masterAzimuth.at<double>(i, j) > -0.5 && masterRange.at<double>(i, j) > -0.5) masterValid++;
+			if (slaveAzimuth.at<double>(i, j) > -0.5 && slaveRange.at<double>(i, j) > -0.5) slaveValid++;
 		}
 	}
-	fprintf(stderr, "[DIAG] computeSlavePosition: burst=%d slave=%d DEM=%dx%d masterValid=%d/%d(%.1f%%) slaveValid=%d/%d(%.1f%%)\n",
+	SentinelBurstQualityStatus status;
+	status.imageIndex = slaveImagesIndex;
+	status.burstIndex = mBurstIndex;
+	status.attemptedPoints = total;
+	status.validPoints = slaveValid;
+	status.invalidPoints = total - slaveValid;
+	status.zeroDopplerFailures = zeroDopplerFailures;
+	status.rangeOrBurstFailures = rangeOrBurstFailures;
+	status.qualityCode = status.invalidPoints > 0 ? SENTINEL_BURST_WARNING_PARTIAL_INVALID : SENTINEL_BURST_NOMINAL;
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		if (g_sentinel_diagnostic_state[this].zeroOffsetFallback)
+			status.qualityCode = SENTINEL_BURST_WARNING_ZERO_OFFSET_FALLBACK;
+	}
+	record_burst_quality(this, status);
+	SentinelZeroDopplerDiagnostic diagnostic;
+	bool hasZeroDopplerDiagnostic = false;
+	{
+		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+		SentinelBackGeocodingDiagnosticState& diagnosticState = g_sentinel_diagnostic_state[this];
+		if (diagnosticState.hasZeroDopplerDiagnostic)
+		{
+			diagnostic = diagnosticState.lastZeroDopplerDiagnostic;
+			hasZeroDopplerDiagnostic = true;
+		}
+	}
+	if (hasZeroDopplerDiagnostic)
+	{
+		fprintf(stderr, "[ZeroDoppler][SUMMARY] scene=%s swath=%s polarization=%s image=%d burst=%d line=%d sample=%d reason=%d path=%d return=%d ground=(%.3f,%.3f,%.3f) targetDoppler=%.6f orbitRange=[%.6f,%.6f] nearestOrbitTime=%.6f stateVecCount=%d\n",
+			diagnostic.scene, diagnostic.swath, diagnostic.polarization,
+			diagnostic.imageIndex, diagnostic.burstIndex, diagnostic.line, diagnostic.sample,
+			diagnostic.reason, diagnostic.callPath, diagnostic.returnCode,
+			diagnostic.groundPosition.x, diagnostic.groundPosition.y, diagnostic.groundPosition.z,
+			diagnostic.targetDoppler, diagnostic.orbitStartTime, diagnostic.orbitStopTime,
+			diagnostic.nearestOrbitTime, diagnostic.stateVectorCount);
+	}
+	double masterRatio = total > 0 ? 100.0 * masterValid / total : 0.0;
+	double slaveRatio = total > 0 ? 100.0 * slaveValid / total : 0.0;
+	fprintf(stderr, "[DIAG] computeSlavePosition: burst=%d slave=%d DEM=%dx%d masterProjectionValid=%d/%d(%.1f%%) slaveProjectionValid=%d/%d(%.1f%%) masterZeroDopplerFailures=%d masterRangeOrBurstFailures=%d slaveZeroDopplerFailures=%d slaveRangeOrBurstFailures=%d\n",
 		mBurstIndex, slaveImagesIndex, dem->rows, dem->cols,
-		masterValid, total, 100.0 * masterValid / total,
-		slaveValid, total, 100.0 * slaveValid / total);
+		masterValid, total, masterRatio, slaveValid, total, slaveRatio,
+		masterZeroDopplerFailures, masterRangeOrBurstFailures, zeroDopplerFailures, rangeOrBurstFailures);
 
 	if (!isMasterRgAzComputed)isMasterRgAzComputed = true;
 	return 0;
@@ -11920,6 +12290,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < slaveAzimuthOffset.rows; i++)
 	{
+		if (isCancelRequested()) continue;
 		for (int j = 0; j < slaveAzimuthOffset.cols; j++)
 		{
 			//方位向偏移量计算
@@ -11942,6 +12313,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 			}
 		}
 	}
+	if (isCancelRequested()) return -2;
 	return 0;
 }
 
@@ -11952,6 +12324,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	double* a2
 )
 {
+	if (isCancelRequested()) return -2;
 	if (slaveOffset.empty() || slaveOffset.type() != CV_64F)
 	{
 		fprintf(stderr, "fitSlaveOffset(): input check failed!\n");
@@ -12022,6 +12395,7 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 	double a0Az, double a1Az, double a2Az
 )
 {
+	if (isCancelRequested()) return -2;
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2)
 	{
 		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
@@ -12043,6 +12417,7 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (isCancelRequested()) continue;
 		double ii, jj; Mat tmp(1, 3, CV_64F); Mat result;
 		// removed unused: x, y (pixel coordinates computed as ii, jj instead)
 		int mm, nn, mm1, nn1;
@@ -12086,6 +12461,7 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 
 		}
 	}
+	if (isCancelRequested()) return -2;
 	slave = slcResampled;
 	return 0;
 }
@@ -12098,6 +12474,7 @@ int Sentinel1BackGeocoding::performSincResampling(
 	double a0Az, double a1Az, double a2Az
 )
 {
+	if (isCancelRequested()) return -2;
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2)
 	{
 		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
@@ -12135,6 +12512,7 @@ int Sentinel1BackGeocoding::performSincResampling(
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < rows; i++)
 	{
+		if (isCancelRequested()) continue;
 		for (int j = 0; j < cols; j++)
 		{
 			double ii = static_cast<double>(i);
@@ -12156,6 +12534,7 @@ int Sentinel1BackGeocoding::performSincResampling(
 			slcResampled.im.at<double>(i, j) = im_value;
 		}
 	}
+	if (isCancelRequested()) return -2;
 
 	slave = slcResampled;
 
@@ -12192,21 +12571,27 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	ret = performDerampDemod(derampDemodPhase, slave);
 	if (return_check(ret, "performDerampDemod()", error_head)) return -1;
 	ret = computeSlavePosition(slaveImageIndex, mBurstIndex);
+	if (ret == -2) return -2;
 	if (return_check(ret, "computeSlavePosition()", error_head)) return -1;
 	Mat slaveAzimuthOffset, slaveRangeOffset;
 	ret = computeSlaveOffset(slaveAzimuthOffset, slaveRangeOffset);
+	if (ret == -2) return -2;
 	if (return_check(ret, "computeSlaveOffset()", error_head)) return -1;
 	FormatConversion conversion;
 	ret = fitSlaveOffset(slaveAzimuthOffset, &a0Az, &a1Az, &a2Az);
+	if (ret == -2) return -2;
 	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
 	ret = fitSlaveOffset(slaveRangeOffset, &a0Rg, &a1Rg, &a2Rg);
+	if (ret == -2) return -2;
 	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
 	ret = performBilinearResampling(slave, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+	if (ret == -2) return -2;
 	if (return_check(ret, "performBilinearResampling()", error_head)) return -1;
 	tmp.SetRe(derampDemodPhase); tmp.SetIm(derampDemodPhase);
 	ret = performBilinearResampling(tmp, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+	if (ret == -2) return -2;
 	if (return_check(ret, "performBilinearResampling()", error_head)) return -1;
 	tmp.re.copyTo(derampDemodPhase);
 	conversion.phase2cos(derampDemodPhase, tmp.re, tmp.im);
@@ -12215,9 +12600,50 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	return 0;
 }
 
+int Sentinel1BackGeocoding::getLastZeroDopplerDiagnostic(SentinelZeroDopplerDiagnostic& diagnostic) const
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::const_iterator it =
+		g_sentinel_diagnostic_state.find(this);
+	if (it == g_sentinel_diagnostic_state.end() || !it->second.hasZeroDopplerDiagnostic) return -1;
+	diagnostic = it->second.lastZeroDopplerDiagnostic;
+	return 0;
+}
+
+int Sentinel1BackGeocoding::getZeroDopplerFailureStatistics(
+	vector<SentinelZeroDopplerFailureStatistic>& statistics) const
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::const_iterator it =
+		g_sentinel_diagnostic_state.find(this);
+	if (it == g_sentinel_diagnostic_state.end()) return -1;
+	statistics = it->second.zeroDopplerFailureStatistics;
+	return 0;
+}
+
+int Sentinel1BackGeocoding::getBurstQualityStatus(vector<SentinelBurstQualityStatus>& status) const
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::const_iterator it =
+		g_sentinel_diagnostic_state.find(this);
+	if (it == g_sentinel_diagnostic_state.end()) return -1;
+	status = it->second.burstStatus;
+	return 0;
+}
+
 int Sentinel1BackGeocoding::deBurstConfig()
 {
 	if (isdeBurstConfig) return 0;
+	if (masterIndex < 1 || masterIndex > static_cast<int>(su.size()) || !su[masterIndex - 1] ||
+		su[masterIndex - 1]->burstCount <= 0 || su[masterIndex - 1]->linesPerBurst <= 0 ||
+		!std::isfinite(su[masterIndex - 1]->azimuthTimeInterval) || su[masterIndex - 1]->azimuthTimeInterval <= 0.0 ||
+		su[masterIndex - 1]->burstAzimuthTime.rows < su[masterIndex - 1]->burstCount ||
+		su[masterIndex - 1]->firstValidLine.rows < su[masterIndex - 1]->burstCount ||
+		su[masterIndex - 1]->lastValidLine.rows < su[masterIndex - 1]->burstCount)
+	{
+		fprintf(stderr, "deBurstConfig(): input check failed!\n");
+		return -1;
+	}
 	Mat start(su[masterIndex - 1]->burstCount, 1, CV_32S), end(su[masterIndex - 1]->burstCount, 1, CV_32S);
 	start.at<int>(0, 0) = 1;
 	end.at<int>(0, 0) = su[masterIndex - 1]->lastValidLine.at<int>(0, 0);
@@ -12258,10 +12684,15 @@ int Sentinel1BackGeocoding::deBurstConfig()
 
 int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 {
-	if (!isdeBurstConfig) deBurstConfig();
+	int ret;
+	if (!isdeBurstConfig)
+	{
+		ret = deBurstConfig();
+		if (return_check(ret, "deBurstConfig()", error_head)) return -1;
+	}
 	FormatConversion conversion;
 	ComplexMat slaveSLC, tmp;
-	int linesPerBurst, ret;
+	int linesPerBurst;
 	int samplesPerBurst = su[masterIndex - 1]->samplesPerBurst;
 	int offset_row = 0, lines = 0;
 	double lonMin, lonMax, latMin, latMax;
@@ -12271,6 +12702,7 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 	if (return_check(ret, "loadDEM()", error_head)) return -1;
 	for (int i = 0; i < su[masterIndex - 1]->burstCount; i++)
 	{
+		if (isCancelRequested()) return -2;
 		if (!burstOffsetComputed)
 		{
 			int ret = computeBurstOffset();
@@ -12280,8 +12712,10 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 		linesPerBurst = end.at<int>(i, 0) - start.at<int>(i, 0);
 		for (int j = 0; j < numOfImages; j++)
 		{
+			if (isCancelRequested()) return -2;
 			if (j == masterIndex - 1) continue;
 			ret = slaveBilinearInterpolation(i + 1, j + 1, slaveSLC);
+			if (ret == -2) return -2;
 			if (return_check(ret, "slaveBilinearInterpolation()", error_head)) return -1;
 			tmp = slaveSLC(cv::Range(start.at<int>(i, 0) - lines, end.at<int>(i, 0) - lines), 
 				cv::Range(0, su[masterIndex - 1]->samplesPerBurst));
@@ -12542,8 +12976,9 @@ int orbitStateVectors::getOrbitData(double time, OSV* osv)
 	return 0;
 }
 
-int orbitStateVectors::applyOrbit()
+int orbitStateVectors::applyOrbit(ProgressCallback progressCallback, void* userData)
 {
+	if (progressCallback && !progressCallback(0, "Updating orbit state vectors...", userData)) return -2;
 	if (isOrbitUpdated) return 0;
 	double delta_t = 1.0;//1.0s
 	this->dt = delta_t;
@@ -12556,6 +12991,8 @@ int orbitStateVectors::applyOrbit()
 	int ret;
 	for (int i = 0; i < numVectors; i++)
 	{
+		if (progressCallback && i % 16 == 0 &&
+			!progressCallback(i * 100 / std::max(1, numVectors), "Updating orbit state vectors...", userData)) return -2;
 		ret = getOrbitData(start + (double)i * delta_t, &osv);
 		if (ret < 0) return -1;
 		newStateVectors.at<double>(i, 0) = start + (double)i * delta_t;
@@ -12570,6 +13007,7 @@ int orbitStateVectors::applyOrbit()
 	}
 	newStateVectors.copyTo(this->newStateVectors);
 	isOrbitUpdated = true;
+	if (progressCallback && !progressCallback(100, "Orbit state vectors updated.", userData)) return -2;
 	return 0;
 }
 
@@ -15128,7 +15566,3 @@ int Spacety_reader::write_custom_h5_data(FormatConversion& conversion, const cha
 	write_common_coordinates(conversion, dst_h5);
 	return 0;
 }
-
-
-
-

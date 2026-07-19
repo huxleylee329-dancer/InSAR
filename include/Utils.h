@@ -325,6 +325,12 @@ inline bool return_check(int ret, const char* detail_info, const std::string& er
 	return return_check(ret, detail_info, error_head.c_str());
 }
 
+// For expected high-frequency failures that are reported through structured diagnostics.
+inline bool return_failed(int ret)
+{
+	return ret < 0;
+}
+
 
 inline bool parallel_check(bool parallel_flag, const char* detail_info,
 	const char* parallel_error_head)
@@ -1737,7 +1743,8 @@ public:
 		const char* IW1_h5file,
 		const char* IW2_h5file,
 		const char* IW3_h5file,
-		const char* merged_phase_h5file
+		const char* merged_phase_h5file,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 拼接哨兵一号3个子带单视复图像
 	* @param IW1_h5file                     子带1单视复图像h5文件
@@ -1750,7 +1757,8 @@ public:
 		const char* IW1_h5file,
 		const char* IW2_h5file,
 		const char* IW3_h5file,
-		const char* merged_slc_h5file
+		const char* merged_slc_h5file,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 拼接哨兵一号同一轨道相邻frame的干涉相位
 	* @param h5files                        同一子带不同frame干涉相位h5数据文件
@@ -1759,7 +1767,8 @@ public:
 	*/
 	int S1_frame_merge(
 		vector<string>& h5files,
-		const char* merged_phase_h5
+		const char* merged_phase_h5,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 拼接同一轨道相邻frame的单视复图像
 	* @param frame1_h5                         待拼接frame1的h5文件
@@ -1770,7 +1779,8 @@ public:
 	int S1_frame_merge(
 		const char* frame1_h5,
 		const char* frame2_h5,
-		const char* outframe_h5
+		const char* outframe_h5,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 相位地理编码：SAR图像坐标系--->墨卡托坐标系
 	* @param mapped_lon                        相位对应的经度
@@ -1972,7 +1982,8 @@ public:
 		Mat& prior_DTM,
 		Mat& mapped_DTM,
 		int SAR_extent_x,
-		int SAR_extent_y
+		int SAR_extent_y,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*
 	* @brief 利用地理配准网格文件（TropiSAR的.grille文件）将WGS84坐标系（经纬高）的DTM和DSM投影至SAR坐标系
@@ -1998,7 +2009,8 @@ public:
 		Mat& prior_DTM,
 		Mat& mapped_DTM,
 		int SAR_extent_x,
-		int SAR_extent_y
+		int SAR_extent_y,
+		NewtonProgressCallback cb = nullptr
 	);
 	/*
 	* @brief 读取TropiSAR的.grille文件
@@ -2109,4 +2121,4 @@ private:
 
 };
 
-
+
