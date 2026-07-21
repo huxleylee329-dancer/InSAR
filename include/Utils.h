@@ -9,7 +9,94 @@
 // 定义牛顿迭代专用的进度回调函数指针类型
 typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* message);
 
-class orbitStateVectors;
+typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* message);
+
+#if defined(UTILS_EXPORTS)
+#define UTILS_API __declspec(dllexport)
+#else
+#define UTILS_API __declspec(dllimport)
+#endif
+
+/*--------------------------------------*/
+/*              卫星轨道数据            */
+/*--------------------------------------*/
+class UTILS_API orbitStateVectors
+{
+public:
+	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime);
+	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime, double delta_time);
+	~orbitStateVectors();
+	/** @brief 设置场景拍摄起始终止时间
+	* @param startTime
+	* @param stopTime
+	* @return 成功返回0，否则返回-1
+	*/
+	int setSceneStartStopTime(double startTime, double stopTime);
+	/** @brief 获取拍摄起始时刻
+	* @return 返回拍摄起始时刻
+	*/
+	double get_start_time();
+	/** @brief 获取拍摄结束时刻
+	* @return 返回拍摄结束时刻
+	*/
+	double get_stop_time();
+	/** @brief 获取卫星三维位置信息（拉格朗日插值）
+	* @param azimuthTime                   方位向时间
+	* @param position                      卫星三维位置
+	* @return 成功返回0，否则返回-1
+	*/
+	int getPosition(double azimuthTime, Position& position);
+	/** @brief 获取卫星三维速度信息（拉格朗日插值）
+	* @param azimuthTime                   方位向时间
+	* @param velocity                      卫星三维速度
+	* @return 成功返回0，否则返回-1
+	*/
+	int getVelocity(double azimuthTime, Velocity& velocity);
+	/** @brief 根据方位向时间获取statevector（多项式插值）
+	* @param time                          方位向时间
+	* @param osv                           轨道信息
+	* @return 成功返回0，否则返回-1
+	*/
+	int getOrbitData(double time, OSV* osv);
+	/** @brief 更新轨道信息
+	* @return 成功返回0，否则返回-1
+	*/
+	int applyOrbit(ProgressCallback progressCallback = nullptr, void* userData = nullptr);
+
+	/** @brief 零多普勒时间搜索算法（移自 Utils 以消除循环依赖）
+	* @param stateVectors                  轨道数据
+	* @param groundPosition                目标地心三维坐标
+	* @param wavelength                    雷达波长
+	* @param time_interval                 方位向时间间隔（脉冲重复间隔或行间隔时间）
+	* @param dopplerFrequency              目标多普勒频率（通常为 0.0）
+	* @param zeroDopplerTime               解算得到的零多普勒时刻（返回值）
+	* @param distance                      解算得到的传感器与地面点斜距（返回值）
+	* @param dopplerThreshold              搜索截止频偏阈值（Hz，默认 0.01）
+	* @return 成功返回 true，否则返回 false
+	*/
+	static bool findZeroDopplerTime(
+		orbitStateVectors& stateVectors,
+		const Position& groundPosition,
+		double wavelength,
+		double time_interval,
+		double dopplerFrequency,
+		double& zeroDopplerTime,
+		double& distance,
+		double dopplerThreshold = 0.01);
+
+public:
+	Mat stateVectors;
+	Mat newStateVectors;
+private:
+
+	int nv = 10;
+	double dt;
+	int polyDegree = 3;
+	double startTime;
+	double stopTime;
+	/*轨道信息是否已更新*/
+	bool isOrbitUpdated;
+};
 
 
 /*********************************************************/

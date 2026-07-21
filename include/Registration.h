@@ -2,7 +2,13 @@
 #include "..\include\Package.h"
 #include "..\include\ComplexMat.h"
 #include "..\include\Utils.h"
-#include "..\include\FormatConversion.h"
+#include "..\include\InSARDiagnostics.h"
+
+#if defined(REGISTRATION_EXPORTS)
+#define REGISTRATION_API __declspec(dllexport)
+#else
+#define REGISTRATION_API __declspec(dllimport)
+#endif
 
 
 
@@ -47,13 +53,13 @@ struct CropEvalResult {
 #pragma pack(pop)
 
 // C 兼容导出 API
-extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
+extern "C" REGISTRATION_API int DetectAdaptiveSamplingPoints(
 	const char* master_h5_path,
 	Point2D* out_points,
 	int points_count
 );
 
-extern "C" InSAR_API int CalculateOffsetAndCoherence(
+extern "C" REGISTRATION_API int CalculateOffsetAndCoherence(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const Point2D* sample_points,
@@ -65,7 +71,7 @@ extern "C" InSAR_API int CalculateOffsetAndCoherence(
 
 // Diagnostic-capable variant. The callback is synchronous and must be
 // thread-safe; the event and its strings are valid only during the callback.
-extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
+extern "C" REGISTRATION_API int CalculateOffsetAndCoherenceWithDiagnostics(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const Point2D* sample_points,
@@ -77,12 +83,12 @@ extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
 	void* diagnosticUserData
 );
 
-extern "C" InSAR_API void FreeAlignmentResults(
+extern "C" REGISTRATION_API void FreeAlignmentResults(
 	AlignmentResult* results,
 	int count
 );
 
-extern "C" InSAR_API int AnalyzeCropRegistration(
+extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const char* output_coherence_jpg,
@@ -95,7 +101,7 @@ extern "C" InSAR_API int AnalyzeCropRegistration(
 );
 
 
-class InSAR_API Registration
+class REGISTRATION_API Registration
 
 {
 public:

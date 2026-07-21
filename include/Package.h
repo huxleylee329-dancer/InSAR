@@ -1,6 +1,11 @@
 #pragma once
 
 // C4251: 导出类的成员使用了无DLL导出接口的类型(std::string, cv::Mat等)，对本项目无实际影响
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+
 #pragma warning(disable: 4251)
 constexpr double PI = 3.14159265358979323846;
 constexpr double VEL_C = 299792458.0;
@@ -98,6 +103,8 @@ struct OSV
 	}
 
 };
+
+typedef bool (*ProgressCallback)(int percent, const char* message, void* userData);
 
 #define InSAR_API __declspec(dllexport)
 #ifdef _DEBUG

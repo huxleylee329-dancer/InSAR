@@ -6,15 +6,15 @@
 #include<math.h>
 #include <atomic>
 #include"..\include\Registration.h"
-#include"..\include\FormatConversion.h"
+#include"..\include\Hdf5IO.h"
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
-#pragma comment(lib, "FormatConversion_d.lib")
+#pragma comment(lib, "Hdf5IO_d.lib")
 #else
 #pragma comment(lib, "ComplexMat.lib")
 #pragma comment(lib, "Utils.lib")
-#pragma comment(lib, "FormatConversion.lib")
+#pragma comment(lib, "Hdf5IO.lib")
 #endif // _DEBUG
 using namespace cv;
 
@@ -2519,7 +2519,7 @@ int Registration::performSincResampling(
 // 外部导出 API 接口具体实现
 // ==========================================
 
-extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
+extern "C" REGISTRATION_API int DetectAdaptiveSamplingPoints(
 	const char* master_h5_path,
 	Point2D* out_points,
 	int points_count
@@ -2529,10 +2529,9 @@ extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
 		return -1;
 	}
 
-	FormatConversion fc;
 	int rows = 0;
 	int cols = 0;
-	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	if (Hdf5IO::getDatasetDims(master_h5_path, "s_re", &rows, &cols) != 0)
 	{
 		return -2;
 	}
@@ -2576,8 +2575,8 @@ extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
 			}
 
 			cv::Mat re_mat, im_mat;
-			if (fc.read_subarray_from_h5(master_h5_path, "s_re", y_start, x_start, 3, 3, re_mat) == 0 &&
-				fc.read_subarray_from_h5(master_h5_path, "s_im", y_start, x_start, 3, 3, im_mat) == 0)
+			if (Hdf5IO::readSubarray(master_h5_path, "s_re", y_start, x_start, 3, 3, re_mat) == 0 &&
+				Hdf5IO::readSubarray(master_h5_path, "s_im", y_start, x_start, 3, 3, im_mat) == 0)
 			{
 				// 转换为 CV_32F 并进行安全校验以符合 GEMINI.md 守则一
 				if (re_mat.type() != CV_32F) re_mat.convertTo(re_mat, CV_32F);
@@ -2640,10 +2639,9 @@ static int CalculateOffsetAndCoherenceImpl(
 		return -1;
 	}
 
-	FormatConversion fc;
 	int rows = 0;
 	int cols = 0;
-	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	if (Hdf5IO::getDatasetDims(master_h5_path, "s_re", &rows, &cols) != 0)
 	{
 		return -2;
 	}
@@ -2676,10 +2674,10 @@ static int CalculateOffsetAndCoherenceImpl(
 
 		// 2. 从 H5 文件分块读取主副影像的实部/虚部数据
 		cv::Mat M_re, M_im, S_re, S_im;
-		if (fc.read_subarray_from_h5(master_h5_path, "s_re", m_row, m_col, template_size, template_size, M_re) != 0 ||
-			fc.read_subarray_from_h5(master_h5_path, "s_im", m_row, m_col, template_size, template_size, M_im) != 0 ||
-			fc.read_subarray_from_h5(slave_h5_path, "s_re", s_row, s_col, search_size, search_size, S_re) != 0 ||
-			fc.read_subarray_from_h5(slave_h5_path, "s_im", s_row, s_col, search_size, search_size, S_im) != 0)
+		if (Hdf5IO::readSubarray(master_h5_path, "s_re", m_row, m_col, template_size, template_size, M_re) != 0 ||
+			Hdf5IO::readSubarray(master_h5_path, "s_im", m_row, m_col, template_size, template_size, M_im) != 0 ||
+			Hdf5IO::readSubarray(slave_h5_path, "s_re", s_row, s_col, search_size, search_size, S_re) != 0 ||
+			Hdf5IO::readSubarray(slave_h5_path, "s_im", s_row, s_col, search_size, search_size, S_im) != 0)
 		{
 			return -3;
 		}
@@ -2726,8 +2724,8 @@ static int CalculateOffsetAndCoherenceImpl(
 
 		// 5. 零位移相干性结算 (读取未偏移的同尺寸 Slave 块)
 		cv::Mat S_re_zero, S_im_zero;
-		if (fc.read_subarray_from_h5(slave_h5_path, "s_re", m_row, m_col, template_size, template_size, S_re_zero) != 0 ||
-			fc.read_subarray_from_h5(slave_h5_path, "s_im", m_row, m_col, template_size, template_size, S_im_zero) != 0)
+		if (Hdf5IO::readSubarray(slave_h5_path, "s_re", m_row, m_col, template_size, template_size, S_re_zero) != 0 ||
+			Hdf5IO::readSubarray(slave_h5_path, "s_im", m_row, m_col, template_size, template_size, S_im_zero) != 0)
 		{
 			return -4;
 		}
@@ -2748,8 +2746,8 @@ static int CalculateOffsetAndCoherenceImpl(
 		if (s_opt_col + template_size > cols) s_opt_col = cols - template_size;
 
 		cv::Mat S_re_opt, S_im_opt;
-		if (fc.read_subarray_from_h5(slave_h5_path, "s_re", s_opt_row, s_opt_col, template_size, template_size, S_re_opt) != 0 ||
-			fc.read_subarray_from_h5(slave_h5_path, "s_im", s_opt_row, s_opt_col, template_size, template_size, S_im_opt) != 0)
+		if (Hdf5IO::readSubarray(slave_h5_path, "s_re", s_opt_row, s_opt_col, template_size, template_size, S_re_opt) != 0 ||
+			Hdf5IO::readSubarray(slave_h5_path, "s_im", s_opt_row, s_opt_col, template_size, template_size, S_im_opt) != 0)
 		{
 			return -5;
 		}
@@ -2796,7 +2794,7 @@ static int CalculateOffsetAndCoherenceImpl(
 	return 0;
 }
 
-extern "C" InSAR_API int CalculateOffsetAndCoherence(
+extern "C" REGISTRATION_API int CalculateOffsetAndCoherence(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const Point2D* sample_points,
@@ -2809,7 +2807,7 @@ extern "C" InSAR_API int CalculateOffsetAndCoherence(
 		template_size, search_size, out_results, nullptr, nullptr);
 }
 
-extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
+extern "C" REGISTRATION_API int CalculateOffsetAndCoherenceWithDiagnostics(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const Point2D* sample_points,
@@ -2824,7 +2822,7 @@ extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
 		template_size, search_size, out_results, diagnosticCallback, diagnosticUserData);
 }
 
-extern "C" InSAR_API void FreeAlignmentResults(
+extern "C" REGISTRATION_API void FreeAlignmentResults(
 	AlignmentResult* results,
 	int count
 ) {
@@ -2844,7 +2842,7 @@ extern "C" InSAR_API void FreeAlignmentResults(
 	}
 }
 
-extern "C" InSAR_API int AnalyzeCropRegistration(
+extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const char* output_coherence_jpg,
@@ -2867,10 +2865,9 @@ extern "C" InSAR_API int AnalyzeCropRegistration(
 	double t_mean_warn = (thres_mean_warn < 0.0) ? 0.3 : thres_mean_warn;
 	double t_ratio_warn = (thres_ratio_warn < 0.0) ? 0.30 : thres_ratio_warn;
 
-	FormatConversion fc;
 	int rows = 0;
 	int cols = 0;
-	if (fc.get_dataset_dims(master_h5_path, "s_re", &rows, &cols) != 0)
+	if (Hdf5IO::getDatasetDims(master_h5_path, "s_re", &rows, &cols) != 0)
 	{
 		return -2;
 	}
@@ -2881,15 +2878,15 @@ extern "C" InSAR_API int AnalyzeCropRegistration(
 
 	// 2. 从 H5 读取全图实部与虚部数据
 	cv::Mat M_re, M_im;
-	if (fc.read_array_from_h5(master_h5_path, "s_re", M_re) != 0 ||
-		fc.read_array_from_h5(master_h5_path, "s_im", M_im) != 0)
+	if (Hdf5IO::readArray(master_h5_path, "s_re", M_re) != 0 ||
+		Hdf5IO::readArray(master_h5_path, "s_im", M_im) != 0)
 	{
 		return -3;
 	}
 
 	cv::Mat S_re, S_im;
-	if (fc.read_array_from_h5(slave_h5_path, "s_re", S_re) != 0 ||
-		fc.read_array_from_h5(slave_h5_path, "s_im", S_im) != 0)
+	if (Hdf5IO::readArray(slave_h5_path, "s_re", S_re) != 0 ||
+		Hdf5IO::readArray(slave_h5_path, "s_im", S_im) != 0)
 	{
 		return -4;
 	}

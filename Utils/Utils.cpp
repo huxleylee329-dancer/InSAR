@@ -3,6 +3,7 @@
 #include"..\include\Utils.h"
 #include <mutex>
 #include <atomic>
+#include <vector>
 #include <omp.h>
 #include<direct.h>
 #include<SensAPI.h>
@@ -12,7 +13,7 @@
 #include <atlconv.h>
 #include"gdal_priv.h"
 #include"gdal.h"
-#include"../include/FormatConversion.h"
+#include"../include/Hdf5IO.h"
 #include"../include/tinyxml.h"
 #include"Eigen/Dense"
 
@@ -21,13 +22,107 @@
 
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
-#pragma comment(lib, "FormatConversion_d.lib")
+#pragma comment(lib, "Hdf5IO_d.lib")
 #else
 #pragma comment(lib,"ComplexMat.lib")
-#pragma comment(lib, "FormatConversion.lib")
+#pragma comment(lib, "Hdf5IO.lib")
 #endif // _DEBUG
 
 using namespace cv;
+
+static void InitializeGDALAndProjOnce();
+
+static int read_slc_from_h5io(const char* filename, ComplexMat& slc)
+{
+	if (!filename) return -1;
+	if (Hdf5IO::readArray(filename, "s_re", slc.re) != 0) return -1;
+	if (Hdf5IO::readArray(filename, "s_im", slc.im) != 0) return -1;
+	return slc.re.size() == slc.im.size() && slc.re.type() == slc.im.type() ? 0 : -1;
+}
+
+static int write_slc_to_h5io(const char* filename, const ComplexMat& slc)
+{
+	if (!filename || slc.isEmpty()) return -1;
+	if (Hdf5IO::writeArray(filename, "s_re", slc.re) != 0) return -1;
+	return Hdf5IO::writeArray(filename, "s_im", slc.im);
+}
+
+static int utc_to_gps(const char* utc_time, double* gps_time)
+{
+	if (!utc_time || !gps_time) return -1;
+	int year, month, day, hour, minute;
+	double seconds = 0.0;
+	if (sscanf(utc_time, "%d-%d-%dT%d:%d:%lf", &year, &month, &day, &hour, &minute, &seconds) != 6)
+		return -1;
+	tm timeValue = {};
+	timeValue.tm_year = year - 1900;
+	timeValue.tm_mon = month - 1;
+	timeValue.tm_mday = day;
+	timeValue.tm_hour = hour;
+	timeValue.tm_min = minute;
+	timeValue.tm_sec = static_cast<int>(floor(seconds));
+	timeValue.tm_isdst = 0;
+	*gps_time = static_cast<double>(_mkgmtime(&timeValue) - 315964809) + (seconds - floor(seconds));
+	return 0;
+}
+
+static int read_srtm_geotiff(const char* filename, Mat& outDEM)
+{
+	if (!filename) return -1;
+	InitializeGDALAndProjOnce();
+	GDALDataset* dataset = static_cast<GDALDataset*>(GDALOpen(filename, GA_ReadOnly));
+	if (!dataset) return -1;
+	GDALRasterBand* band = dataset->GetRasterCount() == 1 ? dataset->GetRasterBand(1) : nullptr;
+	if (!band || band->GetXSize() <= 0 || band->GetYSize() <= 0)
+	{
+		GDALClose(dataset);
+		return -1;
+	}
+	const int columns = band->GetXSize();
+	const int rows = band->GetYSize();
+	outDEM.create(rows, columns, CV_16S);
+	if (band->RasterIO(GF_Read, 0, 0, columns, rows, outDEM.data, columns, rows, GDT_Int16, 0, 0) != CE_None)
+	{
+		GDALClose(dataset);
+		return -1;
+	}
+	GDALClose(dataset);
+#pragma omp parallel for schedule(guided)
+	for (int row = 0; row < outDEM.rows; ++row)
+	{
+		short* values = outDEM.ptr<short>(row);
+		for (int column = 0; column < outDEM.cols; ++column)
+			if (values[column] < 0) values[column] = 0;
+	}
+	return 0;
+}
+
+static int unzip_srtm_archive(const char* sourceFile, const char* destinationPath)
+{
+	if (!sourceFile || !destinationPath) return -1;
+	if (GetFileAttributesA(destinationPath) == INVALID_FILE_ATTRIBUTES && _mkdir(destinationPath) < 0)
+		return -1;
+	char executablePath[MAX_PATH + 1] = {};
+	if (!GetModuleFileNameA(nullptr, executablePath, MAX_PATH)) return -1;
+	std::string executableDirectory(executablePath);
+	const size_t separator = executableDirectory.rfind('\\');
+	if (separator == std::string::npos) return -1;
+	std::string commandLine = executableDirectory.substr(0, separator) + "\\unzip.exe " + sourceFile + " " + destinationPath;
+	std::vector<char> mutableCommand(commandLine.begin(), commandLine.end());
+	mutableCommand.push_back('\0');
+	STARTUPINFOA startupInfo = {};
+	startupInfo.cb = sizeof(startupInfo);
+	startupInfo.dwFlags = STARTF_USESHOWWINDOW;
+	startupInfo.wShowWindow = FALSE;
+	PROCESS_INFORMATION processInfo = {};
+	if (!CreateProcessA(nullptr, mutableCommand.data(), nullptr, nullptr, FALSE, CREATE_NEW_CONSOLE, nullptr, nullptr, &startupInfo, &processInfo))
+		return -1;
+	WaitForSingleObject(processInfo.hProcess, INFINITE);
+	CloseHandle(processInfo.hThread);
+	CloseHandle(processInfo.hProcess);
+	return 0;
+}
+
 /*宏定义*/
 #define RETURN_MSG \
 { \
@@ -6322,22 +6417,21 @@ int Utils::get_AOI_from_h5SLC(const char* h5_file, double lon_topleft, double la
 		return -1;
 	}
 	int ret, row_start, row_end, col_start, col_end;double lon_start, lat_start, lon_end, lat_end;
-	FormatConversion conversion;
 	Mat row_coef, col_coef, lon_coef, lat_coef;
 
 	//获取经纬度范围
 	int rows, cols;
 	Mat tmp;
-	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "azimuth_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	rows = tmp.at<int>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "range_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "range_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	cols = tmp.at<int>(0, 0);
 
-	ret = conversion.read_array_from_h5(h5_file, "lon_coefficient", lon_coef);
+	ret = Hdf5IO::readArray(h5_file, "lon_coefficient", lon_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(h5_file, "lat_coefficient", lat_coef);
+	ret = Hdf5IO::readArray(h5_file, "lat_coefficient", lat_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	Mat tmp_row = Mat::zeros(1, 1, CV_64F); tmp_row.at<double>(0, 0) = 1;
 	Mat tmp_col = Mat::zeros(1, 1, CV_64F); tmp_col.at<double>(0, 0) = 1;
@@ -6394,9 +6488,9 @@ int Utils::get_AOI_from_h5SLC(const char* h5_file, double lon_topleft, double la
 	lat_bottomright = lat_bottomright < lat_start ? lat_start : lat_bottomright;
 	lat_bottomright = lat_bottomright < lat_end ? lat_bottomright : lat_start;
 
-	ret = conversion.read_array_from_h5(h5_file, "row_coefficient", row_coef);
+	ret = Hdf5IO::readArray(h5_file, "row_coefficient", row_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(h5_file, "col_coefficient", col_coef);
+	ret = Hdf5IO::readArray(h5_file, "col_coefficient", col_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	Mat tmp_lon = Mat::zeros(1, 1, CV_64F); tmp_lon.at<double>(0, 0) = lon_topleft;
 	Mat tmp_lat = Mat::zeros(1, 1, CV_64F); tmp_lat.at<double>(0, 0) = lat_topleft;
@@ -6434,9 +6528,9 @@ int Utils::get_AOI_from_h5SLC(const char* h5_file, double lon_topleft, double la
 	end_c = col_start < col_end ? col_end : col_start;
 	if(offset_row) *offset_row = start_r;
 	if (offset_col)*offset_col = start_c;
-	ret = conversion.read_subarray_from_h5(h5_file, "s_re", start_r, start_c, (end_r - start_r), (end_c - start_c), slc.re);
+	ret = Hdf5IO::readSubarray(h5_file, "s_re", start_r, start_c, (end_r - start_r), (end_c - start_c), slc.re);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_subarray_from_h5(h5_file, "s_im", start_r, start_c, (end_r - start_r), (end_c - start_c), slc.im);
+	ret = Hdf5IO::readSubarray(h5_file, "s_im", start_r, start_c, (end_r - start_r), (end_c - start_c), slc.im);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	return 0;
 }
@@ -6452,33 +6546,32 @@ int Utils::get_AOI_from_h5slc(const char* h5_file, double lon_center, double lat
 		fprintf(stderr, "get_AOI_from_h5slc(): input check failed!\n");
 		return -1;
 	}
-	FormatConversion conversion;
 	int ret, row_center, col_center, total_rows, total_cols, AOI_rows, AOI_cols, offset_r, offset_c;
 	double inc_center, range_spacing, azimuth_spacing;
 	Mat row_coef, col_coef, lon, lat, tmp;
 	lon = Mat::zeros(1, 1, CV_64F); lon.at<double>(0, 0) = lon_center;
 	lat = Mat::zeros(1, 1, CV_64F); lat.at<double>(0, 0) = lat_center;
 	//读取图像行列总数
-	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "azimuth_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_rows = tmp.at<int>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "range_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "range_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_cols = tmp.at<int>(0, 0);
 	//读取采样间隔和下视角
-	ret = conversion.read_array_from_h5(h5_file, "azimuth_spacing", tmp);
+	ret = Hdf5IO::readArray(h5_file, "azimuth_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	azimuth_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "range_spacing", tmp);
+	ret = Hdf5IO::readArray(h5_file, "range_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	range_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "inc_center", tmp);
+	ret = Hdf5IO::readArray(h5_file, "inc_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
 	//确定AOI中心图像坐标
-	ret = conversion.read_array_from_h5(h5_file, "row_coefficient", row_coef);
+	ret = Hdf5IO::readArray(h5_file, "row_coefficient", row_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(h5_file, "col_coefficient", col_coef);
+	ret = Hdf5IO::readArray(h5_file, "col_coefficient", col_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = coord_conversion(row_coef, lon, lat, tmp);
 	if (return_check(ret, "coord_conversion()", error_head)) return -1;
@@ -6506,9 +6599,9 @@ int Utils::get_AOI_from_h5slc(const char* h5_file, double lon_center, double lat
 	AOI_cols = (total_cols - offset_c) > AOI_cols ? AOI_cols : (total_cols - offset_c);
 	if (offset_row) *offset_row = offset_r;
 	if (offset_col)*offset_col = offset_c;
-	ret = conversion.read_subarray_from_h5(h5_file, "s_re", offset_r, offset_c, AOI_rows, AOI_cols, slc.re);
+	ret = Hdf5IO::readSubarray(h5_file, "s_re", offset_r, offset_c, AOI_rows, AOI_cols, slc.re);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_subarray_from_h5(h5_file, "s_im", offset_r, offset_c, AOI_rows, AOI_cols, slc.im);
+	ret = Hdf5IO::readSubarray(h5_file, "s_im", offset_r, offset_c, AOI_rows, AOI_cols, slc.im);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	return 0;
 }
@@ -6524,33 +6617,32 @@ int Utils::get_AOI_size(const char* h5_file, double lon_center, double lat_cente
 		fprintf(stderr, "get_AOI_from_h5slc(): input check failed!\n");
 		return -1;
 	}
-	FormatConversion conversion;
 	int ret, row_center, col_center, total_rows, total_cols, AOI_rows, AOI_cols, offset_r, offset_c;
 	double inc_center, range_spacing, azimuth_spacing;
 	Mat row_coef, col_coef, lon, lat, tmp;
 	lon = Mat::zeros(1, 1, CV_64F); lon.at<double>(0, 0) = lon_center;
 	lat = Mat::zeros(1, 1, CV_64F); lat.at<double>(0, 0) = lat_center;
 	//读取图像行列总数
-	ret = conversion.read_array_from_h5(h5_file, "azimuth_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "azimuth_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_rows = tmp.at<int>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "range_len", tmp);
+	ret = Hdf5IO::readArray(h5_file, "range_len", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	total_cols = tmp.at<int>(0, 0);
 	//读取采样间隔和下视角
-	ret = conversion.read_array_from_h5(h5_file, "azimuth_spacing", tmp);
+	ret = Hdf5IO::readArray(h5_file, "azimuth_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	azimuth_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "range_spacing", tmp);
+	ret = Hdf5IO::readArray(h5_file, "range_spacing", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	range_spacing = tmp.at<double>(0, 0);
-	ret = conversion.read_array_from_h5(h5_file, "inc_center", tmp);
+	ret = Hdf5IO::readArray(h5_file, "inc_center", tmp);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	inc_center = tmp.at<double>(0, 0);
 	//确定AOI中心图像坐标
-	ret = conversion.read_array_from_h5(h5_file, "row_coefficient", row_coef);
+	ret = Hdf5IO::readArray(h5_file, "row_coefficient", row_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(h5_file, "col_coefficient", col_coef);
+	ret = Hdf5IO::readArray(h5_file, "col_coefficient", col_coef);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = coord_conversion(row_coef, lon, lat, tmp);
 	if (return_check(ret, "coord_conversion()", error_head)) return -1;
@@ -6696,7 +6788,6 @@ int Utils::baseline_estimation(
 		fprintf(stderr, "baseline_estimation(): input check failed!\n");
 		return -1;
 	}
-	FormatConversion conversion;
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
@@ -6877,7 +6968,6 @@ int Utils::baseline_estimation(
 		fprintf(stderr, "baseline_estimation(): input check failed!\n");
 		return -1;
 	}
-	FormatConversion conversion;
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
@@ -7027,7 +7117,6 @@ int Utils::baseline_estimation(
 		fprintf(stderr, "baseline_estimation(): input check failed!\n");
 		return -1;
 	}
-	FormatConversion conversion;
 	int ret;
 	int rows = scene_height; int cols = scene_width;
 	/*
@@ -8517,7 +8606,7 @@ int Utils::spatialTemporalBaselineEstimation(
 		fprintf(stderr, "spatialTemporalBaselineEstimation(): input check failed!\n");
 		return -1;
 	}
-	Utils util; FormatConversion conversion;
+	Utils util;
 	int ret, offset_row, offset_col, num_images, sceneHeight, sceneWidth;
 	double prf1, prf2, acquisitionTime1, acquisitionTime2, B_temporal, B_spatial_para, B_spatial_effect;
 	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
@@ -8527,33 +8616,33 @@ int Utils::spatialTemporalBaselineEstimation(
 	num_images = static_cast<int>(SLCH5Files.size());
 	temporal.create(1, num_images, CV_64F); spatial.create(1, num_images, CV_64F);
 	temporal.at<double>(0, reference - 1) = 0; spatial.at<double>(0, reference - 1) = 0;
-	ret = conversion.read_array_from_h5(SLCH5Files[reference - 1].c_str(), "lon_coefficient", lon_coef);
-	ret = conversion.read_array_from_h5(SLCH5Files[reference - 1].c_str(), "lat_coefficient", lat_coef);
-	ret = conversion.read_array_from_h5(SLCH5Files[reference - 1].c_str(), "state_vec", statevec1);
+	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "lon_coefficient", lon_coef);
+	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "lat_coefficient", lat_coef);
+	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "state_vec", statevec1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "prf", &prf1);
+	ret = Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "prf", &prf1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(SLCH5Files[reference - 1].c_str(), "acquisition_start_time", start);
+	ret = Hdf5IO::readString(SLCH5Files[reference - 1].c_str(), "acquisition_start_time", start);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(start.c_str(), &acquisitionTime1);
-	ret = conversion.read_int_from_h5(SLCH5Files[reference - 1].c_str(), "offset_row", &offset_row);
+	ret = utc_to_gps(start.c_str(), &acquisitionTime1);
+	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_row", &offset_row);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(SLCH5Files[reference - 1].c_str(), "offset_col", &offset_col);
+	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_col", &offset_col);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(SLCH5Files[reference - 1].c_str(), "range_len", &sceneWidth);
+	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "range_len", &sceneWidth);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(SLCH5Files[reference - 1].c_str(), "azimuth_len", &sceneHeight);
+	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "azimuth_len", &sceneHeight);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
 	int ret2 = 0;
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "topLeftLon", &topleft_lon);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "topLeftLat", &topleft_lat);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "topRightLon", &topright_lon);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "topRightLat", &topright_lat);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "bottomLeftLon", &bottomleft_lon);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "bottomLeftLat", &bottomleft_lat);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "bottomRightLon", &bottomright_lon);
-	ret2 += conversion.read_double_from_h5(SLCH5Files[reference - 1].c_str(), "bottomRightLat", &bottomright_lat);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "topLeftLon", &topleft_lon);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "topLeftLat", &topleft_lat);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "topRightLon", &topright_lon);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "topRightLat", &topright_lat);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "bottomLeftLon", &bottomleft_lon);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "bottomLeftLat", &bottomleft_lat);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "bottomRightLon", &bottomright_lon);
+	ret2 += Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "bottomRightLat", &bottomright_lat);
 	double lon_center, lat_center;
 	if (ret2 == 0)
 	{
@@ -8564,12 +8653,12 @@ int Utils::spatialTemporalBaselineEstimation(
 	for (int i = 0; i < num_images; i++)
 	{
 		if (i == reference - 1) continue;
-		ret = conversion.read_array_from_h5(SLCH5Files[i].c_str(), "state_vec", statevec2);
+		ret = Hdf5IO::readArray(SLCH5Files[i].c_str(), "state_vec", statevec2);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-		ret = conversion.read_str_from_h5(SLCH5Files[i].c_str(), "acquisition_start_time", start);
+		ret = Hdf5IO::readString(SLCH5Files[i].c_str(), "acquisition_start_time", start);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start.c_str(), &acquisitionTime2);
-		ret = conversion.read_double_from_h5(SLCH5Files[i].c_str(), "prf", &prf2);
+		ret = utc_to_gps(start.c_str(), &acquisitionTime2);
+		ret = Hdf5IO::readDouble(SLCH5Files[i].c_str(), "prf", &prf2);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		if (ret2 == 0)
 		{
@@ -9024,7 +9113,7 @@ int Utils::getSRTMDEM(
 		string srcFile = DEMPath + "\\" + srtmFileName[i];
 		std::replace(srcFile.begin(), srcFile.end(), '/', '\\');
 		if (GetFileAttributesA(srcFile.c_str()) == -1) continue;
-		ret = DigitalElevationModel::unzip(srcFile.c_str(), path.c_str());
+		ret = unzip_srtm_archive(srcFile.c_str(), path.c_str());
 		if (return_check(ret, "unzip()", error_head)) return -1;
 	}
 
@@ -9063,7 +9152,7 @@ int Utils::getSRTMDEM(
 		path = path + string("\\") + folderName + string(".tif");
 		Mat outDEM = Mat::zeros(6000, 6000, CV_16S);
 		std::replace(path.begin(), path.end(), '/', '\\');
-		ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+		ret = read_srtm_geotiff(path.c_str(), outDEM);
 		//if (return_check(ret, "geotiffread()", error_head)) return -1;
 		outDEM(cv::Range(startRow - 1, endRow), cv::Range(startCol - 1, endCol)).copyTo(DEM_out);
 		*lonUL = lonUpperLeft + (startCol - 1) * lonSpacing;
@@ -9108,7 +9197,7 @@ int Utils::getSRTMDEM(
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
 				outDEM = Mat::zeros(6000, 6000, CV_16S);
-				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+				ret = read_srtm_geotiff(path.c_str(), outDEM);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[1];
@@ -9117,7 +9206,7 @@ int Utils::getSRTMDEM(
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
 				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+				ret = read_srtm_geotiff(path.c_str(), outDEM2);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 				cv::vconcat(outDEM, outDEM2, outDEM);
 			}
@@ -9129,7 +9218,7 @@ int Utils::getSRTMDEM(
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
 				outDEM = Mat::zeros(6000, 6000, CV_16S);
-				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+				ret = read_srtm_geotiff(path.c_str(), outDEM);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 				folderName = srtmFileName[0];
@@ -9138,7 +9227,7 @@ int Utils::getSRTMDEM(
 				path = path + string("\\") + folderName + string(".tif");
 				std::replace(path.begin(), path.end(), '/', '\\');
 				outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-				ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+				ret = read_srtm_geotiff(path.c_str(), outDEM2);
 				//if (return_check(ret, "geotiffread()", error_head)) return -1;
 				cv::vconcat(outDEM, outDEM2, outDEM);
 			}
@@ -9181,7 +9270,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+					ret = read_srtm_geotiff(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
@@ -9190,7 +9279,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+					ret = read_srtm_geotiff(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 					cv::hconcat(outDEM, outDEM2, outDEM);
 				}
@@ -9202,7 +9291,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+					ret = read_srtm_geotiff(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
@@ -9211,7 +9300,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+					ret = read_srtm_geotiff(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 					cv::hconcat(outDEM, outDEM2, outDEM);
 				}
@@ -9251,7 +9340,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+					ret = read_srtm_geotiff(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[1];
@@ -9260,7 +9349,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+					ret = read_srtm_geotiff(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 					cv::hconcat(outDEM, outDEM2, outDEM);
 				}
@@ -9272,7 +9361,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+					ret = read_srtm_geotiff(path.c_str(), outDEM);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 					folderName = srtmFileName[0];
@@ -9281,7 +9370,7 @@ int Utils::getSRTMDEM(
 					path = path + string("\\") + folderName + string(".tif");
 					std::replace(path.begin(), path.end(), '/', '\\');
 					outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-					ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+					ret = read_srtm_geotiff(path.c_str(), outDEM2);
 					//if (return_check(ret, "geotiffread()", error_head)) return -1;
 					cv::hconcat(outDEM, outDEM2, outDEM);
 				}
@@ -9338,7 +9427,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+			ret = read_srtm_geotiff(path.c_str(), outDEM);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 			if (endCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
@@ -9352,7 +9441,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+			ret = read_srtm_geotiff(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 			cv::hconcat(outDEM, outDEM2, outDEM);
 
@@ -9367,7 +9456,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+			ret = read_srtm_geotiff(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 			if (endCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
@@ -9381,7 +9470,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM3);
+			ret = read_srtm_geotiff(path.c_str(), outDEM3);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 			cv::hconcat(outDEM2, outDEM3, outDEM2);
 
@@ -9433,7 +9522,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM);
+			ret = read_srtm_geotiff(path.c_str(), outDEM);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 			if (endCol < 10 && startRow < 10) format = "srtm_0%d_0%d.zip";
@@ -9447,7 +9536,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+			ret = read_srtm_geotiff(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 			cv::hconcat(outDEM, outDEM2, outDEM);
 
@@ -9462,7 +9551,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM2 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM2);
+			ret = read_srtm_geotiff(path.c_str(), outDEM2);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 
 			if (endCol < 10 && endRow < 10) format = "srtm_0%d_0%d.zip";
@@ -9476,7 +9565,7 @@ int Utils::getSRTMDEM(
 			path = path + string("\\") + folderName + string(".tif");
 			std::replace(path.begin(), path.end(), '/', '\\');
 			outDEM3 = Mat::zeros(6000, 6000, CV_16S);
-			ret = DigitalElevationModel::geotiffread(path.c_str(), outDEM3);
+			ret = read_srtm_geotiff(path.c_str(), outDEM3);
 			//if (return_check(ret, "geotiffread()", error_head)) return -1;
 			cv::hconcat(outDEM2, outDEM3, outDEM2);
 
@@ -11866,42 +11955,41 @@ int Utils::S1_subswath_merge(
 	double start1, start2, start3, end1, end2, end3, first_pixel1, first_pixel2, first_pixel3,
 		range_spacing, prf;
 	int mul_az, mul_rg, mul_az1, mul_rg1, rows1, rows2, rows3, cols1, cols2, cols3;
-	FormatConversion conversion;
 	string start_time, end_time;
 	int ret;
-	ret = conversion.read_double_from_h5(IW1_h5file, "prf", &prf);
+	ret = Hdf5IO::readDouble(IW1_h5file, "prf", &prf);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW1_h5file, "slant_range_first_pixel", &first_pixel1);
+	ret = Hdf5IO::readDouble(IW1_h5file, "slant_range_first_pixel", &first_pixel1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW2_h5file, "slant_range_first_pixel", &first_pixel2);
+	ret = Hdf5IO::readDouble(IW2_h5file, "slant_range_first_pixel", &first_pixel2);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW3_h5file, "slant_range_first_pixel", &first_pixel3);
+	ret = Hdf5IO::readDouble(IW3_h5file, "slant_range_first_pixel", &first_pixel3);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	if (first_pixel1 >= first_pixel2 || first_pixel2 >= first_pixel3)
 	{
 		fprintf(stderr, "S1_subswath_merge(): please rearrange input swath order!\n");
 		return -1;
 	}
-	ret = conversion.read_double_from_h5(IW3_h5file, "range_spacing", &range_spacing);
+	ret = Hdf5IO::readDouble(IW3_h5file, "range_spacing", &range_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 
-	ret = conversion.read_int_from_h5(IW1_h5file, "multilook_az", &mul_az);
+	ret = Hdf5IO::readInt(IW1_h5file, "multilook_az", &mul_az);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW1_h5file, "multilook_rg", &mul_rg);
+	ret = Hdf5IO::readInt(IW1_h5file, "multilook_rg", &mul_rg);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
-	ret = conversion.read_int_from_h5(IW2_h5file, "multilook_az", &mul_az1);
+	ret = Hdf5IO::readInt(IW2_h5file, "multilook_az", &mul_az1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW2_h5file, "multilook_rg", &mul_rg1);
+	ret = Hdf5IO::readInt(IW2_h5file, "multilook_rg", &mul_rg1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 	if (mul_az != mul_az1 || mul_rg != mul_rg1)
 	{
 		fprintf(stderr, "S1_subswath_merge(): multilook times disagree!\n");
 		return -1;
 	}
-	ret = conversion.read_int_from_h5(IW3_h5file, "multilook_az", &mul_az1);
+	ret = Hdf5IO::readInt(IW3_h5file, "multilook_az", &mul_az1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW3_h5file, "multilook_rg", &mul_rg1);
+	ret = Hdf5IO::readInt(IW3_h5file, "multilook_rg", &mul_rg1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 	if (mul_az != mul_az1 || mul_rg != mul_rg1)
 	{
@@ -11909,43 +11997,43 @@ int Utils::S1_subswath_merge(
 		return -1;
 	}
 	
-	ret = conversion.read_int_from_h5(IW1_h5file, "range_len", &cols1);
+	ret = Hdf5IO::readInt(IW1_h5file, "range_len", &cols1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW1_h5file, "azimuth_len", &rows1);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-
-	ret = conversion.read_int_from_h5(IW2_h5file, "range_len", &cols2);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW2_h5file, "azimuth_len", &rows2);
+	ret = Hdf5IO::readInt(IW1_h5file, "azimuth_len", &rows1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
-	ret = conversion.read_int_from_h5(IW3_h5file, "range_len", &cols3);
+	ret = Hdf5IO::readInt(IW2_h5file, "range_len", &cols2);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW3_h5file, "azimuth_len", &rows3);
+	ret = Hdf5IO::readInt(IW2_h5file, "azimuth_len", &rows2);
+	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+
+	ret = Hdf5IO::readInt(IW3_h5file, "range_len", &cols3);
+	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+	ret = Hdf5IO::readInt(IW3_h5file, "azimuth_len", &rows3);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
 
 
-	ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW1_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW1_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start1);
-	conversion.utc2gps(end_time.c_str(), &end1);
+	utc_to_gps(start_time.c_str(), &start1);
+	utc_to_gps(end_time.c_str(), &end1);
 
-	ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW2_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW2_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start2);
-	conversion.utc2gps(end_time.c_str(), &end2);
+	utc_to_gps(start_time.c_str(), &start2);
+	utc_to_gps(end_time.c_str(), &end2);
 
-	ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW3_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW3_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start3);
-	conversion.utc2gps(end_time.c_str(), &end3);
+	utc_to_gps(start_time.c_str(), &start3);
+	utc_to_gps(end_time.c_str(), &end3);
 
 	//IW1和IW2拼接
 
@@ -11960,13 +12048,13 @@ int Utils::S1_subswath_merge(
 	Mat lon_tmp(total_rows, total_cols, CV_32F); lon_tmp = 360.0;
 	Mat lat_tmp(total_rows, total_cols, CV_32F); lat_tmp = 360.0;
 	Mat phase1, phase2, mapped_lon1, mapped_lon2, mapped_lat1, mapped_lat2;
-	ret = conversion.read_array_from_h5(IW1_h5file, "phase", phase1);
+	ret = Hdf5IO::readArray(IW1_h5file, "phase", phase1);
 	if (cb && !cb(30, "Reading Sentinel-1 subswaths...")) return -2;
-	ret = conversion.read_array_from_h5(IW2_h5file, "phase", phase2);
-	ret = conversion.read_array_from_h5(IW1_h5file, "mapped_lon", mapped_lon1);
-	ret += conversion.read_array_from_h5(IW1_h5file, "mapped_lat", mapped_lat1);
-	ret += conversion.read_array_from_h5(IW2_h5file, "mapped_lon", mapped_lon2);
-	ret += conversion.read_array_from_h5(IW2_h5file, "mapped_lat", mapped_lat2);
+	ret = Hdf5IO::readArray(IW2_h5file, "phase", phase2);
+	ret = Hdf5IO::readArray(IW1_h5file, "mapped_lon", mapped_lon1);
+	ret += Hdf5IO::readArray(IW1_h5file, "mapped_lat", mapped_lat1);
+	ret += Hdf5IO::readArray(IW2_h5file, "mapped_lon", mapped_lon2);
+	ret += Hdf5IO::readArray(IW2_h5file, "mapped_lat", mapped_lat2);
 	int temp_ret = ret;
 	if (row_offset < 0)
 	{
@@ -12022,10 +12110,10 @@ int Utils::S1_subswath_merge(
 	phase1.create(total_rows, total_cols, CV_64F); phase1 = 0.0;
 	mapped_lat2.create(total_rows, total_cols, CV_32F); mapped_lat2 = 360.0;
 	mapped_lon2.create(total_rows, total_cols, CV_32F); mapped_lon2 = 360.0;
-	ret = conversion.read_array_from_h5(IW3_h5file, "phase", phase2);
+	ret = Hdf5IO::readArray(IW3_h5file, "phase", phase2);
 	if (cb && !cb(65, "Merging Sentinel-1 subswaths...")) return -2;
-	ret = conversion.read_array_from_h5(IW3_h5file, "mapped_lon", mapped_lon1);
-	ret += conversion.read_array_from_h5(IW3_h5file, "mapped_lat", mapped_lat1);
+	ret = Hdf5IO::readArray(IW3_h5file, "mapped_lon", mapped_lon1);
+	ret += Hdf5IO::readArray(IW3_h5file, "mapped_lat", mapped_lat1);
 	temp_ret += ret;
 	if (row_offset < 0)
 	{
@@ -12065,38 +12153,38 @@ int Utils::S1_subswath_merge(
 		phase2(cv::Range(0, phase2.rows), cv::Range(col_start_next, cols3)).copyTo
 		(phase1(cv::Range(0, phase2.rows), cv::Range(col_end_last, total_cols)));
 	}
-	ret = conversion.creat_new_h5(merged_phase_h5file);
+	ret = Hdf5IO::createFile(merged_phase_h5file);
 	if (cb && !cb(85, "Writing merged Sentinel-1 subswath...")) return -2;
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	ret = conversion.write_array_to_h5(merged_phase_h5file, "phase", phase1);
+	ret = Hdf5IO::writeArray(merged_phase_h5file, "phase", phase1);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	if (temp_ret == 0)
 	{
-		ret = conversion.write_array_to_h5(merged_phase_h5file, "mapped_lon", mapped_lon2);
-		ret = conversion.write_array_to_h5(merged_phase_h5file, "mapped_lat", mapped_lat2);
+		ret = Hdf5IO::writeArray(merged_phase_h5file, "mapped_lon", mapped_lon2);
+		ret = Hdf5IO::writeArray(merged_phase_h5file, "mapped_lat", mapped_lat2);
 	}
 
-	conversion.write_int_to_h5(merged_phase_h5file, "multilook_az", mul_az);
-	conversion.write_int_to_h5(merged_phase_h5file, "multilook_rg", mul_rg);
-	conversion.write_int_to_h5(merged_phase_h5file, "azimuth_len", phase1.rows);
-	conversion.write_int_to_h5(merged_phase_h5file, "range_len", phase1.cols);
+	Hdf5IO::writeInt(merged_phase_h5file, "multilook_az", mul_az);
+	Hdf5IO::writeInt(merged_phase_h5file, "multilook_rg", mul_rg);
+	Hdf5IO::writeInt(merged_phase_h5file, "azimuth_len", phase1.rows);
+	Hdf5IO::writeInt(merged_phase_h5file, "range_len", phase1.cols);
 
 	//写入三个子带的source_1和source_2
 
 	string source_1, source_2;
-	ret = conversion.read_str_from_h5(IW1_h5file, "source_1", source_1);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_1_IW1", source_1.c_str());
-	ret = conversion.read_str_from_h5(IW1_h5file, "source_2", source_2);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_2_IW1", source_2.c_str());
-	ret = conversion.read_str_from_h5(IW2_h5file, "source_1", source_1);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_1_IW2", source_1.c_str());
-	ret = conversion.read_str_from_h5(IW2_h5file, "source_2", source_2);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_2_IW2", source_2.c_str());
-	ret = conversion.read_str_from_h5(IW3_h5file, "source_1", source_1);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_1_IW3", source_1.c_str());
-	ret = conversion.read_str_from_h5(IW3_h5file, "source_1", source_1);
-	ret = conversion.write_str_to_h5(merged_phase_h5file, "source_2_IW3", source_2.c_str());
+	ret = Hdf5IO::readString(IW1_h5file, "source_1", source_1);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_1_IW1", source_1.c_str());
+	ret = Hdf5IO::readString(IW1_h5file, "source_2", source_2);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_2_IW1", source_2.c_str());
+	ret = Hdf5IO::readString(IW2_h5file, "source_1", source_1);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_1_IW2", source_1.c_str());
+	ret = Hdf5IO::readString(IW2_h5file, "source_2", source_2);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_2_IW2", source_2.c_str());
+	ret = Hdf5IO::readString(IW3_h5file, "source_1", source_1);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_1_IW3", source_1.c_str());
+	ret = Hdf5IO::readString(IW3_h5file, "source_1", source_1);
+	ret = Hdf5IO::writeString(merged_phase_h5file, "source_2_IW3", source_2.c_str());
 
 	if (cb && !cb(100, "Sentinel-1 subswath merge complete.")) return -2;
 	return 0;
@@ -12115,14 +12203,13 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	int rows1, rows2, rows3, cols1, cols2, cols3;
 	// removed unused: mul_az, mul_rg, mul_az1, mul_rg1 (read from H5 but SLC merge uses raw coordinates)
 	string sensor1, sensor2, sensor3;
-	FormatConversion conversion;
 	string start_time, end_time;
 	int ret;
-	ret = conversion.read_str_from_h5(IW1_h5file, "sensor", sensor1);
+	ret = Hdf5IO::readString(IW1_h5file, "sensor", sensor1);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW2_h5file, "sensor", sensor2);
+	ret = Hdf5IO::readString(IW2_h5file, "sensor", sensor2);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW3_h5file, "sensor", sensor3);
+	ret = Hdf5IO::readString(IW3_h5file, "sensor", sensor3);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
 	if (sensor1 != "sentinel" || sensor2 != "sentinel" || sensor3 != "sentinel")
 	{
@@ -12130,60 +12217,60 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		return -1;
 	}
 
-	ret = conversion.read_double_from_h5(IW1_h5file, "prf", &prf);
+	ret = Hdf5IO::readDouble(IW1_h5file, "prf", &prf);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW1_h5file, "slant_range_first_pixel", &first_pixel1);
+	ret = Hdf5IO::readDouble(IW1_h5file, "slant_range_first_pixel", &first_pixel1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW2_h5file, "slant_range_first_pixel", &first_pixel2);
+	ret = Hdf5IO::readDouble(IW2_h5file, "slant_range_first_pixel", &first_pixel2);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(IW3_h5file, "slant_range_first_pixel", &first_pixel3);
+	ret = Hdf5IO::readDouble(IW3_h5file, "slant_range_first_pixel", &first_pixel3);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	if (first_pixel1 >= first_pixel2 || first_pixel2 >= first_pixel3)
 	{
 		fprintf(stderr, "S1_subswath_merge_slc(): please rearrange input swath order!\n");
 		return -1;
 	}
-	ret = conversion.read_double_from_h5(IW3_h5file, "range_spacing", &range_spacing);
+	ret = Hdf5IO::readDouble(IW3_h5file, "range_spacing", &range_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 
 
-	ret = conversion.read_int_from_h5(IW1_h5file, "range_len", &cols1);
+	ret = Hdf5IO::readInt(IW1_h5file, "range_len", &cols1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW1_h5file, "azimuth_len", &rows1);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-
-	ret = conversion.read_int_from_h5(IW2_h5file, "range_len", &cols2);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW2_h5file, "azimuth_len", &rows2);
+	ret = Hdf5IO::readInt(IW1_h5file, "azimuth_len", &rows1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
-	ret = conversion.read_int_from_h5(IW3_h5file, "range_len", &cols3);
+	ret = Hdf5IO::readInt(IW2_h5file, "range_len", &cols2);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(IW3_h5file, "azimuth_len", &rows3);
+	ret = Hdf5IO::readInt(IW2_h5file, "azimuth_len", &rows2);
+	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+
+	ret = Hdf5IO::readInt(IW3_h5file, "range_len", &cols3);
+	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+	ret = Hdf5IO::readInt(IW3_h5file, "azimuth_len", &rows3);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
 
 
-	ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW1_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW1_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start1);
-	conversion.utc2gps(end_time.c_str(), &end1);
+	utc_to_gps(start_time.c_str(), &start1);
+	utc_to_gps(end_time.c_str(), &end1);
 
-	ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW2_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW2_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start2);
-	conversion.utc2gps(end_time.c_str(), &end2);
+	utc_to_gps(start_time.c_str(), &start2);
+	utc_to_gps(end_time.c_str(), &end2);
 
-	ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(IW3_h5file, "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_stop_time", end_time);
+	ret = Hdf5IO::readString(IW3_h5file, "acquisition_stop_time", end_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.utc2gps(start_time.c_str(), &start3);
-	conversion.utc2gps(end_time.c_str(), &end3);
+	utc_to_gps(start_time.c_str(), &start3);
+	utc_to_gps(end_time.c_str(), &end3);
 
 	//IW1和IW2拼接
 
@@ -12194,8 +12281,8 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	int row_offset = static_cast<int>((start1 - start2) * prf);
 	int total_rows = static_cast<int>((((end1 > end2 ? end1 : end2) - (start1 < start2 ? start1 : start2)) * prf + 1) + 1);
 	ComplexMat slc1, slc2, slc3, slc_tmp, slc_tmp2;
-	ret = conversion.read_slc_from_h5(IW1_h5file, slc1);
-	ret = conversion.read_slc_from_h5(IW2_h5file, slc2);
+	ret = read_slc_from_h5io(IW1_h5file, slc1);
+	ret = read_slc_from_h5io(IW2_h5file, slc2);
 	if (cb && !cb(30, "Reading Sentinel-1 SLC subswaths...")) return -2;
 	if (slc1.type() != slc2.type())
 	{
@@ -12241,7 +12328,7 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	total_rows = static_cast<int>((((end11 > end3 ? end11 : end3) - (start11 < start3 ? start11 : start3)) * prf + 1) + 1);
 	slc_tmp2.re.create(total_rows, total_cols, slc1.type()); slc_tmp2.im.create(total_rows, total_cols, slc1.type());
 	slc_tmp2.re = 0; slc_tmp2.im = 0;
-	ret = conversion.read_slc_from_h5(IW3_h5file, slc2);
+	ret = read_slc_from_h5io(IW3_h5file, slc2);
 	if (cb && !cb(60, "Merging Sentinel-1 SLC subswaths...")) return -2;
 	if (slc1.type() != slc2.type())
 	{
@@ -12272,78 +12359,78 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 		slc2.im(cv::Range(0, slc2.im.rows), cv::Range(col_start_next, cols3)).copyTo
 		(slc_tmp2.im(cv::Range(0, slc2.im.rows), cv::Range(col_end_last, total_cols)));
 	}
-	ret = conversion.creat_new_h5(merged_phase_h5file);
+	ret = Hdf5IO::createFile(merged_phase_h5file);
 	if (cb && !cb(85, "Writing merged Sentinel-1 SLC...")) return -2;
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	ret = conversion.write_slc_to_h5(merged_phase_h5file, slc_tmp2);
+	ret = write_slc_to_h5io(merged_phase_h5file, slc_tmp2);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 
 
-	conversion.write_int_to_h5(merged_phase_h5file, "azimuth_len", slc_tmp2.re.rows);
-	conversion.write_int_to_h5(merged_phase_h5file, "range_len", slc_tmp2.re.cols);
+	Hdf5IO::writeInt(merged_phase_h5file, "azimuth_len", slc_tmp2.re.rows);
+	Hdf5IO::writeInt(merged_phase_h5file, "range_len", slc_tmp2.re.cols);
 
 	/////写入其它参数
 	//拍摄起始时间
 	if (start1 < start2 && start1 < start3)
 	{
-		ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_start_time", start_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
+		ret = Hdf5IO::readString(IW1_h5file, "acquisition_start_time", start_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
 	}
 	else if (start2 < start1 && start2 < start3)
 	{
-		ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_start_time", start_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
+		ret = Hdf5IO::readString(IW2_h5file, "acquisition_start_time", start_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
 	}
 	else
 	{
-		ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_start_time", start_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
+		ret = Hdf5IO::readString(IW3_h5file, "acquisition_start_time", start_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_start_time", start_time.c_str());
 	}
 	//拍摄结束时间
 	if (end1 > end2 && end1 > end3)
 	{
-		ret = conversion.read_str_from_h5(IW1_h5file, "acquisition_stop_time", end_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
+		ret = Hdf5IO::readString(IW1_h5file, "acquisition_stop_time", end_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
 	}
 	else if (end2 > end1 && end2 > end3)
 	{
-		ret = conversion.read_str_from_h5(IW2_h5file, "acquisition_stop_time", end_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
+		ret = Hdf5IO::readString(IW2_h5file, "acquisition_stop_time", end_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
 	}
 	else
 	{
-		ret = conversion.read_str_from_h5(IW3_h5file, "acquisition_stop_time", end_time);
-		conversion.write_str_to_h5(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
+		ret = Hdf5IO::readString(IW3_h5file, "acquisition_stop_time", end_time);
+		Hdf5IO::writeString(merged_phase_h5file, "acquisition_stop_time", end_time.c_str());
 	}
 	//最近斜距
-	conversion.write_double_to_h5(merged_phase_h5file, "slant_range_first_pixel", first_pixel1);
+	Hdf5IO::writeDouble(merged_phase_h5file, "slant_range_first_pixel", first_pixel1);
 
 	//采样间隔
-	conversion.write_double_to_h5(merged_phase_h5file, "range_spacing", range_spacing);
-	conversion.read_double_from_h5(IW3_h5file, "azimuth_spacing", &range_spacing);
-	conversion.write_double_to_h5(merged_phase_h5file, "azimuth_spacing", range_spacing);
+	Hdf5IO::writeDouble(merged_phase_h5file, "range_spacing", range_spacing);
+	Hdf5IO::readDouble(IW3_h5file, "azimuth_spacing", &range_spacing);
+	Hdf5IO::writeDouble(merged_phase_h5file, "azimuth_spacing", range_spacing);
 	//中心下视角
-	conversion.read_double_from_h5(IW2_h5file, "inc_center", &range_spacing);
-	conversion.write_double_to_h5(merged_phase_h5file, "inc_center", range_spacing);
+	Hdf5IO::readDouble(IW2_h5file, "inc_center", &range_spacing);
+	Hdf5IO::writeDouble(merged_phase_h5file, "inc_center", range_spacing);
 	//prf
-	conversion.write_double_to_h5(merged_phase_h5file, "prf", prf);
+	Hdf5IO::writeDouble(merged_phase_h5file, "prf", prf);
 	//载频
-	conversion.read_double_from_h5(IW3_h5file, "carrier_frequency", &range_spacing);
-	conversion.write_double_to_h5(merged_phase_h5file, "carrier_frequency", range_spacing);
+	Hdf5IO::readDouble(IW3_h5file, "carrier_frequency", &range_spacing);
+	Hdf5IO::writeDouble(merged_phase_h5file, "carrier_frequency", range_spacing);
 	//极化、swath、传感器名
-	ret = conversion.read_str_from_h5(IW3_h5file, "polarization", end_time);
-	conversion.write_str_to_h5(merged_phase_h5file, "polarization", end_time.c_str());
-	conversion.write_str_to_h5(merged_phase_h5file, "swath", "IW123");
+	ret = Hdf5IO::readString(IW3_h5file, "polarization", end_time);
+	Hdf5IO::writeString(merged_phase_h5file, "polarization", end_time.c_str());
+	Hdf5IO::writeString(merged_phase_h5file, "swath", "IW123");
 	//conversion.write_str_to_h5(merged_phase_h5file, "sensor", "sentinel");
 	//轨道
 	Mat state_vec;
-	ret = conversion.read_array_from_h5(IW3_h5file, "state_vec", state_vec);
-	conversion.write_array_to_h5(merged_phase_h5file, "state_vec", state_vec);
+	ret = Hdf5IO::readArray(IW3_h5file, "state_vec", state_vec);
+	Hdf5IO::writeArray(merged_phase_h5file, "state_vec", state_vec);
 	//控制点
 	Mat gcps1, gcps2, gcps3, lon, lat;
-	ret = conversion.read_array_from_h5(IW1_h5file, "gcps", gcps1);
-	ret = conversion.read_array_from_h5(IW2_h5file, "gcps", gcps2);
-	ret = conversion.read_array_from_h5(IW3_h5file, "gcps", gcps3);
+	ret = Hdf5IO::readArray(IW1_h5file, "gcps", gcps1);
+	ret = Hdf5IO::readArray(IW2_h5file, "gcps", gcps2);
+	ret = Hdf5IO::readArray(IW3_h5file, "gcps", gcps3);
 	cv::vconcat(gcps1, gcps2, gcps2);
 	cv::vconcat(gcps2, gcps3, gcps3);
 	gcps3(cv::Range(0, gcps3.rows), cv::Range(0, 1)).copyTo(lon);
@@ -12368,14 +12455,14 @@ int Utils::S1_subswath_merge_slc(const char* IW1_h5file, const char* IW2_h5file,
 	bottomleft_lat = latMin;
 	bottomright_lat = latMin;
 
-	conversion.write_double_to_h5(merged_phase_h5file, "topLeftLat", topleft_lat);
-	conversion.write_double_to_h5(merged_phase_h5file, "topLeftLon", topleft_lon);
-	conversion.write_double_to_h5(merged_phase_h5file, "topRightLat", topright_lat);
-	conversion.write_double_to_h5(merged_phase_h5file, "topRightLon", topright_lon);
-	conversion.write_double_to_h5(merged_phase_h5file, "bottomLeftLat", bottomleft_lat);
-	conversion.write_double_to_h5(merged_phase_h5file, "bottomLeftLon", bottomleft_lon);
-	conversion.write_double_to_h5(merged_phase_h5file, "bottomRightLat", bottomright_lat);
-	conversion.write_double_to_h5(merged_phase_h5file, "bottomRightLon", bottomright_lon);
+	Hdf5IO::writeDouble(merged_phase_h5file, "topLeftLat", topleft_lat);
+	Hdf5IO::writeDouble(merged_phase_h5file, "topLeftLon", topleft_lon);
+	Hdf5IO::writeDouble(merged_phase_h5file, "topRightLat", topright_lat);
+	Hdf5IO::writeDouble(merged_phase_h5file, "topRightLon", topright_lon);
+	Hdf5IO::writeDouble(merged_phase_h5file, "bottomLeftLat", bottomleft_lat);
+	Hdf5IO::writeDouble(merged_phase_h5file, "bottomLeftLon", bottomleft_lon);
+	Hdf5IO::writeDouble(merged_phase_h5file, "bottomRightLat", bottomright_lat);
+	Hdf5IO::writeDouble(merged_phase_h5file, "bottomRightLon", bottomright_lon);
 
 
 	if (cb && !cb(100, "Sentinel-1 SLC subswath merge complete.")) return -2;
@@ -12395,13 +12482,12 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5, 
 	//根据每个拍摄frame的拍摄起始时间对文件排序（从小到大）
 	int ret; string start_time; double start;
 	Mat stime(1, num_files, CV_64F), order;
-	FormatConversion conversion;
 	for (int i = 0; i < num_files; i++)
 	{
 		if (cb && !cb(i * 20 / std::max(1, num_files), "Reading Sentinel-1 frame metadata...")) return -2;
-		ret = conversion.read_str_from_h5(h5files[i].c_str(), "acquisition_start_time", start_time);
+		ret = Hdf5IO::readString(h5files[i].c_str(), "acquisition_start_time", start_time);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time.c_str(), &start);
+		ret = utc_to_gps(start_time.c_str(), &start);
 		if (return_check(ret, "utc2gps()", error_head)) return -1;
 		stime.at<double>(0, i) = start;
 	}
@@ -12412,26 +12498,26 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5, 
 		range_spacing, prf;
 	// removed unused: start1, start3, end2, end3, first_pixel3 (frame merge only uses start/end1 for overlap calc)
 	int mul_az, mul_rg, mul_az1, mul_rg1;
-	ret = conversion.read_int_from_h5(h5files[0].c_str(), "multilook_az", &mul_az);
+	ret = Hdf5IO::readInt(h5files[0].c_str(), "multilook_az", &mul_az);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(h5files[0].c_str(), "multilook_rg", &mul_rg);
+	ret = Hdf5IO::readInt(h5files[0].c_str(), "multilook_rg", &mul_rg);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(h5files[0].c_str(), "slant_range_first_pixel", &first_pixel1);
+	ret = Hdf5IO::readDouble(h5files[0].c_str(), "slant_range_first_pixel", &first_pixel1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(h5files[0].c_str(), "range_spacing", &range_spacing);
+	ret = Hdf5IO::readDouble(h5files[0].c_str(), "range_spacing", &range_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	for (int i = 1; i < num_files; i++)
 	{
-		ret = conversion.read_int_from_h5(h5files[i].c_str(), "multilook_az", &mul_az1);
+		ret = Hdf5IO::readInt(h5files[i].c_str(), "multilook_az", &mul_az1);
 		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-		ret = conversion.read_int_from_h5(h5files[i].c_str(), "multilook_rg", &mul_rg1);
+		ret = Hdf5IO::readInt(h5files[i].c_str(), "multilook_rg", &mul_rg1);
 		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 		if (mul_az != mul_az1 || mul_rg != mul_rg1)
 		{
 			fprintf(stderr, "S1_frame_merge(): multilook times disagree!\n");
 			return -1;
 		}
-		ret = conversion.read_double_from_h5(h5files[i].c_str(), "slant_range_first_pixel", &first_pixel2);
+		ret = Hdf5IO::readDouble(h5files[i].c_str(), "slant_range_first_pixel", &first_pixel2);
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		if (fabs(first_pixel2 - first_pixel1) > 0.1)
 		{
@@ -12441,36 +12527,36 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5, 
 	}
 
 	Mat phase1;
-	ret = conversion.creat_new_h5(merged_phase_h5);
+	ret = Hdf5IO::createFile(merged_phase_h5);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(h5files[order.at<int>(0)].c_str(), "phase", phase);
+	ret = Hdf5IO::readArray(h5files[order.at<int>(0)].c_str(), "phase", phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(h5files[order.at<int>(0)].c_str(), "acquisition_stop_time", start_time);
+	ret = Hdf5IO::readString(h5files[order.at<int>(0)].c_str(), "acquisition_stop_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(start_time.c_str(), &end1);
+	ret = utc_to_gps(start_time.c_str(), &end1);
 	if (return_check(ret, "utc2gps()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(h5files[order.at<int>(0)].c_str(), "acquisition_start_time", start_time);
+	ret = Hdf5IO::readString(h5files[order.at<int>(0)].c_str(), "acquisition_start_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(start_time.c_str(), &start);
+	ret = utc_to_gps(start_time.c_str(), &start);
 	if (return_check(ret, "utc2gps()", error_head)) return -1;
-	conversion.write_str_to_h5(merged_phase_h5, "acquisition_start_time", start_time.c_str());
-	ret = conversion.read_str_from_h5(h5files[order.at<int>(num_files - 1)].c_str(), "acquisition_stop_time", start_time);
+	Hdf5IO::writeString(merged_phase_h5, "acquisition_start_time", start_time.c_str());
+	ret = Hdf5IO::readString(h5files[order.at<int>(num_files - 1)].c_str(), "acquisition_stop_time", start_time);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	conversion.write_str_to_h5(merged_phase_h5, "acquisition_stop_time", start_time.c_str());
-	ret = conversion.read_double_from_h5(h5files[order.at<int>(0)].c_str(), "prf", &prf);
+	Hdf5IO::writeString(merged_phase_h5, "acquisition_stop_time", start_time.c_str());
+	ret = Hdf5IO::readDouble(h5files[order.at<int>(0)].c_str(), "prf", &prf);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	for (int i = 1; i < num_files; i++)
 	{
-		ret = conversion.read_array_from_h5(h5files[order.at<int>(i)].c_str(), "phase", phase1);
+		ret = Hdf5IO::readArray(h5files[order.at<int>(i)].c_str(), "phase", phase1);
 		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 		if (phase1.cols != phase.cols)
 		{
 			fprintf(stderr, "S1_frame_merge(): frame cols mismatch!\n");
 			return -1;
 		}
-		ret = conversion.read_str_from_h5(h5files[order.at<int>(i)].c_str(), "acquisition_start_time", start_time);
+		ret = Hdf5IO::readString(h5files[order.at<int>(i)].c_str(), "acquisition_start_time", start_time);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time.c_str(), &start2);
+		ret = utc_to_gps(start_time.c_str(), &start2);
 		if (return_check(ret, "utc2gps()", error_head)) return -1;
 		if (end1 < start2)
 		{
@@ -12486,19 +12572,19 @@ int Utils::S1_frame_merge(vector<string>& h5files, const char* merged_phase_h5, 
 		phase1(cv::Range(next_lower_start, phase1.rows), cv::Range(0, phase1.cols)).copyTo(phase1);
 		cv::vconcat(phase, phase1, phase);
 
-		ret = conversion.read_str_from_h5(h5files[order.at<int>(i)].c_str(), "acquisition_stop_time", start_time);
+		ret = Hdf5IO::readString(h5files[order.at<int>(i)].c_str(), "acquisition_stop_time", start_time);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-		ret = conversion.utc2gps(start_time.c_str(), &end1);
+		ret = utc_to_gps(start_time.c_str(), &end1);
 		if (return_check(ret, "utc2gps()", error_head)) return -1;
 	}
-	conversion.write_array_to_h5(merged_phase_h5, "phase", phase);
-	conversion.write_int_to_h5(merged_phase_h5, "multilook_az", mul_az);
-	conversion.write_int_to_h5(merged_phase_h5, "multilook_rg", mul_rg);
-	conversion.write_int_to_h5(merged_phase_h5, "azimuth_len", phase.rows);
-	conversion.write_int_to_h5(merged_phase_h5, "range_len", phase.cols);
-	conversion.write_double_to_h5(merged_phase_h5, "prf", prf);
-	conversion.write_double_to_h5(merged_phase_h5, "range_spacing", range_spacing);
-	conversion.write_double_to_h5(merged_phase_h5, "slant_range_first_pixel", first_pixel1);
+	Hdf5IO::writeArray(merged_phase_h5, "phase", phase);
+	Hdf5IO::writeInt(merged_phase_h5, "multilook_az", mul_az);
+	Hdf5IO::writeInt(merged_phase_h5, "multilook_rg", mul_rg);
+	Hdf5IO::writeInt(merged_phase_h5, "azimuth_len", phase.rows);
+	Hdf5IO::writeInt(merged_phase_h5, "range_len", phase.cols);
+	Hdf5IO::writeDouble(merged_phase_h5, "prf", prf);
+	Hdf5IO::writeDouble(merged_phase_h5, "range_spacing", range_spacing);
+	Hdf5IO::writeDouble(merged_phase_h5, "slant_range_first_pixel", first_pixel1);
 	if (cb && !cb(100, "Sentinel-1 frame merge complete.")) return -2;
 	return 0;
 }
@@ -12513,21 +12599,20 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	}
 	//检查是否属于同一轨道相邻frame
 	int ret;
-	FormatConversion conversion;
 	double start1, start2, end1, end2, prf, slant_range_first_pixel1, slant_range_first_pixel2;
 	string start_time1, end_time1, start_time2, end_time2;
-	ret = conversion.read_str_from_h5(frame1_h5, "acquisition_start_time", start_time1);
+	ret = Hdf5IO::readString(frame1_h5, "acquisition_start_time", start_time1);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(start_time1.c_str(), &start1);
-	ret = conversion.read_str_from_h5(frame1_h5, "acquisition_stop_time", end_time1);
+	ret = utc_to_gps(start_time1.c_str(), &start1);
+	ret = Hdf5IO::readString(frame1_h5, "acquisition_stop_time", end_time1);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(end_time1.c_str(), &end1);
-	ret = conversion.read_str_from_h5(frame2_h5, "acquisition_start_time", start_time2);
+	ret = utc_to_gps(end_time1.c_str(), &end1);
+	ret = Hdf5IO::readString(frame2_h5, "acquisition_start_time", start_time2);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(start_time2.c_str(), &start2);
-	ret = conversion.read_str_from_h5(frame2_h5, "acquisition_stop_time", end_time2);
+	ret = utc_to_gps(start_time2.c_str(), &start2);
+	ret = Hdf5IO::readString(frame2_h5, "acquisition_stop_time", end_time2);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.utc2gps(end_time2.c_str(), &end2);
+	ret = utc_to_gps(end_time2.c_str(), &end2);
 	if (start1 < start2)
 	{
 		if (start2 > end1)
@@ -12544,9 +12629,9 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			return -1;
 		}
 	}
-	ret = conversion.read_double_from_h5(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel1);
+	ret = Hdf5IO::readDouble(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	ret = conversion.read_double_from_h5(frame2_h5, "slant_range_first_pixel", &slant_range_first_pixel2);
+	ret = Hdf5IO::readDouble(frame2_h5, "slant_range_first_pixel", &slant_range_first_pixel2);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	if (fabs(slant_range_first_pixel1 - slant_range_first_pixel2) > 0.1)
 	{
@@ -12554,13 +12639,13 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		return -1;
 	}
 
-	ret = conversion.creat_new_h5(outframe_h5);
+	ret = Hdf5IO::createFile(outframe_h5);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	//融合azimuthFmRateList
 	Mat azimuthFmRateList1, azimuthFmRateList2;
-	ret = conversion.read_array_from_h5(frame1_h5, "azimuthFmRateList", azimuthFmRateList1);
+	ret = Hdf5IO::readArray(frame1_h5, "azimuthFmRateList", azimuthFmRateList1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "azimuthFmRateList", azimuthFmRateList2);
+	ret = Hdf5IO::readArray(frame2_h5, "azimuthFmRateList", azimuthFmRateList2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12575,7 +12660,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		}
 		azimuthFmRateList1(cv::Range(0, t_remain), cv::Range(0, azimuthFmRateList1.cols)).copyTo(azimuthFmRateList1);
 		cv::vconcat(azimuthFmRateList1, azimuthFmRateList2, azimuthFmRateList1);
-		conversion.write_array_to_h5(outframe_h5, "azimuthFmRateList", azimuthFmRateList1);
+		Hdf5IO::writeArray(outframe_h5, "azimuthFmRateList", azimuthFmRateList1);
 	}
 	else
 	{
@@ -12590,13 +12675,13 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		}
 		azimuthFmRateList2(cv::Range(0, t_remain), cv::Range(0, azimuthFmRateList2.cols)).copyTo(azimuthFmRateList2);
 		cv::vconcat(azimuthFmRateList2, azimuthFmRateList1, azimuthFmRateList1);
-		conversion.write_array_to_h5(outframe_h5, "azimuthFmRateList", azimuthFmRateList1);
+		Hdf5IO::writeArray(outframe_h5, "azimuthFmRateList", azimuthFmRateList1);
 	}
 	//融合dcEstimateList
 	Mat dcEstimateList1, dcEstimateList2;
-	ret = conversion.read_array_from_h5(frame1_h5, "dcEstimateList", dcEstimateList1);
+	ret = Hdf5IO::readArray(frame1_h5, "dcEstimateList", dcEstimateList1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "dcEstimateList", dcEstimateList2);
+	ret = Hdf5IO::readArray(frame2_h5, "dcEstimateList", dcEstimateList2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12611,7 +12696,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		}
 		dcEstimateList1(cv::Range(0, t_remain), cv::Range(0, dcEstimateList1.cols)).copyTo(dcEstimateList1);
 		cv::vconcat(dcEstimateList1, dcEstimateList2, dcEstimateList1);
-		conversion.write_array_to_h5(outframe_h5, "dcEstimateList", dcEstimateList1);
+		Hdf5IO::writeArray(outframe_h5, "dcEstimateList", dcEstimateList1);
 	}
 	else
 	{
@@ -12626,13 +12711,13 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		}
 		dcEstimateList2(cv::Range(0, t_remain), cv::Range(0, dcEstimateList2.cols)).copyTo(dcEstimateList2);
 		cv::vconcat(dcEstimateList2, dcEstimateList1, dcEstimateList1);
-		conversion.write_array_to_h5(outframe_h5, "dcEstimateList", dcEstimateList1);
+		Hdf5IO::writeArray(outframe_h5, "dcEstimateList", dcEstimateList1);
 	}
 	//融合state_vec
 	Mat state_vec1, state_vec2;
-	ret = conversion.read_array_from_h5(frame1_h5, "state_vec", state_vec1);
+	ret = Hdf5IO::readArray(frame1_h5, "state_vec", state_vec1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "state_vec", state_vec2);
+	ret = Hdf5IO::readArray(frame2_h5, "state_vec", state_vec2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12654,7 +12739,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		{
 			state_vec2.copyTo(state_vec1);
 		}
-		conversion.write_array_to_h5(outframe_h5, "state_vec", state_vec1);
+		Hdf5IO::writeArray(outframe_h5, "state_vec", state_vec1);
 	}
 	else
 	{
@@ -12677,12 +12762,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 
 		}
 		
-		conversion.write_array_to_h5(outframe_h5, "state_vec", state_vec1);
+		Hdf5IO::writeArray(outframe_h5, "state_vec", state_vec1);
 	}
 	//融合fine_state_vec
 	Mat fine_state_vec1, fine_state_vec2;
-	ret = conversion.read_array_from_h5(frame1_h5, "fine_state_vec", fine_state_vec1);
-	ret += conversion.read_array_from_h5(frame2_h5, "fine_state_vec", fine_state_vec2);
+	ret = Hdf5IO::readArray(frame1_h5, "fine_state_vec", fine_state_vec1);
+	ret += Hdf5IO::readArray(frame2_h5, "fine_state_vec", fine_state_vec2);
 	if (ret == 0)
 	{
 		if (start1 < start2)
@@ -12705,7 +12790,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			{
 				fine_state_vec2.copyTo(fine_state_vec1);
 			}
-			conversion.write_array_to_h5(outframe_h5, "fine_state_vec", fine_state_vec1);
+			Hdf5IO::writeArray(outframe_h5, "fine_state_vec", fine_state_vec1);
 		}
 		else
 		{
@@ -12724,7 +12809,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 				cv::vconcat(fine_state_vec2, fine_state_vec1, fine_state_vec1);
 			}
 			
-			conversion.write_array_to_h5(outframe_h5, "fine_state_vec", fine_state_vec1);
+			Hdf5IO::writeArray(outframe_h5, "fine_state_vec", fine_state_vec1);
 		}
 	}
 	
@@ -12732,13 +12817,13 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	if (cb && !cb(82, "Merging Sentinel-1 geolocation points...")) return -2;
 	Mat gcps1, gcps2;
 	int rows1, rows2;
-	ret = conversion.read_int_from_h5(frame1_h5, "azimuth_len", &rows1);
+	ret = Hdf5IO::readInt(frame1_h5, "azimuth_len", &rows1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(frame2_h5, "azimuth_len", &rows2);
+	ret = Hdf5IO::readInt(frame2_h5, "azimuth_len", &rows2);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame1_h5, "gcps", gcps1);
+	ret = Hdf5IO::readArray(frame1_h5, "gcps", gcps1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "gcps", gcps2);
+	ret = Hdf5IO::readArray(frame2_h5, "gcps", gcps2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12755,7 +12840,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		Mat temp = gcps2(cv::Range(0, gcps2.rows), cv::Range(3, 4)) + gcps1.at<double>(gcps1.rows - 1, 3);
 		temp.copyTo(gcps2(cv::Range(0, gcps2.rows), cv::Range(3, 4)));
 		cv::vconcat(gcps1, gcps2, gcps1);
-		conversion.write_array_to_h5(outframe_h5, "gcps", gcps1);
+		Hdf5IO::writeArray(outframe_h5, "gcps", gcps1);
 	}
 	else
 	{
@@ -12772,13 +12857,13 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 		Mat temp = gcps1(cv::Range(0, gcps1.rows), cv::Range(3, 4)) + gcps2.at<double>(gcps2.rows - 1, 3);
 		temp.copyTo(gcps1(cv::Range(0, gcps1.rows), cv::Range(3, 4)));
 		cv::vconcat(gcps2, gcps1, gcps1);
-		conversion.write_array_to_h5(outframe_h5, "gcps", gcps1);
+		Hdf5IO::writeArray(outframe_h5, "gcps", gcps1);
 	}
 	//融合burstAzimuthTime
 	Mat burstAzimuthTime1, burstAzimuthTime2;
-	ret = conversion.read_array_from_h5(frame1_h5, "burstAzimuthTime", burstAzimuthTime1);
+	ret = Hdf5IO::readArray(frame1_h5, "burstAzimuthTime", burstAzimuthTime1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "burstAzimuthTime", burstAzimuthTime2);
+	ret = Hdf5IO::readArray(frame2_h5, "burstAzimuthTime", burstAzimuthTime2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12788,12 +12873,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(burstAzimuthTime2, burstAzimuthTime1, burstAzimuthTime1);
 	}
-	conversion.write_array_to_h5(outframe_h5, "burstAzimuthTime", burstAzimuthTime1);
+	Hdf5IO::writeArray(outframe_h5, "burstAzimuthTime", burstAzimuthTime1);
 	//融合firstValidLine
 	Mat firstValidLine1, firstValidLine2;
-	ret = conversion.read_array_from_h5(frame1_h5, "firstValidLine", firstValidLine1);
+	ret = Hdf5IO::readArray(frame1_h5, "firstValidLine", firstValidLine1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "firstValidLine", firstValidLine2);
+	ret = Hdf5IO::readArray(frame2_h5, "firstValidLine", firstValidLine2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12803,12 +12888,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(firstValidLine2, firstValidLine1, firstValidLine1);
 	}
-	conversion.write_array_to_h5(outframe_h5, "firstValidLine", firstValidLine1);
+	Hdf5IO::writeArray(outframe_h5, "firstValidLine", firstValidLine1);
 	//融合firstValidSample
 	Mat firstValidSample1, firstValidSample2;
-	ret = conversion.read_array_from_h5(frame1_h5, "firstValidSample", firstValidSample1);
+	ret = Hdf5IO::readArray(frame1_h5, "firstValidSample", firstValidSample1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "firstValidSample", firstValidSample2);
+	ret = Hdf5IO::readArray(frame2_h5, "firstValidSample", firstValidSample2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12818,12 +12903,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(firstValidSample2, firstValidSample1, firstValidSample1);
 	}
-	conversion.write_array_to_h5(outframe_h5, "firstValidSample", firstValidSample1);
+	Hdf5IO::writeArray(outframe_h5, "firstValidSample", firstValidSample1);
 	//融合lastValidLine
 	Mat lastValidLine1, lastValidLine2;
-	ret = conversion.read_array_from_h5(frame1_h5, "lastValidLine", lastValidLine1);
+	ret = Hdf5IO::readArray(frame1_h5, "lastValidLine", lastValidLine1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "lastValidLine", lastValidLine2);
+	ret = Hdf5IO::readArray(frame2_h5, "lastValidLine", lastValidLine2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12833,12 +12918,12 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(lastValidLine2, lastValidLine1, lastValidLine1);
 	}
-	conversion.write_array_to_h5(outframe_h5, "lastValidLine", lastValidLine1);
+	Hdf5IO::writeArray(outframe_h5, "lastValidLine", lastValidLine1);
 	//融合lastValidSample
 	Mat lastValidSample1, lastValidSample2;
-	ret = conversion.read_array_from_h5(frame1_h5, "lastValidSample", lastValidSample1);
+	ret = Hdf5IO::readArray(frame1_h5, "lastValidSample", lastValidSample1);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(frame2_h5, "lastValidSample", lastValidSample2);
+	ret = Hdf5IO::readArray(frame2_h5, "lastValidSample", lastValidSample2);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	if (start1 < start2)
 	{
@@ -12848,86 +12933,86 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(lastValidSample2, lastValidSample1, lastValidSample1);
 	}
-	conversion.write_array_to_h5(outframe_h5, "lastValidSample", lastValidSample1);
+	Hdf5IO::writeArray(outframe_h5, "lastValidSample", lastValidSample1);
 	//融合拍摄时间
 	if (start1 < start2)
 	{
-		conversion.write_str_to_h5(outframe_h5, "acquisition_start_time", start_time1.c_str());
-		conversion.write_str_to_h5(outframe_h5, "acquisition_stop_time", end_time2.c_str());
+		Hdf5IO::writeString(outframe_h5, "acquisition_start_time", start_time1.c_str());
+		Hdf5IO::writeString(outframe_h5, "acquisition_stop_time", end_time2.c_str());
 	}
 	else
 	{
-		conversion.write_str_to_h5(outframe_h5, "acquisition_start_time", start_time2.c_str());
-		conversion.write_str_to_h5(outframe_h5, "acquisition_stop_time", end_time1.c_str());
+		Hdf5IO::writeString(outframe_h5, "acquisition_start_time", start_time2.c_str());
+		Hdf5IO::writeString(outframe_h5, "acquisition_stop_time", end_time1.c_str());
 	}
 	//融合azimuthSteeringRate
 	double azimuthSteeringRate;
-	ret = conversion.read_double_from_h5(frame1_h5, "azimuthSteeringRate", &azimuthSteeringRate);
+	ret = Hdf5IO::readDouble(frame1_h5, "azimuthSteeringRate", &azimuthSteeringRate);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	conversion.write_double_to_h5(outframe_h5, "azimuthSteeringRate", azimuthSteeringRate);
+	Hdf5IO::writeDouble(outframe_h5, "azimuthSteeringRate", azimuthSteeringRate);
 	//融合azimuth_len，range_len
 	int azimuth_len1, range_len1, azimuth_len2, range_len2;
-	ret = conversion.read_int_from_h5(frame1_h5, "azimuth_len", &azimuth_len1);
+	ret = Hdf5IO::readInt(frame1_h5, "azimuth_len", &azimuth_len1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(frame1_h5, "range_len", &range_len1);
+	ret = Hdf5IO::readInt(frame1_h5, "range_len", &range_len1);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(frame2_h5, "azimuth_len", &azimuth_len2);
+	ret = Hdf5IO::readInt(frame2_h5, "azimuth_len", &azimuth_len2);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = conversion.read_int_from_h5(frame2_h5, "range_len", &range_len2);
+	ret = Hdf5IO::readInt(frame2_h5, "range_len", &range_len2);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 	azimuth_len1 += azimuth_len2;
-	conversion.write_int_to_h5(outframe_h5, "azimuth_len", azimuth_len1);
+	Hdf5IO::writeInt(outframe_h5, "azimuth_len", azimuth_len1);
 	int range_len = range_len1 >= range_len2 ? range_len1 : range_len2;
-	conversion.write_int_to_h5(outframe_h5, "range_len", range_len1);
+	Hdf5IO::writeInt(outframe_h5, "range_len", range_len1);
 	//融合azimuth_spacing，range_spacing
 	double azimuth_spacing, range_spacing;
-	ret = conversion.read_double_from_h5(frame1_h5, "azimuth_spacing", &azimuth_spacing);
+	ret = Hdf5IO::readDouble(frame1_h5, "azimuth_spacing", &azimuth_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	conversion.write_double_to_h5(outframe_h5, "azimuth_spacing", azimuth_spacing);
-	ret = conversion.read_double_from_h5(frame1_h5, "range_spacing", &range_spacing);
+	Hdf5IO::writeDouble(outframe_h5, "azimuth_spacing", azimuth_spacing);
+	ret = Hdf5IO::readDouble(frame1_h5, "range_spacing", &range_spacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
-	conversion.write_double_to_h5(outframe_h5, "range_spacing", range_spacing);
+	Hdf5IO::writeDouble(outframe_h5, "range_spacing", range_spacing);
 	//burstCount, carrier_frequency, heading, incidence_center, linesPerBurst, prf, samplesPerBurst, 
 	double carrier_frequency, heading, incidence_center, slant_range_first_pixel;
 	int burstCount1, burstCount2, linesPerBurst;
 	// removed unused: samplesPerBurst (H5 read commented out)
-	conversion.read_double_from_h5(frame1_h5, "carrier_frequency", &carrier_frequency);
-	conversion.read_double_from_h5(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel);
-	conversion.read_double_from_h5(frame1_h5, "inc_center", &incidence_center);
-	conversion.read_double_from_h5(frame1_h5, "heading", &heading);
-	conversion.read_double_from_h5(frame1_h5, "prf", &prf);
-	conversion.read_int_from_h5(frame1_h5, "burstCount", &burstCount1);
-	conversion.read_int_from_h5(frame2_h5, "burstCount", &burstCount2);
-	conversion.read_int_from_h5(frame1_h5, "linesPerBurst", &linesPerBurst);
+	Hdf5IO::readDouble(frame1_h5, "carrier_frequency", &carrier_frequency);
+	Hdf5IO::readDouble(frame1_h5, "slant_range_first_pixel", &slant_range_first_pixel);
+	Hdf5IO::readDouble(frame1_h5, "inc_center", &incidence_center);
+	Hdf5IO::readDouble(frame1_h5, "heading", &heading);
+	Hdf5IO::readDouble(frame1_h5, "prf", &prf);
+	Hdf5IO::readInt(frame1_h5, "burstCount", &burstCount1);
+	Hdf5IO::readInt(frame2_h5, "burstCount", &burstCount2);
+	Hdf5IO::readInt(frame1_h5, "linesPerBurst", &linesPerBurst);
 	//conversion.read_int_from_h5(frame1_h5, "samplesPerBurst", &samplesPerBurst);
-	conversion.write_double_to_h5(outframe_h5, "slant_range_first_pixel", slant_range_first_pixel);
-	conversion.write_double_to_h5(outframe_h5, "carrier_frequency", carrier_frequency);
-	conversion.write_double_to_h5(outframe_h5, "inc_center", incidence_center);
-	conversion.write_double_to_h5(outframe_h5, "heading", heading);
-	conversion.write_double_to_h5(outframe_h5, "prf", prf);
-	conversion.write_int_to_h5(outframe_h5, "burstCount", burstCount1 + burstCount2);
-	conversion.write_int_to_h5(outframe_h5, "linesPerBurst", linesPerBurst);
-	conversion.write_int_to_h5(outframe_h5, "samplesPerBurst", range_len);
+	Hdf5IO::writeDouble(outframe_h5, "slant_range_first_pixel", slant_range_first_pixel);
+	Hdf5IO::writeDouble(outframe_h5, "carrier_frequency", carrier_frequency);
+	Hdf5IO::writeDouble(outframe_h5, "inc_center", incidence_center);
+	Hdf5IO::writeDouble(outframe_h5, "heading", heading);
+	Hdf5IO::writeDouble(outframe_h5, "prf", prf);
+	Hdf5IO::writeInt(outframe_h5, "burstCount", burstCount1 + burstCount2);
+	Hdf5IO::writeInt(outframe_h5, "linesPerBurst", linesPerBurst);
+	Hdf5IO::writeInt(outframe_h5, "samplesPerBurst", range_len);
 
 	//sensor, swath, polarization, orbit_dir, imaging_mode;
 	string sensor, swath, polarization, orbit_dir, imaging_mode;
-	conversion.read_str_from_h5(frame1_h5, "sensor", sensor);
-	conversion.read_str_from_h5(frame1_h5, "swath", swath);
-	conversion.read_str_from_h5(frame1_h5, "polarization", polarization);
-	conversion.read_str_from_h5(frame1_h5, "orbit_dir", orbit_dir);
-	conversion.read_str_from_h5(frame1_h5, "imaging_mode", imaging_mode);
+	Hdf5IO::readString(frame1_h5, "sensor", sensor);
+	Hdf5IO::readString(frame1_h5, "swath", swath);
+	Hdf5IO::readString(frame1_h5, "polarization", polarization);
+	Hdf5IO::readString(frame1_h5, "orbit_dir", orbit_dir);
+	Hdf5IO::readString(frame1_h5, "imaging_mode", imaging_mode);
 
-	conversion.write_str_to_h5(outframe_h5, "sensor", sensor.c_str());
-	conversion.write_str_to_h5(outframe_h5, "swath", swath.c_str());
-	conversion.write_str_to_h5(outframe_h5, "polarization", polarization.c_str());
-	conversion.write_str_to_h5(outframe_h5, "orbit_dir", orbit_dir.c_str());
-	conversion.write_str_to_h5(outframe_h5, "imaging_mode", imaging_mode.c_str());
+	Hdf5IO::writeString(outframe_h5, "sensor", sensor.c_str());
+	Hdf5IO::writeString(outframe_h5, "swath", swath.c_str());
+	Hdf5IO::writeString(outframe_h5, "polarization", polarization.c_str());
+	Hdf5IO::writeString(outframe_h5, "orbit_dir", orbit_dir.c_str());
+	Hdf5IO::writeString(outframe_h5, "imaging_mode", imaging_mode.c_str());
 
 	//s_re, s_im
 	if (cb && !cb(92, "Writing merged Sentinel-1 SLC...")) return -2;
 	Mat s_re, s_re2;
-	conversion.read_array_from_h5(frame1_h5, "s_re", s_re);
-	conversion.read_array_from_h5(frame2_h5, "s_re", s_re2);
+	Hdf5IO::readArray(frame1_h5, "s_re", s_re);
+	Hdf5IO::readArray(frame2_h5, "s_re", s_re2);
 	if (range_len1 != range_len2)
 	{
 		if (range_len1 > range_len2)
@@ -12947,10 +13032,10 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(s_re2, s_re, s_re);
 	}
-	conversion.write_array_to_h5(outframe_h5, "s_re", s_re);
+	Hdf5IO::writeArray(outframe_h5, "s_re", s_re);
 
-	conversion.read_array_from_h5(frame1_h5, "s_im", s_re);
-	conversion.read_array_from_h5(frame2_h5, "s_im", s_re2);
+	Hdf5IO::readArray(frame1_h5, "s_im", s_re);
+	Hdf5IO::readArray(frame2_h5, "s_im", s_re2);
 	if (range_len1 != range_len2)
 	{
 		if (range_len1 > range_len2)
@@ -12970,7 +13055,7 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 	{
 		cv::vconcat(s_re2, s_re, s_re);
 	}
-	conversion.write_array_to_h5(outframe_h5, "s_im", s_re);
+	Hdf5IO::writeArray(outframe_h5, "s_im", s_re);
 	if (cb && !cb(96, "Fitting merged Sentinel-1 metadata...")) return -2;
 
 
@@ -13400,11 +13485,11 @@ int Utils::S1_frame_merge(const char* frame1_h5, const char* frame2_h5, const ch
 			coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
 			temp.copyTo(col_coefficient);
 		}
-		conversion.write_array_to_h5(outframe_h5, "lon_coefficient", lon_coefficient);
-		conversion.write_array_to_h5(outframe_h5, "lat_coefficient", lat_coefficient);
-		conversion.write_array_to_h5(outframe_h5, "inc_coefficient", inc_coefficient);
-		conversion.write_array_to_h5(outframe_h5, "row_coefficient", row_coefficient);
-		conversion.write_array_to_h5(outframe_h5, "col_coefficient", col_coefficient);
+		Hdf5IO::writeArray(outframe_h5, "lon_coefficient", lon_coefficient);
+		Hdf5IO::writeArray(outframe_h5, "lat_coefficient", lat_coefficient);
+		Hdf5IO::writeArray(outframe_h5, "inc_coefficient", inc_coefficient);
+		Hdf5IO::writeArray(outframe_h5, "row_coefficient", row_coefficient);
+		Hdf5IO::writeArray(outframe_h5, "col_coefficient", col_coefficient);
 	}
 	
 	if (cb && !cb(100, "Sentinel-1 two-frame merge complete.")) return -2;
@@ -15018,7 +15103,6 @@ int Utils::geo_transformation(
 	{
 		DTM.convertTo(DTM, CV_64F);
 	}
-	FormatConversion conversion;
 	Mat row_matrix, col_matrix, utm_x, utm_y;
 	vector<Mat> lon_matrix;
 	vector<Mat> lat_matrix;
@@ -15317,7 +15401,6 @@ int Utils::geo_transformation(
 	{
 		DTM.convertTo(DTM, CV_64F);
 	}
-	FormatConversion conversion;
 	Mat row_matrix, col_matrix, utm_x, utm_y;
 	vector<Mat> lon_matrix;
 	vector<Mat> lat_matrix;

@@ -3,111 +3,12 @@
 #define __FORMATCONVERSION__H__
 
 #include <atomic>
+#include <cstdint>
+#include "..\include\InSARDiagnostics.h"
 #include<string>
 #include<memory>
 #include"..\include\Package.h"
 #include"..\include\ComplexMat.h"
-#include"hdf5.h"
-
-// 轻量级 RAII 包装器，用于自动管理 HDF5 句柄的生命周期
-class H5UniqueId
-{
-private:
-	hid_t m_id;
-
-public:
-	H5UniqueId(hid_t id = -1) : m_id(id) {}
-
-	~H5UniqueId()
-	{
-		close();
-	}
-
-	// 禁用拷贝以防双重释放
-	H5UniqueId(const H5UniqueId&) = delete;
-	H5UniqueId& operator=(const H5UniqueId&) = delete;
-
-	// 支持所有权转移的移动操作
-	H5UniqueId(H5UniqueId&& other) noexcept : m_id(other.m_id)
-	{
-		other.m_id = -1;
-	}
-
-	H5UniqueId& operator=(H5UniqueId&& other) noexcept
-	{
-		if (this != &other)
-		{
-			close();
-			m_id = other.m_id;
-			other.m_id = -1;
-		}
-		return *this;
-	}
-
-	// 支持直接赋值 raw hid_t
-	H5UniqueId& operator=(hid_t new_id)
-	{
-		if (m_id != new_id)
-		{
-			close();
-			m_id = new_id;
-		}
-		return *this;
-	}
-
-	// 隐式转换为原始 hid_t 句柄，便于与原有 API 兼容
-	operator hid_t() const
-	{
-		return m_id;
-	}
-
-	hid_t get() const
-	{
-		return m_id;
-	}
-
-	hid_t release()
-	{
-		hid_t temp = m_id;
-		m_id = -1;
-		return temp;
-	}
-
-	void close()
-	{
-		if (m_id >= 0)
-		{
-			H5I_type_t type = H5Iget_type(m_id);
-			switch (type)
-			{
-			case H5I_FILE:
-				H5Fclose(m_id);
-				break;
-			case H5I_GROUP:
-				H5Gclose(m_id);
-				break;
-			case H5I_DATASET:
-				H5Dclose(m_id);
-				break;
-			case H5I_DATASPACE:
-				H5Sclose(m_id);
-				break;
-			case H5I_DATATYPE:
-				H5Tclose(m_id);
-				break;
-			case H5I_ATTR:
-				H5Aclose(m_id);
-				break;
-			case H5I_GENPROP_LST:
-				H5Pclose(m_id);
-				break;
-			default:
-				break;
-			}
-			m_id = -1;
-		}
-	}
-};
 #define Big2Little64(A) ((uint64_t)(A&0xff00000000000000)>>56|(A&0x00ff000000000000)>>40|(A&0x0000ff0000000000)>>24|(A&0x000000ff00000000)>>8|(A&0x00000000ff000000)<<8|(A&0x0000000000ff0000)<<24|(A&0x000000000000ff00)<<40|(A&0x00000000000000ff)<<56)
 #define Big2Little32(A) ((uint32_t)(A&0xff000000)>>24|(uint32_t)(A&0x00ff0000)>>8 | (uint32_t)(A&0x0000ff00)<<8|(uint32_t)(A&0x000000ff)<<24)
 #define Big2Little16(A) ((uint16_t)(A&0xff00)>>8 | (uint16_t)(A&0x00ff)<<8)
@@ -712,9 +613,9 @@ private:
 /*********           格式转换类库        **********/
 /**************************************************/
 
-typedef bool (*ProgressCallback)(int percent, const char* message, void* userData);
 
-// Task-scoped native diagnostics. The callback is synchronous: string pointers
+
+/* // Task-scoped native diagnostics. The callback is synchronous: string pointers
 // remain valid only for the duration of the callback and implementations must
 // be thread-safe and must not throw across the DLL boundary.
 enum InSARDiagnosticSeverity
@@ -745,7 +646,7 @@ struct InSARDiagnosticEvent
 	long long elapsedMs;
 };
 
-typedef void (__stdcall *InSARDiagnosticCallback)(const InSARDiagnosticEvent* event, void* userData);
+typedef void (__stdcall *InSARDiagnosticCallback)(const InSARDiagnosticEvent* event, void* userData); */
 
 class InSAR_API FormatConversion
 {
@@ -1415,6 +1316,8 @@ public:
 /*--------------------------------------*/
 /*              卫星轨道数据            */
 /*--------------------------------------*/
+class orbitStateVectors;
+#if 0
 class InSAR_API orbitStateVectors
 {
 public:
@@ -1492,6 +1395,7 @@ private:
 	/*轨道信息是否已更新*/
 	bool isOrbitUpdated;
 };
+#endif
 
 
 class InSAR_API SARDataReader
@@ -1573,23 +1477,12 @@ private:
 	* @param attribute_value                 string属性值（返回值）
 	* @return 成功返回0，否则返回-1
 	*/
-	int get_str_attribute(
-		hid_t object_id,
-		const char* attribute_name,
-		string& attribute_value
-	);
 	/** @brief 从hdf5文件读取数组类型属性
 	* @param object_id                       相应的object
 	* @param attribute_name                  属性名
 	* @param attribute_value                 属性值（返回值）
 	* @return 成功返回0，否则返回-1
 	*/
-	int get_array_attribute(
-		hid_t object_id,
-		const char* attribute_name,
-		Mat& attribute_value
-	);
-
 private:
 	string csk_data_file;
 	Mat topleft, topright, bottomleft, bottomright;
@@ -2378,6 +2271,105 @@ public:
 
 /*--------------------------------------------------*/
 /*              哨兵一号后向地理编码配准            */
+constexpr uint32_t SENTINEL_REFINEMENT_OPTIONS_VERSION = 2;
+constexpr uint32_t SENTINEL_REFINEMENT_RESULT_VERSION = 1;
+constexpr uint32_t SENTINEL_REFINEMENT_TRANSACTION_STATUS_VERSION = 1;
+
+enum SentinelRefinementQualityCode
+{
+	SENTINEL_REFINEMENT_QUALITY_NOT_REQUESTED = 0,
+	SENTINEL_REFINEMENT_QUALITY_APPLIED = 1,
+	SENTINEL_REFINEMENT_QUALITY_APPLIED_ZERO = 2,
+	SENTINEL_REFINEMENT_QUALITY_WARNING_LOW_COHERENCE = 3,
+	SENTINEL_REFINEMENT_QUALITY_UNAVAILABLE = 4,
+	SENTINEL_REFINEMENT_QUALITY_FAILED = 5
+};
+
+enum SentinelRefinementWarningFlags
+{
+	SENTINEL_REFINEMENT_WARNING_NONE = 0,
+	SENTINEL_REFINEMENT_WARNING_ESD_LOW_COHERENCE = 1 << 0,
+	SENTINEL_REFINEMENT_WARNING_RANGE_NOT_REQUESTED = 1 << 1,
+	SENTINEL_REFINEMENT_WARNING_RANGE_EXPLICIT_ZERO = 1 << 2
+};
+
+enum SentinelRangeOffsetMode
+{
+	SENTINEL_RANGE_OFFSET_NONE = 0,
+	SENTINEL_RANGE_OFFSET_PROVIDED = 1,
+	SENTINEL_RANGE_OFFSET_ESTIMATE = 2
+};
+
+enum SentinelRefinementTransactionState
+{
+	SENTINEL_REFINEMENT_TRANSACTION_NONE = 0,
+	SENTINEL_REFINEMENT_TRANSACTION_COMPLETE = 1,
+	SENTINEL_REFINEMENT_TRANSACTION_IN_PROGRESS = 2,
+	SENTINEL_REFINEMENT_TRANSACTION_FAILED = 3,
+	SENTINEL_REFINEMENT_TRANSACTION_INVALID = 4
+};
+
+// imageIndex is always 1-based, matching masterIndex and Sentinel burst status.
+struct SentinelRangeOffsetInput
+{
+	int imageIndex;
+	double offset;
+};
+
+// POD ABI contract. NONE requires rangeOffsets == nullptr and does not estimate
+// or apply range offsets. PROVIDED requires one 1-based entry per slave image;
+// a present 0.0 is an explicit zero correction. ESTIMATE requires nullptr and
+// runs the frozen Registration sampling/correlation strategy in this DLL.
+struct SentinelRefinementOptions
+{
+	uint32_t version;
+	uint32_t structSize;
+	int enableEsd;
+	int esdRangeMultilook;
+	int esdAzimuthMultilook;
+	double esdCoherenceThreshold;
+	double esdHistogramBinSize;
+	double esdDopplerRateHz;
+	double esdAzimuthBandwidthHz;
+	int rangeOffsetMode;
+	int rangeSamplePointCount;
+	int rangeTemplateSize;
+	int rangeSearchSize;
+	const SentinelRangeOffsetInput* rangeOffsets;
+	int rangeOffsetCount;
+	const char* transactionDirectory;
+};
+
+struct SentinelRefinementImageResult
+{
+	int imageIndex;
+	double esdAzimuthOffset;
+	double rangeOffset;
+	int esdQualityCode;
+	int rangeQualityCode;
+	uint32_t warningFlags;
+};
+
+// The caller owns images. imageCapacity must be at least the slave image count.
+struct SentinelRefinementResult
+{
+	uint32_t version;
+	uint32_t structSize;
+	SentinelRefinementImageResult* images;
+	int imageCapacity;
+	int imageCount;
+};
+
+// POD status for the output-directory transaction. COMPLETE is returned only
+// after the manifest and every H5 marker agree on the transaction ID.
+struct SentinelRefinementTransactionStatus
+{
+	uint32_t version;
+	uint32_t structSize;
+	int state;
+	int outputCount;
+	int verifiedOutputCount;
+};
 /*--------------------------------------------------*/
 class InSAR_API Sentinel1BackGeocoding
 {
@@ -2542,6 +2534,19 @@ public:
 		InSARDiagnosticCallback diagnosticCallback = nullptr,
 		void* diagnosticUserData = nullptr
 	);
+	/**
+	 * Applies ESD and optional caller-provided range offsets to full-burst output
+	 * H5 files. Success is returned only after the output-group transaction is
+	 * committed as complete in refinement_transaction.json.
+	 */
+	int applyPostRegistrationRefinement(
+		const SentinelRefinementOptions& options,
+		SentinelRefinementResult& result,
+		InSARDiagnosticCallback callback = nullptr,
+		void* userData = nullptr
+	);
+	int getPostRegistrationRefinementTransactionStatus(
+		SentinelRefinementTransactionStatus& status) const;
 	/** Configure the callback used by subsequent task calls on this instance. */
 	void setDiagnosticCallback(InSARDiagnosticCallback diagnosticCallback, void* diagnosticUserData) noexcept;
 	/** @brief Thread-safe cooperative cancellation. Cancelled operations return -2. */
