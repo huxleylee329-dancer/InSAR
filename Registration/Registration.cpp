@@ -22,6 +22,42 @@ namespace
 {
 	constexpr double INSAR_PI = 3.141592653589793238462643383279502884;
 
+	void emit_registration_diagnostic(
+		InSARDiagnosticCallback callback,
+		void* userData,
+		const char* phase,
+		const char* message,
+		const char* detail = nullptr,
+		const char* h5File = nullptr,
+		int statusCode = 0)
+	{
+		if (!callback)
+			return;
+		InSARDiagnosticEvent event = {};
+		event.version = 1;
+		event.severity = INSAR_DIAGNOSTIC_TRACE;
+		event.category = "registration";
+		event.phase = phase;
+		event.message = message;
+		event.detail = detail;
+		event.h5File = h5File;
+		event.imageIndex = -1;
+		event.burstIndex = -1;
+		event.statusCode = statusCode;
+		event.rows = -1;
+		event.columns = -1;
+		event.cvType = -1;
+		event.elapsedMs = -1;
+		try
+		{
+			callback(&event, userData);
+		}
+		catch (...)
+		{
+			// Diagnostics must not affect registration results.
+		}
+	}
+
 	inline double sinc_func(double x)
 	{
 		if (std::abs(x) < 1.0e-12) return 1.0;
@@ -2587,14 +2623,16 @@ extern "C" InSAR_API int DetectAdaptiveSamplingPoints(
 	return found_count;
 }
 
-extern "C" InSAR_API int CalculateOffsetAndCoherence(
+static int CalculateOffsetAndCoherenceImpl(
 	const char* master_h5_path,
 	const char* slave_h5_path,
 	const Point2D* sample_points,
 	int points_count,
 	int template_size,
 	int search_size,
-	AlignmentResult* out_results
+	AlignmentResult* out_results,
+	InSARDiagnosticCallback diagnosticCallback,
+	void* diagnosticUserData
 ) {
 	if (master_h5_path == nullptr || slave_h5_path == nullptr || sample_points == nullptr ||
 		out_results == nullptr || points_count != 5 || template_size <= 0 || search_size <= template_size)
@@ -2723,6 +2761,12 @@ extern "C" InSAR_API int CalculateOffsetAndCoherence(
 		ComputeSubBlockCoherence(M_re, M_im, S_re_opt, S_im_opt, coh_opt_map, coh_opt_mean);
 		out_results[i].coherenceOptimal = coh_opt_mean;
 
+		char message[512] = {};
+		sprintf_s(message, "Amplitude matching sample %d: row=%d, column=%d, offsetY=%d, offsetX=%d, correlation=%.6f, coherenceZeroShift=%.6f, coherenceOptimal=%.6f.",
+			i + 1, m_row, m_col, dy, dx, maxVal, coh_zero_mean, coh_opt_mean);
+		emit_registration_diagnostic(diagnosticCallback, diagnosticUserData, "amplitude_matching.sample", message,
+			"Offsets are measured in pixels after template matching.", slave_h5_path);
+
 		// 7. 渲染相干性热力图 (Heatmap)
 		cv::Mat coh_8u;
 		coh_opt_map.convertTo(coh_8u, CV_8U, 255.0);
@@ -2750,6 +2794,34 @@ extern "C" InSAR_API int CalculateOffsetAndCoherence(
 	}
 
 	return 0;
+}
+
+extern "C" InSAR_API int CalculateOffsetAndCoherence(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const Point2D* sample_points,
+	int points_count,
+	int template_size,
+	int search_size,
+	AlignmentResult* out_results
+) {
+	return CalculateOffsetAndCoherenceImpl(master_h5_path, slave_h5_path, sample_points, points_count,
+		template_size, search_size, out_results, nullptr, nullptr);
+}
+
+extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const Point2D* sample_points,
+	int points_count,
+	int template_size,
+	int search_size,
+	AlignmentResult* out_results,
+	InSARDiagnosticCallback diagnosticCallback,
+	void* diagnosticUserData
+) {
+	return CalculateOffsetAndCoherenceImpl(master_h5_path, slave_h5_path, sample_points, points_count,
+		template_size, search_size, out_results, diagnosticCallback, diagnosticUserData);
 }
 
 extern "C" InSAR_API void FreeAlignmentResults(

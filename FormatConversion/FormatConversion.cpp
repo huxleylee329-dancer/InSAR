@@ -5,6 +5,8 @@
 #include <map>
 #include <limits>
 #include <algorithm>
+#include <cstdarg>
+#include <climits>
 #include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
 #include"..\include\FormatConversion.h"                                                      
 #include"..\include\Utils.h"
@@ -34,6 +36,132 @@ static std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticSt
 static thread_local int g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
 static thread_local SentinelZeroDopplerDiagnostic g_thread_zero_doppler_diagnostic;
 static thread_local bool g_has_thread_zero_doppler_diagnostic = false;
+
+enum RgAzProjectionFailureReason
+{
+	RGAZ_PROJECTION_NONE = 0,
+	RGAZ_PROJECTION_INVALID_INPUT = 1,
+	RGAZ_PROJECTION_SLANT_RANGE = 2,
+	RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS = 3,
+	RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS = 4
+};
+
+static thread_local int g_rgaz_projection_failure_reason = RGAZ_PROJECTION_NONE;
+
+struct ActiveDiagnosticContext
+{
+	InSARDiagnosticCallback callback;
+	void* userData;
+	int imageIndex;
+	int burstIndex;
+
+	ActiveDiagnosticContext() : callback(nullptr), userData(nullptr), imageIndex(-1), burstIndex(-1) {}
+};
+
+static thread_local ActiveDiagnosticContext g_active_diagnostic_context;
+
+class ScopedDiagnosticContext
+{
+public:
+	ScopedDiagnosticContext(InSARDiagnosticCallback callback, void* userData, int imageIndex = -1, int burstIndex = -1)
+		: previous_(g_active_diagnostic_context)
+	{
+		g_active_diagnostic_context.callback = callback ? callback : previous_.callback;
+		g_active_diagnostic_context.userData = callback ? userData : previous_.userData;
+		g_active_diagnostic_context.imageIndex = imageIndex > 0 ? imageIndex : previous_.imageIndex;
+		g_active_diagnostic_context.burstIndex = burstIndex > 0 ? burstIndex : previous_.burstIndex;
+	}
+
+	~ScopedDiagnosticContext()
+	{
+		g_active_diagnostic_context = previous_;
+	}
+
+private:
+	ActiveDiagnosticContext previous_;
+};
+
+static void emit_diagnostic(
+	InSARDiagnosticSeverity severity,
+	const char* category,
+	const char* phase,
+	const char* message,
+	const char* detail = nullptr,
+	const char* h5File = nullptr,
+	const char* dataset = nullptr,
+	int statusCode = 0,
+	int rows = -1,
+	int columns = -1,
+	int cvType = -1,
+	long long elapsedMs = -1)
+{
+	const ActiveDiagnosticContext context = g_active_diagnostic_context;
+	if (!context.callback)
+		return;
+
+	InSARDiagnosticEvent event = {};
+	event.version = 1;
+	event.severity = severity;
+	event.category = category;
+	event.phase = phase;
+	event.message = message;
+	event.detail = detail;
+	event.h5File = h5File;
+	event.dataset = dataset;
+	event.imageIndex = context.imageIndex;
+	event.burstIndex = context.burstIndex;
+	event.statusCode = statusCode;
+	event.rows = rows;
+	event.columns = columns;
+	event.cvType = cvType;
+	event.elapsedMs = elapsedMs;
+	try
+	{
+		context.callback(&event, context.userData);
+	}
+	catch (...)
+	{
+		// Native diagnostics must never alter processing control flow.
+	}
+}
+
+struct Hdf5ErrorText
+{
+	std::string value;
+};
+
+static herr_t append_hdf5_error(unsigned int, const H5E_error2_t* error, void* userData)
+{
+	Hdf5ErrorText* text = static_cast<Hdf5ErrorText*>(userData);
+	if (!text || !error)
+		return 0;
+	const char* major = H5Eget_major(error->maj_num);
+	const char* minor = H5Eget_minor(error->min_num);
+	char line[768] = {};
+	sprintf_s(line, "%s:%u %s: %s [%s / %s]",
+		error->file_name ? error->file_name : "<unknown>",
+		error->line,
+		error->func_name ? error->func_name : "<unknown>",
+		error->desc ? error->desc : "<no description>",
+		major ? major : "<unknown major>",
+		minor ? minor : "<unknown minor>");
+	if (!text->value.empty())
+		text->value.append(" | ");
+	text->value.append(line);
+	return 0;
+}
+
+static std::string capture_hdf5_error_stack()
+{
+	Hdf5ErrorText text;
+	hid_t stack = H5Eget_current_stack();
+	if (stack >= 0)
+	{
+		H5Ewalk2(stack, H5E_WALK_DOWNWARD, append_hdf5_error, &text);
+		H5Eclose_stack(stack);
+	}
+	return text.value;
+}
 
 struct ZeroDopplerFailureAccumulator
 {
@@ -1205,18 +1333,31 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 		dataset_name == NULL
 		)
 	{
-		fprintf(stderr, "read_array_from_h5(): input check  failed!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array", "Invalid HDF5 read arguments.",
+			"filename and dataset must both be non-null.", filename, dataset_name, -1001);
 		return -1;
 	}
 	H5UniqueId file_id = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
 	if (file_id < 0)
 	{
-		fprintf(stderr, "read_array_from_h5(): failed to open %s!\n", filename);
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.open_file", "Failed to open HDF5 file.",
+			detail.c_str(), filename, dataset_name, -1002);
 		return -1;
 	}
 	string s = "/";
 	s.append(dataset_name);
-	if (H5Lexists(file_id, s.c_str(), H5P_DEFAULT) <= 0)
+	const htri_t readDatasetExists = H5Lexists(file_id, s.c_str(), H5P_DEFAULT);
+	if (readDatasetExists <= 0)
+	{
+		const std::string detail = readDatasetExists < 0 ? capture_hdf5_error_stack() : "Dataset link does not exist.";
+		emit_diagnostic(readDatasetExists < 0 ? INSAR_DIAGNOSTIC_ERROR : INSAR_DIAGNOSTIC_DEBUG,
+			"hdf5", "read_array.locate_dataset", "HDF5 dataset is unavailable.",
+			detail.c_str(), filename, dataset_name, readDatasetExists < 0 ? -1003 : -1004);
+		return -1;
+	}
+	const htri_t datasetExists = readDatasetExists;
+	if (datasetExists <= 0)
 	{
 		// 数据集不存在时静默返回，允许可选参数/直通路径以默认值降级运行，消灭控制台噪点
 		return -1;
@@ -1224,18 +1365,44 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 	H5UniqueId dataset_id = H5Dopen(file_id, s.c_str(), H5P_DEFAULT);
 	if (dataset_id < 0)
 	{
-		fprintf(stderr, "read_array_from_h5(): failed to open dataset %s!\n", dataset_name);
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.open_dataset", "Failed to open HDF5 dataset.",
+			detail.c_str(), filename, dataset_name, -1005);
 		return -1;
 	}
 	H5UniqueId space_id = H5Dget_space(dataset_id);
 	if (space_id < 0)
 	{
-		fprintf(stderr, "read_array_from_h5(): failed to open dataspace of %s!\n", dataset_name);
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.open_dataspace", "Failed to open HDF5 dataspace.",
+			detail.c_str(), filename, dataset_name, -1006);
 		return -1;
 	}
-	hsize_t dims[2];
-	int ndims = H5Sget_simple_extent_dims(space_id, dims, NULL);
+	const int rank = H5Sget_simple_extent_ndims(space_id);
+	if (rank != 2)
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.validate_shape", "Unsupported HDF5 dataset rank.",
+			"read_array_from_h5 requires a two-dimensional dataset.", filename, dataset_name, -1007,
+			rank, -1);
+		return -1;
+	}
+	hsize_t dims[2] = { 0, 0 };
+	if (H5Sget_simple_extent_dims(space_id, dims, NULL) != 2 || dims[0] == 0 || dims[1] == 0 ||
+		dims[0] > static_cast<hsize_t>(INT_MAX) || dims[1] > static_cast<hsize_t>(INT_MAX))
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.validate_shape", "Invalid HDF5 dataset dimensions.",
+			"Dataset must have two non-zero dimensions representable by cv::Mat.", filename, dataset_name, -1008);
+		return -1;
+	}
 	H5UniqueId type = H5Dget_type(dataset_id);
+	if (type < 0)
+	{
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.open_type", "Failed to obtain HDF5 dataset type.",
+			detail.c_str(), filename, dataset_name, -1009,
+			static_cast<int>(dims[0]), static_cast<int>(dims[1]));
+		return -1;
+	}
 	herr_t status = -1;
 	int cv_type = h5TypeToCvType(type);
 	if (cv_type != -1)
@@ -1244,9 +1411,18 @@ int FormatConversion::read_array_from_h5(const char* filename, const char* datas
 		hid_t mem_type = cvTypeToH5TypeForRead(cv_type);
 		status = H5Dread(dataset_id, mem_type, H5S_ALL, H5S_ALL, H5P_DEFAULT, (void*)out_array.data);
 	}
+	else
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.validate_type", "Unsupported HDF5 dataset type.",
+			"No OpenCV type mapping is available for this dataset.", filename, dataset_name, -1010,
+			static_cast<int>(dims[0]), static_cast<int>(dims[1]), cv_type);
+	}
 	if (status < 0)
 	{
-		fprintf(stderr, "read_array_from_h5(): failed to read from %s!\n", dataset_name);
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "read_array.read", "Failed to read HDF5 dataset contents.",
+			detail.c_str(), filename, dataset_name, -1011,
+			static_cast<int>(dims[0]), static_cast<int>(dims[1]), cv_type);
 		return -1;
 	}
 	return 0;
@@ -1368,6 +1544,7 @@ int FormatConversion::read_subarray_from_h5(const char* filename, const char* da
 int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* dataset_name, Mat& subarray, int offset_row, int offset_col, int rows_subarray, int cols_subarray)
 {
 	H5_LOCK;
+	const ULONGLONG writeStartTick = GetTickCount64();
 	if (h5_filename == NULL ||
 		dataset_name == NULL ||
 		offset_row < 0 ||
@@ -1376,14 +1553,17 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		cols_subarray < 1
 		)
 	{
-		fprintf(stderr, "write_subarray_to_h5(): input check failed!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.validate_input", "Invalid HDF5 subarray write arguments.",
+			"File, dataset, offsets, and dimensions must be valid.", h5_filename, dataset_name, -1201);
 		return -1;
 	}
 
 	H5UniqueId file_id = H5Fopen(h5_filename, H5F_ACC_RDWR, H5P_DEFAULT);
 	if (file_id < 0)
 	{
-		fprintf(stderr, "write_subarray_to_h5(): failed to open %s!\n", h5_filename);
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.open_file", "Failed to open HDF5 file for writing.",
+			detail.c_str(), h5_filename, dataset_name, -1202);
 		return -1;
 	}
 	string s = "/";
@@ -1406,19 +1586,24 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 		(offset_row + rows_subarray) > (int)dim[0] ||
 		(offset_col + cols_subarray) > (int)dim[1])
 	{
-		fprintf(stderr, "write_subarray_to_h5(): invalid subarray index!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.validate_bounds", "Subarray exceeds HDF5 dataset bounds.",
+			"Check output dimensions and write offsets.", h5_filename, dataset_name, -1203,
+			static_cast<int>(dim[0]), static_cast<int>(dim[1]), subarray.type());
 		return -1;
 	}
 	H5UniqueId type = H5Dget_type(dataset_id);
 	int expected_cv_type = h5TypeToCvType(type);
 	if (expected_cv_type == -1 || expected_cv_type == CV_8U)
 	{
-		fprintf(stderr, "write_subarray_to_h5(): datatype not support yet!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.validate_type", "Unsupported HDF5 dataset type for subarray write.",
+			nullptr, h5_filename, dataset_name, -1204, static_cast<int>(dim[0]), static_cast<int>(dim[1]), expected_cv_type);
 		return -1;
 	}
 	else if (subarray.type() != expected_cv_type)
 	{
-		fprintf(stderr, "write_subarray_to_h5(): datatype mismatch!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.validate_type", "HDF5 subarray type does not match destination dataset.",
+			"The source matrix type must equal the destination dataset type.", h5_filename, dataset_name, -1205,
+			static_cast<int>(dim[0]), static_cast<int>(dim[1]), expected_cv_type);
 		return -1;
 	}
 	// 定义子集四大件，补偿，个数，间隔和块大小
@@ -1446,7 +1631,16 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 	H5UniqueId memspace_id = H5Screate_simple(2, dimsm, NULL);
 	H5Sselect_hyperslab(dataspace_id, H5S_SELECT_SET, offset, stride, count, block);
 	hid_t mem_type = cvTypeToH5TypeForRead(expected_cv_type);
-	H5Dwrite(dataset_id, mem_type, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data);
+	if (H5Dwrite(dataset_id, mem_type, memspace_id, dataspace_id, H5P_DEFAULT, subarray.data) < 0)
+	{
+		const std::string detail = capture_hdf5_error_stack();
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "hdf5", "write_subarray.write", "Failed to write HDF5 subarray.",
+			detail.c_str(), h5_filename, dataset_name, -1206, rows_subarray, cols_subarray, expected_cv_type);
+		return -1;
+	}
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "hdf5", "write_subarray.complete", "HDF5 subarray write completed.",
+		nullptr, h5_filename, dataset_name, 0, rows_subarray, cols_subarray, expected_cv_type,
+		static_cast<long long>(GetTickCount64() - writeStartTick));
 	return 0;
 }
 
@@ -10786,6 +10980,17 @@ int Sentinel1Utils::init()
 	ret = conversion.read_array_from_h5(h5File.c_str(), "state_vec", this->orbitList);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(h5File.c_str(), "fine_state_vec", this->preciseOrbitList);
+	if (ret == 0) {
+		char message[256] = {};
+		sprintf_s(message, "Loaded precise orbit state vectors: count=%d.", this->preciseOrbitList.rows);
+		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "orbit", "load_precise_orbit", message,
+			"Using fine_state_vec for geometric positioning.", h5File.c_str(), "fine_state_vec");
+	} else {
+		char message[256] = {};
+		sprintf_s(message, "Precise orbit state vectors are unavailable; using default orbit vectors: count=%d.", this->orbitList.rows);
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "orbit", "load_precise_orbit", message,
+			"fine_state_vec was not available; state_vec will be used.", h5File.c_str(), "fine_state_vec");
+	}
 	ret = conversion.read_array_from_h5(h5File.c_str(), "antennaPattern_elevationAngle", this->antennaPattern_elevationAngle);
 	//if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(h5File.c_str(), "antennaPattern_slantRangeTime", this->antennaPattern_slantRangeTime);
@@ -11118,8 +11323,10 @@ int Sentinel1Utils::getRgAzPosition(
 	int ret;
 	g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
 	g_has_thread_zero_doppler_diagnostic = false;
+	g_rgaz_projection_failure_reason = RGAZ_PROJECTION_NONE;
 	if (!bInitialized || !rangeIndex || !azimuthIndex)
 	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_INVALID_INPUT;
 		g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
 		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
 		return -1;
@@ -11129,18 +11336,44 @@ int Sentinel1Utils::getRgAzPosition(
 	if (return_failed(ret)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
-	if (return_check(ret, "getSlantRange()", error_head)) return -1;
+	if (return_check(ret, "getSlantRange()", error_head))
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_SLANT_RANGE;
+		return -1;
+	}
 	*rangeIndex = (slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
 
-	if (*azimuthIndex < 0.0 || *rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst || *azimuthIndex >= linesPerBurst) return -1;
+	if (*rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst)
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
+		return -1;
+	}
+	if (*azimuthIndex < 0.0 || *azimuthIndex >= linesPerBurst)
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS;
+		return -1;
+	}
 	int x = static_cast<int>(*rangeIndex - 1); x = x < 0 ? 0 : x;
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
 	if (return_failed(ret)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
-	if (return_check(ret, "getSlantRange()", error_head)) return -1;
+	if (return_check(ret, "getSlantRange()", error_head))
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_SLANT_RANGE;
+		return -1;
+	}
 	*rangeIndex = (slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
-	if (*azimuthIndex < 0.0 || *rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst || *azimuthIndex >= linesPerBurst) return -1;
+	if (*rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst)
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
+		return -1;
+	}
+	if (*azimuthIndex < 0.0 || *azimuthIndex >= linesPerBurst)
+	{
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS;
+		return -1;
+	}
 
 	return 0;
 }
@@ -11797,6 +12030,8 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 {
 	cancelRequested.store(false, std::memory_order_relaxed);
+	diagnosticCallback = nullptr;
+	diagnosticUserData = nullptr;
 	memset(this->error_head, 0, 256);
 	strcpy(this->error_head, "FORMATCONVERSION_DLL_ERROR: error happens when using ");
 	this->dem = NULL;
@@ -11826,6 +12061,14 @@ bool Sentinel1BackGeocoding::isCancelRequested() const noexcept
 	return cancelRequested.load(std::memory_order_acquire);
 }
 
+void Sentinel1BackGeocoding::setDiagnosticCallback(
+	InSARDiagnosticCallback callback,
+	void* userData) noexcept
+{
+	diagnosticCallback = callback;
+	diagnosticUserData = userData;
+}
+
 Sentinel1BackGeocoding::~Sentinel1BackGeocoding()
 {
 	if (dem)
@@ -11849,21 +12092,32 @@ int Sentinel1BackGeocoding::init(
 	vector<string>& h5Files,
 	vector<string>& outFiles,
 	const char* DEMPath,
-	int masterIndex
+	int masterIndex,
+	InSARDiagnosticCallback callback,
+	void* userData
 )
 {
+	if (callback || userData)
+		setDiagnosticCallback(callback, userData);
+	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
 	clearCancelRequest();
+	char initMessage[512] = {};
+	sprintf_s(initMessage, "Initializing Sentinel-1 back-geocoding: images=%zu, master=%d.", h5Files.size(), masterIndex);
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize", initMessage,
+		"Input metadata, DEM configuration, and output datasets will be validated.", DEMPath);
 	if (h5Files.size() < 2 || outFiles.size() != h5Files.size() || !DEMPath || !*DEMPath ||
 		masterIndex < 1 || masterIndex > static_cast<int>(h5Files.size()))
 	{
-		fprintf(stderr, "Sentinel1BackGeocoding::init(): input contract check failed!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "initialize.validate_input", "Invalid back-geocoding input contract.",
+			"At least two input files, matching output files, a DEM path, and a valid master index are required.", DEMPath, nullptr, -1101);
 		return -1;
 	}
 	for (size_t i = 0; i < h5Files.size(); i++)
 	{
 		if (h5Files[i].empty() || outFiles[i].empty())
 		{
-			fprintf(stderr, "Sentinel1BackGeocoding::init(): input contract check failed!\n");
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "initialize.validate_input", "Input or output path is empty.",
+				"Each image must have a non-empty input HDF5 path and output HDF5 path.", h5Files[i].c_str(), nullptr, -1102);
 			return -1;
 		}
 	}
@@ -11882,7 +12136,9 @@ int Sentinel1BackGeocoding::init(
 	{
 		if (validate_sentinel_metadata(su[i]) < 0)
 		{
-			fprintf(stderr, "Sentinel1BackGeocoding::init(): Sentinel metadata contract check failed for image %d!\n", i + 1);
+			ScopedDiagnosticContext imageDiagnosticScope(diagnosticCallback, diagnosticUserData, i + 1);
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "initialize.validate_metadata", "Sentinel-1 metadata contract validation failed.",
+				"Required burst, timing, valid-line, and orbit-vector metadata are incomplete or inconsistent.", su[i]->h5File.c_str(), nullptr, -1103);
 			return -1;
 		}
 	}
@@ -11896,17 +12152,19 @@ int Sentinel1BackGeocoding::init(
 	if (return_check(ret, "deBurstConfig()", error_head)) return -1;
 	ret = prepareOutFiles();
 	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
-
-	
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize.complete", "Back-geocoding initialization completed.",
+		"Input metadata and output dataset preparation succeeded.", DEMPath);
 
 	return 0;
 }
 
 int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 {
+	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
 	if (h5Files.size() < 2)
 	{
-		fprintf(stderr, "loadData(): input check failed!\n");
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "load_data.validate_input", "Insufficient Sentinel-1 input files.",
+			"At least a master and one slave image are required.", nullptr, nullptr, -1110);
 		return -1;
 	}
 	int ret;
@@ -11922,11 +12180,20 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 	su.clear();
 	for (int i = 0; i < numOfImages; i++)
 	{
+		ScopedDiagnosticContext imageDiagnosticScope(diagnosticCallback, diagnosticUserData, i + 1);
+		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "coregistration", "load_data.image", "Loading Sentinel-1 image metadata.",
+			nullptr, h5Files[i].c_str());
 		su.push_back(new Sentinel1Utils(h5Files[i].c_str()));
 		if (su[i])
 		{
 			ret = su[i]->init();
 			if (return_check(ret, "init()", error_head)) return -1;
+			char message[512] = {};
+			sprintf_s(message, "Sentinel-1 metadata loaded: swath=%s, polarization=%s, bursts=%d, linesPerBurst=%d, samplesPerBurst=%d, stateVectors=%d, preciseStateVectors=%d.",
+				su[i]->swath.c_str(), su[i]->polarization.c_str(), su[i]->burstCount, su[i]->linesPerBurst,
+				su[i]->samplesPerBurst, su[i]->orbitList.rows, su[i]->preciseOrbitList.rows);
+			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "coregistration", "load_data.metadata", message,
+				"Acquisition timing is represented by burst azimuth time metadata.", su[i]->h5File.c_str());
 		}
 	}
 	return 0;
@@ -11956,8 +12223,19 @@ int Sentinel1BackGeocoding::loadDEM(
 		delete dem; dem = NULL;
 	}
 	dem = new DigitalElevationModel();
+	const ULONGLONG loadStartTick = GetTickCount64();
 	ret = dem->getRawDEM(filepath, lonMin, lonMax, latMin, latMax);
 	if (return_check(ret, "getRawDEM()", error_head)) return -1;
+	const double lonLowerRight = dem->lonUpperLeft + (dem->cols - 1) * dem->lonSpacing;
+	const double latLowerRight = dem->latUpperLeft - (dem->rows - 1) * dem->latSpacing;
+	char message[768] = {};
+	sprintf_s(message, "DEM loaded: raster=%dx%d, longitude=[%.8f, %.8f], latitude=[%.8f, %.8f], spacing=(%.10f, %.10f), memoryBytes=%lld.",
+		dem->cols, dem->rows, dem->lonUpperLeft, lonLowerRight, latLowerRight, dem->latUpperLeft,
+		dem->lonSpacing, dem->latSpacing, static_cast<long long>(dem->rawDEM.total() * dem->rawDEM.elemSize()));
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "dem", "load.complete", message,
+		"DEM NoData is normalized by the current reader and cannot be distinguished from valid zero elevation.",
+		filepath, nullptr, 0, dem->rows, dem->cols, dem->rawDEM.type(),
+		static_cast<long long>(GetTickCount64() - loadStartTick));
 	return 0;
 }
 
@@ -11978,6 +12256,7 @@ int Sentinel1BackGeocoding::loadOutFiles(vector<string>& outFiles)
 
 int Sentinel1BackGeocoding::prepareOutFiles()
 {
+	const ULONGLONG preparationStartTick = GetTickCount64();
 	int ret; FormatConversion conversion;
 	if (!isdeBurstConfig)
 	{
@@ -11999,12 +12278,25 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 	}
 	for (int i = 0; i < numOfImages; i++)
 	{
+		ScopedDiagnosticContext imageDiagnosticScope(diagnosticCallback, diagnosticUserData, i + 1);
+		const ULONGLONG outputStartTick = GetTickCount64();
 		ret = conversion.creat_new_h5(this->outFiles[i].c_str());
 			if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_slc_to_h5(this->outFiles[i].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
+		char message[384] = {};
+		sprintf_s(message, "Prepared debursted output HDF5: dimensions=%dx%d, datasets=s_re,s_im.", slc.GetRows(), slc.GetCols());
+		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "hdf5", "prepare_output.complete", message,
+			nullptr, this->outFiles[i].c_str(), nullptr, 0, slc.GetRows(), slc.GetCols(), slc.type(),
+			static_cast<long long>(GetTickCount64() - outputStartTick));
 	}
 	this->deburstLines = slc.GetRows();
+	char message[384] = {};
+	sprintf_s(message, "Initial deburst output preparation completed: bursts=%d, lines=%d, samples=%d.",
+		su[masterIndex - 1]->burstCount, deburstLines, su[masterIndex - 1]->samplesPerBurst);
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "deburst", "prepare_output.complete", message,
+		nullptr, nullptr, nullptr, 0, deburstLines, su[masterIndex - 1]->samplesPerBurst, CV_32F,
+		static_cast<long long>(GetTickCount64() - preparationStartTick));
 	return 0;
 }
 
@@ -12079,8 +12371,11 @@ int Sentinel1BackGeocoding::computeBurstOffset()
 		burstOffsetComputed = true;
 		for (int j = 0; j < numOfImages; j++) {
 			if (j == masterIndex - 1) continue;
-			fprintf(stderr, "[DIAG] burstOffset: master[%d] -> slave[%d] = %d\n",
+			char message[256] = {};
+			sprintf_s(message, "Burst alignment calculated: master=%d, slave=%d, offset=%d.",
 				masterIndex, j + 1, su[j]->burstOffset);
+			ScopedDiagnosticContext slaveDiagnosticScope(diagnosticCallback, diagnosticUserData, j + 1);
+			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "coregistration", "burst_alignment", message);
 		}
 		return 0;
 	}
@@ -12093,7 +12388,9 @@ int Sentinel1BackGeocoding::computeBurstOffset()
 		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
 		g_sentinel_diagnostic_state[this].zeroOffsetFallback = true;
 	}
-	fprintf(stderr, "[DIAG] computeBurstOffset FALLBACK - all burst offsets set to 0!\n");
+	emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "coregistration", "burst_alignment.fallback",
+		"Burst alignment could not be estimated; all burst offsets were set to zero.",
+		"Geometric quality may be reduced. Inspect burst overlap and orbit diagnostics.");
 	return 0;
 }
 
@@ -12144,6 +12441,10 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	clear_zero_doppler_failure_statistics(this, slaveImagesIndex, sBurstIndex);
 	int zeroDopplerFailures = 0;
 	int rangeOrBurstFailures = 0;
+	int rangeOutOfBoundsFailures = 0;
+	int burstOutOfBoundsFailures = 0;
+	int slantRangeFailures = 0;
+	int invalidInputFailures = 0;
 	int masterZeroDopplerFailures = 0;
 	int masterRangeOrBurstFailures = 0;
 	ZeroDopplerFailureAccumulator masterFailures;
@@ -12156,6 +12457,10 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 		int localRangeOrBurstFailures = 0;
 		int localMasterZeroDopplerFailures = 0;
 		int localMasterRangeOrBurstFailures = 0;
+		int localRangeOutOfBoundsFailures = 0;
+		int localBurstOutOfBoundsFailures = 0;
+		int localSlantRangeFailures = 0;
+		int localInvalidInputFailures = 0;
 #pragma omp for schedule(guided)
 	for (int i = 0; i < dem->rows; i++)
 	{
@@ -12200,7 +12505,17 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 					SENTINEL_ZERO_DOPPLER_CALL_SLAVE_RG_AZ, earthPoint))
 					localZeroDopplerFailures++;
 				else
+				{
 					localRangeOrBurstFailures++;
+					switch (g_rgaz_projection_failure_reason)
+					{
+					case RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS: localRangeOutOfBoundsFailures++; break;
+					case RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS: localBurstOutOfBoundsFailures++; break;
+					case RGAZ_PROJECTION_SLANT_RANGE: localSlantRangeFailures++; break;
+					case RGAZ_PROJECTION_INVALID_INPUT: localInvalidInputFailures++; break;
+					default: break;
+					}
+				}
 			}
 		}
 	}
@@ -12213,6 +12528,10 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 		masterRangeOrBurstFailures += localMasterRangeOrBurstFailures;
 		zeroDopplerFailures += localZeroDopplerFailures;
 		rangeOrBurstFailures += localRangeOrBurstFailures;
+		rangeOutOfBoundsFailures += localRangeOutOfBoundsFailures;
+		burstOutOfBoundsFailures += localBurstOutOfBoundsFailures;
+		slantRangeFailures += localSlantRangeFailures;
+		invalidInputFailures += localInvalidInputFailures;
 	}
 	}
 	if (isCancelRequested()) return -2;
@@ -12225,10 +12544,18 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 			record_zero_doppler_failure(this, slaveFailures.diagnostics[reason], slaveFailures.counts[reason]);
 	}
 	int masterValid = 0, slaveValid = 0, total = dem->rows * dem->cols;
+	int validRowMin = dem->rows, validRowMax = -1, validColMin = dem->cols, validColMax = -1;
 	for (int i = 0; i < dem->rows; i++) {
 		for (int j = 0; j < dem->cols; j++) {
 			if (masterAzimuth.at<double>(i, j) > -0.5 && masterRange.at<double>(i, j) > -0.5) masterValid++;
-			if (slaveAzimuth.at<double>(i, j) > -0.5 && slaveRange.at<double>(i, j) > -0.5) slaveValid++;
+			if (slaveAzimuth.at<double>(i, j) > -0.5 && slaveRange.at<double>(i, j) > -0.5)
+			{
+				slaveValid++;
+				validRowMin = std::min(validRowMin, i);
+				validRowMax = std::max(validRowMax, i);
+				validColMin = std::min(validColMin, j);
+				validColMax = std::max(validColMax, j);
+			}
 		}
 	}
 	SentinelBurstQualityStatus status;
@@ -12259,20 +12586,43 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	}
 	if (hasZeroDopplerDiagnostic)
 	{
-		fprintf(stderr, "[ZeroDoppler][SUMMARY] scene=%s swath=%s polarization=%s image=%d burst=%d line=%d sample=%d reason=%d path=%d return=%d ground=(%.3f,%.3f,%.3f) targetDoppler=%.6f orbitRange=[%.6f,%.6f] nearestOrbitTime=%.6f stateVecCount=%d\n",
+		char message[1024] = {};
+		sprintf_s(message, "Zero-Doppler failure: scene=%s, swath=%s, polarization=%s, line=%d, sample=%d, reason=%d, path=%d, return=%d, ground=(%.3f,%.3f,%.3f), targetDoppler=%.6f, orbitRange=[%.6f,%.6f], nearestOrbitTime=%.6f, stateVectors=%d.",
 			diagnostic.scene, diagnostic.swath, diagnostic.polarization,
-			diagnostic.imageIndex, diagnostic.burstIndex, diagnostic.line, diagnostic.sample,
-			diagnostic.reason, diagnostic.callPath, diagnostic.returnCode,
+			diagnostic.line, diagnostic.sample, diagnostic.reason, diagnostic.callPath, diagnostic.returnCode,
 			diagnostic.groundPosition.x, diagnostic.groundPosition.y, diagnostic.groundPosition.z,
 			diagnostic.targetDoppler, diagnostic.orbitStartTime, diagnostic.orbitStopTime,
 			diagnostic.nearestOrbitTime, diagnostic.stateVectorCount);
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "geometry", "zero_doppler.summary", message,
+			"The first representative failure for this reason is reported; aggregate counts are included in the projection summary.",
+			diagnostic.scene, nullptr, diagnostic.returnCode);
 	}
 	double masterRatio = total > 0 ? 100.0 * masterValid / total : 0.0;
 	double slaveRatio = total > 0 ? 100.0 * slaveValid / total : 0.0;
-	fprintf(stderr, "[DIAG] computeSlavePosition: burst=%d slave=%d DEM=%dx%d masterProjectionValid=%d/%d(%.1f%%) slaveProjectionValid=%d/%d(%.1f%%) masterZeroDopplerFailures=%d masterRangeOrBurstFailures=%d slaveZeroDopplerFailures=%d slaveRangeOrBurstFailures=%d\n",
-		mBurstIndex, slaveImagesIndex, dem->rows, dem->cols,
-		masterValid, total, masterRatio, slaveValid, total, slaveRatio,
-		masterZeroDopplerFailures, masterRangeOrBurstFailures, zeroDopplerFailures, rangeOrBurstFailures);
+	char validExtent[384] = {};
+	if (validRowMax >= validRowMin && validColMax >= validColMin)
+	{
+		const double west = dem->lonUpperLeft + validColMin * dem->lonSpacing;
+		const double east = dem->lonUpperLeft + validColMax * dem->lonSpacing;
+		const double north = dem->latUpperLeft - validRowMin * dem->latSpacing;
+		const double south = dem->latUpperLeft - validRowMax * dem->latSpacing;
+		sprintf_s(validExtent, "slaveValidExtentRows=[%d,%d], cols=[%d,%d], lon=[%.8f,%.8f], lat=[%.8f,%.8f]",
+			validRowMin, validRowMax, validColMin, validColMax, west, east, south, north);
+	}
+	else
+	{
+		strcpy_s(validExtent, "slaveValidExtent=empty");
+	}
+	char projectionMessage[1024] = {};
+	sprintf_s(projectionMessage, "Projection summary: DEM=%dx%d, masterValid=%d/%d (%.1f%%), slaveValid=%d/%d (%.1f%%), masterZeroDopplerFailures=%d, masterRangeOrBurstFailures=%d, slaveZeroDopplerFailures=%d, slaveRangeOrBurstFailures=%d, slaveRangeOutOfBounds=%d, slaveBurstOutOfBounds=%d, slaveSlantRangeFailures=%d, slaveInvalidInputFailures=%d.",
+		dem->rows, dem->cols, masterValid, total, masterRatio, slaveValid, total, slaveRatio,
+		masterZeroDopplerFailures, masterRangeOrBurstFailures, zeroDopplerFailures, rangeOrBurstFailures,
+		rangeOutOfBoundsFailures, burstOutOfBoundsFailures, slantRangeFailures, invalidInputFailures);
+	emit_diagnostic(status.invalidPoints > 0 ? INSAR_DIAGNOSTIC_WARNING : INSAR_DIAGNOSTIC_DEBUG,
+		"geometry", "projection.summary", projectionMessage,
+		validExtent,
+		su[slaveImagesIndex - 1]->h5File.c_str(), nullptr, status.invalidPoints > 0 ? 2 : 0,
+		dem->rows, dem->cols);
 
 	if (!isMasterRgAzComputed)isMasterRgAzComputed = true;
 	return 0;
@@ -12333,6 +12683,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	int count = 0, nr, nc;
 	nr = slaveOffset.rows;
 	nc = slaveOffset.cols;
+	const int candidatePoints = nr * nc;
 	for (int i = 0; i < nr; i++)
 	{
 		for (int j = 0; j < nc; j++)
@@ -12381,8 +12732,11 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	// 计算 RMS 残差 并打印日志 (使用 coef.at 防止空指针崩溃)
 	Mat residual = offset - A_original * coef;
 	double rms = cv::norm(residual) / sqrt(count);
-	fprintf(stderr, "[DIAG] fitSlaveOffset: count=%d a0=%.4f a1=%.6f a2=%.6f rms=%.4f\n",
-		count, coef.at<double>(0, 0), coef.at<double>(1, 0), coef.at<double>(2, 0), rms);
+	char fitMessage[512] = {};
+	sprintf_s(fitMessage, "Offset fit accepted: candidates=%d, fitted=%d, rejected=%d, a0=%.8f, a1=%.10f, a2=%.10f, rms=%.8f.",
+		candidatePoints, count, candidatePoints - count, coef.at<double>(0, 0), coef.at<double>(1, 0), coef.at<double>(2, 0), rms);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "offset_fit", fitMessage,
+		"Model: offset = a0 + a1 * range + a2 * azimuth; offsets are in image pixels. Acceptance means the normal-equation solver succeeded.");
 
 	return 0;
 }
@@ -12495,10 +12849,14 @@ int Sentinel1BackGeocoding::performSincResampling(
 	int rows = dstHeight;
 	int cols = dstWidth;
 
-	// sinc 插值半径
-	// SINC_RADIUS = 4 表示 9 × 9 窗口
-	// 可改为 6，对应 13 × 13，精度略高但速度明显变慢
 	const int SINC_RADIUS = 4;
+	char resamplingMessage[512] = {};
+	sprintf_s(resamplingMessage, "Sinc resampling: output=%dx%d, kernelRadius=%d, range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}.",
+		dstWidth, dstHeight, SINC_RADIUS, a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+	emit_diagnostic(INSAR_DIAGNOSTIC_TRACE, "resampling", "sinc.start", resamplingMessage,
+		"Range and azimuth coefficients are pixel offsets in the geometric resampling model.",
+		nullptr, nullptr, 0, dstHeight, dstWidth);
+	const ULONGLONG resamplingStartTick = GetTickCount64();
 
 	// 提前取出系数，避免每个像元创建 Mat 并做矩阵乘法
 	const double cr0 = a0Az;
@@ -12537,6 +12895,9 @@ int Sentinel1BackGeocoding::performSincResampling(
 	if (isCancelRequested()) return -2;
 
 	slave = slcResampled;
+	emit_diagnostic(INSAR_DIAGNOSTIC_TRACE, "resampling", "sinc.complete", "Sinc resampling completed.",
+		nullptr, nullptr, nullptr, 0, dstHeight, dstWidth, -1,
+		static_cast<long long>(GetTickCount64() - resamplingStartTick));
 
 	return 0;
 }
@@ -12547,6 +12908,7 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	ComplexMat& slave
 )
 {
+	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData, slaveImageIndex, mBurstIndex);
 	if (slaveImageIndex < 1 || 
 		slaveImageIndex > numOfImages ||
 		mBurstIndex < 1 || 
@@ -12562,6 +12924,11 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	}
 	ComplexMat tmp;
 	double a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az;
+	char stageMessage[384] = {};
+	sprintf_s(stageMessage, "Starting slave burst processing: masterBurst=%d, slaveBurst=%d, sourceDimensions=%dx%d, ompThreads=%d.",
+		mBurstIndex, sBurstIndex, su[slaveImageIndex - 1]->linesPerBurst,
+		su[slaveImageIndex - 1]->samplesPerBurst, omp_get_max_threads());
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "coregistration", "slave_burst.start", stageMessage);
 	ret = su[slaveImageIndex - 1]->getBurst(sBurstIndex, slave);
 	if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 	if (return_check(ret, "getBurst()", error_head)) return -1;
@@ -12570,6 +12937,7 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	if (return_check(ret, "computeDerampDemodPhase()", error_head)) return -1;
 	ret = performDerampDemod(derampDemodPhase, slave);
 	if (return_check(ret, "performDerampDemod()", error_head)) return -1;
+	const ULONGLONG geometryStartTick = GetTickCount64();
 	ret = computeSlavePosition(slaveImageIndex, mBurstIndex);
 	if (ret == -2) return -2;
 	if (return_check(ret, "computeSlavePosition()", error_head)) return -1;
@@ -12577,13 +12945,24 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	ret = computeSlaveOffset(slaveAzimuthOffset, slaveRangeOffset);
 	if (ret == -2) return -2;
 	if (return_check(ret, "computeSlaveOffset()", error_head)) return -1;
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "projection_and_offset.complete", "Geometric projection and offset-grid generation completed.",
+		nullptr, su[slaveImageIndex - 1]->h5File.c_str(), nullptr, 0, slaveRangeOffset.rows, slaveRangeOffset.cols,
+		slaveRangeOffset.type(), static_cast<long long>(GetTickCount64() - geometryStartTick));
 	FormatConversion conversion;
+	const ULONGLONG fitStartTick = GetTickCount64();
 	ret = fitSlaveOffset(slaveAzimuthOffset, &a0Az, &a1Az, &a2Az);
 	if (ret == -2) return -2;
 	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
 	ret = fitSlaveOffset(slaveRangeOffset, &a0Rg, &a1Rg, &a2Rg);
 	if (ret == -2) return -2;
 	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
+	sprintf_s(stageMessage, "Offset fitting completed: range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}.",
+		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "offset_fit.complete", stageMessage,
+		"Range and azimuth offsets use the model a0 + a1 * range + a2 * azimuth, in pixels.",
+		nullptr, nullptr, 0, slaveRangeOffset.rows, slaveRangeOffset.cols, slaveRangeOffset.type(),
+		static_cast<long long>(GetTickCount64() - fitStartTick));
+	const ULONGLONG resamplingStartTick = GetTickCount64();
 	ret = performBilinearResampling(slave, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
 	if (ret == -2) return -2;
@@ -12597,6 +12976,9 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	conversion.phase2cos(derampDemodPhase, tmp.re, tmp.im);
 	slave.Mul(tmp, slave, true);//reramp
 	slave.convertTo(slave, CV_32F);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "resampling", "bilinear.complete", "Complex data and reramp phase resampling completed.",
+		nullptr, nullptr, nullptr, 0, slave.GetRows(), slave.GetCols(), slave.type(),
+		static_cast<long long>(GetTickCount64() - resamplingStartTick));
 	return 0;
 }
 
@@ -12633,6 +13015,7 @@ int Sentinel1BackGeocoding::getBurstQualityStatus(vector<SentinelBurstQualitySta
 
 int Sentinel1BackGeocoding::deBurstConfig()
 {
+	const ULONGLONG configurationStartTick = GetTickCount64();
 	if (isdeBurstConfig) return 0;
 	if (masterIndex < 1 || masterIndex > static_cast<int>(su.size()) || !su[masterIndex - 1] ||
 		su[masterIndex - 1]->burstCount <= 0 || su[masterIndex - 1]->linesPerBurst <= 0 ||
@@ -12679,11 +13062,33 @@ int Sentinel1BackGeocoding::deBurstConfig()
 	//}
 	//this->deburstLines = deburstLines;
 	isdeBurstConfig = true;
+	int retainedLines = 0;
+	for (int i = 0; i < start.rows; ++i)
+		retainedLines += end.at<int>(i, 0) - start.at<int>(i, 0);
+	char message[384] = {};
+	sprintf_s(message, "Deburst configuration: bursts=%d, sourceLinesPerBurst=%d, retainedLines=%d, samples=%d.",
+		su[masterIndex - 1]->burstCount, su[masterIndex - 1]->linesPerBurst, retainedLines,
+		su[masterIndex - 1]->samplesPerBurst);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "deburst", "configuration.complete", message,
+		"Overlap trimming is derived from burst azimuth timing and valid-line metadata.",
+		nullptr, nullptr, 0, retainedLines, su[masterIndex - 1]->samplesPerBurst, CV_32S,
+		static_cast<long long>(GetTickCount64() - configurationStartTick));
 	return 0;
 }
 
-int Sentinel1BackGeocoding::backGeoCodingCoregistration()
+int Sentinel1BackGeocoding::backGeoCodingCoregistration(
+	InSARDiagnosticCallback callback,
+	void* userData)
 {
+	if (callback || userData)
+		setDiagnosticCallback(callback, userData);
+	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
+	const ULONGLONG taskStartTick = GetTickCount64();
+	char processMessage[512] = {};
+	sprintf_s(processMessage, "Starting Sentinel-1 back-geocoding: images=%d, master=%d, bursts=%d, ompMaxThreads=%d.",
+		numOfImages, masterIndex, su[masterIndex - 1]->burstCount, omp_get_max_threads());
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "process.start", processMessage,
+		"DEM projection, burst alignment, resampling, and output writing will be performed.");
 	int ret;
 	if (!isdeBurstConfig)
 	{
@@ -12702,6 +13107,11 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 	if (return_check(ret, "loadDEM()", error_head)) return -1;
 	for (int i = 0; i < su[masterIndex - 1]->burstCount; i++)
 	{
+		const ULONGLONG burstStartTick = GetTickCount64();
+		ScopedDiagnosticContext burstDiagnosticScope(diagnosticCallback, diagnosticUserData, -1, i + 1);
+		char burstMessage[256] = {};
+		sprintf_s(burstMessage, "Processing master burst %d of %d.", i + 1, su[masterIndex - 1]->burstCount);
+		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "burst.start", burstMessage);
 		if (isCancelRequested()) return -2;
 		if (!burstOffsetComputed)
 		{
@@ -12728,7 +13138,14 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration()
 		}
 		offset_row += linesPerBurst;
 		isMasterRgAzComputed = false;
+		sprintf_s(burstMessage, "Completed master burst %d of %d.", i + 1, su[masterIndex - 1]->burstCount);
+		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "burst.complete", burstMessage,
+			nullptr, nullptr, nullptr, 0, -1, -1, -1,
+			static_cast<long long>(GetTickCount64() - burstStartTick));
 	}
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "process.complete", "Sentinel-1 back-geocoding completed.",
+		nullptr, nullptr, nullptr, 0, -1, -1, -1,
+		static_cast<long long>(GetTickCount64() - taskStartTick));
 	return 0;
 }
 

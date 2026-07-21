@@ -714,6 +714,39 @@ private:
 
 typedef bool (*ProgressCallback)(int percent, const char* message, void* userData);
 
+// Task-scoped native diagnostics. The callback is synchronous: string pointers
+// remain valid only for the duration of the callback and implementations must
+// be thread-safe and must not throw across the DLL boundary.
+enum InSARDiagnosticSeverity
+{
+	INSAR_DIAGNOSTIC_DEBUG = 0,
+	INSAR_DIAGNOSTIC_INFO = 1,
+	INSAR_DIAGNOSTIC_WARNING = 2,
+	INSAR_DIAGNOSTIC_ERROR = 3,
+	INSAR_DIAGNOSTIC_TRACE = 4
+};
+
+struct InSARDiagnosticEvent
+{
+	int version;
+	InSARDiagnosticSeverity severity;
+	const char* category;
+	const char* phase;
+	const char* message;
+	const char* detail;
+	const char* h5File;
+	const char* dataset;
+	int imageIndex;
+	int burstIndex;
+	int statusCode;
+	int rows;
+	int columns;
+	int cvType;
+	long long elapsedMs;
+};
+
+typedef void (__stdcall *InSARDiagnosticCallback)(const InSARDiagnosticEvent* event, void* userData);
+
 class InSAR_API FormatConversion
 {
 public:
@@ -2362,7 +2395,9 @@ public:
 		vector<string>& h5Files,
 		vector<string>& outFiles,
 		const char* DEMPath,
-		int masterIndex
+		int masterIndex,
+		InSARDiagnosticCallback diagnosticCallback = nullptr,
+		void* diagnosticUserData = nullptr
 	);
 	/** @brief 加载哨兵一号数据
 	* @param h5Files                       哨兵一号原始数据文件
@@ -2503,7 +2538,12 @@ public:
 	/** @brief 后向地理编码配准
 	* @return 成功返回0，否则返回-1
 	*/
-	int backGeoCodingCoregistration();
+	int backGeoCodingCoregistration(
+		InSARDiagnosticCallback diagnosticCallback = nullptr,
+		void* diagnosticUserData = nullptr
+	);
+	/** Configure the callback used by subsequent task calls on this instance. */
+	void setDiagnosticCallback(InSARDiagnosticCallback diagnosticCallback, void* diagnosticUserData) noexcept;
 	/** @brief Thread-safe cooperative cancellation. Cancelled operations return -2. */
 	void requestCancel() noexcept;
 	void clearCancelRequest() noexcept;
@@ -2564,6 +2604,8 @@ public:
 
 private:
 	std::atomic<bool> cancelRequested;
+	InSARDiagnosticCallback diagnosticCallback;
+	void* diagnosticUserData;
 
 };
 

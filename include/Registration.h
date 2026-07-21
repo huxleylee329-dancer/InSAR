@@ -2,6 +2,7 @@
 #include "..\include\Package.h"
 #include "..\include\ComplexMat.h"
 #include "..\include\Utils.h"
+#include "..\include\FormatConversion.h"
 
 
 
@@ -60,6 +61,20 @@ extern "C" InSAR_API int CalculateOffsetAndCoherence(
 	int template_size,
 	int search_size,
 	AlignmentResult* out_results
+);
+
+// Diagnostic-capable variant. The callback is synchronous and must be
+// thread-safe; the event and its strings are valid only during the callback.
+extern "C" InSAR_API int CalculateOffsetAndCoherenceWithDiagnostics(
+	const char* master_h5_path,
+	const char* slave_h5_path,
+	const Point2D* sample_points,
+	int points_count,
+	int template_size,
+	int search_size,
+	AlignmentResult* out_results,
+	InSARDiagnosticCallback diagnosticCallback,
+	void* diagnosticUserData
 );
 
 extern "C" InSAR_API void FreeAlignmentResults(
