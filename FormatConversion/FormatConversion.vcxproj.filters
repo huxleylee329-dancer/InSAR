@@ -38,6 +38,12 @@
     <ClCompile Include="FormatConversion.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+	<ClCompile Include="SARReaders.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="SARDataReader.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
     <ClCompile Include="tinystr.cpp">
       <Filter>源文件</Filter>
     </ClCompile>

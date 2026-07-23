@@ -184,7 +184,12 @@
     </ClCompile>
     <ClCompile Include="DeformationRateField.cpp" />
   </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+    <ItemGroup>
+    <ProjectReference Include="..\Utils\Utils.vcxproj">
+      <Project>{72E5449A-CF52-4C0B-BC12-3B65D8852C78}</Project>
+    </ProjectReference>
+  </ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

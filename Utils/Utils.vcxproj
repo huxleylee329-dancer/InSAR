@@ -201,9 +201,20 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Utils.cpp" />
+	<ClCompile Include="S1Merge.cpp" />
+	<ClCompile Include="UtilsGeocoding.cpp" />
+	<ClCompile Include="UtilsDem.cpp" />
+	<ClCompile Include="UtilsBaseline.cpp" />
+	<ClCompile Include="UtilsInterferometry.cpp" />
+	<ClCompile Include="UtilsAoi.cpp" />
     <ClCompile Include="orbitStateVectors.cpp" />
   </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+    <ItemGroup>
+    <ProjectReference Include="..\ComplexMat\ComplexMat.vcxproj">
+      <Project>{1722AA5B-2D2B-4F87-A36C-5D25A2F7AF42}</Project>
+    </ProjectReference>
+  </ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

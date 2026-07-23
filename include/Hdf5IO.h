@@ -13,11 +13,18 @@
 {
 	struct ReadSession;
 	struct WriteSession;
+	struct BatchLock;
 
 	// All public operations acquire the same named mutex before entering HDF5.
 	// A distinct negative return code denotes an abandoned mutex and callers must
 	// treat it as a failed transaction rather than continuing with stale state.
 	constexpr int kLockAbandoned = -100;
+
+	// Holds the process-wide HDF5 mutex across a caller-defined group of Hdf5IO
+	// calls. The handle is opaque so mutex ownership remains in this DLL.
+	HDF5IO_API BatchLock* acquireBatchLock();
+	HDF5IO_API int getBatchLockStatus(const BatchLock* lock);
+	HDF5IO_API void releaseBatchLock(BatchLock* lock);
 
 	// Creates or truncates an HDF5 file. Array creation APIs below intentionally
 	// fail when the target dataset already exists, matching the legacy writer.
@@ -30,6 +37,8 @@
 	HDF5IO_API void closeReadSession(ReadSession* session);
 	HDF5IO_API int readArray(ReadSession* session, const char* datasetName, cv::Mat& output);
 	HDF5IO_API int readArray(ReadSession* session, const char* datasetName, int outputCvType, cv::Mat& output);
+	HDF5IO_API int readSubarray(ReadSession* session, const char* datasetName, int offsetRow, int offsetColumn,
+		int rows, int columns, cv::Mat& output);
 	// Reads a rank-3 float dataset whose last dimension contains real/imaginary
 	// samples. The session retains every HDF5 handle.
 	HDF5IO_API int readInterleavedComplexFloat(ReadSession* session, const char* datasetName,
@@ -70,6 +79,9 @@
 	HDF5IO_API int writeString(const char* filename, const char* datasetName, const char* value);
 	// Creates a fixed-length legacy-compatible string dataset and fails when it exists.
 	HDF5IO_API int createString(const char* filename, const char* datasetName, const char* value);
+	// Removes a dataset. Returns 0 when removed, 1 when absent, and a negative
+	// value on HDF5 failure.
+	HDF5IO_API int removeDatasetIfPresent(const char* filename, const char* datasetName);
 	// Copies a dataset when it exists in the source. Returns 0 when copied, 1
 	// when the source is absent or the destination exists and replacement is off,
 	// and a negative value on HDF5 failure.

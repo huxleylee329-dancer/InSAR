@@ -17,6 +17,8 @@ typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* messa
 #define UTILS_API __declspec(dllimport)
 #endif
 
+void InitializeGDALAndProjOnce();
+
 /*--------------------------------------*/
 /*              卫星轨道数据            */
 /*--------------------------------------*/
@@ -2201,6 +2203,8 @@ public:
 		double lat
 	);
 private:
+	static int read_slc_from_h5io(const char* filename, ComplexMat& slc);
+	static int write_slc_to_h5io(const char* filename, const ComplexMat& slc);
 	static constexpr const char* SRTMURL = "https://srtm.csi.cgiar.org/wp-content/uploads/files/srtm_5x5/TIFF/";
 	static constexpr const char* CopernicusDEMURL = "https://copernicus-dem-30m.s3.amazonaws.com/";
 	static constexpr const char* error_head = "UTILS_DLL_ERROR: error happens when using ";

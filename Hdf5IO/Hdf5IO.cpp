@@ -113,8 +113,16 @@ namespace
 		return datasetName[0] == '/' ? std::string(datasetName) : std::string("/") + datasetName;
 	}
 
+	bool isRegularFile(const char* filename)
+	{
+		if (!filename || !*filename) return false;
+		const DWORD attributes = GetFileAttributesA(filename);
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+	}
+
 	int openDataset(const char* filename, const char* datasetName, ScopedH5Id& file, ScopedH5Id& dataset)
 	{
+		if (!isRegularFile(filename)) return -1;
 		file = ScopedH5Id(H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
 		if (!file.valid()) return -1;
 		const std::string path = datasetPath(datasetName);
@@ -126,6 +134,7 @@ namespace
 
 	int openWritableFile(const char* filename, ScopedH5Id& file)
 	{
+		if (!isRegularFile(filename)) return -1;
 		file = ScopedH5Id(H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT), H5Fclose);
 		return file.valid() ? 0 : -1;
 	}
@@ -211,6 +220,34 @@ namespace
 		if (!dataset.valid()) return -1;
 		return H5Dwrite(dataset, memoryType, H5S_ALL, H5S_ALL, H5P_DEFAULT, value) < 0 ? -1 : 0;
 	}
+
+	int readSubarrayLocked(hid_t file, const char* datasetName, int offsetRow, int offsetColumn,
+		int rows, int columns, cv::Mat& output)
+	{
+		if (file < 0 || !datasetName || offsetRow < 0 || offsetColumn < 0 || rows < 1 || columns < 1)
+			return -1;
+		const std::string path = datasetPath(datasetName);
+		if (path.empty() || H5Lexists(file, path.c_str(), H5P_DEFAULT) <= 0) return -1;
+		ScopedH5Id dataset(H5Dopen2(file, path.c_str(), H5P_DEFAULT), H5Dclose);
+		ScopedH5Id space(dataset.valid() ? H5Dget_space(dataset) : -1, H5Sclose);
+		ScopedH5Id type(dataset.valid() ? H5Dget_type(dataset) : -1, H5Tclose);
+		if (!space.valid() || !type.valid() || H5Sget_simple_extent_ndims(space) != 2) return -1;
+		hsize_t dimensions[2] = {};
+		if (H5Sget_simple_extent_dims(space, dimensions, nullptr) < 0 ||
+			static_cast<hsize_t>(offsetRow) + rows > dimensions[0] ||
+			static_cast<hsize_t>(offsetColumn) + columns > dimensions[1]) return -1;
+		const int cvType = h5TypeToCvType(type);
+		const hid_t nativeType = cvTypeToNativeH5Type(cvType);
+		if (nativeType < 0) return -1;
+
+		output.create(rows, columns, cvType);
+		const hsize_t offset[2] = { static_cast<hsize_t>(offsetRow), static_cast<hsize_t>(offsetColumn) };
+		const hsize_t count[2] = { static_cast<hsize_t>(rows), static_cast<hsize_t>(columns) };
+		ScopedH5Id memory(H5Screate_simple(2, count, nullptr), H5Sclose);
+		if (!memory.valid() || H5Sselect_hyperslab(space, H5S_SELECT_SET, offset, nullptr, count, nullptr) < 0)
+			return -1;
+		return H5Dread(dataset, nativeType, memory, space, H5P_DEFAULT, output.data) < 0 ? -1 : 0;
+	}
 }
 
 namespace Hdf5IO
@@ -224,6 +261,26 @@ namespace Hdf5IO
 	{
 		hid_t file;
 	};
+
+	struct BatchLock
+	{
+		ScopedHdf5Lock lock;
+	};
+
+	BatchLock* acquireBatchLock()
+	{
+		return new (std::nothrow) BatchLock();
+	}
+
+	int getBatchLockStatus(const BatchLock* lock)
+	{
+		return lock ? lock->lock.result() : -1;
+	}
+
+	void releaseBatchLock(BatchLock* lock)
+	{
+		delete lock;
+	}
 
 	static hid_t outputCvTypeToH5Type(int cvType)
 	{
@@ -396,6 +453,15 @@ namespace Hdf5IO
 			(rank == 2 && dimensions[1] > static_cast<hsize_t>(std::numeric_limits<int>::max()))) return -1;
 		output.create(static_cast<int>(dimensions[0]), rank == 1 ? 1 : static_cast<int>(dimensions[1]), outputCvType);
 		return H5Dread(dataset, outputType, H5S_ALL, H5S_ALL, H5P_DEFAULT, output.data) < 0 ? -1 : 0;
+	}
+
+	int readSubarray(ReadSession* session, const char* datasetName, int offsetRow, int offsetColumn,
+		int rows, int columns, cv::Mat& output)
+	{
+		if (!session || session->file < 0) return -1;
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+		return readSubarrayLocked(session->file, datasetName, offsetRow, offsetColumn, rows, columns, output);
 	}
 
 	int readInterleavedComplexFloat(ReadSession* session, const char* datasetName,
@@ -626,6 +692,19 @@ namespace Hdf5IO
 		return createStringLocked(file, datasetName, value);
 	}
 
+	int removeDatasetIfPresent(const char* filename, const char* datasetName)
+	{
+		if (!filename || !datasetName) return -1;
+		const std::string path = datasetPath(datasetName);
+		if (path.empty()) return -1;
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+		ScopedH5Id file;
+		if (openWritableFile(filename, file) != 0) return -1;
+		if (H5Lexists(file, path.c_str(), H5P_DEFAULT) <= 0) return 1;
+		return H5Ldelete(file, path.c_str(), H5P_DEFAULT) < 0 ? -1 : 0;
+	}
+
 	int copyDatasetIfPresent(const char* sourceFilename, const char* destinationFilename,
 		const char* datasetName, bool replaceExisting)
 	{
@@ -695,26 +774,7 @@ namespace Hdf5IO
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
 
-		ScopedH5Id file;
-		ScopedH5Id dataset;
-		if (openDataset(filename, datasetName, file, dataset) != 0) return -1;
-		ScopedH5Id space(H5Dget_space(dataset), H5Sclose);
-		ScopedH5Id type(H5Dget_type(dataset), H5Tclose);
-		if (!space.valid() || !type.valid() || H5Sget_simple_extent_ndims(space) != 2) return -1;
-		hsize_t dimensions[2] = {};
-		if (H5Sget_simple_extent_dims(space, dimensions, nullptr) < 0 ||
-			static_cast<hsize_t>(offsetRow) + rows > dimensions[0] ||
-			static_cast<hsize_t>(offsetColumn) + columns > dimensions[1]) return -1;
-		const int cvType = h5TypeToCvType(type);
-		const hid_t nativeType = cvTypeToNativeH5Type(cvType);
-		if (nativeType < 0) return -1;
-
-		output.create(rows, columns, cvType);
-		const hsize_t offset[2] = { static_cast<hsize_t>(offsetRow), static_cast<hsize_t>(offsetColumn) };
-		const hsize_t count[2] = { static_cast<hsize_t>(rows), static_cast<hsize_t>(columns) };
-		ScopedH5Id memory(H5Screate_simple(2, count, nullptr), H5Sclose);
-		if (!memory.valid() || H5Sselect_hyperslab(space, H5S_SELECT_SET, offset, nullptr, count, nullptr) < 0)
-			return -1;
-		return H5Dread(dataset, nativeType, memory, space, H5P_DEFAULT, output.data) < 0 ? -1 : 0;
+		ScopedH5Id file(H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
+		return file.valid() ? readSubarrayLocked(file, datasetName, offsetRow, offsetColumn, rows, columns, output) : -1;
 	}
 }

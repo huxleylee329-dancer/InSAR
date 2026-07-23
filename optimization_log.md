@@ -1152,3 +1152,41 @@ Df11 = Df11 + temp_var.mul(temp_var1); // 又累加了接收端单程偏导数
    - 在 UI 工程的 [Sentinel1OrbitNode.cpp](file:///D:/SRC/InSAR_UI/Sentinel1OrbitNode.cpp#L671) 中，同步重构调用逻辑。
    - 在读取 `acquisition_start_time` 的同时，增加读取 `acquisition_stop_time` 属性值。
    - 使用 `FC.utc2gps` 将它们转换为相应的双精度 GPS 秒数 `start_t` 和 `stop_t`，然后将其作为参数传给 `read_POD`，实现了两端对齐的规范化传参。
+
+---
+
+### 51. Sentinel-1 TOPS 后向地理编码链路对齐与可观测性补强 (FormatConversion, UI)
+
+**主要改动**：
+1. **首轮与精化链路对齐**：首轮恢复为去斜后的 Sinc 重采样；保存每个主 Burst 的 `CV_64F` 六系数。精化阶段按旧约定将距离/方位改正分别加到 `coef[0]` 与 `coef[3]` 后重采样。
+2. **偏移诊断与质量控制**：日志明确 `offset_a`、`offset_r` 的像素单位及 pull 采样正方向；ESD 与距离精化保持独立开关，零距离改正会保留质量码但跳过无意义的二次重采样。
+3. **执行路径契约**：`SentinelRefinementResult` 升级为版本 2，增加 core-only baseline 与 post-registration refinement 执行路径枚举。UI 在 DLL 成功返回后记录原始开关与执行路径，并校验两者一致。
+4. **完成事件命名**：后处理完成事件统一使用 `refinement.completed`，避免 ESD 关闭时误写为 ESD 完成。
+
+**收益**：
+- off/off 基线、ESD 和距离精化组合均可从结构化结果与日志中验证实际执行路径。
+- 保持旧版 TOPS 系数约定和重采样顺序，便于固定数据逐项比较最终 SLC 与残余偏移。
+
+---
+
+### 52. VC++ 内部项目依赖图补全 (工程配置)
+
+**主要改动**：
+- 为仅通过 `#pragma comment(lib, ...)` 链接内部库的项目补充 `ProjectReference`，覆盖 `Utils`、`FormatConversion`、`Registration`、`Deflat`、`Dem`、`Filter`、`SBAS`、测试项目等。
+- 保留原有链接库声明，未改动外部库依赖。
+
+**收益**：
+- MSBuild/Visual Studio 能先递归构建内部依赖，不再依赖 `bin` 目录中碰巧存在的旧 `.lib` 文件。
+
+---
+
+### 53. Hdf5IO 模块拆分与原生诊断契约补全 (Hdf5IO, Utils, Registration, FormatConversion)
+
+**主要改动**：
+1. **Hdf5IO 独立模块**：新增 Hdf5IO DLL，集中提供 HDF5 会话式读写、共享锁、属性和子数组访问接口；`Utils` 改为依赖 Hdf5IO，解除对 FormatConversion 的直接 HDF5 依赖。
+2. **结构化原生日志**：新增 `InSARDiagnosticEvent` 与回调接口；Registration 增加带诊断回调的幅度匹配接口，可输出采样点偏移和相关系数。
+3. **轨道实现拆分**：将状态向量相关实现从 `Utils.cpp` 拆分至 `orbitStateVectors.cpp`，缩小核心源文件职责。
+
+**收益**：
+- HDF5 访问边界更清晰，减少模块间耦合。
+- DLL 与 UI 可统一消费结构化诊断，便于定位配准质量问题。

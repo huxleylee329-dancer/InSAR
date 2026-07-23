@@ -1,7 +1,7 @@
 #include"pch.h"                                                                              
-#include <direct.h>     // 解决 _mkdir 找不到标识符错误                                      
-#include <mutex>        // 解决 std::once_flag/call_once 依赖                                
-#include <io.h>         // 解决 _findfirst 依赖
+#include <direct.h>     // ��� _mkdir �Ҳ�����ʶ������                                      
+#include <mutex>        // ��� std::once_flag/call_once ����                                
+#include <io.h>         // ��� _findfirst ����
 #include <map>
 #include <memory>
 #include <limits>
@@ -13,7 +13,7 @@
 #include <iterator>
 #include <sstream>
 #include <vector>
-#include"gdal_priv.h"   // 解决 GDALDataset 等 GDAL C++ API 标识符未声明错误                 
+#include"gdal_priv.h"   // ��� GDALDataset �� GDAL C++ API ��ʶ��δ��������                 
 #include"..\include\FormatConversion.h"
 #include"..\include\Hdf5IO.h"
 #include"..\include\Registration.h"
@@ -26,27 +26,22 @@
 #include <windows.h>
 
 
-static std::recursive_mutex g_h5_mutex;
-class ScopedSharedHdf5Mutex
+class Hdf5BatchGuard
 {
 public:
-	ScopedSharedHdf5Mutex() : handle_(CreateMutexW(nullptr, FALSE, L"Local\\InSAR.Hdf5IO.v1")), ownsMutex_(false)
+	Hdf5BatchGuard() : lock_(Hdf5IO::acquireBatchLock())
 	{
-		if (!handle_) return;
-		const DWORD waitResult = WaitForSingleObject(handle_, INFINITE);
-		ownsMutex_ = waitResult == WAIT_OBJECT_0 || waitResult == WAIT_ABANDONED;
 	}
-	~ScopedSharedHdf5Mutex()
+	~Hdf5BatchGuard()
 	{
-		if (ownsMutex_) ReleaseMutex(handle_);
-		if (handle_) CloseHandle(handle_);
+		Hdf5IO::releaseBatchLock(lock_);
 	}
+	int status() const { return Hdf5IO::getBatchLockStatus(lock_); }
 
 private:
-	HANDLE handle_;
-	bool ownsMutex_;
+	Hdf5IO::BatchLock* lock_;
 };
-#define H5_LOCK std::lock_guard<std::recursive_mutex> h5_lock(g_h5_mutex); ScopedSharedHdf5Mutex h5_process_lock;
+#define H5_LOCK Hdf5BatchGuard h5_batch_guard; if (h5_batch_guard.status() != 0) return h5_batch_guard.status();
 
 static std::string refinement_manifest_directory(const std::string& path)
 {
@@ -85,8 +80,36 @@ static int inspect_refinement_manifest(const vector<string>& outputFiles, Sentin
 	if (outputFiles.empty()) return -1;
 	const std::string directory = refinement_manifest_directory(outputFiles.front());
 	const std::string manifestPath = directory + "\\refinement_transaction.json";
-	if (GetFileAttributesA(manifestPath.c_str()) == INVALID_FILE_ATTRIBUTES)
+	const DWORD manifestAttributes = GetFileAttributesA(manifestPath.c_str());
+	if (manifestAttributes == INVALID_FILE_ATTRIBUTES)
 	{
+		const DWORD manifestError = GetLastError();
+		if (manifestError != ERROR_FILE_NOT_FOUND && manifestError != ERROR_PATH_NOT_FOUND) return -1;
+		for (const std::string& outputFile : outputFiles)
+		{
+			const DWORD outputAttributes = GetFileAttributesA(outputFile.c_str());
+			// First execution: prepareOutFiles() creates the formal result H5 only
+			// after loadOutFiles() has completed.
+			if (outputAttributes == INVALID_FILE_ATTRIBUTES)
+			{
+				const DWORD outputError = GetLastError();
+				if (outputError == ERROR_FILE_NOT_FOUND || outputError == ERROR_PATH_NOT_FOUND) continue;
+				return -1;
+			}
+			if ((outputAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) return -1;
+
+			int reRows = 0, reColumns = 0, imRows = 0, imColumns = 0;
+			if (Hdf5IO::getDatasetDims(outputFile.c_str(), "s_re", &reRows, &reColumns) != 0 ||
+				Hdf5IO::getDatasetDims(outputFile.c_str(), "s_im", &imRows, &imColumns) != 0 ||
+				reRows < 1 || reColumns < 1 || reRows != imRows || reColumns != imColumns)
+				return -1;
+
+			std::string fileState;
+			std::string fileTransactionId;
+			const int stateResult = Hdf5IO::readString(outputFile.c_str(), "refinement_state", fileState);
+			const int idResult = Hdf5IO::readString(outputFile.c_str(), "refinement_transaction_id", fileTransactionId);
+			if (stateResult == 0 || idResult == 0) return -1;
+		}
 		status.state = SENTINEL_REFINEMENT_TRANSACTION_NONE;
 		return 0;
 	}
@@ -104,16 +127,28 @@ static int inspect_refinement_manifest(const vector<string>& outputFiles, Sentin
 	for (std::string::size_type position = json.find("\"output\""); position != std::string::npos;
 		position = json.find("\"output\"", position + 1)) ++entryCount;
 	if (entryCount != outputFiles.size()) return -1;
-	const char* expectedFileState = status.state == SENTINEL_REFINEMENT_TRANSACTION_COMPLETE ? "complete" : "in_progress";
+	const bool hasFullBurstTemporary = json.find("\"fullBurstTemporary\"") != std::string::npos;
+	const bool hasFullBurstSource = json.find("\"fullBurst\"") != std::string::npos;
 	for (const std::string& outputFile : outputFiles)
 	{
 		if (_stricmp(refinement_manifest_directory(outputFile).c_str(), directory.c_str()) != 0) return -1;
-		if (json.find(std::string("\"output\": \"") + refinement_manifest_json_escape(outputFile) + "\"") == std::string::npos) return -1;
+		const std::string temporaryPath = outputFile + ".refinement-" + transactionId + ".tmp";
+		const std::string fullBurstPath = outputFile + ".fullburst";
+		const std::string fullBurstTemporaryPath = outputFile + ".refinement-" + transactionId + ".fullburst.tmp";
+		const std::string backupPath = outputFile + ".refinement-" + transactionId + ".bak";
+		if (json.find(std::string("\"output\": \"") + refinement_manifest_json_escape(outputFile) + "\"") == std::string::npos ||
+			json.find(std::string("\"temporary\": \"") + refinement_manifest_json_escape(temporaryPath) + "\"") == std::string::npos ||
+			json.find(std::string("\"backup\": \"") + refinement_manifest_json_escape(backupPath) + "\"") == std::string::npos ||
+			(hasFullBurstSource && json.find(std::string("\"fullBurst\": \"") +
+				refinement_manifest_json_escape(fullBurstPath) + "\"") == std::string::npos) ||
+			(hasFullBurstTemporary && json.find(std::string("\"fullBurstTemporary\": \"") +
+				refinement_manifest_json_escape(fullBurstTemporaryPath) + "\"") == std::string::npos)) return -1;
+		if (status.state != SENTINEL_REFINEMENT_TRANSACTION_COMPLETE) continue;
 		std::string fileState;
 		std::string fileTransactionId;
 		if (Hdf5IO::readString(outputFile.c_str(), "refinement_state", fileState) != 0 ||
 			Hdf5IO::readString(outputFile.c_str(), "refinement_transaction_id", fileTransactionId) != 0 ||
-			fileState != expectedFileState || fileTransactionId != transactionId) return -1;
+			fileState != "complete" || fileTransactionId != transactionId) return -1;
 		++status.verifiedOutputCount;
 	}
 	return 0;
@@ -231,6 +266,38 @@ static void emit_diagnostic(
 	{
 		// Native diagnostics must never alter processing control flow.
 	}
+}
+
+
+static void emit_progress_for_context(const ActiveDiagnosticContext& context, int percent, const char* message)
+{
+    if (!context.callback || percent < 0 || percent > 100) return;
+    InSARDiagnosticEvent event = {};
+    event.version = 1;
+    event.severity = INSAR_DIAGNOSTIC_INFO;
+    event.category = "progress";
+    event.phase = "progress.update";
+    event.message = message;
+    event.imageIndex = context.imageIndex;
+    event.burstIndex = context.burstIndex;
+    event.statusCode = percent;
+    event.rows = -1;
+    event.columns = -1;
+    event.cvType = -1;
+    event.elapsedMs = -1;
+    try
+    {
+        context.callback(&event, context.userData);
+    }
+    catch (...)
+    {
+        // Progress reporting must never alter processing control flow.
+    }
+}
+
+static void emit_progress(int percent, const char* message)
+{
+    emit_progress_for_context(g_active_diagnostic_context, percent, message);
 }
 
 struct ZeroDopplerFailureAccumulator
@@ -453,12 +520,12 @@ static void InitializeGDALOnce()
 }
 
 /**
- * @brief 生成5阶范德蒙矩阵（用于TerraSAR-X和Sentinel-1坐标转换）
- * 矩阵结构：[1, x, x², x³, x⁴, y, xy, x²y, x³y, x⁴y, y², xy², x²y², x³y², y³, xy³, x²y³, y⁴, xy⁴, y⁵]
- * @param row               行坐标序列（已归一化）
- * @param col               列坐标序列（已归一化）
- * @param vandermondeMatrix 输出的范德蒙矩阵（N×25）
- * @return 成功返回0，失败返回-1
+ * @brief ����5�׷����ɾ�������TerraSAR-X��Sentinel-1����ת����
+ * ����ṹ��[1, x, x2, x3, x?, y, xy, x2y, x3y, x?y, y2, xy2, x2y2, x3y2, y3, xy3, x2y3, y?, xy?, y?]
+ * @param row               ���������У��ѹ�һ����
+ * @param col               ���������У��ѹ�һ����
+ * @param vandermondeMatrix ����ķ����ɾ���N��25��
+ * @return �ɹ�����0��ʧ�ܷ���-1
  */
 static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermondeMatrix)
 {
@@ -472,14 +539,14 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 	vandermondeMatrix = Mat::ones(n, 25, CV_64F);
 	Mat temp;
 
-	// 列索引与原始双四次多项式项对应如下：
-	// 0=1, 1=x, 2=x², 3=x³, 4=x⁴
-	// 5=y, 6=yx, 7=yx², 8=yx³, 9=yx⁴
-	// 10=y², 11=y²x, 12=y²x², 13=y²x³, 14=y²x⁴
-	// 15=y³, 16=y³x, 17=y³x², 18=y³x³, 19=y³x⁴
-	// 20=y⁴, 21=y⁴x, 22=y⁴x², 23=y⁴x³, 24=y⁴x⁴
+	// ��������ԭʼ˫�Ĵζ���ʽ���Ӧ���£�
+	// 0=1, 1=x, 2=x2, 3=x3, 4=x?
+	// 5=y, 6=yx, 7=yx2, 8=yx3, 9=yx?
+	// 10=y2, 11=y2x, 12=y2x2, 13=y2x3, 14=y2x?
+	// 15=y3, 16=y3x, 17=y3x2, 18=y3x3, 19=y3x?
+	// 20=y?, 21=y?x, 22=y?x2, 23=y?x3, 24=y?x?
 
-	// x 的幂次：x, x², x³, x⁴(第 1 到 4)
+	// x ���ݴΣ�x, x2, x3, x?(�� 1 �� 4)
 	row.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(1, 2)));
 	temp = row.mul(row);
 	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(2, 3)));
@@ -488,7 +555,7 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 	temp = temp.mul(row);
 	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(4, 5)));
 
-	// y * x^j (j=0..4) (第 5 到 9)
+	// y * x^j (j=0..4) (�� 5 �� 9)
 	col.copyTo(temp);
 	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5, 6)));
 	for (int j = 1; j <= 4; j++) {
@@ -496,7 +563,7 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(5 + j, 6 + j)));
 	}
 
-	// y² * x^j (j=0..4) (第 10 到 14)
+	// y2 * x^j (j=0..4) (�� 10 �� 14)
 	col.copyTo(temp);
 	temp = temp.mul(col);
 	temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10, 11)));
@@ -505,7 +572,7 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(10 + j, 11 + j)));
 	}
 
-	// y³ * x^j (j=0..4) (第 15 到 19)
+	// y3 * x^j (j=0..4) (�� 15 �� 19)
 	col.copyTo(temp);
 	temp = temp.mul(col);
 	temp = temp.mul(col);
@@ -515,7 +582,7 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 		temp.copyTo(vandermondeMatrix(cv::Range(0, n), cv::Range(15 + j, 16 + j)));
 	}
 
-	// y⁴ * x^j (j=0..4) (第 20 到 24)
+	// y? * x^j (j=0..4) (�� 20 �� 24)
 	col.copyTo(temp);
 	temp = temp.mul(col);
 	temp = temp.mul(col);
@@ -530,12 +597,12 @@ static int createVandermondeMatrix(const Mat& row, const Mat& col, Mat& vandermo
 }
 
 /**
- * @brief 多项式拟合（最小二乘法）
- * @param A           范德蒙矩阵
- * @param b           目标值向量
- * @param coefficient 输出的系数向量
- * @param rms         输出的RMS误差（可选，传nullptr则不计算）
- * @return 成功返回0，失败返回-1
+ * @brief ����ʽ��ϣ���С���˷���
+ * @param A           �����ɾ���
+ * @param b           Ŀ��ֵ����
+ * @param coefficient �����ϵ������
+ * @param rms         �����RMS����ѡ����nullptr�򲻼��㣩
+ * @return �ɹ�����0��ʧ�ܷ���-1
  */
 static int polyFit(const Mat& A, const Mat& b, Mat& coefficient, double* rms = nullptr)
 {
@@ -556,7 +623,7 @@ static int polyFit(const Mat& A, const Mat& b, Mat& coefficient, double* rms = n
 		return -1;
 	}
 
-	// 计算 RMS
+	// ���� RMS
 	if (rms != nullptr)
 	{
 		Mat error, a, a_t, b_t;
@@ -597,7 +664,7 @@ namespace
 		double ax = std::abs(x);
 		if (ax > static_cast<double>(radius)) return 0.0;
 
-		// Hamming window: center = 1, edge ≈ 0.08
+		// Hamming window: center = 1, edge �� 0.08
 		return 0.54 + 0.46 * std::cos(INSAR_PI * ax / static_cast<double>(radius));
 	}
 
@@ -645,13 +712,13 @@ namespace
 		const int rows = img.rows;
 		const int cols = img.cols;
 
-		// 坐标完全越界，直接置零
+		// ������ȫԽ�磬ֱ������
 		if (row < 0.0 || col < 0.0 || row > static_cast<double>(rows - 1) || col > static_cast<double>(cols - 1))
 		{
 			return 0.0;
 		}
 
-		// 为避免边界处 sinc 核不完整导致伪影，靠近边缘的像元直接置零
+		// Ϊ����߽紦 sinc �˲���������αӰ��������Ե����Ԫֱ������
 		if (row < radius || col < radius ||
 			row > static_cast<double>(rows - 1 - radius) ||
 			col > static_cast<double>(cols - 1 - radius))
@@ -683,7 +750,7 @@ namespace
 
 		if (std::abs(sum_w) < 1.0e-14) return 0.0;
 
-		// 归一化，避免有限窗截断导致幅度偏移
+		// ��һ�����������޴��ضϵ��·���ƫ��
 		return sum_val / sum_w;
 	}
 
@@ -896,7 +963,7 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		return -1;
 	}
 
-	InitializeGDALOnce();   /* 注册驱动 */
+	InitializeGDALOnce();   /* ע������ */
 
 	GDALDatasetH hDataset = GDALOpen(filename, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -913,7 +980,7 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		return -1;
 	}
 
-	/* 获取波段 1 */
+	/* ��ȡ���� 1 */
 	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
 	if (hBand == NULL)
 	{
@@ -943,11 +1010,11 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 	cv::Mat temp;
 	try
 	{
-		/* 创建输出矩阵并预分配内存（保证 cv::split 时复用已有内存） */
+		/* �����������Ԥ�����ڴ棨��֤ cv::split ʱ���������ڴ棩 */
 		slc.re.create(ysize, xsize, CV_16S);
 		slc.im.create(ysize, xsize, CV_16S);
 
-		/* 创建临时2通道矩阵，用作读取缓冲区 */
+		/* ������ʱ2ͨ������������ȡ������ */
 		temp.create(ysize, xsize, CV_16SC2);
 	}
 	catch (const cv::Exception& e)
@@ -963,7 +1030,7 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		return -1;
 	}
 
-	/* 读取数据 */
+	/* ��ȡ���� */
 	if (GDALRasterIO(
 		hBand,
 		GF_Read,
@@ -980,7 +1047,7 @@ int FormatConversion::read_slc_from_TSXcos(const char* filename, ComplexMat& slc
 		return -1;
 	}
 
-	/* 分离通道到 slc.re 和 slc.im */
+	/* ����ͨ���� slc.re �� slc.im */
 	cv::Mat channels[2] = { slc.re, slc.im };
 	cv::split(temp, channels);
 
@@ -1001,24 +1068,24 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		fprintf(stderr, "TSX2h5(): input check failed!\n");
 		return -1;
 	}
-	if (!report_progress(progressCallback, userData, 0, "开始导入TerraSAR-X数据")) return -2;
+	if (!report_progress(progressCallback, userData, 0, "��ʼ����TerraSAR-X����")) return -2;
 	/*
-	* 检查h5文件是否已经存在
+	* ���h5�ļ��Ƿ��Ѿ�����
 	*/
 
 	int ret;
 	ret = creat_new_h5(dst_h5_filename);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 5, "创建H5文件完成")) return -2;
+	if (!report_progress(progressCallback, userData, 5, "����H5�ļ����")) return -2;
 
 	/*
-	* 写入slc数据
+	* д��slc����
 	*/
 
 	int rows, cols;
-	if (!report_progress(progressCallback, userData, 10, "读取TerraSAR-X SLC数据")) return -2;
+	if (!report_progress(progressCallback, userData, 10, "��ȡTerraSAR-X SLC����")) return -2;
 
-	InitializeGDALOnce();   /* 注册驱动 */
+	InitializeGDALOnce();   /* ע������ */
 
 	GDALDatasetH hDataset = GDALOpen(cosar_filename, GA_ReadOnly);
 	if (hDataset == NULL)
@@ -1035,7 +1102,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		return -1;
 	}
 
-	/* 获取波段 1 */
+	/* ��ȡ���� 1 */
 	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
 	if (hBand == NULL)
 	{
@@ -1095,7 +1162,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 			return -1;
 		}
 
-		/* 读取这一块数据 */
+		/* ��ȡ��һ������ */
 		if (GDALRasterIO(
 			hBand,
 			GF_Read,
@@ -1112,36 +1179,36 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 			return -1;
 		}
 
-		/* 分离通道 */
+		/* ����ͨ�� */
 		cv::Mat channels[2] = { block_re, block_im };
 		cv::split(block_temp, channels);
 
-		/* 写入这一块数据到 HDF5 */
+		/* д����һ�����ݵ� HDF5 */
 		ret = write_subarray_to_h5(dst_h5_filename, "s_re", block_re, current_offset, 0, current_rows, xsize);
 		if (return_check(ret, "write_subarray_to_h5(s_re)", error_head)) { GDALClose(hDataset); return -1; }
 		ret = write_subarray_to_h5(dst_h5_filename, "s_im", block_im, current_offset, 0, current_rows, xsize);
 		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { GDALClose(hDataset); return -1; }
 
-		// 释放当前块内存
+		// �ͷŵ�ǰ���ڴ�
 		block_temp.release();
 		block_re.release();
 		block_im.release();
 
-		// 渐进更新进度 (10% -> 75% 之间)
+		// �������½��� (10% -> 75% ֮��)
 		int progress = 10 + (i + 1) * 65 / num_blocks;
-		if (!report_progress(progressCallback, userData, progress, "正在导入 TerraSAR-X SLC 数据分块...")) {
+		if (!report_progress(progressCallback, userData, progress, "���ڵ��� TerraSAR-X SLC ���ݷֿ�...")) {
 			GDALClose(hDataset);
-			return -2; // 支持用户中止
+			return -2; // ֧���û���ֹ
 		}
 	}
 	GDALClose(hDataset);
-	if (!report_progress(progressCallback, userData, 75, "写入SLC数据完成")) return -2;
+	if (!report_progress(progressCallback, userData, 75, "д��SLC�������")) return -2;
 
 	/*
-	* 打开 H5 文件进行元数据统一写入
+	* �� H5 �ļ�����Ԫ����ͳһд��
 	*/
 	/*
-	* 写入控制点数据
+	* д����Ƶ�����
 	*/
 
 	std::unique_ptr<Hdf5IO::WriteSession, void(*)(Hdf5IO::WriteSession*)> writeSession(
@@ -1153,17 +1220,17 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	}
 	Mat gcps;
 	XMLFile xmldoc;
-	if (!report_progress(progressCallback, userData, 77, "读取TerraSAR-X控制点数据")) return -2;
+	if (!report_progress(progressCallback, userData, 77, "��ȡTerraSAR-X���Ƶ�����")) return -2;
 	ret = xmldoc.XMLFile_load(GEOREF_filename);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	ret = xmldoc.get_gcps_from_TSX(gcps);
 	if (return_check(ret, "get_gcps_from_TSX", error_head)) return -1;
 	ret = Hdf5IO::writeArray(writeSession.get(), "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 80, "写入控制点数据完成")) return -2;
+	if (!report_progress(progressCallback, userData, 80, "д����Ƶ��������")) return -2;
 
 	/*
-	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
+	* ���ݿ��Ƶ�������Ͼ�γ�ȡ����ӽ����������꣨�С��У�֮��Ķ���ʽ��ϵ
 	*/
 
 	double mean_lon, mean_lat, mean_inc, max_lon, max_lat, max_inc, min_lon, min_lat, min_inc;
@@ -1185,13 +1252,13 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	row = (row - double(rows) * 0.5) / (double(rows) + 1e-10);
 	col = (col - double(cols) * 0.5) / (double(cols) + 1e-10);
 
-	if (!report_progress(progressCallback, userData, 82, "拟合TerraSAR-X坐标转换系数")) return -2;
-	// 生成5阶范德蒙矩阵
+	if (!report_progress(progressCallback, userData, 82, "���TerraSAR-X����ת��ϵ��")) return -2;
+	// ����5�׷����ɾ���
 	Mat A, temp, coefficient;
 	double rms;
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	// 拟合经度
+	// ��Ͼ���
 	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
@@ -1206,7 +1273,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = Hdf5IO::writeArray(writeSession.get(), "lon_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	// 拟合纬度
+	// ���γ��
 	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
@@ -1221,7 +1288,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = Hdf5IO::writeArray(writeSession.get(), "lat_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	//拟合下视角
+	//������ӽ�
 
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
@@ -1262,7 +1329,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//拟合行坐标
+	//���������
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -1353,7 +1420,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//拟合列坐标
+	//���������
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -1444,9 +1511,9 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	if (!report_progress(progressCallback, userData, 90, "坐标转换系数写入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 90, "����ת��ϵ��д�����")) return -2;
 	/*
-	* 写入轨道数据
+	* д��������
 	*/
 
 	Mat stateVec;
@@ -1458,7 +1525,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 	/*
-	* 写入多普勒中心频率参数
+	* д�����������Ƶ�ʲ���
 	*/
 
 	Mat Dc;
@@ -1467,46 +1534,46 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	ret = Hdf5IO::writeArray(writeSession.get(), "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	if (!report_progress(progressCallback, userData, 95, "写入TerraSAR-X轨道和多普勒参数完成")) return -2;
+	if (!report_progress(progressCallback, userData, 95, "д��TerraSAR-X����Ͷ����ղ������")) return -2;
 	/*
-	* 写入其他辅助参数
+	* д��������������
 	*/
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 	
-	//数据类型
+	//��������
 	ret = Hdf5IO::createString(writeSession.get(), "file_type", "SLC");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//卫星名称
+	//��������
 	ret = xmldoc.get_str_para("mission", sensor);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "sensor", sensor.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//极化
+	//����
 	ret = xmldoc.get_str_para("polLayer", polarization);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "polarization", polarization.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//工作模式
+	//����ģʽ
 	ret = xmldoc.get_str_para("imagingMode", imaging_mode);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "imaging_mode", imaging_mode.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//视向
+	//����
 	ret = xmldoc.get_str_para("lookDirection", lookside);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "lookside", lookside.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//轨道方向
+	//�������
 	ret = xmldoc.get_str_para("orbitDirection", orbit_dir);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "orbit_dir", orbit_dir.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	//处理等级
+	//����ȼ�
 	ret = Hdf5IO::createString(writeSession.get(), "process_state", "InSAR_0");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//处理描述
+	//��������
 	ret = Hdf5IO::createString(writeSession.get(), "comment", "import from TerraSAR-X Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
@@ -1518,28 +1585,28 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	//   scene_topright_lat, scene_bottomright_lon, scene_bottomright_lat
 	//   (scene coordinates not provided by TSX metadata, orbit_altitude hardcoded to -1)
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
-	//轨道高度,TerraSAR没提供，设置为-1
+	//����߶�,TerraSARû�ṩ������Ϊ-1
 	tmp.at<double>(0, 0) = -1;
 	ret = Hdf5IO::writeArray(writeSession.get(), "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	
 	TiXmlElement* pnode, * pchild;
 
-	//拍摄起始时间
+	//������ʼʱ��
 	ret = xmldoc.find_node("start", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "acquisition_start_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//拍摄结束时间
+	//�������ʱ��
 	ret = xmldoc.find_node("stop", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "acquisition_stop_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//载频
+	//��Ƶ
 	ret = xmldoc.find_node("instrument", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "centerFrequency", pchild);
@@ -1553,19 +1620,19 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = carrier_frequency;
 	ret = Hdf5IO::writeArray(writeSession.get(), "carrier_frequency", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//中心下视角
+	//�������ӽ�
 	ret = xmldoc.get_double_para("incidenceAngle", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
 	ret = Hdf5IO::writeArray(writeSession.get(), "inc_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//最近斜距
+	//���б��
 	ret = xmldoc.get_double_para("firstPixel", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_first_pixel * 299792458.0 / 2;
 	ret = Hdf5IO::writeArray(writeSession.get(), "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//最远斜距
+	//��Զб��
 	ret = xmldoc.get_double_para("lastPixel", &slant_range_last_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_last_pixel * 299792458.0 / 2;
@@ -1577,25 +1644,25 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = heading;
 	ret = Hdf5IO::writeArray(writeSession.get(), "heading", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//脉冲重复频率
+	//�����ظ�Ƶ��
 	ret = xmldoc.get_double_para("commonPRF", &prf);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = prf;
 	ret = Hdf5IO::writeArray(writeSession.get(), "prf", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//方位向分辨率
+	//��λ��ֱ���
 	ret = xmldoc.get_double_para("azimuthResolution", &azimuth_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = azimuth_resolution;
 	ret = Hdf5IO::writeArray(writeSession.get(), "azimuth_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向分辨率
+	//������ֱ���
 	ret = xmldoc.get_double_para("slantRangeResolution", &range_resolution);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = range_resolution;
 	ret = Hdf5IO::writeArray(writeSession.get(), "range_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//方位向采样间隔
+	//��λ��������
 	ret = xmldoc.find_node("productSpecific", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
 	ret = xmldoc._find_node(pnode, "projectedSpacingAzimuth", pchild);
@@ -1609,7 +1676,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = azimuth_spacing;
 	ret = Hdf5IO::writeArray(writeSession.get(), "azimuth_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向采样间隔
+	//������������
 	ret = xmldoc._find_node(pnode, "commonRSF", pchild);
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = sscanf(pchild->GetText(), "%lf", &range_spacing);
@@ -1626,19 +1693,19 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 
 	int azimuth_len, range_len;
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
-	//方位向像素点数
+	//��λ�����ص���
 	ret = xmldoc.get_int_para("numberOfRows", &azimuth_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = azimuth_len;
 	ret = Hdf5IO::writeArray(writeSession.get(), "azimuth_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向像素点数
+	//���������ص���
 	ret = xmldoc.get_int_para("numberOfColumns", &range_len);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
 	tmp_int.at<int>(0, 0) = range_len;
 	ret = Hdf5IO::writeArray(writeSession.get(), "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 100, "TerraSAR-X数据导入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 100, "TerraSAR-X���ݵ������")) return -2;
 	return 0;
 }
 
@@ -1749,7 +1816,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 	}
 
 	/*
-	* 读取精密轨道数据
+	* ��ȡ���ܹ������
 	*/
 
 	int ret, numOfstateVec;
@@ -1789,7 +1856,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 		if (gps_time <= actual_start && fabs(gps_time - actual_start) <= 100.0) start = true;
 		if (gps_time >= actual_stop && fabs(gps_time - actual_stop) >= 100.0) stop = true;
 
-		if (start && !stop)//开始记录
+		if (start && !stop)//��ʼ��¼
 		{
 			if (readDoubleNode(xmldoc, pnode, "X", x, POD_filename) < 0) return -1;
 			if (readDoubleNode(xmldoc, pnode, "Y", y, POD_filename) < 0) return -1;
@@ -1819,7 +1886,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 	tmp(cv::Range(0, count), cv::Range(0, 7)).copyTo(stateVec);
 
 	/*
-	* 写入精密轨道数据
+	* д�뾫�ܹ������
 	*/
 
 	ret = write_array_to_h5(dst_h5_filename, "fine_state_vec", stateVec);
@@ -1851,7 +1918,7 @@ int FormatConversion::read_slc_from_Sentinel(
 	TiXmlElement* pnode = NULL;
 	int linesPerBurst, samplesPerBurst, burst_count;
 	/*
-	* 读取xml文件里的burst参数
+	* ��ȡxml�ļ����burst����
 	*/
 	ret = xmldoc.get_int_para("linesPerBurst", &linesPerBurst);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
@@ -1869,7 +1936,7 @@ int FormatConversion::read_slc_from_Sentinel(
 
 
 
-	//逐个burst读取内容
+	//���burst��ȡ����
 	TiXmlElement* pchild = NULL;
 	ret = xmldoc._find_node(pnode, "burst", pchild);
 	if (ret < 0)
@@ -1914,7 +1981,7 @@ int FormatConversion::read_slc_from_Sentinel(
 		pchild = pchild->NextSiblingElement();
 		if (progressCallback) {
 			int progress = 10 + i * 80 / burst_count;
-			if (!progressCallback(progress, "正在读取并拼接 Sentinel-1 影像分片...", userData)) {
+			if (!progressCallback(progress, "���ڶ�ȡ��ƴ�� Sentinel-1 Ӱ���Ƭ...", userData)) {
 				return -2;
 			}
 		}
@@ -1963,7 +2030,7 @@ int FormatConversion::sentinel_deburst(const char* xml_filename, ComplexMat& slc
 	}
 
 	/*
-	* 找到所有无效行
+	* �ҵ�������Ч��
 	*/
 	long firstValidSample;
 	char* ptr;
@@ -2062,9 +2129,9 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		return -1;
 	}
 
-	if (!report_progress(progressCallback, userData, 0, "开始导入Sentinel-1数据")) return -2;
+	if (!report_progress(progressCallback, userData, 0, "��ʼ����Sentinel-1����")) return -2;
 	/*
-	* 检查h5文件是否已经存在
+	* ���h5�ļ��Ƿ��Ѿ�����
 	*/
 
 	int ret;
@@ -2072,13 +2139,13 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
 	/*
-	* 写入slc数据
+	* д��slc����
 	*/
 
 	ComplexMat slc;Mat gcps_line_index;
 	int rows, cols;
-	if (!report_progress(progressCallback, userData, 10, "读取Sentinel-1 SLC数据")) return -2;
-	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index, progressCallback, userData);//需要deburst
+	if (!report_progress(progressCallback, userData, 10, "��ȡSentinel-1 SLC����")) return -2;
+	ret = read_slc_from_Sentinel(tiff_filename, xml_filename, slc, gcps_line_index, progressCallback, userData);//��Ҫdeburst
 	if (ret == -2) return -2;
 	if (return_check(ret, "read_slc_from_Sentinel()", error_head)) return -1;
 	//ret = sentinel_deburst(xml_filename, slc, sentinel);
@@ -2092,7 +2159,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	slc.im.release();
 
 	/*
-	* 写入控制点数据
+	* д����Ƶ�����
 	*/
 
 	Mat gcps;
@@ -2116,10 +2183,10 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 	ret = write_array_to_h5(dst_h5_filename, "gcps", gcps);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 50, "写入控制点数据完成")) return -2;
+	if (!report_progress(progressCallback, userData, 50, "д����Ƶ��������")) return -2;
 
 	/*
-	* 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
+	* ���ݿ��Ƶ�������Ͼ�γ�ȡ����ӽ����������꣨�С��У�֮��Ķ���ʽ��ϵ
 	*/
 
 	double mean_lon, mean_lat, mean_inc, max_lon, max_lat, max_inc, min_lon, min_lat, min_inc;
@@ -2138,15 +2205,15 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 	lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinel行列起点为0，+1统一为1.
+	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinel�������Ϊ0��+1ͳһΪ1.
 	col = (col + 1 - double(cols) * 0.5) / (double(cols) + 1e-10);
 	
-	// 生成5阶范德蒙矩阵
+	// ����5�׷����ɾ���
 	Mat A, temp, coefficient;
 	double rms;
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	// 拟合经度
+	// ��Ͼ���
 	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
@@ -2161,7 +2228,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "lon_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	// 拟合纬度
+	// ���γ��
 	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
@@ -2176,7 +2243,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "lat_coefficient", temp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	//拟合下视角
+	//������ӽ�
 
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
@@ -2217,7 +2284,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//拟合行坐标
+	//���������
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -2308,7 +2375,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	}
 
-	//拟合列坐标
+	//���������
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -2400,7 +2467,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	}
 
 	/*
-	* 写入轨道数据
+	* д��������
 	*/
 
 	Mat stateVec;
@@ -2412,7 +2479,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	
 
 	/*
-	* 写入多普勒中心频率数据
+	* д�����������Ƶ������
 	*/
 
 	Mat Dc;
@@ -2421,54 +2488,54 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "doppler_centroid", Dc);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	if (!report_progress(progressCallback, userData, 90, "写入Sentinel-1轨道和多普勒参数完成")) return -2;
+	if (!report_progress(progressCallback, userData, 90, "д��Sentinel-1����Ͷ����ղ������")) return -2;
 	/*
-	* 其他辅助数据
+	* ������������
 	*/
 
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 
-	//数据类型
+	//��������
 	ret = xmldoc.get_str_para("productType", file_type);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "file_type", file_type.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//卫星名称
+	//��������
 	ret = xmldoc.get_str_para("missionId", sensor);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "sensor", sensor.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//极化
+	//����
 	ret = xmldoc.get_str_para("polarisation", polarization);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "polarization", polarization.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//工作模式
+	//����ģʽ
 	ret = xmldoc.get_str_para("mode", imaging_mode);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "imaging_mode", imaging_mode.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//视向
+	//����
 	ret = write_str_to_h5(dst_h5_filename, "lookside", "RIGHT");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//轨道方向
+	//�������
 	ret = xmldoc.get_str_para("pass", orbit_dir);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "orbit_dir", orbit_dir.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//拍摄起始时间
+	//������ʼʱ��
 	ret = xmldoc.get_str_para("startTime", acquisition_start_time);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_start_time", acquisition_start_time.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//拍摄结束时间
+	//�������ʱ��
 	ret = xmldoc.get_str_para("stopTime", acquisition_stop_time);
 	if (return_check(ret, "get_str_para()", error_head)) return -1;
 	ret = write_str_to_h5(dst_h5_filename, "acquisition_stop_time", acquisition_stop_time.c_str());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
-	//精密轨道数据
+	//���ܹ������
 	if (POD_file)
 	{
 		double start_t, end_t;
@@ -2477,10 +2544,10 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 		read_POD(POD_file, start_t, end_t, dst_h5_filename);
 	}
 
-	//处理等级
+	//����ȼ�
 	ret = write_str_to_h5(dst_h5_filename, "process_state", "InSAR_0");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
-	//处理描述
+	//��������
 	ret = write_str_to_h5(dst_h5_filename, "comment", "import from sentinel1 Single Look Complex, unprocessed.");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
@@ -2494,29 +2561,29 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	//   (scene coordinates not provided by sentinel1 metadata)
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
 
-	//轨道高度,sentinel没提供，设置为-1
+	//����߶�,sentinelû�ṩ������Ϊ-1
 	tmp.at<double>(0, 0) = -1;
 	ret = write_array_to_h5(dst_h5_filename, "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//载频
+	//��Ƶ
 	ret = xmldoc.get_double_para("radarFrequency", &carrier_frequency);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = carrier_frequency;
 	ret = write_array_to_h5(dst_h5_filename, "carrier_frequency", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//中心下视角
+	//�������ӽ�
 	ret = xmldoc.get_double_para("incidenceAngleMidSwath", &incidence_center);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = incidence_center;
 	ret = write_array_to_h5(dst_h5_filename, "inc_center", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//最近斜距
+	//���б��
 	ret = xmldoc.get_double_para("slantRangeTime", &slant_range_first_pixel);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = slant_range_first_pixel * VEL_C / 2.0;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_first_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//最远斜距，sentinel未提供，设置为-1
+	//��Զб�࣬sentinelδ�ṩ������Ϊ-1
 	tmp.at<double>(0, 0) = -1;
 	ret = write_array_to_h5(dst_h5_filename, "slant_range_last_pixel", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
@@ -2526,27 +2593,27 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	tmp.at<double>(0, 0) = heading;
 	ret = write_array_to_h5(dst_h5_filename, "heading", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//脉冲重复频率
+	//�����ظ�Ƶ��
 	ret = xmldoc.get_double_para("prf", &prf);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = prf;
 	ret = write_array_to_h5(dst_h5_filename, "prf", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//方位向分辨率
+	//��λ��ֱ���
 	tmp.at<double>(0, 0) = 20;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向分辨率
+	//������ֱ���
 	tmp.at<double>(0, 0) = 5;
 	ret = write_array_to_h5(dst_h5_filename, "range_resolution", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//方位向采样间隔
+	//��λ��������
 	ret = xmldoc.get_double_para("azimuthPixelSpacing", &azimuth_spacing);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = azimuth_spacing;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_spacing", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向采样间隔
+	//������������
 	ret = xmldoc.get_double_para("rangePixelSpacing", &range_spacing);
 	if (return_check(ret, "get_double_para()", error_head)) return -1;
 	tmp.at<double>(0, 0) = range_spacing;
@@ -2556,15 +2623,15 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 
 	// removed unused: azimuth_len, range_len (rows/cols written directly to h5)
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
-	//方位向像素点数
+	//��λ�����ص���
 	tmp_int.at<int>(0, 0) = rows;
 	ret = write_array_to_h5(dst_h5_filename, "azimuth_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	//距离向像素点数
+	//���������ص���
 	tmp_int.at<int>(0, 0) = cols;
 	ret = write_array_to_h5(dst_h5_filename, "range_len", tmp_int);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 100, "Sentinel-1数据导入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 100, "Sentinel-1���ݵ������")) return -2;
 
 	return 0;
 }
@@ -2604,7 +2671,7 @@ int FormatConversion::import_sentinel(
 		fprintf(stderr, "import_sentinel(): input check failed!\n");
 		return -1;
 	}
-	if (!report_progress(progressCallback, userData, 0, "开始导入Sentinel-1产品")) return -2;
+	if (!report_progress(progressCallback, userData, 0, "��ʼ����Sentinel-1��Ʒ")) return -2;
 	int ret;
 	string xmlhead, tiffhead, subswath, polar;
 	if (0 == strcmp("iw2", subswath_name))subswath = "iw2";
@@ -2615,7 +2682,7 @@ int FormatConversion::import_sentinel(
 	else polar = "vv";
 
 	XMLFile xmldoc;
-	if (!report_progress(progressCallback, userData, 10, "读取Sentinel-1 manifest文件")) return -2;
+	if (!report_progress(progressCallback, userData, 10, "��ȡSentinel-1 manifest�ļ�")) return -2;
 	ret = xmldoc.XMLFile_load(manifest);
 	if (return_check(ret, "XMLFile_load()", error_head)) return -1;
 	TiXmlElement* root = NULL, * pnode = NULL;
@@ -2663,7 +2730,7 @@ int FormatConversion::import_sentinel(
 		return -1;
 	}
 	TiXmlElement* pchild = NULL;
-	if (!report_progress(progressCallback, userData, 30, "查找Sentinel-1 XML和TIFF文件")) return -2;
+	if (!report_progress(progressCallback, userData, 30, "����Sentinel-1 XML��TIFF�ļ�")) return -2;
 
 	while (pnode)
 	{
@@ -2690,11 +2757,11 @@ int FormatConversion::import_sentinel(
 		}
 		pnode = pnode->NextSiblingElement();
 	}
-	if (!report_progress(progressCallback, userData, 50, "写入Sentinel-1 H5文件")) return -2;
+	if (!report_progress(progressCallback, userData, 50, "д��Sentinel-1 H5�ļ�")) return -2;
 	Sentinel1Reader reader(xml_filename.c_str(), tiff_filename.c_str(), PODFile);
 	ret = reader.writeToh5(dest_h5_file, start_burst, end_burst, progressCallback, userData);
 	if (return_check(ret, "writeToh5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 100, "Sentinel-1产品导入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 100, "Sentinel-1��Ʒ�������")) return -2;
 	return 0;
 }
 
@@ -2763,7 +2830,7 @@ int FormatConversion::get_a_burst(
 	}
 	if (buf) free(buf);
 
-	//剔除无效数据
+	//�޳���Ч����
 	ret = xmldoc._find_node(pnode, "firstValidSample", pchild);
 	if (ret < 0)
 	{
@@ -2844,7 +2911,7 @@ int FormatConversion::get_burst_sentinel(
 	int linesPerBurst, samplesPerBurst, burst_count;
 	double azimuthTimeInterval;
 	/*
-	* 读取xml文件里的burst参数
+	* ��ȡxml�ļ����burst����
 	*/
 	ret = xmldoc.get_int_para("linesPerBurst", &linesPerBurst);
 	if (return_check(ret, "get_int_para()", error_head)) return -1;
@@ -2868,7 +2935,7 @@ int FormatConversion::get_burst_sentinel(
 	}
 
 
-	//读取burst内容
+	//��ȡburst����
 	TiXmlElement* pchild = NULL, * pchild2 = NULL;
 	int count = 1;
 	ret = xmldoc._find_node(pnode, "burst", pchild);
@@ -2963,7 +3030,7 @@ int FormatConversion::get_burst_sentinel(
 		free(buf); buf = NULL;
 	}
 
-	//剔除无效数据
+	//�޳���Ч����
 	ret = xmldoc._find_node(pchild, "firstValidSample", pchild2);
 	if (ret < 0)
 	{
@@ -3012,8 +3079,8 @@ int FormatConversion::get_burst_sentinel(
 	end = linesPerBurst - (invalidLines - start);
 	burst = burst(cv::Range(start, end), cv::Range(0, samplesPerBurst));
 
-	//求取overlapSize
-	if (!pchild->NextSiblingElement()) *overlapSize = -1;//-1表示最后一个burst
+	//��ȡoverlapSize
+	if (!pchild->NextSiblingElement()) *overlapSize = -1;//-1��ʾ���һ��burst
 	else
 	{
 		pchild = pchild->NextSiblingElement();
@@ -3064,7 +3131,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	match_wnd2.convertTo(match_wnd2, CV_64F);
 	
 
-	//求取偏移量
+	//��ȡƫ����
 	//ComplexMat t1, t2;
 	//regis.interp_paddingzero(match_wnd, t1, 8);
 	//regis.interp_paddingzero(match_wnd2, t2, 8);
@@ -3074,7 +3141,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	ret = real_coherent(match_wnd, match_wnd2, &offset_row, &offset_col);
 	if (return_check(ret, "real_coherent()", error_head)) return -1;
 
-	//水平搬移this_burst
+	//ˮƽ����this_burst
 	
 	//if (offset_col > 0)
 	//{
@@ -3197,7 +3264,7 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 		return -1;
 	}
 	int rows, cols, sarfd_record_length, record_length, sardata_offset;
-	//检查数据格式
+	//������ݸ�ʽ
 	fseek(fp, 9 - 1, SEEK_SET);
 	if (fread(&sarfd_record_length, 4, 1, fp) != 1)
 	{
@@ -3213,7 +3280,7 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 		return -1;
 	}
 	char* ptr = NULL;
-	//确定slc数据尺寸
+	//ȷ��slc���ݳߴ�
 	fseek(fp, 237 - 1, SEEK_SET);
 	fread(buf, 1, 8, fp);
 	rows = strtol(buf, &ptr, 0);
@@ -3223,12 +3290,12 @@ int FormatConversion::read_slc_from_ALOS(const char* img_file, ComplexMat& slc)
 	fseek(fp, sarfd_record_length + 25 - 1, SEEK_SET);
 	fread(&cols, 4, 1, fp);
 	cols = Big2Little32(cols);
-	//读取数据偏移量
+	//��ȡ����ƫ����
 	memset(buf, 0, 2048);
 	fseek(fp, 277 - 1, SEEK_SET);
 	fread(buf, 1, 4, fp);
 	sardata_offset = strtol(buf, &ptr, 0);
-	//读取数据
+	//��ȡ����
 	slc.re.create(rows, cols, CV_32F);
 	slc.im.create(rows, cols, CV_32F);
 	float* p = (float*)malloc(record_length);
@@ -3261,7 +3328,7 @@ int FormatConversion::read_stateVec_from_ALOS(const char* LED_file, Mat& stateVe
 		return -1;
 	}
 
-	//检查文件格式
+	//����ļ���ʽ
 	int File_descriptor_len = 720;
 	int Data_set_summary_len = 4096;
 	int num_stateVec = 28;
@@ -3284,7 +3351,7 @@ int FormatConversion::read_stateVec_from_ALOS(const char* LED_file, Mat& stateVe
 	
 	stateVec.create(num_stateVec, 7, CV_64F);
 
-	//计算GPS时间
+	//����GPSʱ��
 	
 	char str[10240];
 	memset(str, 0, 10240);
@@ -3339,7 +3406,7 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 		fprintf(stderr, "read_conversion_coefficient_from_ALOS(): input check failed!\n");
 		return -1;
 	}
-	//检查文件
+	//����ļ�
 
 	// removed unused: ret (no return-value checks in this function)
 	int record_len, data_set_summary_len, platform_pos_len,
@@ -3369,7 +3436,7 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 		return -1;
 	}
 
-	//计算偏移量
+	//����ƫ����
 
 	fseek(fp, 187 - 1, SEEK_SET);
 	fread(str, 1, 6, fp);
@@ -3389,9 +3456,9 @@ int FormatConversion::read_conversion_coefficient_from_ALOS(const char* LED_file
 	facility_related_record_len = 0;
 	offset = record_len + data_set_summary_len + platform_pos_len + attitue_data_len + radiometric_data_len;
 
-	//读取数据
+	//��ȡ����
 	int count0 = 0;
-	while (facility_related_record_len != 5000/*ALOS2停止条件*/ && count0 < 11/*ALOS1停止条件*/)
+	while (facility_related_record_len != 5000/*ALOS2ֹͣ����*/ && count0 < 11/*ALOS1ֹͣ����*/)
 	{
 		offset += facility_related_record_len;
 		fseek(fp, offset + 9 - 1, SEEK_SET);
@@ -3469,17 +3536,17 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
-	if (!report_progress(progressCallback, userData, 0, "开始导入ALOS数据")) return -2;
-	///////////////////////创建h5文件////////////
+	if (!report_progress(progressCallback, userData, 0, "��ʼ����ALOS����")) return -2;
+	///////////////////////����h5�ļ�////////////
 
 	int ret;
 	if (return_check(creat_new_h5(dst_h5), "creat_new_h5()", error_head)) return -1;
-	if (!report_progress(progressCallback, userData, 5, "创建H5文件完成")) return -2;
+	if (!report_progress(progressCallback, userData, 5, "����H5�ļ����")) return -2;
 
-	//////////////读取slc数据并写入到目标文件中/////////////
+	//////////////��ȡslc���ݲ�д�뵽Ŀ���ļ���/////////////
 
 	int rows = 0, cols = 0;
-	if (!report_progress(progressCallback, userData, 10, "读取ALOS SLC数据")) return -2;
+	if (!report_progress(progressCallback, userData, 10, "��ȡALOS SLC����")) return -2;
 
 	FILE* fp_img = NULL;
 	fopen_s(&fp_img, IMG_file, "rb");
@@ -3583,7 +3650,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { free(block_buf); fclose(fp_img); return -1; }
 
 		int progress = 10 + (i + 1) * 30 / num_blocks; // 10% -> 40% (since next step is 45%)
-		if (!report_progress(progressCallback, userData, progress, "正在写入ALOS复图像分块数据...")) {
+		if (!report_progress(progressCallback, userData, progress, "����д��ALOS��ͼ��ֿ�����...")) {
 			free(block_buf);
 			fclose(fp_img);
 			return -2;
@@ -3592,18 +3659,18 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	free(block_buf);
 	fclose(fp_img);
 
-	//////////////读取并写入轨道数据//////////////////////
+	//////////////��ȡ��д��������//////////////////////
 
-	if (!report_progress(progressCallback, userData, 45, "读取ALOS轨道数据")) return -2;
+	if (!report_progress(progressCallback, userData, 45, "��ȡALOS�������")) return -2;
 	Mat stateVec;
 	ret = read_stateVec_from_ALOS(LED_file, stateVec);
 	if (return_check(ret, "read_stateVec_from_ALOS()", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5, "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	////////////读取并写入图像坐标与经纬坐标转换关系////////////////////
+	////////////��ȡ��д��ͼ�������뾭γ����ת����ϵ////////////////////
 
-	if (!report_progress(progressCallback, userData, 60, "读取ALOS坐标转换系数")) return -2;
+	if (!report_progress(progressCallback, userData, 60, "��ȡALOS����ת��ϵ��")) return -2;
 	Mat lon_coef, lat_coef, row_coef, col_coef;
 	ret = read_conversion_coefficient_from_ALOS(LED_file, lon_coef, lat_coef, row_coef, col_coef);
 	if (return_check(ret, "read_conversion_coefficient_from_ALOS()", error_head)) return -1;
@@ -3617,7 +3684,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
 
-	//////////打开LED文件/////////////
+	//////////��LED�ļ�/////////////
 
 	FILE* fp = NULL;
 	fopen_s(&fp, LED_file, "rb");
@@ -3627,7 +3694,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		return -1;
 	}
 
-	///////////读取并写入多普勒中心频率（ALOS只给了多普勒中心频率沿距离向拟合系数）/////////
+	///////////��ȡ��д�����������Ƶ�ʣ�ALOSֻ���˶���������Ƶ���ؾ��������ϵ����/////////
 
 	// Reuse previously declared ptr variable; removed redeclaration to avoid conflict
 	Mat tmp = Mat::zeros(1, 1, CV_64F);
@@ -3639,7 +3706,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	tmp.at<double>(0, 0) = strtod(ptr, &ptr);
 	write_array_to_h5(dst_h5, "doppler_coefficient_b", tmp);
 
-	///////////下视角拟合系数//////////////
+	///////////���ӽ����ϵ��//////////////
 
 	Mat inc_coefficient_r = Mat::zeros(1, 11, CV_64F);
 	fseek(fp, 720 + 1887 - 1, SEEK_SET); memset(str, 0, 2048);
@@ -3657,39 +3724,39 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	inc_coefficient_r.at<double>(0, 9) = strtod(ptr, &ptr) * factor;
 	write_array_to_h5(dst_h5, "inc_coefficient_r", inc_coefficient_r);
 
-	//中心下视角
+	//�������ӽ�
 	fseek(fp, 720 + 485 - 1, SEEK_SET); memset(str, 0, 2048);
 	fread(str, 1, 8, fp);
 	double inc_center;
 	string temp_str = str;
 	sscanf(temp_str.c_str(), "%lf", &inc_center);
 	write_double_to_h5(dst_h5, "inc_center", inc_center);
-	if (!report_progress(progressCallback, userData, 85, "写入ALOS辅助参数"))
+	if (!report_progress(progressCallback, userData, 85, "д��ALOS��������"))
 	{
 		if (fp) fclose(fp);
 		return -2;
 	}
-	///////////写入其他辅助参数//////////////
+	///////////д��������������//////////////
 
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
 	int record_len, data_set_summary_len, platform_pos_len,
 		attitue_data_len, radiometric_data_len;
 	record_len = 720; data_set_summary_len = 4096; platform_pos_len = 4680; radiometric_data_len = 9860;
-	//数据类型
+	//��������
 	ret = write_str_to_h5(dst_h5, "file_type", "SLC");
 	if (return_check(ret, "write_array_to_h5()", error_head))
 	{
 		if (fp) fclose(fp);
 		return -1;
 	}
-	//卫星名称
+	//��������
 	fseek(fp, 49 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 3, fp);
 	sensor = str;
 	write_str_to_h5(dst_h5, "sensor", sensor.c_str());
-	//拍摄起始时间
+	//������ʼʱ��
 	string year, month, day, hour, minute, second, temp_string;
 	// removed unused: h, m, s (date components parsed as strings, not integers)
 	fseek(fp, record_len + 69 - 1, SEEK_SET);
@@ -3708,7 +3775,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	tmp.at<double>(0, 0) = strtod(str, &ptr) / 1000;
 	write_array_to_h5(dst_h5, "prf", tmp);
 	double prf = tmp.at<double>(0, 0);
-	//极化方式
+	//������ʽ
 	FILE* fp1 = NULL;
 	fopen_s(&fp1, IMG_file, "rb");
 	if (fp1)
@@ -3725,7 +3792,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		polarization = r + t;
 		write_str_to_h5(dst_h5, "polarization", polarization.c_str());
 
-		//拍摄起始时间
+		//������ʼʱ��
 		uint64_t micro;
 		fseek(fp1, 720 + 85 - 1, SEEK_SET);
 		fread(&micro, 8, 1, fp1);
@@ -3747,14 +3814,14 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 		secds += (double)(rows - 1) / prf;
 
-		//拍摄结束时间
+		//�������ʱ��
 		memset(str, 0, 2048);
 		sprintf(str, "%lf", secds);
 		second = str;
 		string end_time = year + "-" + month + "-" + day + "T" + hour + ":" + minute + ":" + second;
 		write_str_to_h5(dst_h5, "acquisition_stop_time", end_time.c_str());
 
-		//左上角经纬度（第一个像素）
+		//���ϽǾ�γ�ȣ���һ�����أ�
 		int lon_topleft, lat_topleft, lon_bottomright, lat_bottomright, slant_range_first_pixel;
 		// removed unused: center_lat, center_lon (center coordinates computed from topleft/bottomright)
 		Mat temp = Mat::zeros(1, 1, CV_64F);
@@ -3770,7 +3837,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		temp.at<double>(0, 0) = (double)lon_topleft / 1e6;
 		write_array_to_h5(dst_h5, "scene_topleft_lon", temp);
 
-		//右上角经纬度
+		//���ϽǾ�γ��
 		fseek(fp1, 720 + 201 - 1, SEEK_SET);
 		fread(&lat_bottomright, 4, 1, fp1);
 		lat_bottomright = Big2Little32(lat_bottomright);
@@ -3783,7 +3850,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		temp.at<double>(0, 0) = (double)lon_bottomright / 1e6;
 		write_array_to_h5(dst_h5, "scene_topright_lon", temp);
 
-		//最近斜距
+		//���б��
 		fseek(fp1, 720 + 117 - 1, SEEK_SET);
 		fread(&slant_range_first_pixel, 4, 1, fp1);
 		slant_range_first_pixel = Big2Little32(slant_range_first_pixel);
@@ -3791,20 +3858,20 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 
 		if (fp1) fclose(fp1);
 	}
-	//拍摄模式
+	//����ģʽ
 	fseek(fp, 720 + 413 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 32, fp);
 	if (str[4] == '2')//ALOS2
 	{
 		attitue_data_len = 16384;
-		//视向
+		//����
 		string filename = IMG_file;
 		filename = filename.substr(filename.find_last_of('\\') + 1);
-		//拍摄模式
+		//����ģʽ
 		imaging_mode = filename.substr(29, 3);
 		write_str_to_h5(dst_h5, "imaging_mode", imaging_mode.c_str());
-		if (filename[32] == 'L')//左视
+		if (filename[32] == 'L')//����
 		{
 			lookside = "LEFT";
 		}
@@ -3813,7 +3880,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 			lookside = "RIGHT";
 		}
 		
-		//轨道方向
+		//�������
 		if (filename[38] == 'D')
 		{
 			orbit_dir = "Descending";
@@ -3841,13 +3908,13 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	}
 	write_str_to_h5(dst_h5, "lookside", lookside.c_str());
 	write_str_to_h5(dst_h5, "orbit_dir", orbit_dir.c_str());
-	//载频
+	//��Ƶ
 	fseek(fp, 720 + 501 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = 3e8 / strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "carrier_frequency", tmp);
-	//中心下视角
+	//�������ӽ�
 	fseek(fp, 720 + 485 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 8, fp);
@@ -3859,38 +3926,38 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	//fread(str, 1, 16, fp);
 	//tmp.at<double>(0, 0) = strtod(str, &ptr) / 1000;
 	//write_array_to_h5(dst_h5, "prf", tmp);
-	//方位向像素点数
+	//��λ�����ص���
 	Mat tmp_int = Mat::zeros(1, 1, CV_32S);
 	tmp_int.at<int>(0, 0) = rows;
 	write_array_to_h5(dst_h5, "azimuth_len", tmp_int);
-	//距离向像素点数
+	//���������ص���
 	tmp_int.at<int>(0, 0) = cols;
 	write_array_to_h5(dst_h5, "range_len", tmp_int);
-	//距离向分辨率
+	//������ֱ���
 	int offset = record_len + data_set_summary_len + platform_pos_len + attitue_data_len + radiometric_data_len;
 	fseek(fp, offset + 127 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "range_resolution", tmp);
-	//方位向分辨率
+	//��λ��ֱ���
 	memset(str, 0, 2048);
 	fread(str, 1, 16, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "azimuth_resolution", tmp);
-	//方位向采样间隔
+	//��λ��������
 	fseek(fp, 720 + 1687 - 1, SEEK_SET);
 	memset(str, 0, 2048);
 	fread(str, 1, 32, fp);
 	tmp.at<double>(0, 0) = strtod(str, &ptr);
 	write_array_to_h5(dst_h5, "azimuth_spacing", tmp);
-	//距离向采样间隔
+	//������������
 	tmp.at<double>(0, 0) = strtod(ptr, &ptr);
 	write_array_to_h5(dst_h5, "range_spacing", tmp);
 
-	//处理等级
+	//����ȼ�
 	ret = write_str_to_h5(dst_h5, "process_state", "InSAR_0");
-	//处理描述
+	//��������
 	int t = attitue_data_len > 10000 ? 2 : 1;
 	char strings[1024]; memset(strings, 0, 1024);
 	sprintf(strings, "import from ALOS%d Single Look Complex, unprocessed.", t);
@@ -3898,7 +3965,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 	write_str_to_h5(dst_h5, "comment", sss.c_str());
 
 	if (fp)fclose(fp);
-	if (!report_progress(progressCallback, userData, 100, "ALOS数据导入完成")) return -2;
+	if (!report_progress(progressCallback, userData, 100, "ALOS���ݵ������")) return -2;
 	return 0;
 }
 
@@ -7101,7 +7168,7 @@ int XMLFile::getIntArray(const char* node_name, Mat& Array, TiXmlElement* rootNo
 int XMLFile::get_gcps_from_TSX(Mat& gcps)
 {
 	/*
-	* 验证根节点
+	* ��֤���ڵ�
 	*/
 	TiXmlElement* pRoot = NULL;
 	pRoot = impl_->doc.RootElement();
@@ -7119,7 +7186,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 		return -1;
 	}
 	/*
-	* 确定控制点个数
+	* ȷ�����Ƶ����
 	*/
 	int n_gcps = 1;
 	TiXmlElement* pnode = NULL;
@@ -7135,7 +7202,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	}
 	Mat x(n_gcps, 6, CV_64F);
 	/*
-	* 读取控制点
+	* ��ȡ���Ƶ�
 	*/
 	ret = find_node("gridPoint", pnode);
 	if (return_check(ret, "get_gcps_from_TSX()", impl_->error_head)) return -1;
@@ -7144,7 +7211,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 	for (int i = 1; i <= n_gcps; i++)
 	{
 		if (!pnode) break;
-		//读取经度
+		//��ȡ����
 		ret = _find_node(pnode, "lon", pchild);
 		if (ret < 0)
 		{
@@ -7158,7 +7225,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//读取纬度
+		//��ȡγ��
 		ret = _find_node(pnode, "lat", pchild);
 		if (ret < 0)
 		{
@@ -7172,7 +7239,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//读取高度
+		//��ȡ�߶�
 		ret = _find_node(pnode, "height", pchild);
 		if (ret < 0)
 		{
@@ -7186,7 +7253,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//读取行数
+		//��ȡ����
 		ret = _find_node(pnode, "row", pchild);
 		if (ret < 0)
 		{
@@ -7200,7 +7267,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//读取列数
+		//��ȡ����
 		ret = _find_node(pnode, "col", pchild);
 		if (ret < 0)
 		{
@@ -7214,7 +7281,7 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//读取下视角
+		//��ȡ���ӽ�
 		ret = _find_node(pnode, "inc", pchild);
 		if (ret < 0)
 		{
@@ -7228,14 +7295,14 @@ int XMLFile::get_gcps_from_TSX(Mat& gcps)
 			fprintf(stderr, "get_gcps_from_TSX(): %s: unkown format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//赋值
+		//��ֵ
 		x.at<double>(i - 1, 0) = lon;
 		x.at<double>(i - 1, 1) = lat;
 		x.at<double>(i - 1, 2) = height;
 		x.at<double>(i - 1, 3) = row;
 		x.at<double>(i - 1, 4) = col;
 		x.at<double>(i - 1, 5) = inc;
-		//下一个节点
+		//��һ���ڵ�
 		pnode = pnode->NextSiblingElement();
 	}
 	x.copyTo(gcps);
@@ -7253,7 +7320,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	}
 
 	/*
-	* 确定stateVec个数
+	* ȷ��stateVec����
 	*/
 
 	TiXmlElement* pnode = NULL;
@@ -7273,7 +7340,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	Mat x(numstateVec, 7, CV_64F);
 
 	/*
-	* 找到第一个stateVec
+	* �ҵ���һ��stateVec
 	*/
 	ret = _find_node(pRoot, "stateVec", pnode);
 	if (ret < 0)
@@ -7286,7 +7353,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	for (int i = 0; i < numstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPS时间
+		//GPSʱ��
 		ret = _find_node(pnode, "timeUTC", pchild);
 		if (ret < 0)
 		{
@@ -7379,7 +7446,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 
-		//赋值
+		//��ֵ
 		x.at<double>(i, 0) = GPS_time;
 		x.at<double>(i, 1) = posX;
 		x.at<double>(i, 2) = posY;
@@ -7387,7 +7454,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 		x.at<double>(i, 4) = velX;
 		x.at<double>(i, 5) = velY;
 		x.at<double>(i, 6) = velZ;
-		//下一个节点
+		//��һ���ڵ�
 		pnode = pnode->NextSiblingElement();
 	}
 	x.copyTo(stateVec);
@@ -7476,7 +7543,7 @@ int XMLFile::get_dopplerCentroid_from_TSX(Mat& doppler)
 int XMLFile::get_gcps_from_sentinel(Mat& gcps)
 {
 	/*
-	* 确定控制点个数
+	* ȷ�����Ƶ����
 	*/
 	int n_gcps = 1;
 	TiXmlElement* pRoot = impl_->doc.RootElement();
@@ -7686,7 +7753,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPS时间
+		//GPSʱ��
 		ret = _find_node(pnode, "time", pchild);
 		if (ret < 0)
 		{
@@ -7695,7 +7762,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 		}
 		ret = conversion.utc2gps(pchild->GetText(), &time);
 		if (return_check(ret, "utc2gps()", impl_->error_head)) return -1;
-		//位置x
+		//λ��x
 		ret = _find_node(pnode, "position", pchild);
 		if (ret < 0)
 		{
@@ -7714,7 +7781,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//位置y
+		//λ��y
 		ret = _find_node(pchild, "y", pchild1);
 		if (ret < 0)
 		{
@@ -7727,7 +7794,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//位置z
+		//λ��z
 		ret = _find_node(pchild, "z", pchild1);
 		if (ret < 0)
 		{
@@ -7740,7 +7807,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//速度x
+		//�ٶ�x
 		ret = _find_node(pnode, "velocity", pchild);
 		if (ret < 0)
 		{
@@ -7759,7 +7826,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//速度y
+		//�ٶ�y
 		ret = _find_node(pchild, "y", pchild1);
 		if (ret < 0)
 		{
@@ -7772,7 +7839,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			fprintf(stderr, "get_stateVec_from_sentinel(): %s: unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		//速度z
+		//�ٶ�z
 		ret = _find_node(pchild, "z", pchild1);
 		if (ret < 0)
 		{
@@ -7786,7 +7853,7 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 			return -1;
 		}
 
-		//赋值
+		//��ֵ
 		stateVec.at<double>(i, 0) = time;
 		stateVec.at<double>(i, 1) = x;
 		stateVec.at<double>(i, 2) = y;
@@ -7958,8 +8025,8 @@ int FormatConversion::ell2xyz(double lon, double lat, double elevation, Position
 	const double pi = 3.14159265358979323846;
 	const double d2r = pi / 180;
 	const double r2d = 180 / pi;
-	const double a = 6378137.0;		//椭球长半轴
-	const double f_inverse = 298.257223563;			//扁率倒数
+	const double a = 6378137.0;		//���򳤰���
+	const double f_inverse = 298.257223563;			//���ʵ���
 	const double b = a - a / f_inverse;
 	const double e = sqrt(a * a - b * b) / a;
 	double y = lat;
@@ -8102,7 +8169,7 @@ int FormatConversion::real_coherent(const ComplexMat& Master, const ComplexMat& 
 	mulSpectrums(im1fft, im2fft, spectrum, 0, true);
 
 	Mat result;
-	idft(spectrum, result, cv::DFT_REAL_OUTPUT);//需要显示图像时可以用DFT_SCALE
+	idft(spectrum, result, cv::DFT_REAL_OUTPUT);//��Ҫ��ʾͼ��ʱ������DFT_SCALE
 
 	ret = fftshift2(result);
 	if (return_check(ret, "fftshift2(*)", error_head)) return -1;
@@ -8164,7 +8231,7 @@ int FormatConversion::fft2(Mat& Src, Mat& Dst)
 }
 
 /*------------------------------------------------*/
-/*               哨兵一号数据读取工具             */
+/*               �ڱ�һ�����ݶ�ȡ����             */
 /*------------------------------------------------*/
 Sentinel1Reader::Sentinel1Reader()
 {
@@ -8230,7 +8297,7 @@ Sentinel1Reader::~Sentinel1Reader()
 
 int Sentinel1Reader::load(const char* xmlfile, const char* tiffFile)
 {
-	if (bXmlLoad) return 0;//只允许加载1次
+	if (bXmlLoad) return 0;//ֻ�������1��
 	this->tiffFile = tiffFile;
 	if (!xmldoc.XMLFile_load(xmlfile)) {
 		bXmlLoad = true;
@@ -8536,7 +8603,7 @@ int Sentinel1Reader::getGeolocationGridPoint()
 		return -1;
 	}
 	/*
-	* 确定控制点个数
+	* ȷ�����Ƶ����
 	*/
 	int n_gcps = 1;
 	int ret;
@@ -8548,7 +8615,7 @@ int Sentinel1Reader::getGeolocationGridPoint()
 		return -1;
 	}
 	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &n_gcps);
-	geolocationGridPoint.create(n_gcps, 7, CV_64F);//最后一行是方位向时间
+	geolocationGridPoint.create(n_gcps, 7, CV_64F);//���һ���Ƿ�λ��ʱ��
 	TiXmlElement* pchild = NULL;
 	ret = xmldoc._find_node(pnode, "geolocationGridPoint", pchild);
 	double lon, lat, height, row, col, inc, azimuthTime;
@@ -8633,15 +8700,15 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 	lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinel行列起点为0，+1统一为1.
+	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinel�������Ϊ0��+1ͳһΪ1.
 	col = (col + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);
 
-	// 生成5阶范德蒙矩阵
+	// ����5�׷����ɾ���
 	Mat A, temp, coefficient;
 	double rms;
 	if (::createVandermondeMatrix(row, col, A) != 0) return -1;
 
-	// 拟合经度
+	// ��Ͼ���
 	if (::polyFit(A, lon, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
@@ -8655,7 +8722,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
 	temp.copyTo(lon_coefficient);
 
-	// 拟合纬度
+	// ���γ��
 	if (::polyFit(A, lat, coefficient, &rms) != 0) return -1;
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
@@ -8669,7 +8736,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
 	temp.copyTo(lat_coefficient);
 
-	//拟合下视角
+	//������ӽ�
 
 	Mat b, B, a, a_t, b_t, error;
 	inc.copyTo(b);
@@ -8709,7 +8776,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(inc_coefficient);
 	}
 
-	//拟合行坐标
+	//���������
 
 	row.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -8799,7 +8866,7 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 		temp.copyTo(row_coefficient);
 	}
 
-	//拟合列坐标
+	//���������
 
 	col.copyTo(b);
 	A = Mat::ones(lon.rows, 25, CV_64F);
@@ -8911,31 +8978,31 @@ int Sentinel1Reader::getOrbitList()
 	for (int i = 0; i < numOfstateVec; i++)
 	{
 		if (!pnode) break;
-		//GPS时间
+		//GPSʱ��
 		ret = xmldoc._find_node(pnode, "time", pchild);
 		ret = UTC2GPS(pchild->GetText(), &time);
-		//位置x
+		//λ��x
 		ret = xmldoc._find_node(pnode, "position", pchild);
 		ret = xmldoc._find_node(pchild, "x", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &x);
-		//位置y
+		//λ��y
 		ret = xmldoc._find_node(pchild, "y", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &y);
-		//位置z
+		//λ��z
 		ret = xmldoc._find_node(pchild, "z", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &z);
-		//速度x
+		//�ٶ�x
 		ret = xmldoc._find_node(pnode, "velocity", pchild);
 		ret = xmldoc._find_node(pchild, "x", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vx);
-		//速度y
+		//�ٶ�y
 		ret = xmldoc._find_node(pchild, "y", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vy);
-		//速度z
+		//�ٶ�z
 		ret = xmldoc._find_node(pchild, "z", pchild1);
 		ret = sscanf(pchild1->GetText(), "%lf", &vz);
 
-		//赋值
+		//��ֵ
 		orbitList.at<double>(i, 0) = time;
 		orbitList.at<double>(i, 1) = x;
 		orbitList.at<double>(i, 2) = y;
@@ -8956,7 +9023,7 @@ int Sentinel1Reader::getPOD(const char* POD_file)
 		return -1;
 	}
 	/*
-	* 读取精密轨道数据
+	* ��ȡ���ܹ������
 	*/
 
 	int ret, numOfstateVec;
@@ -8993,7 +9060,7 @@ int Sentinel1Reader::getPOD(const char* POD_file)
 		if (gps_time <= start_time && fabs(gps_time - start_time) <= 100.0) start = true;
 		if (gps_time >= stop_time && fabs(gps_time - stop_time) >= 100.0) stop = true;
 
-		if (start && !stop)//开始记录
+		if (start && !stop)//��ʼ��¼
 		{
 			ret = doc._find_node(pnode, "X", pchild);
 			ret = sscanf(pchild->GetText(), "%lf", &x);
@@ -9084,9 +9151,9 @@ int Sentinel1Reader::prepareData(const char* PODFile)
 	{
 		this->getPOD(PODFile);
 	}
-	//更新控制点
+	//���¿��Ƶ�
 	updateGeolocationGridPoint();
-	//拟合坐标转换系数
+	//�������ת��ϵ��
 	fitCoordinateConversionCoefficient();
 	isDataAvailable = true;
 	return 0;
@@ -9248,7 +9315,7 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_int_to_h5(h5File, "offset_row", 0);
 	conversion.write_int_to_h5(h5File, "offset_col", 0);
 
-	// 从GCP网格计算四角经纬度
+	// ��GCP��������ĽǾ�γ��
 	if (!geolocationGridPoint.empty() && geolocationGridPoint.rows >= 4) {
 		double rows = (double)this->numberOfLines - 1.0;
 		double cols = (double)this->numberOfSamples - 1.0;
@@ -9311,7 +9378,7 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	if(!preciseOrbitList.empty())
 		conversion.write_array_to_h5(h5File, "fine_state_vec", this->preciseOrbitList);
 
-	//写入图像数据
+	//д��ͼ������
 	if (this->tiffFile.empty())
 	{
 		fprintf(stderr, "Sentinel1Reader::writeToh5(): tiffFile path is empty!\n");
@@ -9390,12 +9457,12 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 		ret = conversion.write_subarray_to_h5(h5File, "s_im", block_im, current_offset, 0, current_rows, this->numberOfSamples);
 		if (return_check(ret, "write_subarray_to_h5(s_im)", error_head)) { free(block_buf); fclose(fp_tiff); return -1; }
 
-		// 进度更新 (50% -> 95% 之间)
+		// ���ȸ��� (50% -> 95% ֮��)
 		int progress = 50 + (i + 1) * 45 / num_blocks;
-		if (!report_progress(progressCallback, userData, progress, "正在写入Sentinel-1 H5复图像分块数据...")) {
+		if (!report_progress(progressCallback, userData, progress, "����д��Sentinel-1 H5��ͼ��ֿ�����...")) {
 			free(block_buf);
 			fclose(fp_tiff);
-			return -2; // 被用户中止
+			return -2; // ���û���ֹ
 		}
 	}
 
@@ -9405,7 +9472,7 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 }
 
 /*------------------------------------------------*/
-/*             哨兵一号数据/计算读取工具          */
+/*             �ڱ�һ������/�����ȡ����          */
 /*------------------------------------------------*/
 
 Sentinel1Utils::Sentinel1Utils(const char* h5File)
@@ -9460,7 +9527,7 @@ int Sentinel1Utils::init()
 		return -1;
 	}
 	int ret; FormatConversion conversion;
-	//读取数据
+	//��ȡ����
 	ret = conversion.read_double_from_h5(h5File.c_str(), "azimuth_spacing", &this->azimuthPixelSpacing);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	ret = conversion.read_double_from_h5(h5File.c_str(), "azimuthSteeringRate", &this->azimuthSteeringRate);
@@ -9997,8 +10064,8 @@ int Sentinel1Utils::computeImageGeoBoundry(double* lonMin, double* lonMax, doubl
 	*lonMax = -181.0;
 	*latMin = 91.0;
 	*latMax = -91.0;
-	// 根据 GCPs 对应的方位向行号（第 3 列）精准匹配当前 burst 的行范围
-	// 避免在用户部分导入 burst 时，使用 geolocationGridPoint.rows 均分行数导致的索引偏移 bug
+	// ���� GCPs ��Ӧ�ķ�λ���кţ��� 3 �У���׼ƥ�䵱ǰ burst ���з�Χ
+	// �������û����ֵ��� burst ʱ��ʹ�� geolocationGridPoint.rows �����������µ�����ƫ�� bug
 	bool found = false;
 	double minR = (burstIndex - 1) * this->linesPerBurst;
 	double maxR = burstIndex * this->linesPerBurst;
@@ -10018,7 +10085,7 @@ int Sentinel1Utils::computeImageGeoBoundry(double* lonMin, double* lonMax, doubl
 	}
 	if (!found)
 	{
-		// 备用均分逻辑
+		// ���þ����߼�
 		int cols_num = geolocationGridPoint.rows / (this->burstCount + 1);
 		int start_row = cols_num * (burstIndex - 1);
 		int end_row = start_row + cols_num;
@@ -10049,7 +10116,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 		return -1;
 	}
 
-	//创建新的deburst文件
+	//�����µ�deburst�ļ�
 
 	FormatConversion conversion;
 	int ret = conversion.creat_new_h5(outFile);
@@ -10092,7 +10159,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 		cv::vconcat(slc.re, tmp2.re, slc.re);
 		cv::vconcat(slc.im, tmp2.im, slc.im);
 	}
-	//往文件里写入卫星数据和辅助数据
+	//���ļ���д���������ݺ͸�������
 	ret = conversion.write_slc_to_h5(outFile, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(this->h5File.c_str(), outFile);
@@ -10373,7 +10440,7 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
         if (!filename)
             return -1;
                                                                                           
-        InitializeGDALOnce();    // 注册已知驱动，多线程安全
+        InitializeGDALOnce();    // ע����֪���������̰߳�ȫ
                                                                                           
         GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);
         if (poDataset == NULL)
@@ -10407,10 +10474,10 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             return -1;
         }
                                                                                           
-        /* 原始数据类型（常见为 GDT_Int16） */
+        /* ԭʼ�������ͣ�����Ϊ GDT_Int16�� */
         GDALDataType srcType = poBand->GetRasterDataType();
                                                                                           
-        /* 分配缓冲区（short） */
+        /* ���仺������short�� */
         short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
         if (!pbuf)
         {
@@ -10419,7 +10486,7 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             return -1;
         }
                                                                                           
-        /* 读取：强制以 GDT_Int16 输出，避免 memcpy 类型不匹配 */
+        /* ��ȡ��ǿ���� GDT_Int16 ��������� memcpy ���Ͳ�ƥ�� */
         if (poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, GDT_Int16, 0,
   0) != CE_None)                                                                          
         {
@@ -10436,7 +10503,7 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
         pbuf = NULL;
         GDALClose(poDataset);
                                                                                           
-        /* 将负值置零（保持你原来的 OpenMP 逻辑） */
+        /* ����ֵ���㣨������ԭ���� OpenMP �߼��� */
         int rows = outDEM.rows;
         int cols = outDEM.cols;
                                                                                           
@@ -10465,13 +10532,13 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 		return -1;
 	}
 	int ret;
-	//如果目标文件夹不存在，则创建
+	//���Ŀ���ļ��в����ڣ��򴴽�
 	if (-1 == GetFileAttributesA(dstPath))
 	{
 		ret = _mkdir(dstPath);
 		if (ret < 0)return -1;
 	}
-	//////////////////////////创建并调用unzip.exe进程///////////////////////////////
+	//////////////////////////����������unzip.exe����///////////////////////////////
 	char szFilePath[MAX_PATH + 1] = { 0 };
 	GetModuleFileNameA(NULL, szFilePath, MAX_PATH);
 	string str(szFilePath);
@@ -10487,14 +10554,14 @@ int DigitalElevationModel::unzip(const char* srcFile, const char* dstPath)
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
 	BOOL bRet = ::CreateProcessA(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
+		NULL,           // ���ڴ�ָ����ִ���ļ����ļ���
+		szCommandLine,      // �����в���
+		NULL,           // Ĭ�Ͻ��̰�ȫ��
+		NULL,           // Ĭ���̰߳�ȫ��
+		FALSE,          // ָ����ǰ�����ڵľ�������Ա��ӽ��̼̳�
+		CREATE_NEW_CONSOLE, // Ϊ�½��̴���һ���µĿ���̨����
+		NULL,           // ʹ�ñ����̵Ļ�������
+		NULL,           // ʹ�ñ����̵���������Ŀ¼
 		&si,
 		&p_i);
 	if (bRet)
@@ -10561,6 +10628,7 @@ Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 	this->burstOffsetComputed = false;
 	this->isMasterRgAzComputed = false;
 	this->isdeBurstConfig = false;
+	this->deferFinalDeburstOutput = false;
 	this->masterIndex = 1;
 	this->numOfImages = 0;
 	{
@@ -10628,6 +10696,7 @@ int Sentinel1BackGeocoding::init(
 	sprintf_s(initMessage, "Initializing Sentinel-1 back-geocoding: images=%zu, master=%d.", h5Files.size(), masterIndex);
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize", initMessage,
 		"Input metadata, DEM configuration, and output datasets will be validated.", DEMPath);
+	emit_progress(10, "Initializing Sentinel-1 back-geocoding.");
 	if (h5Files.size() < 2 || outFiles.size() != h5Files.size() || !DEMPath || !*DEMPath ||
 		masterIndex < 1 || masterIndex > static_cast<int>(h5Files.size()))
 	{
@@ -10677,6 +10746,7 @@ int Sentinel1BackGeocoding::init(
 	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize.complete", "Back-geocoding initialization completed.",
 		"Input metadata and output dataset preparation succeeded.", DEMPath);
+	emit_progress(15, "Input metadata and working output are prepared.");
 
 	return 0;
 }
@@ -10692,7 +10762,7 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 	}
 	int ret;
 	this->numOfImages = static_cast<int>(h5Files.size());
-	//清空已有数据
+	//�����������
 	for (int i = 0; i < su.size(); i++)
 	{
 		if (su[i])
@@ -10769,17 +10839,16 @@ int Sentinel1BackGeocoding::loadOutFiles(vector<string>& outFiles)
 		fprintf(stderr, "loadOutFiles(): input check failed!\n");
 		return -1;
 	}
+	// Preserve the group paths before inspecting its transaction state.  A failed
+	// initialization must still leave enough context for the caller to invoke
+	// recoverPostRegistrationRefinementTransaction().
+	this->outFiles = outFiles;
 	if (validate_refinement_manifest(outFiles) != 0)
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.load_rejected",
 			"Refinement output group is incomplete, failed, or transaction-inconsistent.",
 			"A directory manifest is authoritative; do not load or publish this output group until it is recovered.");
 		return -1;
-	}
-	this->outFiles.clear();
-	for (int i = 0; i < outFiles.size(); i++)
-	{
-		this->outFiles.push_back(outFiles[i]);
 	}
 	return 0;
 }
@@ -10794,39 +10863,113 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 		if (return_check(ret, "deBurstConfig()", error_head)) return -1;
 	}
 	if (numOfImages < 2) return -1;
-	ComplexMat tmp, tmp2, slc;
-	ret = conversion.read_slc_from_h5(su[masterIndex - 1]->h5File.c_str(), tmp);
-	tmp.convertTo(tmp, CV_32F);
+	ComplexMat fullBurst;
+	ret = conversion.read_slc_from_h5(su[masterIndex - 1]->h5File.c_str(), fullBurst);
+	fullBurst.convertTo(fullBurst, CV_32F);
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
-	//deburst
-	slc = tmp(cv::Range(start.at<int>(0, 0), end.at<int>(0, 0)), cv::Range(0, su[masterIndex - 1]->samplesPerBurst));
-	for (int i = 1; i < su[masterIndex - 1]->burstCount; i++)
-	{
-		tmp2 = tmp(cv::Range(start.at<int>(i, 0), end.at<int>(i, 0)), cv::Range(0, su[masterIndex - 1]->samplesPerBurst));
-		cv::vconcat(slc.re, tmp2.re, slc.re);
-		cv::vconcat(slc.im, tmp2.im, slc.im);
-	}
+	const int fullBurstLines = su[masterIndex - 1]->burstCount * su[masterIndex - 1]->linesPerBurst;
+	if (fullBurst.GetRows() != fullBurstLines || fullBurst.GetCols() != su[masterIndex - 1]->samplesPerBurst)
+		return -1;
+	this->deburstLines = 0;
+	for (int burst = 0; burst < start.rows; ++burst)
+		this->deburstLines += end.at<int>(burst, 0) - start.at<int>(burst, 0);
+	this->fullBurstFiles.assign(numOfImages, std::string());
 	for (int i = 0; i < numOfImages; i++)
 	{
 		ScopedDiagnosticContext imageDiagnosticScope(diagnosticCallback, diagnosticUserData, i + 1);
 		const ULONGLONG outputStartTick = GetTickCount64();
-		ret = conversion.creat_new_h5(this->outFiles[i].c_str());
+		this->fullBurstFiles[i] = this->outFiles[i] + ".fullburst";
+		ret = conversion.creat_new_h5(this->fullBurstFiles[i].c_str());
 			if (return_check(ret, "creat_new_h5()", error_head)) return -1;
-		ret = conversion.write_slc_to_h5(this->outFiles[i].c_str(), slc);
+		ret = conversion.write_slc_to_h5(this->fullBurstFiles[i].c_str(), fullBurst);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		char message[384] = {};
-		sprintf_s(message, "Prepared debursted output HDF5: dimensions=%dx%d, datasets=s_re,s_im.", slc.GetRows(), slc.GetCols());
+		sprintf_s(message, "Prepared full-burst working HDF5: dimensions=%dx%d, datasets=s_re,s_im.", fullBurst.GetRows(), fullBurst.GetCols());
 		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "hdf5", "prepare_output.complete", message,
-			nullptr, this->outFiles[i].c_str(), nullptr, 0, slc.GetRows(), slc.GetCols(), slc.type(),
+			nullptr, this->fullBurstFiles[i].c_str(), nullptr, 0, fullBurst.GetRows(), fullBurst.GetCols(), fullBurst.type(),
 			static_cast<long long>(GetTickCount64() - outputStartTick));
 	}
-	this->deburstLines = slc.GetRows();
 	char message[384] = {};
-	sprintf_s(message, "Initial deburst output preparation completed: bursts=%d, lines=%d, samples=%d.",
-		su[masterIndex - 1]->burstCount, deburstLines, su[masterIndex - 1]->samplesPerBurst);
-	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "deburst", "prepare_output.complete", message,
-		nullptr, nullptr, nullptr, 0, deburstLines, su[masterIndex - 1]->samplesPerBurst, CV_32F,
+	sprintf_s(message, "Full-burst working output preparation completed: bursts=%d, lines=%d, samples=%d; final deburst lines=%d.",
+		su[masterIndex - 1]->burstCount, fullBurstLines, su[masterIndex - 1]->samplesPerBurst, deburstLines);
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "deburst", "prepare_full_burst.complete", message,
+		nullptr, nullptr, nullptr, 0, fullBurstLines, su[masterIndex - 1]->samplesPerBurst, CV_32F,
 		static_cast<long long>(GetTickCount64() - preparationStartTick));
+	return 0;
+}
+
+int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile)
+{
+	if (!fullBurstFile || !deburstFile || start.empty() || end.empty() || start.rows != end.rows ||
+		masterIndex < 1 || masterIndex > static_cast<int>(su.size()) || !su[masterIndex - 1])
+		return -1;
+	const ULONGLONG materializeStartTick = GetTickCount64();
+	const Sentinel1Utils* master = su[masterIndex - 1];
+	const int linesPerBurst = master->linesPerBurst;
+	if (GetFileAttributesA(deburstFile) != INVALID_FILE_ATTRIBUTES && !DeleteFileA(deburstFile)) return -1;
+	if (!CopyFileA(fullBurstFile, deburstFile, TRUE)) return -1;
+
+	int reRows = 0, reColumns = 0, imRows = 0, imColumns = 0;
+	if (Hdf5IO::getDatasetDims(fullBurstFile, "s_re", &reRows, &reColumns) != 0 ||
+		Hdf5IO::getDatasetDims(fullBurstFile, "s_im", &imRows, &imColumns) != 0 ||
+		reRows != imRows || reColumns != imColumns ||
+		reRows != master->burstCount * linesPerBurst || reColumns != master->samplesPerBurst)
+		return -1;
+
+	int materializedRows = 0;
+	for (int burst = 0; burst < start.rows; ++burst)
+	{
+		const int firstRow = start.at<int>(burst, 0);
+		const int lastRow = end.at<int>(burst, 0);
+		const int burstFirstRow = burst * linesPerBurst;
+		const int burstLastRow = burstFirstRow + linesPerBurst;
+		// deBurstConfig stores full-burst coordinates.  Keep every retained span
+		// inside its source burst so a malformed configuration cannot mix bursts.
+		if (firstRow < burstFirstRow || lastRow <= firstRow || lastRow > burstLastRow) return -1;
+		materializedRows += lastRow - firstRow;
+	}
+	if (materializedRows != deburstLines) return -1;
+
+	// Probe the stored type without materializing the full SLC, then replace the
+	// copied full-burst datasets with final-size chunked datasets.
+	cv::Mat reSample, imSample;
+	const int firstRetainedRow = start.at<int>(0, 0);
+	if (Hdf5IO::readSubarray(fullBurstFile, "s_re", firstRetainedRow, 0, 1, reColumns, reSample) != 0 ||
+		Hdf5IO::readSubarray(fullBurstFile, "s_im", firstRetainedRow, 0, 1, imColumns, imSample) != 0 ||
+		reSample.empty() || imSample.empty() || reSample.type() != imSample.type())
+		return -1;
+	if (Hdf5IO::removeDatasetIfPresent(deburstFile, "s_re") < 0 ||
+		Hdf5IO::removeDatasetIfPresent(deburstFile, "s_im") < 0 ||
+		Hdf5IO::createEmptyDataset(deburstFile, "s_re", deburstLines, reColumns, reSample.type()) != 0 ||
+		Hdf5IO::createEmptyDataset(deburstFile, "s_im", deburstLines, imColumns, imSample.type()) != 0)
+		return -1;
+
+	cv::Mat burstPart;
+	int outputRow = 0;
+	for (int burst = 0; burst < start.rows; ++burst)
+	{
+		const int inputRow = start.at<int>(burst, 0);
+		const int retainedRows = end.at<int>(burst, 0) - inputRow;
+		if (Hdf5IO::readSubarray(fullBurstFile, "s_re", inputRow, 0, retainedRows, reColumns, burstPart) != 0 ||
+			Hdf5IO::writeSubarray(deburstFile, "s_re", burstPart, outputRow, 0) != 0 ||
+			Hdf5IO::readSubarray(fullBurstFile, "s_im", inputRow, 0, retainedRows, imColumns, burstPart) != 0 ||
+			Hdf5IO::writeSubarray(deburstFile, "s_im", burstPart, outputRow, 0) != 0)
+			return -1;
+		outputRow += retainedRows;
+	}
+	if (outputRow != deburstLines) return -1;
+	char message[384] = {};
+	if (Hdf5IO::writeInt(deburstFile, "deburst_first_source_row", firstRetainedRow) != 0 ||
+		Hdf5IO::writeInt(deburstFile, "deburst_first_source_column", 0) != 0 ||
+		Hdf5IO::writeInt(deburstFile, "deburst_index_base", 0) != 0)
+		return -1;
+
+	sprintf_s(message, "Materialized final deburst HDF5 from full-burst dimensions=%dx%d to dimensions=%dx%d; first output sample maps to full-burst row=%d, column=0.",
+		reRows, reColumns, deburstLines, reColumns, firstRetainedRow);
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "deburst", "materialize.complete", message,
+		"Full-burst data remains the refinement source until the output transaction commits.", deburstFile,
+		nullptr, 0, deburstLines, reColumns, reSample.type(),
+		static_cast<long long>(GetTickCount64() - materializeStartTick));
 	return 0;
 }
 
@@ -10979,6 +11122,13 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	int masterRangeOrBurstFailures = 0;
 	ZeroDopplerFailureAccumulator masterFailures;
 	ZeroDopplerFailureAccumulator slaveFailures;
+	const ActiveDiagnosticContext progressContext = g_active_diagnostic_context;
+	const int totalBurstCount = su[masterIndex - 1]->burstCount;
+	const int progressStart = 20 + 50 * (mBurstIndex - 1) / totalBurstCount;
+	const int progressEnd = 20 + 50 * mBurstIndex / totalBurstCount;
+	const int progressReportInterval = std::max(1, dem->rows / 25);
+	int completedProjectionRows = 0;
+	int lastProjectionProgress = progressStart;
 #pragma omp parallel
 	{
 		ZeroDopplerFailureAccumulator localMasterFailures;
@@ -11048,8 +11198,27 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 				}
 			}
 		}
+		int completedRows = 0;
+#pragma omp critical(sentinel_projection_row_count)
+		{
+			completedRows = ++completedProjectionRows;
+		}
+		if (completedRows % progressReportInterval == 0 || completedRows == dem->rows)
+		{
+#pragma omp critical(sentinel_projection_progress)
+			{
+				const int progress = progressStart + (progressEnd - progressStart) * completedRows / dem->rows;
+				if (progress > lastProjectionProgress)
+				{
+					lastProjectionProgress = progress;
+					char progressMessage[128] = {};
+					sprintf_s(progressMessage, "Projecting burst %d: %d%% of DEM rows processed.", mBurstIndex, completedRows * 100 / dem->rows);
+					emit_progress_for_context(progressContext, progress, progressMessage);
+				}
+			}
+		}
 	}
-	// 统计有效/无效投影点数；现有无效坐标语义保持不变。
+	// ͳ����Ч/��ЧͶӰ������������Ч�������屣�ֲ��䡣
 #pragma omp critical(sentinel_zero_doppler_accumulator)
 	{
 		masterFailures.merge(localMasterFailures);
@@ -11096,7 +11265,11 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	status.invalidPoints = total - slaveValid;
 	status.zeroDopplerFailures = zeroDopplerFailures;
 	status.rangeOrBurstFailures = rangeOrBurstFailures;
-	status.qualityCode = status.invalidPoints > 0 ? SENTINEL_BURST_WARNING_PARTIAL_INVALID : SENTINEL_BURST_NOMINAL;
+	status.slantRangeFailures = slantRangeFailures;
+	status.invalidInputFailures = invalidInputFailures;
+	const bool hasGeometricFailure = status.zeroDopplerFailures > 0 ||
+		status.slantRangeFailures > 0 || status.invalidInputFailures > 0;
+	status.qualityCode = hasGeometricFailure ? SENTINEL_BURST_WARNING_PARTIAL_INVALID : SENTINEL_BURST_NOMINAL;
 	{
 		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
 		if (g_sentinel_diagnostic_state[this].zeroOffsetFallback)
@@ -11148,10 +11321,10 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 		dem->rows, dem->cols, masterValid, total, masterRatio, slaveValid, total, slaveRatio,
 		masterZeroDopplerFailures, masterRangeOrBurstFailures, zeroDopplerFailures, rangeOrBurstFailures,
 		rangeOutOfBoundsFailures, burstOutOfBoundsFailures, slantRangeFailures, invalidInputFailures);
-	emit_diagnostic(status.invalidPoints > 0 ? INSAR_DIAGNOSTIC_WARNING : INSAR_DIAGNOSTIC_DEBUG,
+	emit_diagnostic(status.qualityCode == SENTINEL_BURST_WARNING_PARTIAL_INVALID ? INSAR_DIAGNOSTIC_WARNING : INSAR_DIAGNOSTIC_DEBUG,
 		"geometry", "projection.summary", projectionMessage,
 		validExtent,
-		su[slaveImagesIndex - 1]->h5File.c_str(), nullptr, status.invalidPoints > 0 ? 2 : 0,
+		su[slaveImagesIndex - 1]->h5File.c_str(), nullptr, status.qualityCode,
 		dem->rows, dem->cols);
 
 	if (!isMasterRgAzComputed)isMasterRgAzComputed = true;
@@ -11173,7 +11346,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 		if (isCancelRequested()) continue;
 		for (int j = 0; j < slaveAzimuthOffset.cols; j++)
 		{
-			//方位向偏移量计算
+			//��λ��ƫ��������
 			if (masterAzimuth.at<double>(i, j) < -0.5 || slaveAzimuth.at<double>(i, j) < -0.5)
 			{
 				slaveAzimuthOffset.at<double>(i, j) = invalidOffset;
@@ -11182,7 +11355,7 @@ int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& sla
 			{
 				slaveAzimuthOffset.at<double>(i, j) = slaveAzimuth.at<double>(i, j) - masterAzimuth.at<double>(i, j);
 			}
-			//距离向偏移量计算
+			//������ƫ��������
 			if (masterRange.at<double>(i, j) < -0.5 || slaveRange.at<double>(i, j) < -0.5)
 			{
 				slaveRangeOffset.at<double>(i, j) = invalidOffset;
@@ -11245,7 +11418,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	}
 	range.copyTo(A(cv::Range(0, count), cv::Range(1, 2)));
 	azimuth.copyTo(A(cv::Range(0, count), cv::Range(2, 3)));
-	Mat A_original = A.clone(); // 备份原始 A 以计算残差
+	Mat A_original = A.clone(); // ����ԭʼ A �Լ���в�
 	Mat A_t, b, coef;
 	cv::transpose(A, A_t);
 	A = A_t * A;
@@ -11259,7 +11432,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	if (a1) *a1 = coef.at<double>(1, 0);
 	if (a2) *a2 = coef.at<double>(2, 0);
 
-	// 计算 RMS 残差 并打印日志 (使用 coef.at 防止空指针崩溃)
+	// ���� RMS �в� ����ӡ��־ (ʹ�� coef.at ��ֹ��ָ�����)
 	Mat residual = offset - A_original * coef;
 	double rms = cv::norm(residual) / sqrt(count);
 	char fitMessage[512] = {};
@@ -11333,11 +11506,11 @@ int Sentinel1BackGeocoding::performBilinearResampling(
 				mm1 = mm + 1; nn1 = nn + 1;
 				mm1 = mm1 >= rows_slave - 1 ? rows_slave - 1 : mm1;
 				nn1 = nn1 >= cols_slave - 1 ? cols_slave - 1 : nn1;
-				//实部插值
+				//ʵ����ֵ
 				upper = slave.re.at<double>(mm, nn) + (slave.re.at<double>(mm, nn1) - slave.re.at<double>(mm, nn)) * (jj - (double)nn);
 				lower = slave.re.at<double>(mm1, nn) + (slave.re.at<double>(mm1, nn1) - slave.re.at<double>(mm1, nn)) * (jj - (double)nn);
 				slcResampled.re.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
-				//虚部插值
+				//�鲿��ֵ
 				upper = slave.im.at<double>(mm, nn) + (slave.im.at<double>(mm, nn1) - slave.im.at<double>(mm, nn)) * (jj - (double)nn);
 				lower = slave.im.at<double>(mm1, nn) + (slave.im.at<double>(mm1, nn1) - slave.im.at<double>(mm1, nn)) * (jj - (double)nn);
 				slcResampled.im.at<double>(i, j) = upper + (lower - upper) * (ii - (double)mm);
@@ -11361,13 +11534,13 @@ int Sentinel1BackGeocoding::performSincResampling(
 	if (isCancelRequested()) return -2;
 	if (slave.isEmpty() || dstHeight < 2 || dstWidth < 2)
 	{
-		fprintf(stderr, "performBilinearResampling(): input check failed!\n");
+		fprintf(stderr, "performSincResampling(): input check failed!\n");
 		return -1;
 	}
 
 	ComplexMat slcResampled;
 
-	// 统一转成 double，便于 sinc 插值
+	// ͳһת�� double������ sinc ��ֵ
 	if (slave.type() != CV_64F)
 	{
 		slave.convertTo(slave, CV_64F);
@@ -11380,15 +11553,16 @@ int Sentinel1BackGeocoding::performSincResampling(
 	int cols = dstWidth;
 
 	const int SINC_RADIUS = 4;
+	long long zeroFilledSampleCount = 0;
 	char resamplingMessage[512] = {};
 	sprintf_s(resamplingMessage, "Sinc resampling: output=%dx%d, kernelRadius=%d, range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}.",
 		dstWidth, dstHeight, SINC_RADIUS, a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
 	emit_diagnostic(INSAR_DIAGNOSTIC_TRACE, "resampling", "sinc.start", resamplingMessage,
-		"Range and azimuth coefficients are pixel offsets in the geometric resampling model.",
+		"Pull sampling uses srcRow=dstRow+azimuthOffset and srcCol=dstCol+rangeOffset; any source coordinate outside the radius-4 safe support is zero-filled.",
 		nullptr, nullptr, 0, dstHeight, dstWidth);
 	const ULONGLONG resamplingStartTick = GetTickCount64();
 
-	// 提前取出系数，避免每个像元创建 Mat 并做矩阵乘法
+	// ��ǰȡ��ϵ��������ÿ����Ԫ���� Mat ��������˷�
 	const double cr0 = a0Az;
 	const double cr1 = a1Az;
 	const double cr2 = a2Az;
@@ -11397,7 +11571,7 @@ int Sentinel1BackGeocoding::performSincResampling(
 	const double cc1 = a1Rg;
 	const double cc2 = a2Rg;
 
-#pragma omp parallel for schedule(guided)
+#pragma omp parallel for schedule(guided) reduction(+:zeroFilledSampleCount)
 	for (int i = 0; i < rows; i++)
 	{
 		if (isCancelRequested()) continue;
@@ -11406,14 +11580,18 @@ int Sentinel1BackGeocoding::performSincResampling(
 			double ii = static_cast<double>(i);
 			double jj = static_cast<double>(j);
 
-			// 行方向偏移：azimuth offset
+			// �з���ƫ�ƣ�azimuth offset
 			double offset_rows = cr0 + cr1 * jj + cr2 * ii;
 
-			// 列方向偏移：range offset
+			// �з���ƫ�ƣ�range offset
 			double offset_cols = cc0 + cc1 * jj + cc2 * ii;
 
-			double src_row = ii + offset_rows;  // /* + 0.0053 */ 如果你还需要这个经验修正，可加在这里
+			double src_row = ii + offset_rows;  // /* + 0.0053 */ ����㻹��Ҫ��������������ɼ�������
 			double src_col = jj + offset_cols;
+			if (src_row < SINC_RADIUS || src_col < SINC_RADIUS || src_row > rows - 1 - SINC_RADIUS || src_col > cols - 1 - SINC_RADIUS)
+			{
+				++zeroFilledSampleCount;
+			}
 
 			double re_value = sinc_interp2d(slave.re, src_row, src_col, SINC_RADIUS);
 			double im_value = sinc_interp2d(slave.im, src_row, src_col, SINC_RADIUS);
@@ -11425,14 +11603,16 @@ int Sentinel1BackGeocoding::performSincResampling(
 	if (isCancelRequested()) return -2;
 
 	slave = slcResampled;
-	emit_diagnostic(INSAR_DIAGNOSTIC_TRACE, "resampling", "sinc.complete", "Sinc resampling completed.",
+	char completionMessage[256] = {};
+	sprintf_s(completionMessage, "Sinc resampling completed: zeroFilledOutputSamples=%lld of %lld.", zeroFilledSampleCount, static_cast<long long>(rows) * cols);
+	emit_diagnostic(INSAR_DIAGNOSTIC_TRACE, "resampling", "sinc.complete", completionMessage,
 		nullptr, nullptr, nullptr, 0, dstHeight, dstWidth, -1,
 		static_cast<long long>(GetTickCount64() - resamplingStartTick));
 
 	return 0;
 }
 
-int Sentinel1BackGeocoding::slaveBilinearInterpolation(
+int Sentinel1BackGeocoding::slaveSincInterpolation(
 	int mBurstIndex,
 	int slaveImageIndex,
 	ComplexMat& slave
@@ -11444,7 +11624,7 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 		mBurstIndex < 1 || 
 		mBurstIndex > su[masterIndex - 1]->burstCount)
 	{
-		fprintf(stderr, "slaveBilinearInterpolation(): input check failed!\n");
+		fprintf(stderr, "slaveSincInterpolation(): input check failed!\n");
 		return -1;
 	}
 	int ret;
@@ -11455,8 +11635,8 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 	ComplexMat tmp;
 	double a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az;
 	char stageMessage[384] = {};
-	sprintf_s(stageMessage, "Starting slave burst processing: masterBurst=%d, slaveBurst=%d, sourceDimensions=%dx%d, ompThreads=%d.",
-		mBurstIndex, sBurstIndex, su[slaveImageIndex - 1]->linesPerBurst,
+	sprintf_s(stageMessage, "Starting slave burst processing: masterBurst=%d, slaveBurst=%d, burstOffset=%d, sourceDimensions=%dx%d, ompThreads=%d.",
+		mBurstIndex, sBurstIndex, su[slaveImageIndex - 1]->burstOffset, su[slaveImageIndex - 1]->linesPerBurst,
 		su[slaveImageIndex - 1]->samplesPerBurst, omp_get_max_threads());
 	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "coregistration", "slave_burst.start", stageMessage);
 	ret = su[slaveImageIndex - 1]->getBurst(sBurstIndex, slave);
@@ -11493,20 +11673,41 @@ int Sentinel1BackGeocoding::slaveBilinearInterpolation(
 		nullptr, nullptr, 0, slaveRangeOffset.rows, slaveRangeOffset.cols, slaveRangeOffset.type(),
 		static_cast<long long>(GetTickCount64() - fitStartTick));
 	const ULONGLONG resamplingStartTick = GetTickCount64();
-	ret = performBilinearResampling(slave, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
+	ret = performSincResampling(slave, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
 	if (ret == -2) return -2;
-	if (return_check(ret, "performBilinearResampling()", error_head)) return -1;
+	if (return_check(ret, "performSincResampling()", error_head)) return -1;
 	tmp.SetRe(derampDemodPhase); tmp.SetIm(derampDemodPhase);
-	ret = performBilinearResampling(tmp, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
+	ret = performSincResampling(tmp, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
 	if (ret == -2) return -2;
-	if (return_check(ret, "performBilinearResampling()", error_head)) return -1;
+	if (return_check(ret, "performSincResampling()", error_head)) return -1;
 	tmp.re.copyTo(derampDemodPhase);
 	conversion.phase2cos(derampDemodPhase, tmp.re, tmp.im);
 	slave.Mul(tmp, slave, true);//reramp
 	slave.convertTo(slave, CV_32F);
-	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "resampling", "bilinear.complete", "Complex data and reramp phase resampling completed.",
+	if (slaveImageIndex - 1 >= static_cast<int>(fullBurstFiles.size())) return -1;
+
+	cv::Mat coefficients(1, 6, CV_64F);
+	coefficients.at<double>(0) = a0Rg;
+	coefficients.at<double>(1) = a1Rg;
+	coefficients.at<double>(2) = a2Rg;
+	coefficients.at<double>(3) = a0Az;
+	coefficients.at<double>(4) = a1Az;
+	coefficients.at<double>(5) = a2Az;
+	const std::string coefficientName = "burst_" + std::to_string(mBurstIndex) + "_coef";
+	if (Hdf5IO::writeArray(fullBurstFiles[slaveImageIndex - 1].c_str(), coefficientName.c_str(), coefficients) != 0)
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "offset_fit.persist", "Failed to persist geometric registration coefficients.",
+			"Post-registration refinement requires this exact 1x6 CV_64F coefficient vector.", fullBurstFiles[slaveImageIndex - 1].c_str(), coefficientName.c_str(), -1201);
+		return -1;
+	}
+	char coefficientMessage[384] = {};
+	sprintf_s(coefficientMessage, "Persisted geometric coefficients: range={%.12g, %.12g, %.12g}, azimuth={%.12g, %.12g, %.12g}.",
+		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "offset_fit.persist", coefficientMessage,
+		"Stored as a 1x6 CV_64F vector in the old Worker coefficient order.", fullBurstFiles[slaveImageIndex - 1].c_str(), coefficientName.c_str(), 0, 1, 6, CV_64F);
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "resampling", "sinc.complete", "Complex data and reramp phase sinc resampling completed.",
 		nullptr, nullptr, nullptr, 0, slave.GetRows(), slave.GetCols(), slave.type(),
 		static_cast<long long>(GetTickCount64() - resamplingStartTick));
 	return 0;
@@ -11595,6 +11796,17 @@ int Sentinel1BackGeocoding::deBurstConfig()
 	int retainedLines = 0;
 	for (int i = 0; i < start.rows; ++i)
 		retainedLines += end.at<int>(i, 0) - start.at<int>(i, 0);
+	for (int burst = 0; burst < start.rows; ++burst)
+	{
+		char spanMessage[384] = {};
+		sprintf_s(spanMessage, "Deburst span: masterBurst=%d, start=%d, endExclusive=%d, retainedRows=%d, firstValidLine=%d, lastValidLine=%d.",
+			burst + 1, start.at<int>(burst, 0), end.at<int>(burst, 0), end.at<int>(burst, 0) - start.at<int>(burst, 0),
+			su[masterIndex - 1]->firstValidLine.at<int>(burst, 0), su[masterIndex - 1]->lastValidLine.at<int>(burst, 0));
+		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "deburst", "configuration.span", spanMessage,
+			"start/end are 0-based full-burst rows with end exclusive; firstValidLine/lastValidLine retain Sentinel metadata's 1-based convention.",
+			nullptr, nullptr, 0, end.at<int>(burst, 0) - start.at<int>(burst, 0), su[masterIndex - 1]->samplesPerBurst, CV_32S);
+	}
+
 	char message[384] = {};
 	sprintf_s(message, "Deburst configuration: bursts=%d, sourceLinesPerBurst=%d, retainedLines=%d, samples=%d.",
 		su[masterIndex - 1]->burstCount, su[masterIndex - 1]->linesPerBurst, retainedLines,
@@ -11619,6 +11831,7 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 		numOfImages, masterIndex, su[masterIndex - 1]->burstCount, omp_get_max_threads());
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "process.start", processMessage,
 		"DEM projection, burst alignment, resampling, and output writing will be performed.");
+	emit_progress(20, "Loading DEM and preparing geometric projection.");
 	int ret;
 	if (!isdeBurstConfig)
 	{
@@ -11627,9 +11840,10 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 	}
 	FormatConversion conversion;
 	ComplexMat slaveSLC, tmp;
+	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return -1;
 	int linesPerBurst;
 	int samplesPerBurst = su[masterIndex - 1]->samplesPerBurst;
-	int offset_row = 0, lines = 0;
+	int lines = 0;
 	double lonMin, lonMax, latMin, latMax;
 	ret = su[masterIndex - 1]->computeImageGeoBoundry(&lonMin, &lonMax, &latMin, &latMax);
 	if (return_check(ret, "computeImageGeoBoundry()", error_head)) return -1;
@@ -11649,34 +11863,74 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 			if (return_check(ret, "computeBurstOffset()", error_head)) return -1;
 		}
 		lines = i * su[masterIndex - 1]->linesPerBurst;
-		linesPerBurst = end.at<int>(i, 0) - start.at<int>(i, 0);
+		linesPerBurst = su[masterIndex - 1]->linesPerBurst;
 		for (int j = 0; j < numOfImages; j++)
 		{
 			if (isCancelRequested()) return -2;
 			if (j == masterIndex - 1) continue;
-			ret = slaveBilinearInterpolation(i + 1, j + 1, slaveSLC);
+			ret = slaveSincInterpolation(i + 1, j + 1, slaveSLC);
 			if (ret == -2) return -2;
-			if (return_check(ret, "slaveBilinearInterpolation()", error_head)) return -1;
-			tmp = slaveSLC(cv::Range(start.at<int>(i, 0) - lines, end.at<int>(i, 0) - lines), 
-				cv::Range(0, su[masterIndex - 1]->samplesPerBurst));
-			ret = conversion.write_subarray_to_h5(this->outFiles[j].c_str(), "s_re", tmp.re,
-				offset_row, 0, linesPerBurst, samplesPerBurst);
+			if (return_check(ret, "slaveSincInterpolation()", error_head)) return -1;
+			if (slaveSLC.GetRows() != linesPerBurst || slaveSLC.GetCols() != samplesPerBurst ||
+				slaveSLC.re.size() != slaveSLC.im.size())
+				return -1;
+			tmp = slaveSLC;
+			ret = conversion.write_subarray_to_h5(this->fullBurstFiles[j].c_str(), "s_re", tmp.re,
+				lines, 0, linesPerBurst, samplesPerBurst);
 			if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
-			ret = conversion.write_subarray_to_h5(this->outFiles[j].c_str(), "s_im", tmp.im,
-				offset_row, 0, linesPerBurst, samplesPerBurst);
+			ret = conversion.write_subarray_to_h5(this->fullBurstFiles[j].c_str(), "s_im", tmp.im,
+				lines, 0, linesPerBurst, samplesPerBurst);
 			if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
 		}
-		offset_row += linesPerBurst;
 		isMasterRgAzComputed = false;
 		sprintf_s(burstMessage, "Completed master burst %d of %d.", i + 1, su[masterIndex - 1]->burstCount);
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "burst.complete", burstMessage,
 			nullptr, nullptr, nullptr, 0, -1, -1, -1,
 			static_cast<long long>(GetTickCount64() - burstStartTick));
 	}
+	if (!deferFinalDeburstOutput)
+	{
+		for (int image = 0; image < numOfImages; ++image)
+			if (materializeDeburstOutput(fullBurstFiles[image].c_str(), outFiles[image].c_str()) != 0)
+				return -1;
+	}
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "process.complete", "Sentinel-1 back-geocoding completed.",
 		nullptr, nullptr, nullptr, 0, -1, -1, -1,
 		static_cast<long long>(GetTickCount64() - taskStartTick));
 	return 0;
+}
+
+int Sentinel1BackGeocoding::backGeoCodingCoregistration(
+	const SentinelRefinementOptions* refinementOptions,
+	SentinelRefinementResult* refinementResult,
+	InSARDiagnosticCallback callback,
+	void* userData)
+{
+	if (!refinementOptions && !refinementResult)
+		return backGeoCodingCoregistration(callback, userData);
+	if (!refinementOptions || !refinementResult) return -1;
+	if (refinementOptions->enableEsd == 0 && refinementOptions->rangeOffsetMode == SENTINEL_RANGE_OFFSET_NONE &&
+		refinementOptions->rangeOffsets == nullptr && refinementOptions->rangeOffsetCount == 0)
+	{
+		if (refinementOptions->version != SENTINEL_REFINEMENT_OPTIONS_VERSION ||
+			refinementOptions->structSize < sizeof(SentinelRefinementOptions) ||
+			refinementResult->version != SENTINEL_REFINEMENT_RESULT_VERSION ||
+			refinementResult->structSize < sizeof(SentinelRefinementResult)) return -1;
+		refinementResult->imageCount = 0;
+		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "refinement", "baseline.core_only",
+			"ESD and range refinement are both disabled; invoking the exact legacy core path.",
+			"This call does not defer Deburst or execute a separate geometric branch.");
+		const int coreResult = backGeoCodingCoregistration(callback, userData);
+		if (coreResult == 0)
+			refinementResult->executionPath = SENTINEL_EXECUTION_PATH_CORE_ONLY_BASELINE;
+		return coreResult;
+	}
+
+	deferFinalDeburstOutput = true;
+	const int coreResult = backGeoCodingCoregistration(callback, userData);
+	deferFinalDeburstOutput = false;
+	if (coreResult != 0) return coreResult;
+	return applyPostRegistrationRefinement(*refinementOptions, *refinementResult, callback, userData);
 }
 
 namespace
@@ -11688,6 +11942,10 @@ namespace
 	{
 		std::string outputPath;
 		std::string temporaryPath;
+		std::string fullBurstPath;
+		std::string fullBurstTemporaryPath;
+		std::string backupPath;
+		bool hadOriginalOutput;
 	};
 
 	std::string refinement_directory(const std::string& path)
@@ -11717,7 +11975,11 @@ namespace
 		for (size_t index = 0; index < files.size(); ++index)
 		{
 			json << "    {\"output\": \"" << json_escape(files[index].outputPath)
-				<< "\", \"temporary\": \"" << json_escape(files[index].temporaryPath) << "\"}";
+				<< "\", \"temporary\": \"" << json_escape(files[index].temporaryPath)
+				<< "\", \"fullBurst\": \"" << json_escape(files[index].fullBurstPath)
+				<< "\", \"fullBurstTemporary\": \"" << json_escape(files[index].fullBurstTemporaryPath)
+				<< "\", \"backup\": \"" << json_escape(files[index].backupPath)
+				<< "\", \"hadOriginalOutput\": " << (files[index].hadOriginalOutput ? "true" : "false") << "}";
 			if (index + 1 < files.size()) json << ',';
 			json << '\n';
 		}
@@ -11761,7 +12023,7 @@ namespace
 		return true;
 	}
 
-	int validate_refinement_contract(const Sentinel1BackGeocoding& backGeocoding,
+	int validate_refinement_contract(int imageCount, int masterImageIndex, const std::vector<std::string>& outputFiles,
 		const SentinelRefinementOptions& options, SentinelRefinementResult& result,
 		std::vector<double>& rangeOffsets)
 	{
@@ -11769,12 +12031,12 @@ namespace
 			options.structSize < sizeof(SentinelRefinementOptions) ||
 			result.version != SENTINEL_REFINEMENT_RESULT_VERSION ||
 			result.structSize < sizeof(SentinelRefinementResult) ||
-			backGeocoding.numOfImages < 2 || backGeocoding.masterIndex < 1 ||
-			backGeocoding.masterIndex > backGeocoding.numOfImages ||
-			static_cast<int>(backGeocoding.outFiles.size()) != backGeocoding.numOfImages)
+			imageCount < 2 || masterImageIndex < 1 ||
+			masterImageIndex > imageCount ||
+			static_cast<int>(outputFiles.size()) != imageCount)
 			return kRefinementContractError;
 
-		const int slaveCount = backGeocoding.numOfImages - 1;
+		const int slaveCount = imageCount - 1;
 		if (!result.images || result.imageCapacity < slaveCount ||
 			(options.enableEsd == 0 && options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_NONE)) return kRefinementContractError;
 		if (options.rangeOffsetMode < SENTINEL_RANGE_OFFSET_NONE || options.rangeOffsetMode > SENTINEL_RANGE_OFFSET_ESTIMATE ||
@@ -11798,21 +12060,21 @@ namespace
 			!std::isfinite(coherence) || !std::isfinite(binSize) || !std::isfinite(dopplerRate) || !std::isfinite(bandwidth))
 			return kRefinementContractError;
 
-		rangeOffsets.assign(backGeocoding.numOfImages, 0.0);
+		rangeOffsets.assign(imageCount, 0.0);
 		if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_PROVIDED)
 		{
-			std::vector<bool> seen(backGeocoding.numOfImages, false);
+			std::vector<bool> seen(imageCount, false);
 			for (int index = 0; index < options.rangeOffsetCount; ++index)
 			{
 				const SentinelRangeOffsetInput& input = options.rangeOffsets[index];
-				if (input.imageIndex < 1 || input.imageIndex > backGeocoding.numOfImages ||
-					input.imageIndex == backGeocoding.masterIndex || seen[input.imageIndex - 1] || !std::isfinite(input.offset))
+				if (input.imageIndex < 1 || input.imageIndex > imageCount ||
+					input.imageIndex == masterImageIndex || seen[input.imageIndex - 1] || !std::isfinite(input.offset))
 					return kRefinementContractError;
 				seen[input.imageIndex - 1] = true;
 				rangeOffsets[input.imageIndex - 1] = input.offset;
 			}
-			for (int image = 1; image <= backGeocoding.numOfImages; ++image)
-				if (image != backGeocoding.masterIndex && !seen[image - 1]) return kRefinementContractError;
+			for (int image = 1; image <= imageCount; ++image)
+				if (image != masterImageIndex && !seen[image - 1]) return kRefinementContractError;
 		}
 		return 0;
 	}
@@ -11879,7 +12141,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	if (callback || userData) setDiagnosticCallback(callback, userData);
 	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
 	std::vector<double> rangeOffsets;
-	const int contractResult = validate_refinement_contract(*this, options, result, rangeOffsets);
+	const int contractResult = validate_refinement_contract(numOfImages, masterIndex, outFiles, options, result, rangeOffsets);
 	if (contractResult != 0)
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.validate", "Invalid Sentinel refinement contract.",
@@ -11887,6 +12149,17 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 		return contractResult;
 	}
 	if (isCancelRequested()) return -2;
+	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return kRefinementContractError;
+	const Sentinel1Utils* fullBurstMaster = su[masterIndex - 1];
+	if (!fullBurstMaster) return kRefinementContractError;
+	const int expectedFullBurstRows = fullBurstMaster->burstCount * fullBurstMaster->linesPerBurst;
+	for (int image = 0; image < numOfImages; ++image)
+	{
+		int rows = 0, columns = 0;
+		if (fullBurstFiles[image].empty() || Hdf5IO::getDatasetDims(fullBurstFiles[image].c_str(), "s_re", &rows, &columns) != 0 ||
+			rows != expectedFullBurstRows || columns != fullBurstMaster->samplesPerBurst)
+			return kRefinementContractError;
+	}
 
 	const std::string transactionDirectory = options.transactionDirectory && *options.transactionDirectory ?
 		options.transactionDirectory : refinement_directory(outFiles[masterIndex - 1]);
@@ -11904,8 +12177,12 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	const std::string transactionId = std::to_string(GetCurrentProcessId()) + "-" + std::to_string(GetTickCount64());
 	std::vector<RefinementTransactionFile> transactionFiles;
 	transactionFiles.reserve(outFiles.size());
-	for (const std::string& outputPath : outFiles)
-		transactionFiles.push_back({ outputPath, outputPath + ".refinement-" + transactionId + ".tmp" });
+	for (size_t image = 0; image < outFiles.size(); ++image)
+		transactionFiles.push_back({ outFiles[image], outFiles[image] + ".refinement-" + transactionId + ".tmp",
+			fullBurstFiles[image],
+			outFiles[image] + ".refinement-" + transactionId + ".fullburst.tmp",
+			outFiles[image] + ".refinement-" + transactionId + ".bak",
+			GetFileAttributesA(outFiles[image].c_str()) != INVALID_FILE_ATTRIBUTES });
 	if (!write_refinement_manifest(manifestPath, transactionId, "in_progress", transactionFiles)) return kRefinementTransactionError;
 
 	auto fail = [&](int code, const char* phase, const char* message) {
@@ -11915,14 +12192,16 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 		return code;
 	};
 
-	for (const RefinementTransactionFile& file : transactionFiles)
+	for (size_t image = 0; image < transactionFiles.size(); ++image)
 	{
-		if (Hdf5IO::writeString(file.outputPath.c_str(), "refinement_transaction_id", transactionId.c_str()) != 0 ||
-			Hdf5IO::writeString(file.outputPath.c_str(), "refinement_state", "in_progress") != 0 ||
-			!CopyFileA(file.outputPath.c_str(), file.temporaryPath.c_str(), TRUE))
+		const RefinementTransactionFile& file = transactionFiles[image];
+		if (!CopyFileA(file.fullBurstPath.c_str(), file.fullBurstTemporaryPath.c_str(), TRUE) ||
+			Hdf5IO::writeString(file.fullBurstTemporaryPath.c_str(), "refinement_transaction_id", transactionId.c_str()) != 0 ||
+			Hdf5IO::writeString(file.fullBurstTemporaryPath.c_str(), "refinement_state", "in_progress") != 0)
 			return fail(kRefinementTransactionError, "refinement.transaction_prepare", "Failed to prepare a refinement transaction output.");
 	}
 
+	emit_progress(75, "Preparing post-registration refinement transaction.");
 	const Sentinel1Utils* master = su[masterIndex - 1];
 	if (!master) return fail(kRefinementContractError, "refinement.validate", "Master Sentinel metadata is unavailable.");
 	std::vector<int> overlapLines;
@@ -11957,15 +12236,15 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			ScopedDiagnosticContext imageScope(diagnosticCallback, diagnosticUserData, imageResult.imageIndex);
 			if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_ESTIMATE)
 			{
-				if (estimate_range_offset(transactionFiles[masterIndex - 1].temporaryPath.c_str(),
-					transactionFiles[slaveIndex].temporaryPath.c_str(), diagnosticCallback, diagnosticUserData,
+				if (estimate_range_offset(transactionFiles[masterIndex - 1].fullBurstTemporaryPath.c_str(),
+					transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), diagnosticCallback, diagnosticUserData,
 					imageResult.rangeOffset) != 0)
 				{
 					imageResult.rangeOffset = 0.0;
 					imageResult.rangeQualityCode = SENTINEL_REFINEMENT_QUALITY_UNAVAILABLE;
 					emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "range_refinement", "range.warning",
 						"Range offset estimation was unavailable; zero correction will be retained.", nullptr,
-						transactionFiles[slaveIndex].temporaryPath.c_str(), "offset_r", imageResult.rangeQualityCode);
+						transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_r", imageResult.rangeQualityCode);
 				}
 				else
 				{
@@ -11975,13 +12254,13 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 						imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_RANGE_EXPLICIT_ZERO;
 				}
 			}
-			if (Hdf5IO::writeDouble(transactionFiles[slaveIndex].temporaryPath.c_str(), "offset_r", imageResult.rangeOffset) != 0)
+			if (Hdf5IO::writeDouble(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_r", imageResult.rangeOffset) != 0)
 				return fail(kRefinementTransactionError, "range.write_offset", "Failed to write range refinement offset.");
 			char message[256] = {};
-			sprintf_s(message, "Range offset for slave image %d is %.12g.", imageResult.imageIndex, imageResult.rangeOffset);
+			sprintf_s(message, "Range offset for slave image %d is %.12g pixels; pull resampling uses src_col=dst_col+offset_r, so a positive offset increases the source column.", imageResult.imageIndex, imageResult.rangeOffset);
 			emit_diagnostic(imageResult.rangeQualityCode == SENTINEL_REFINEMENT_QUALITY_UNAVAILABLE ? INSAR_DIAGNOSTIC_WARNING : INSAR_DIAGNOSTIC_INFO,
 				"range_refinement", "range.image_offset", message, nullptr,
-				transactionFiles[slaveIndex].temporaryPath.c_str(), "offset_r", imageResult.rangeQualityCode);
+				transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_r", imageResult.rangeQualityCode);
 		}
 	}
 
@@ -11990,6 +12269,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "esd", "esd.started", "Starting Enhanced Spectral Diversity correction.",
 			"Frozen parameters: multilook=16x4, coherence=0.4, histogramBin=0.1, conversion=486/(2*pi*4500).");
+		emit_progress(80, "Estimating Enhanced Spectral Diversity correction.");
 		const int sampleCount = master->samplesPerBurst;
 		int totalOverlapLines = 0;
 		for (int overlap : overlapLines) totalOverlapLines += overlap;
@@ -12007,8 +12287,8 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 				const int overlap = overlapLines[burst - 1];
 				const int upperRow = (burst - 1) * master->linesPerBurst + master->lastValidLine.at<int>(burst - 1, 0) - overlap;
 				const int lowerRow = burst * master->linesPerBurst + master->firstValidLine.at<int>(burst, 0) - 1;
-				const char* masterPath = transactionFiles[masterIndex - 1].temporaryPath.c_str();
-				const char* slavePath = transactionFiles[slaveIndex].temporaryPath.c_str();
+				const char* masterPath = transactionFiles[masterIndex - 1].fullBurstTemporaryPath.c_str();
+				const char* slavePath = transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str();
 				if (Hdf5IO::readSubarray(masterPath, "s_re", upperRow, 0, overlap, sampleCount, masterUp.re) != 0 ||
 					Hdf5IO::readSubarray(masterPath, "s_im", upperRow, 0, overlap, sampleCount, masterUp.im) != 0 ||
 					Hdf5IO::readSubarray(slavePath, "s_re", upperRow, 0, overlap, sampleCount, slaveUp.re) != 0 ||
@@ -12056,13 +12336,14 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			imageResult.esdAzimuthOffset = phaseOffset / (2.0 * PI * 4500.0) * 486.0;
 			imageResult.esdQualityCode = coherentSamples > 0 ? SENTINEL_REFINEMENT_QUALITY_APPLIED : SENTINEL_REFINEMENT_QUALITY_WARNING_LOW_COHERENCE;
 			if (coherentSamples == 0) imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_ESD_LOW_COHERENCE;
-			if (Hdf5IO::writeDouble(transactionFiles[slaveIndex].temporaryPath.c_str(), "offset_a", imageResult.esdAzimuthOffset) != 0)
+			if (Hdf5IO::writeDouble(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_a", imageResult.esdAzimuthOffset) != 0)
 				return fail(kRefinementTransactionError, "esd.write_offset", "Failed to write ESD azimuth offset.");
 			char message[256] = {};
-			sprintf_s(message, "ESD azimuth offset for slave image %d is %.12g.", imageResult.imageIndex, imageResult.esdAzimuthOffset);
+			sprintf_s(message, "ESD azimuth offset for slave image %d is %.12g pixels; pull resampling uses src_row=dst_row+offset_a, so a positive offset increases the source row.", imageResult.imageIndex, imageResult.esdAzimuthOffset);
 			emit_diagnostic(coherentSamples > 0 ? INSAR_DIAGNOSTIC_INFO : INSAR_DIAGNOSTIC_WARNING, "esd",
 				coherentSamples > 0 ? "esd.image_offset" : "esd.warning", message, nullptr,
-				transactionFiles[slaveIndex].temporaryPath.c_str(), "offset_a", imageResult.esdQualityCode);
+				transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_a", imageResult.esdQualityCode);
+			emit_progress(84, "ESD offset estimation completed.");
 		}
 	}
 
@@ -12080,21 +12361,41 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			const int slaveBurst = burst + 1 + su[slaveIndex]->burstOffset;
 			if (slaveBurst < 1 || slaveBurst > su[slaveIndex]->burstCount) continue;
 			if (su[slaveIndex]->getBurst(slaveBurst, slaveSlc) != 0) return fail(kRefinementTransactionError, "refinement.read_burst", "Failed to read slave burst for compensation.");
+			char burstMappingMessage[320] = {};
+			sprintf_s(burstMappingMessage, "Refinement mapping: masterBurst=%d, slaveBurst=%d, burstOffset=%d, coefficientDataset=burst_%d_coef.",
+				burst + 1, slaveBurst, su[slaveIndex]->burstOffset, burst + 1);
+			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "refinement", "burst_mapping", burstMappingMessage,
+				"Coefficient datasets are indexed by master burst, while source reads use the burst-offset-adjusted slave burst.");
+
 			if (slaveSlc.type() != CV_64F) slaveSlc.convertTo(slaveSlc, CV_64F);
 			cv::Mat derampPhase;
 			if (su[slaveIndex]->computeDerampDemodPhase(slaveBurst, derampPhase) != 0 || performDerampDemod(derampPhase, slaveSlc) != 0)
 				return fail(kRefinementTransactionError, "refinement.deramp", "Failed to deramp slave burst for compensation.");
 			cv::Mat coefficients;
 			const std::string coefficientName = "burst_" + std::to_string(burst + 1) + "_coef";
-			const int coefficientResult = Hdf5IO::readArray(transactionFiles[slaveIndex].temporaryPath.c_str(), coefficientName.c_str(), coefficients);
-			double a0Rg = imageResult.rangeOffset, a1Rg = 0.0, a2Rg = 0.0;
-			double a0Az = imageResult.esdAzimuthOffset, a1Az = 0.0, a2Az = 0.0;
-			if (coefficientResult == 0 && coefficients.rows == 1 && coefficients.cols == 6)
+			const int coefficientResult = Hdf5IO::readArray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), coefficientName.c_str(), coefficients);
+			if (coefficientResult != 0 || coefficients.rows != 1 || coefficients.cols != 6)
+				return fail(kRefinementTransactionError, "refinement.read_coefficients", "Missing or invalid initial geometric coefficient vector.");
+			if (coefficients.type() != CV_64F)
+				return fail(kRefinementTransactionError, "refinement.read_coefficients", "Initial geometric coefficient vector must be stored as CV_64F.");
+			for (int coefficientIndex = 0; coefficientIndex < 6; ++coefficientIndex)
 			{
-				if (coefficients.type() != CV_64F) coefficients.convertTo(coefficients, CV_64F);
-				a0Rg += coefficients.at<double>(0); a1Rg = coefficients.at<double>(1); a2Rg = coefficients.at<double>(2);
-				a0Az += coefficients.at<double>(3); a1Az = coefficients.at<double>(4); a2Az = coefficients.at<double>(5);
+				if (!std::isfinite(coefficients.at<double>(coefficientIndex)))
+					return fail(kRefinementTransactionError, "refinement.read_coefficients", "Initial geometric coefficient vector contains a non-finite value.");
 			}
+
+			double a0Rg = coefficients.at<double>(0) + imageResult.rangeOffset;
+			double a1Rg = coefficients.at<double>(1);
+			double a2Rg = coefficients.at<double>(2);
+			double a0Az = coefficients.at<double>(3) + imageResult.esdAzimuthOffset;
+			double a1Az = coefficients.at<double>(4);
+			double a2Az = coefficients.at<double>(5);
+			char appliedCoefficientMessage[384] = {};
+			sprintf_s(appliedCoefficientMessage, "Applying refinement coefficients: range={%.12g, %.12g, %.12g}, azimuth={%.12g, %.12g, %.12g}.",
+				a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
+			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "refinement", "coefficients.applied", appliedCoefficientMessage,
+				"a0Rg=coef[0]+offset_r and a0Az=coef[3]+offset_a; the remaining coefficients are unchanged.",
+				transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), coefficientName.c_str(), 0, 1, 6, CV_64F);
 			if (performSincResampling(slaveSlc, master->linesPerBurst, master->samplesPerBurst, a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az) != 0)
 				return fail(isCancelRequested() ? -2 : kRefinementTransactionError, "refinement.resample", "Failed to resample slave SLC.");
 			reramp.SetRe(derampPhase); reramp.SetIm(derampPhase);
@@ -12105,29 +12406,109 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			slaveSlc.Mul(reramp, slaveSlc, true);
 			slaveSlc.convertTo(slaveSlc, CV_32F);
 			const int outputRow = burst * master->linesPerBurst;
-			if (Hdf5IO::writeSubarray(transactionFiles[slaveIndex].temporaryPath.c_str(), "s_re", slaveSlc.re, outputRow, 0) != 0 ||
-				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].temporaryPath.c_str(), "s_im", slaveSlc.im, outputRow, 0) != 0)
+			if (Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_re", slaveSlc.re, outputRow, 0) != 0 ||
+				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_im", slaveSlc.im, outputRow, 0) != 0)
 				return fail(kRefinementTransactionError, "refinement.write_slc", "Failed to write compensated SLC data.");
 		}
+		emit_progress(84 + 12 * (burst + 1) / master->burstCount, "Applying ESD and range corrections.");
 	}
 
+	emit_progress(96, "Materializing final deburst outputs.");
 	for (const RefinementTransactionFile& file : transactionFiles)
 	{
 		int reRows = 0, reColumns = 0, imRows = 0, imColumns = 0;
+		if (Hdf5IO::getDatasetDims(file.fullBurstTemporaryPath.c_str(), "s_re", &reRows, &reColumns) != 0 ||
+			Hdf5IO::getDatasetDims(file.fullBurstTemporaryPath.c_str(), "s_im", &imRows, &imColumns) != 0 ||
+			reRows != expectedFullBurstRows || imRows != expectedFullBurstRows ||
+			reColumns != fullBurstMaster->samplesPerBurst || imColumns != fullBurstMaster->samplesPerBurst)
+			return fail(kRefinementTransactionError, "refinement.verify_full_burst", "Refinement full-burst temporary output validation failed.");
+		if (materializeDeburstOutput(file.fullBurstTemporaryPath.c_str(), file.temporaryPath.c_str()) != 0)
+			return fail(kRefinementTransactionError, "refinement.deburst", "Failed to materialize the final deburst output.");
 		if (Hdf5IO::getDatasetDims(file.temporaryPath.c_str(), "s_re", &reRows, &reColumns) != 0 ||
 			Hdf5IO::getDatasetDims(file.temporaryPath.c_str(), "s_im", &imRows, &imColumns) != 0 ||
-			reRows != imRows || reColumns != imColumns || reRows < 1 || reColumns < 1)
-			return fail(kRefinementTransactionError, "refinement.verify", "Refinement temporary output validation failed.");
+			reRows != deburstLines || imRows != deburstLines ||
+			reColumns != fullBurstMaster->samplesPerBurst || imColumns != fullBurstMaster->samplesPerBurst)
+			return fail(kRefinementTransactionError, "refinement.verify_deburst", "Final deburst temporary output validation failed.");
+		std::string temporaryState;
+		std::string temporaryTransactionId;
+		if (Hdf5IO::readString(file.temporaryPath.c_str(), "refinement_state", temporaryState) != 0 ||
+			Hdf5IO::readString(file.temporaryPath.c_str(), "refinement_transaction_id", temporaryTransactionId) != 0 ||
+			temporaryState != "in_progress" || temporaryTransactionId != transactionId)
+			return fail(kRefinementTransactionError, "refinement.verify_marker", "Final deburst temporary output transaction marker validation failed.");
+	}
+	emit_progress(98, "Finalizing output transaction.");
+	for (const RefinementTransactionFile& file : transactionFiles)
+		if (GetFileAttributesA(file.fullBurstTemporaryPath.c_str()) != INVALID_FILE_ATTRIBUTES &&
+			!DeleteFileA(file.fullBurstTemporaryPath.c_str()))
+			return fail(kRefinementTransactionError, "refinement.cleanup_full_burst", "Failed to clean the full-burst refinement temporary output.");
+	for (const RefinementTransactionFile& file : transactionFiles)
+	{
+		if ((file.hadOriginalOutput && !MoveFileExA(file.outputPath.c_str(), file.backupPath.c_str(),
+			MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) ||
+			(!file.hadOriginalOutput && GetFileAttributesA(file.outputPath.c_str()) != INVALID_FILE_ATTRIBUTES) ||
+			!MoveFileExA(file.temporaryPath.c_str(), file.outputPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			return fail(kRefinementTransactionError, "refinement.commit", "Failed to commit a refinement output file.");
 	}
 	for (const RefinementTransactionFile& file : transactionFiles)
-		if (!MoveFileExA(file.temporaryPath.c_str(), file.outputPath.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-			return fail(kRefinementTransactionError, "refinement.commit", "Failed to commit a refinement output file.");
-	for (const RefinementTransactionFile& file : transactionFiles)
-		if (Hdf5IO::writeString(file.outputPath.c_str(), "refinement_state", "complete") != 0)
+	{
+		std::string state;
+		std::string committedTransactionId;
+		if (Hdf5IO::writeString(file.outputPath.c_str(), "refinement_transaction_id", transactionId.c_str()) != 0 ||
+			Hdf5IO::writeString(file.outputPath.c_str(), "refinement_state", "complete") != 0 ||
+			Hdf5IO::readString(file.outputPath.c_str(), "refinement_state", state) != 0 ||
+			Hdf5IO::readString(file.outputPath.c_str(), "refinement_transaction_id", committedTransactionId) != 0 ||
+			state != "complete" || committedTransactionId != transactionId)
 			return fail(kRefinementTransactionError, "refinement.commit_marker", "Failed to finalize a refinement output marker.");
+	}
 	if (!write_refinement_manifest(manifestPath, transactionId, "complete", transactionFiles))
 		return fail(kRefinementTransactionError, "refinement.commit_manifest", "Failed to commit the refinement transaction manifest.");
-	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "esd", "esd.completed", "Post-registration refinement completed.",
+	for (size_t image = 0; image < transactionFiles.size(); ++image)
+	{
+		const RefinementTransactionFile& file = transactionFiles[image];
+		if (GetFileAttributesA(file.backupPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+			DeleteFileA(file.backupPath.c_str());
+		if (image < fullBurstFiles.size() && GetFileAttributesA(fullBurstFiles[image].c_str()) != INVALID_FILE_ATTRIBUTES)
+			DeleteFileA(fullBurstFiles[image].c_str());
+	}
+
+	// A completed transaction has already published and validated its final H5
+	// files. Residual working files are therefore cleanup warnings only.
+	std::vector<std::string> cleanupResiduals;
+	for (const RefinementTransactionFile& file : transactionFiles)
+	{
+		const std::string paths[] = {
+			file.fullBurstPath,
+			file.temporaryPath,
+			file.fullBurstTemporaryPath,
+			file.backupPath
+		};
+		for (const std::string& path : paths)
+		{
+			if (GetFileAttributesA(path.c_str()) != INVALID_FILE_ATTRIBUTES)
+				cleanupResiduals.push_back(path);
+		}
+	}
+	if (cleanupResiduals.empty())
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "refinement", "refinement.cleanup_verified",
+			"Post-commit temporary refinement cleanup verified.",
+			"No task-owned .fullburst, .tmp, or .bak files remain.", manifestPath.c_str());
+	}
+	else
+	{
+		std::string detail = "Final H5 outputs remain published. Residual files: ";
+		for (size_t i = 0; i < cleanupResiduals.size(); ++i)
+		{
+			if (i > 0) detail += "; ";
+			detail += cleanupResiduals[i];
+		}
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "refinement", "refinement.cleanup_residual",
+			"Post-commit temporary refinement files remain.", detail.c_str(), manifestPath.c_str());
+	}
+
+	result.executionPath = SENTINEL_EXECUTION_PATH_POST_REGISTRATION_REFINEMENT;
+	emit_progress(100, "Sentinel-1 back-geocoding completed.");
+	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "esd", "refinement.completed", "Post-registration refinement completed.",
 		"All output H5 files and the directory transaction manifest are complete.", manifestPath.c_str());
 	return 0;
 }
@@ -12138,6 +12519,280 @@ int Sentinel1BackGeocoding::getPostRegistrationRefinementTransactionStatus(
 	if (status.version != SENTINEL_REFINEMENT_TRANSACTION_STATUS_VERSION ||
 		status.structSize < sizeof(SentinelRefinementTransactionStatus)) return -1;
 	return inspect_refinement_manifest(outFiles, status);
+}
+
+int Sentinel1BackGeocoding::verifyOutputsAgainstReference(
+	const vector<string>& referenceFiles,
+	double coefficientTolerance,
+	double offsetTolerance,
+	double slcTolerance,
+	SentinelBackGeocodingVerificationResult& result) const
+{
+	if (referenceFiles.size() != outFiles.size() || !result.images || result.imageCapacity < static_cast<int>(outFiles.size()) ||
+		!std::isfinite(coefficientTolerance) || !std::isfinite(offsetTolerance) || !std::isfinite(slcTolerance) ||
+		coefficientTolerance < 0.0 || offsetTolerance < 0.0 || slcTolerance < 0.0)
+		return -1;
+
+	result.imageCount = 0;
+	result.passed = 1;
+	const int expectedBurstCount = masterIndex >= 1 && masterIndex <= static_cast<int>(su.size()) && su[masterIndex - 1] ?
+		su[masterIndex - 1]->burstCount : 0;
+	if (expectedBurstCount <= 0) return -1;
+
+	for (int image = 0; image < static_cast<int>(outFiles.size()); ++image)
+	{
+		ScopedDiagnosticContext imageScope(diagnosticCallback, diagnosticUserData, image + 1);
+		SentinelBackGeocodingVerificationImageResult& imageResult = result.images[result.imageCount++];
+		imageResult = {};
+		imageResult.imageIndex = image + 1;
+		imageResult.maxCoefficientAbsError = std::numeric_limits<double>::quiet_NaN();
+		imageResult.esdOffsetAbsError = std::numeric_limits<double>::quiet_NaN();
+		imageResult.rangeOffsetAbsError = std::numeric_limits<double>::quiet_NaN();
+		imageResult.maxSlcComponentAbsError = std::numeric_limits<double>::quiet_NaN();
+		imageResult.rmsSlcComponentError = std::numeric_limits<double>::quiet_NaN();
+
+		imageResult.outputFirstSourceRow = -1;
+		imageResult.outputFirstSourceColumn = -1;
+		imageResult.referenceFirstSourceRow = -1;
+		imageResult.referenceFirstSourceColumn = -1;
+		cv::Mat outputRe, outputIm, referenceRe, referenceIm;
+		if (Hdf5IO::readArray(outFiles[image].c_str(), "s_re", outputRe) != 0 ||
+			Hdf5IO::readArray(outFiles[image].c_str(), "s_im", outputIm) != 0 ||
+			Hdf5IO::readArray(referenceFiles[image].c_str(), "s_re", referenceRe) != 0 ||
+			Hdf5IO::readArray(referenceFiles[image].c_str(), "s_im", referenceIm) != 0)
+		{
+			imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+			result.passed = 0;
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "verification", "slc.read", "Unable to read a current or reference SLC dataset.",
+				"Both H5 files must contain s_re and s_im.", outFiles[image].c_str(), "s_re", -1401);
+			continue;
+		}
+		imageResult.outputRows = outputRe.rows;
+		imageResult.outputColumns = outputRe.cols;
+		imageResult.referenceRows = referenceRe.rows;
+		imageResult.referenceColumns = referenceRe.cols;
+		if (outputRe.rows != outputIm.rows || outputRe.cols != outputIm.cols ||
+			referenceRe.rows != referenceIm.rows || referenceRe.cols != referenceIm.cols ||
+			outputRe.rows != referenceRe.rows || outputRe.cols != referenceRe.cols)
+		{
+			imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_DIMENSIONS;
+			result.passed = 0;
+			continue;
+		}
+		outputRe.convertTo(outputRe, CV_64F);
+		int outputFirstRow = -1, outputFirstColumn = -1, referenceFirstRow = -1, referenceFirstColumn = -1;
+		const int outputOriginResult = Hdf5IO::readInt(outFiles[image].c_str(), "deburst_first_source_row", &outputFirstRow);
+		const int outputColumnResult = Hdf5IO::readInt(outFiles[image].c_str(), "deburst_first_source_column", &outputFirstColumn);
+		const int referenceOriginResult = Hdf5IO::readInt(referenceFiles[image].c_str(), "deburst_first_source_row", &referenceFirstRow);
+		const int referenceColumnResult = Hdf5IO::readInt(referenceFiles[image].c_str(), "deburst_first_source_column", &referenceFirstColumn);
+		if (outputOriginResult == 0 && outputColumnResult == 0 && referenceOriginResult == 0 && referenceColumnResult == 0)
+		{
+			imageResult.outputFirstSourceRow = outputFirstRow;
+			imageResult.outputFirstSourceColumn = outputFirstColumn;
+			imageResult.referenceFirstSourceRow = referenceFirstRow;
+			imageResult.referenceFirstSourceColumn = referenceFirstColumn;
+			if (outputFirstRow != referenceFirstRow || outputFirstColumn != referenceFirstColumn)
+			{
+				imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_DEBURST_ORIGIN;
+				result.passed = 0;
+			}
+		}
+
+		outputIm.convertTo(outputIm, CV_64F);
+		referenceRe.convertTo(referenceRe, CV_64F);
+		referenceIm.convertTo(referenceIm, CV_64F);
+		double maxComponentError = 0.0;
+		long double sumSquaredError = 0.0;
+		for (int row = 0; row < outputRe.rows; ++row)
+			for (int column = 0; column < outputRe.cols; ++column)
+			{
+				const double reError = outputRe.at<double>(row, column) - referenceRe.at<double>(row, column);
+				const double imError = outputIm.at<double>(row, column) - referenceIm.at<double>(row, column);
+				maxComponentError = std::max(maxComponentError, std::max(fabs(reError), fabs(imError)));
+				sumSquaredError += static_cast<long double>(reError) * reError + static_cast<long double>(imError) * imError;
+			}
+		imageResult.maxSlcComponentAbsError = maxComponentError;
+		imageResult.rmsSlcComponentError = sqrt(static_cast<double>(sumSquaredError / (2.0L * outputRe.total())));
+		if (maxComponentError > slcTolerance)
+		{
+			imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_SLC;
+			result.passed = 0;
+		}
+
+		if (image + 1 != masterIndex)
+		{
+			double outputOffset = 0.0, referenceOffset = 0.0;
+			int outputOffsetResult = Hdf5IO::readDouble(outFiles[image].c_str(), "offset_a", &outputOffset);
+			int referenceOffsetResult = Hdf5IO::readDouble(referenceFiles[image].c_str(), "offset_a", &referenceOffset);
+			if ((outputOffsetResult == 0) != (referenceOffsetResult == 0))
+			{
+				imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_ESD_OFFSET | SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+				result.passed = 0;
+			}
+			else if (outputOffsetResult == 0)
+			{
+				imageResult.esdOffsetAbsError = fabs(outputOffset - referenceOffset);
+				if (imageResult.esdOffsetAbsError > offsetTolerance)
+				{
+					imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_ESD_OFFSET;
+					result.passed = 0;
+				}
+			}
+
+			outputOffsetResult = Hdf5IO::readDouble(outFiles[image].c_str(), "offset_r", &outputOffset);
+			referenceOffsetResult = Hdf5IO::readDouble(referenceFiles[image].c_str(), "offset_r", &referenceOffset);
+			if ((outputOffsetResult == 0) != (referenceOffsetResult == 0))
+			{
+				imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_RANGE_OFFSET | SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+				result.passed = 0;
+			}
+			else if (outputOffsetResult == 0)
+			{
+				imageResult.rangeOffsetAbsError = fabs(outputOffset - referenceOffset);
+				if (imageResult.rangeOffsetAbsError > offsetTolerance)
+				{
+					imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_RANGE_OFFSET;
+					result.passed = 0;
+				}
+			}
+
+			double maxCoefficientError = 0.0;
+			for (int burst = 1; burst <= expectedBurstCount; ++burst)
+			{
+				const std::string coefficientName = "burst_" + std::to_string(burst) + "_coef";
+				cv::Mat outputCoefficients, referenceCoefficients;
+				if (Hdf5IO::readArray(outFiles[image].c_str(), coefficientName.c_str(), outputCoefficients) != 0 ||
+					Hdf5IO::readArray(referenceFiles[image].c_str(), coefficientName.c_str(), referenceCoefficients) != 0 ||
+					outputCoefficients.rows != 1 || outputCoefficients.cols != 6 ||
+					referenceCoefficients.rows != 1 || referenceCoefficients.cols != 6)
+				{
+					imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+					result.passed = 0;
+					continue;
+				}
+				outputCoefficients.convertTo(outputCoefficients, CV_64F);
+				referenceCoefficients.convertTo(referenceCoefficients, CV_64F);
+				for (int coefficient = 0; coefficient < 6; ++coefficient)
+				{
+					const double difference = fabs(outputCoefficients.at<double>(coefficient) - referenceCoefficients.at<double>(coefficient));
+					if (!std::isfinite(difference))
+					{
+						imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+						result.passed = 0;
+					}
+					maxCoefficientError = std::max(maxCoefficientError, difference);
+				}
+				++imageResult.comparedCoefficientBursts;
+			}
+			imageResult.maxCoefficientAbsError = maxCoefficientError;
+			if (imageResult.comparedCoefficientBursts != expectedBurstCount)
+			{
+				imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET;
+				result.passed = 0;
+			}
+			if (maxCoefficientError > coefficientTolerance)
+			{
+				imageResult.mismatchFlags |= SENTINEL_VERIFICATION_MISMATCH_COEFFICIENTS;
+				result.passed = 0;
+			}
+		}
+
+		char verificationMessage[512] = {};
+		sprintf_s(verificationMessage, "Reference verification: flags=0x%X, coefficientMax=%.12g, offsetA=%.12g, offsetR=%.12g, slcMax=%.12g, slcRms=%.12g.",
+			imageResult.mismatchFlags, imageResult.maxCoefficientAbsError, imageResult.esdOffsetAbsError,
+			imageResult.rangeOffsetAbsError, imageResult.maxSlcComponentAbsError, imageResult.rmsSlcComponentError);
+		emit_diagnostic(imageResult.mismatchFlags == SENTINEL_VERIFICATION_MISMATCH_NONE ? INSAR_DIAGNOSTIC_INFO : INSAR_DIAGNOSTIC_WARNING,
+			"verification", "reference.compare", verificationMessage, "Reference H5 is compared inside the DLL; all tolerances are caller-supplied.",
+			outFiles[image].c_str(), "s_re", static_cast<int>(imageResult.mismatchFlags), imageResult.outputRows, imageResult.outputColumns, CV_64F);
+	}
+	return 0;
+}
+
+int Sentinel1BackGeocoding::recoverPostRegistrationRefinementTransaction()
+{
+	if (outFiles.empty()) return kRefinementContractError;
+	const std::string directory = refinement_directory(outFiles.front());
+	for (const std::string& outputPath : outFiles)
+		if (_stricmp(refinement_directory(outputPath).c_str(), directory.c_str()) != 0) return kRefinementContractError;
+	const std::string manifestPath = directory + "\\refinement_transaction.json";
+	if (GetFileAttributesA(manifestPath.c_str()) == INVALID_FILE_ATTRIBUTES) return 0;
+
+	std::ifstream manifest(manifestPath, std::ios::binary);
+	if (!manifest) return kRefinementTransactionError;
+	const std::string json((std::istreambuf_iterator<char>(manifest)), std::istreambuf_iterator<char>());
+	std::string state;
+	std::string transactionId;
+	if (!refinement_manifest_value(json, "state", state) || !refinement_manifest_value(json, "transactionId", transactionId) ||
+		(state != "in_progress" && state != "failed")) return kRefinementTransactionError;
+
+	std::vector<RefinementTransactionFile> files;
+	files.reserve(outFiles.size());
+	const bool hasFullBurstSource = json.find("\"fullBurst\"") != std::string::npos;
+	const bool hasFullBurstTemporary = json.find("\"fullBurstTemporary\"") != std::string::npos;
+	if (hasFullBurstSource != hasFullBurstTemporary) return kRefinementTransactionError;
+	for (const std::string& outputPath : outFiles)
+	{
+		RefinementTransactionFile file = {
+			outputPath,
+			outputPath + ".refinement-" + transactionId + ".tmp",
+			outputPath + ".fullburst",
+			outputPath + ".refinement-" + transactionId + ".fullburst.tmp",
+			outputPath + ".refinement-" + transactionId + ".bak",
+			true };
+		if (json.find(std::string("\"output\": \"") + json_escape(file.outputPath) + "\"") == std::string::npos ||
+			json.find(std::string("\"temporary\": \"") + json_escape(file.temporaryPath) + "\"") == std::string::npos ||
+			json.find(std::string("\"backup\": \"") + json_escape(file.backupPath) + "\"") == std::string::npos ||
+			(hasFullBurstSource && json.find(std::string("\"fullBurst\": \"") +
+				json_escape(file.fullBurstPath) + "\"") == std::string::npos) ||
+			(hasFullBurstTemporary && json.find(std::string("\"fullBurstTemporary\": \"") +
+				json_escape(file.fullBurstTemporaryPath) + "\"") == std::string::npos))
+			return kRefinementTransactionError;
+		const std::string outputToken = std::string("\"output\": \"") + json_escape(file.outputPath) + "\"";
+		const std::string::size_type outputPosition = json.find(outputToken);
+		const std::string::size_type outputEnd = outputPosition == std::string::npos ? std::string::npos : json.find('}', outputPosition);
+		if (outputEnd != std::string::npos && json.substr(outputPosition, outputEnd - outputPosition).find("\"hadOriginalOutput\": false") != std::string::npos)
+			file.hadOriginalOutput = false;
+		files.push_back(file);
+	}
+
+	for (const RefinementTransactionFile& file : files)
+	{
+		const bool backupExists = GetFileAttributesA(file.backupPath.c_str()) != INVALID_FILE_ATTRIBUTES;
+		const bool outputExists = GetFileAttributesA(file.outputPath.c_str()) != INVALID_FILE_ATTRIBUTES;
+		if (backupExists)
+		{
+			if (outputExists && !DeleteFileA(file.outputPath.c_str())) return kRefinementTransactionError;
+			if (!MoveFileExA(file.backupPath.c_str(), file.outputPath.c_str(), MOVEFILE_WRITE_THROUGH)) return kRefinementTransactionError;
+		}
+		else if (!file.hadOriginalOutput)
+		{
+			if (outputExists && !DeleteFileA(file.outputPath.c_str())) return kRefinementTransactionError;
+		}
+		else if (!outputExists)
+		{
+			return kRefinementTransactionError;
+		}
+		if (GetFileAttributesA(file.temporaryPath.c_str()) != INVALID_FILE_ATTRIBUTES && !DeleteFileA(file.temporaryPath.c_str()))
+			return kRefinementTransactionError;
+		if (GetFileAttributesA(file.fullBurstTemporaryPath.c_str()) != INVALID_FILE_ATTRIBUTES &&
+			!DeleteFileA(file.fullBurstTemporaryPath.c_str()))
+			return kRefinementTransactionError;
+		// A manifest that explicitly names a full-burst source belongs to the
+		// interrupted refinement run.  It is not a published result and must not
+		// survive a successful rollback.
+		if (hasFullBurstSource && GetFileAttributesA(file.fullBurstPath.c_str()) != INVALID_FILE_ATTRIBUTES &&
+			!DeleteFileA(file.fullBurstPath.c_str()))
+			return kRefinementTransactionError;
+	}
+
+	for (const RefinementTransactionFile& file : files)
+	{
+		if (GetFileAttributesA(file.outputPath.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+		const int stateResult = Hdf5IO::removeDatasetIfPresent(file.outputPath.c_str(), "refinement_state");
+		const int idResult = Hdf5IO::removeDatasetIfPresent(file.outputPath.c_str(), "refinement_transaction_id");
+		if (stateResult < 0 || idResult < 0) return kRefinementTransactionError;
+	}
+	return DeleteFileA(manifestPath.c_str()) ? 0 : kRefinementTransactionError;
 }
 
 
@@ -12176,7 +12831,7 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 	double delta_time = stateVectors.at<double>(1, 0) - stateVectors.at<double>(0, 0);
 	if (fabs(delta_time) <= 1.0)
 	{
-		this->isOrbitUpdated = true;//不用再更新轨道
+		this->isOrbitUpdated = true;//�����ٸ��¹��
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
 	this->dt = delta_time;
@@ -12192,7 +12847,7 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
 	if (fabs(delta_time) <= 1.0)
 	{
-		this->isOrbitUpdated = true;//不用再更新轨道
+		this->isOrbitUpdated = true;//�����ٸ��¹��
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
 	
@@ -12497,2333 +13152,3 @@ bool orbitStateVectors::findZeroDopplerTime(
 }
 
 */
-
-SARDataReader::SARDataReader()
-	: b_initialized(false)
-	, azimuth_resolution(0.0)
-	, azimuth_spacing(0.0)
-	, carrier_frequency(0.0)
-	, prf(0.0)
-	, range_resolution(0.0)
-	, range_spacing(0.0)
-	, slant_range_first_pixel(0.0)
-	, slant_range_last_pixel(0.0)
-	, inc_center(0.0)
-	, topleft_lon(0.0), topright_lon(0.0), bottomleft_lon(0.0), bottomright_lon(0.0)
-	, topleft_lat(0.0), topright_lat(0.0), bottomleft_lat(0.0), bottomright_lat(0.0)
-{
-}
-
-SARDataReader::~SARDataReader()
-{
-}
-
-int SARDataReader::write_to_h5(const char* dst_h5)
-{
-	H5_LOCK;
-	if (!dst_h5)
-	{
-		fprintf(stderr, "write_to_h5(): input check failed!\n");
-		return -1;
-	}
-	int ret;
-	if (!b_initialized)
-	{
-		ret = init();
-		if (ret < 0)
-		{
-			fprintf(stderr, "write_to_h5(): init() failed!\n");
-			return -1;
-		}
-	}
-	FormatConversion conversion;
-	ret = conversion.creat_new_h5(dst_h5);
-	if (ret < 0)
-	{
-		fprintf(stderr, "write_to_h5(): failed to create %s!\n", dst_h5);
-		return -1;
-	}
-
-	conversion.write_array_to_h5(dst_h5, "state_vec", this->state_vec);
-
-	conversion.write_double_to_h5(dst_h5, "azimuth_spacing", this->azimuth_spacing);
-	conversion.write_double_to_h5(dst_h5, "range_spacing", this->range_spacing);
-	conversion.write_double_to_h5(dst_h5, "slant_range_first_pixel", this->slant_range_first_pixel);
-	conversion.write_double_to_h5(dst_h5, "carrier_frequency", this->carrier_frequency);
-	conversion.write_double_to_h5(dst_h5, "prf", this->prf);
-
-	conversion.write_str_to_h5(dst_h5, "sensor", this->sensor.c_str());
-	conversion.write_str_to_h5(dst_h5, "acquisition_start_time", this->acquisition_start_time.c_str());
-	conversion.write_str_to_h5(dst_h5, "acquisition_stop_time", this->acquisition_stop_time.c_str());
-
-	conversion.write_int_to_h5(dst_h5, "azimuth_len", slc.GetRows());
-	conversion.write_int_to_h5(dst_h5, "range_len", slc.GetCols());
-
-	ret = write_custom_h5_data(conversion, dst_h5);
-	if (ret < 0)
-	{
-		return -1;
-	}
-
-	conversion.write_slc_to_h5(dst_h5, slc);
-
-	return 0;
-}
-
-int SARDataReader::write_common_coordinates(FormatConversion& conversion, const char* dst_h5)
-{
-	conversion.write_double_to_h5(dst_h5, "inc_center", this->inc_center);
-	conversion.write_double_to_h5(dst_h5, "topLeftLat", this->topleft_lat);
-	conversion.write_double_to_h5(dst_h5, "topLeftLon", this->topleft_lon);
-	conversion.write_double_to_h5(dst_h5, "topRightLat", this->topright_lat);
-	conversion.write_double_to_h5(dst_h5, "topRightLon", this->topright_lon);
-	conversion.write_double_to_h5(dst_h5, "bottomLeftLat", this->bottomleft_lat);
-	conversion.write_double_to_h5(dst_h5, "bottomLeftLon", this->bottomleft_lon);
-	conversion.write_double_to_h5(dst_h5, "bottomRightLat", this->bottomright_lat);
-	conversion.write_double_to_h5(dst_h5, "bottomRightLon", this->bottomright_lon);
-
-	conversion.write_int_to_h5(dst_h5, "offset_row", 0);
-	conversion.write_int_to_h5(dst_h5, "offset_col", 0);
-
-	return 0;
-}
-
-
-CSK_reader::CSK_reader(const char* csk_data_file)
-{
-	b_initialized = false;
-	this->csk_data_file = csk_data_file;
-}
-
-CSK_reader::~CSK_reader()
-{
-}
-
-int CSK_reader::init()
-{
-	H5_LOCK;
-	if (b_initialized) return 0;
-	if (csk_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->csk_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_meta_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int CSK_reader::read_slc(const char* CSK_data_file, ComplexMat& slc)
-{
-	if (CSK_data_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check  failed!\n");
-		return -1;
-	}
-	std::unique_ptr<Hdf5IO::ReadSession, void(*)(Hdf5IO::ReadSession*)> session(
-		Hdf5IO::openReadSession(CSK_data_file), Hdf5IO::closeReadSession);
-	if (!session)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", CSK_data_file);
-		return -1;
-	}
-	if (Hdf5IO::readInterleavedComplexFloat(session.get(), "/S01/IMG", slc.re, slc.im) != 0)
-	{
-		fprintf(stderr, "read_slc(): failed to read from /S01/IMG!\n");
-		return -1;
-	}
-	return 0;
-}
-
-int CSK_reader::read_data(const char* CSK_data_file)
-{
-	if (!CSK_data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	std::unique_ptr<Hdf5IO::ReadSession, void(*)(Hdf5IO::ReadSession*)> session(
-		Hdf5IO::openReadSession(CSK_data_file), Hdf5IO::closeReadSession);
-	if (!session)
-	{
-		fprintf(stderr, "read_data(): can't open %s\n", CSK_data_file);
-		return -1;
-	}
-	if (Hdf5IO::readInterleavedComplexFloat(session.get(), "/S01/IMG", slc.re, slc.im) != 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", CSK_data_file);
-		return -1;
-	}
-	
-	string Reference_UTC;
-	double start, stop, ref_time;
-	int ret = Hdf5IO::readStringAttribute(session.get(), nullptr, "Reference UTC", Reference_UTC);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_meta_data(): can't read Reference UTC\n");
-		return -1;
-	}
-	std::replace(Reference_UTC.begin(), Reference_UTC.end(), ' ', 'T');
-	UTC2GPS(Reference_UTC.c_str(), &ref_time);
-	Mat vel, pos, state_vectors_times; Mat temp;
-	ret = Hdf5IO::readArrayAttribute(session.get(), nullptr, "ECEF Satellite Position", pos);
-	ret = Hdf5IO::readArrayAttribute(session.get(), nullptr, "ECEF Satellite Velocity", vel);
-	ret = Hdf5IO::readArrayAttribute(session.get(), nullptr, "State Vectors Times", state_vectors_times);
-	state_vectors_times = state_vectors_times + ref_time;
-	cv::hconcat(state_vectors_times, pos, this->state_vec);
-	cv::hconcat(this->state_vec, vel, this->state_vec);
-	Hdf5IO::readArrayAttribute(session.get(), nullptr, "Radar Frequency", temp);
-	this->carrier_frequency = temp.at<double>(0, 0);
-	Hdf5IO::readStringAttribute(session.get(), nullptr, "Look Side", lookside);
-	Hdf5IO::readStringAttribute(session.get(), nullptr, "Mission ID", sensor);
-	Hdf5IO::readStringAttribute(session.get(), nullptr, "Polarization", polarization);
-	Hdf5IO::readStringAttribute(session.get(), nullptr, "Orbit Direction", orbit_direction);
-	
-	int rows, cols;
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Zero Doppler Azimuth First Time", temp);
-	start = temp.at<double>(0, 0);
-	string front = Reference_UTC.substr(0, 17);
-	char str[256];
-	sprintf(str, "%.9lf", temp.at<double>(0, 0));
-	this->acquisition_start_time = front + str;
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Zero Doppler Azimuth Last Time", temp);
-	stop = temp.at<double>(0, 0);
-	front = Reference_UTC.substr(0, 17);
-	sprintf(str, "%.9lf", temp.at<double>(0, 0));
-	this->acquisition_stop_time = front + str;
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Zero Doppler Range First Time", temp);
-	this->slant_range_first_pixel = temp.at<double>(0, 0) * VEL_C / 2.0;
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Zero Doppler Range Last Time", temp);
-	this->slant_range_last_pixel = temp.at<double>(0, 0) * VEL_C / 2.0;
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Column Spacing", temp);
-	this->range_spacing = temp.at<double>(0, 0);
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Line Spacing", temp);
-	this->azimuth_spacing = temp.at<double>(0, 0);
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Line Time Interval", temp);
-	this->prf = 1.0 / temp.at<double>(0, 0);
-
-	rows = (int)round((stop - start) * prf) + 1;
-	cols = (int)round((slant_range_last_pixel - slant_range_first_pixel) / range_spacing) + 1;
-
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Bottom Left Geodetic Coordinates", bottomleft);
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Bottom Right Geodetic Coordinates", bottomright);
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Top Left Geodetic Coordinates", topleft);
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Top Right Geodetic Coordinates", topright);
-
-	double near_look_angle, far_look_angle;
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Near Look Angle", temp);
-	near_look_angle = temp.at<double>(0, 0);
-	Hdf5IO::readArrayAttribute(session.get(), "/S01/IMG", "Far Look Angle", temp);
-	far_look_angle = temp.at<double>(0, 0);
-
-	//拟合下视角
-	
-	this->inc_coefficient.create(1, 11, CV_64F); this->inc_coefficient = 0.0;
-	inc_coefficient.at<double>(0, 0) = 0.0;//offset
-	inc_coefficient.at<double>(0, 1) = 1.0;//scale
-	inc_coefficient.at<double>(0, 2) = near_look_angle;
-	inc_coefficient.at<double>(0, 3) = (far_look_angle - near_look_angle) / (double)cols;
-
-	//拟合经度
-	Mat near_edge_geodetic_coordinates, far_edge_geodetic_coordinates;
-	ret = Hdf5IO::readArrayAttribute(session.get(), nullptr, "Scene Far Edge Geodetic Coordinates", far_edge_geodetic_coordinates);
-	ret += Hdf5IO::readArrayAttribute(session.get(), nullptr, "Scene Near Edge Geodetic Coordinates", near_edge_geodetic_coordinates);
-	if (ret != 0)
-	{
-		fprintf(stderr, "read_data(): unknown format!\n");
-		return -1;
-	}
-	Mat lon, lat, row, col;
-	lon = Mat::zeros(far_edge_geodetic_coordinates.rows + near_edge_geodetic_coordinates.rows, 1, CV_64F);
-	lat = Mat::zeros(lon.rows, 1, CV_64F);
-	col = Mat::zeros(lon.rows, 1, CV_64F);
-	row = Mat::zeros(lon.rows, 1, CV_64F);
-	cv::vconcat(far_edge_geodetic_coordinates, near_edge_geodetic_coordinates, temp);
-	temp(cv::Range(0, lon.rows), cv::Range(0, 1)).copyTo(lat);
-	temp(cv::Range(0, lon.rows), cv::Range(1, 2)).copyTo(lon);
-	for (int i = 0; i < far_edge_geodetic_coordinates.rows; i++)
-	{
-		row.at<double>(i, 0) = i * rows / (double)(far_edge_geodetic_coordinates.rows);
-		col.at<double>(i, 0) = cols;
-	}
-	for (int i = 0; i < far_edge_geodetic_coordinates.rows; i++)
-	{
-		row.at<double>(i + far_edge_geodetic_coordinates.rows, 0) = i * rows / (double)(far_edge_geodetic_coordinates.rows);
-		col.at<double>(i + far_edge_geodetic_coordinates.rows, 0) = 0;
-	}
-	lon_coefficient.create(1, 32, CV_64F); lon_coefficient = 0.0;
-	Mat A(lon.rows, 3, CV_64F); A = 1.0;
-	Mat A_t, b;
-	Mat B, coefficient, error, eye, b_t, a, a_t;
-	double rms;
-	lon.copyTo(b);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	col.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		//error = b_t * (eye - a * error * a_t) * b;
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		lon_coefficient.at<double>(0, 0) = 0.0;
-		lon_coefficient.at<double>(0, 1) = 1.0;
-		lon_coefficient.at<double>(0, 2) = 0.0;
-		lon_coefficient.at<double>(0, 3) = 1.0;
-		lon_coefficient.at<double>(0, 4) = 0.0;
-		lon_coefficient.at<double>(0, 5) = 1.0;
-		lon_coefficient.at<double>(0, 31) = rms;
-
-		lon_coefficient.at<double>(0, 6) = coefficient.at<double>(0);
-		lon_coefficient.at<double>(0, 7) = coefficient.at<double>(1);
-		lon_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
-	}
-
-
-	//拟合纬度
-	lat_coefficient.create(1, 32, CV_64F); lat_coefficient = 0.0;
-	A = Mat::ones(lon.rows, 3, CV_64F);
-	lat.copyTo(b);
-	row.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	col.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		lat_coefficient.at<double>(0, 0) = 0.0;
-		lat_coefficient.at<double>(0, 1) = 1.0;
-		lat_coefficient.at<double>(0, 2) = 0.0;
-		lat_coefficient.at<double>(0, 3) = 1.0;
-		lat_coefficient.at<double>(0, 4) = 0.0;
-		lat_coefficient.at<double>(0, 5) = 1.0;
-		lat_coefficient.at<double>(0, 31) = rms;
-
-		lat_coefficient.at<double>(0, 6) = coefficient.at<double>(0);
-		lat_coefficient.at<double>(0, 7) = coefficient.at<double>(1);
-		lat_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
-	}
-
-	//拟合行坐标
-	row_coefficient.create(1, 32, CV_64F); row_coefficient = 0.0;
-	A = Mat::ones(lon.rows, 3, CV_64F);
-	row.copyTo(b);
-	b = b / (double)rows;
-	lon.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	lat.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		row_coefficient.at<double>(0, 0) = 0.0;
-		row_coefficient.at<double>(0, 1) = rows;
-		row_coefficient.at<double>(0, 2) = 0.0;
-		row_coefficient.at<double>(0, 3) = 1.0;
-		row_coefficient.at<double>(0, 4) = 0.0;
-		row_coefficient.at<double>(0, 5) = 1.0;
-		row_coefficient.at<double>(0, 31) = rms;
-
-		row_coefficient.at<double>(0, 6) = coefficient.at<double>(0);
-		row_coefficient.at<double>(0, 7) = coefficient.at<double>(1);
-		row_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
-	}
-
-	//拟合列坐标
-	col_coefficient.create(1, 32, CV_64F); col_coefficient = 0.0;
-	A = Mat::ones(lon.rows, 3, CV_64F);
-	col.copyTo(b);
-	b = b / (double)cols;
-	lon.copyTo(A(cv::Range(0, lon.rows), cv::Range(1, 2)));
-	lat.copyTo(A(cv::Range(0, lon.rows), cv::Range(2, 3)));
-
-	cv::transpose(A, temp);
-	B = temp * b;
-	A.copyTo(a);
-	cv::transpose(a, a_t);
-	A = temp * A;
-	rms = -1.0;
-	if (cv::invert(A, error, cv::DECOMP_LU) > 0)
-	{
-		cv::transpose(b, b_t);
-		error = b_t * b - (b_t * a) * error * (a_t * b);
-		rms = sqrt(error.at<double>(0, 0) / double(b.rows));
-	}
-	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
-	{
-		col_coefficient.at<double>(0, 0) = 0.0;
-		col_coefficient.at<double>(0, 1) = cols;
-		col_coefficient.at<double>(0, 2) = 0.0;
-		col_coefficient.at<double>(0, 3) = 1.0;
-		col_coefficient.at<double>(0, 4) = 0.0;
-		col_coefficient.at<double>(0, 5) = 1.0;
-		col_coefficient.at<double>(0, 31) = rms;
-
-		col_coefficient.at<double>(0, 6) = coefficient.at<double>(0);
-		col_coefficient.at<double>(0, 7) = coefficient.at<double>(1);
-		col_coefficient.at<double>(0, 11) = coefficient.at<double>(2);
-	}
-
-
-
-	return 0;
-}
-
-int CSK_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	conversion.write_array_to_h5(dst_h5, "col_coefficient", this->col_coefficient);
-	conversion.write_array_to_h5(dst_h5, "row_coefficient", this->row_coefficient);
-	conversion.write_array_to_h5(dst_h5, "lon_coefficient", this->lon_coefficient);
-	conversion.write_array_to_h5(dst_h5, "lat_coefficient", this->lat_coefficient);
-	conversion.write_array_to_h5(dst_h5, "inc_coefficient", this->inc_coefficient);
-
-	conversion.write_double_to_h5(dst_h5, "slant_range_last_pixel", this->slant_range_last_pixel);
-
-	conversion.write_str_to_h5(dst_h5, "orbit_dir", this->orbit_direction.c_str());
-	conversion.write_str_to_h5(dst_h5, "polarization", this->polarization.c_str());
-	conversion.write_str_to_h5(dst_h5, "lookside", this->lookside.c_str());
-
-	return 0;
-}
-
-HTHT_reader::HTHT_reader(const char* data_file, const char* xml_file, int mode)
-{
-	b_initialized = false;
-	this->HT_data_file = data_file;
-	this->HT_xml_file = xml_file;
-	this->mode = mode;
-}
-
-HTHT_reader::~HTHT_reader()
-{
-}
-
-int HTHT_reader::init()
-{
-	if (b_initialized) return 0;
-	if (HT_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->HT_xml_file.c_str(), this->HT_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int HTHT_reader::read_slc(const char* data_file, ComplexMat& slc)
-{
-	if (data_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check failed!\n");
-		return -1;
-	}
-
-	InitializeGDALOnce();
-
-	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
-	if (hDataset == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		return -1;
-	}
-
-	int nBand = GDALGetRasterCount(hDataset);
-	if (nBand < 2)
-	{
-		fprintf(stderr, "read_slc(): number of bands < 2!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	/* ---------- Band 1: Real ---------- */
-	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 1!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	int xsize = GDALGetRasterBandXSize(hBand);
-	int ysize = GDALGetRasterBandYSize(hBand);
-	if (xsize <= 0 || ysize <= 0)
-	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
-	if (!pbuf)
-	{
-		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.re.create(ysize, xsize, CV_16S);
-
-	size_t offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.re.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	/* ---------- Band 2: Imag ---------- */
-	hBand = GDALGetRasterBand(hDataset, 2);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.im.create(ysize, xsize, CV_16S);
-
-	offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.im.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	free(pbuf);
-	GDALClose(hDataset);
-
-	return 0;
-}
-
-int HTHT_reader::read_data(const char* xml_file, const char* data_file)
-{
-	if (!xml_file || !data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(data_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
-		return -1;
-	}
-	XMLFile xmldoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild;
-	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
-	int numOfstateVec;
-	ret = xmldoc.find_node("orbitList", pnode);
-	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &numOfstateVec);
-
-	ret = xmldoc.find_node("orbit", pnode);
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (!pnode) break;
-		//GPS时间
-		ret = xmldoc._find_node(pnode, "timeStamp", pchild);
-		ret = UTC2GPS(pchild->GetText(), &time);
-		//位置x
-		ret = xmldoc._find_node(pnode, "xPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = xmldoc._find_node(pnode, "yPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = xmldoc._find_node(pnode, "zPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//速度x
-		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.get_str_para("imagingStartTime", this->acquisition_start_time);
-	//拍摄结束时间
-	ret = xmldoc.get_str_para("imagingEndTime", this->acquisition_stop_time);
-	//卫星名称
-	ret = xmldoc.get_str_para("satellite", this->sensor);
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("prf", &this->prf);
-	//中心频率
-	ret = xmldoc.get_double_para("radarCenterFrequency", &this->carrier_frequency);
-	this->carrier_frequency = this->carrier_frequency * 1e9;
-	//最近斜距
-	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
-	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
-	ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
-	ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
-
-	//中心下视角incidenceAngleMidSwath
-	ret = xmldoc.get_double_para("incidenceCenter", &this->inc_center);
-
-	//四角经纬度
-	ret = xmldoc.get_double_para("topLeftLat", &this->topleft_lat);
-	ret = xmldoc.get_double_para("topLeftLon", &this->topleft_lon);
-	ret = xmldoc.get_double_para("topRightLat", &this->topright_lat);
-	ret = xmldoc.get_double_para("topRightLon", &this->topright_lon);
-	ret = xmldoc.get_double_para("bottomLeftLat", &this->bottomleft_lat);
-	ret = xmldoc.get_double_para("bottomLeftLon", &this->bottomleft_lon);
-	ret = xmldoc.get_double_para("bottomRightLat", &this->bottomright_lat);
-	ret = xmldoc.get_double_para("bottomRightLon", &this->bottomright_lon);
-
-	return 0;
-}
-
-int HTHT_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	write_common_coordinates(conversion, dst_h5);
-	conversion.write_int_to_h5(dst_h5, "TR_mode", this->mode + 1);
-	return 0;
-}
-
-AIRSAT_reader::AIRSAT_reader(const char* data_file, const char* xml_file)
-{
-	b_initialized = false;
-	this->AIRSAT_data_file = data_file;
-	this->AIRSAT_xml_file = xml_file;
-}
-
-AIRSAT_reader::~AIRSAT_reader()
-{
-}
-
-int AIRSAT_reader::init()
-{
-	if (b_initialized) return 0;
-	if (AIRSAT_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->AIRSAT_xml_file.c_str(), this->AIRSAT_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int AIRSAT_reader::UTC2GPS(const char* utc_time, double* gps_time)
-{
-	if (utc_time == NULL || gps_time == NULL)
-	{
-		fprintf(stderr, "UTC2GPS(): input check failed!\n");
-		return -1;
-	}
-	int ret, year, month, day, hour, minute, second/*, s*/;
-	double sec;
-	ret = sscanf(utc_time, "%d-%d-%d %d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
-	if (ret != 6)
-	{
-		fprintf(stderr, "UTC2GPS(): %s: unknown format!\n", utc_time);
-		return -1;
-	}
-	second = int(floor(sec));
-	sec = sec - (double)second;
-	tm TM;
-	TM.tm_year = year - 1900;
-	TM.tm_mon = month - 1;
-	TM.tm_mday = day;
-	TM.tm_hour = hour;
-	TM.tm_min = minute;
-	TM.tm_sec = second;
-	TM.tm_isdst = 0;
-	*gps_time = double(mktime(&TM) - 315964809) + sec;
-	return 0;
-}
-
-int AIRSAT_reader::read_slc(const char* data_file, ComplexMat& slc)
-{
-	if (data_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check failed!\n");
-		return -1;
-	}
-
-	InitializeGDALOnce();
-
-	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
-	if (hDataset == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		return -1;
-	}
-
-	int nBand = GDALGetRasterCount(hDataset);
-	if (nBand < 2)
-	{
-		fprintf(stderr, "read_slc(): number of bands < 2!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	/* ================= Band 1 : Real ================= */
-	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 1!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	int xsize = GDALGetRasterBandXSize(hBand);
-	int ysize = GDALGetRasterBandYSize(hBand);
-	if (xsize <= 0 || ysize <= 0)
-	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
-	if (!pbuf)
-	{
-		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.re.create(ysize, xsize, CV_16S);
-
-	size_t offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.re.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	/* ================= Band 2 : Imag ================= */
-	hBand = GDALGetRasterBand(hDataset, 2);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.im.create(ysize, xsize, CV_16S);
-
-	offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.im.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	free(pbuf);
-	GDALClose(hDataset);
-
-	return 0;
-}
-
-int AIRSAT_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	write_common_coordinates(conversion, dst_h5);
-	return 0;
-}
-
-int AIRSAT_reader::read_data(const char* xml_file, const char* data_file)
-{
-	if (!xml_file || !data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(data_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
-		return -1;
-	}
-	XMLFile xmldoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild/*, * pchild1*/;
-	int numOfstateVec = 0;
-	pnode = NULL;
-	ret = xmldoc.find_node("GPSParam", pnode);
-	while (pnode)
-	{
-		numOfstateVec += 1;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	ret = xmldoc.find_node("GPSParam", pnode);
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (!pnode) break;
-		//GPS时间
-		ret = xmldoc._find_node(pnode, "TimeStamp", pchild);
-		ret = this->UTC2GPS(pchild->GetText(), &time);
-		//位置x
-		ret = xmldoc._find_node(pnode, "xPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = xmldoc._find_node(pnode, "yPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = xmldoc._find_node(pnode, "zPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//速度x
-		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.find_node("imagingTime", pnode);
-	ret = xmldoc._find_node(pnode, "start", pchild);
-	this->acquisition_start_time = pchild->GetText();
-	std::replace(this->acquisition_start_time.begin(), this->acquisition_start_time.end(), ' ', 'T');
-	//拍摄结束时间
-	ret = xmldoc._find_node(pnode, "end", pchild);
-	this->acquisition_stop_time = pchild->GetText();
-	std::replace(this->acquisition_stop_time.begin(), this->acquisition_stop_time.end(), ' ', 'T');
-	//卫星名称
-	ret = xmldoc.get_str_para("satellite", this->sensor);
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("Prf", &this->prf);
-	//中心频率
-	ret = xmldoc.get_double_para("RadarCenterFrequency", &this->carrier_frequency);
-	this->carrier_frequency = this->carrier_frequency * 1e9;
-	//最近斜距
-	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("Widthspace", &this->range_spacing);
-	ret = xmldoc.get_double_para("Heightspace", &this->azimuth_spacing);
-	ret = xmldoc.get_double_para("Widthspace", &this->range_resolution);
-	ret = xmldoc.get_double_para("Heightspace", &this->azimuth_resolution);
-
-	//中心下视角incidenceAngleMidSwath
-	double inc_near = 0, inc_far = 0;
-	ret = xmldoc.get_double_para("incidenceAngleNearRange", &inc_near);
-	ret = xmldoc.get_double_para("incidenceAngleFarRange", &inc_far);
-	this->inc_center = (inc_near + inc_far) * 0.5;
-
-	//四角经纬度
-	ret = xmldoc.find_node("topLeft", pnode);
-	ret = xmldoc._find_node(pnode, "Latitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lat);
-	ret = xmldoc._find_node(pnode, "Longitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lon);
-
-	ret = xmldoc.find_node("topRight", pnode);
-	ret = xmldoc._find_node(pnode, "Latitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lat);
-	ret = xmldoc._find_node(pnode, "Longitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lon);
-
-	ret = xmldoc.find_node("bottomLeft", pnode);
-	ret = xmldoc._find_node(pnode, "Latitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lat);
-	ret = xmldoc._find_node(pnode, "Longitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lon);
-
-	ret = xmldoc.find_node("bottomRight", pnode);
-	ret = xmldoc._find_node(pnode, "Latitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lat);
-	ret = xmldoc._find_node(pnode, "Longitude", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lon);
-
-	return 0;
-}
-
-
-Biomass1A_reader::Biomass1A_reader(
-	const char* amp_file,
-	const char* phase_file,
-	const char* xml_file, 
-	const char* orbit_file, 
-	const char* polarization
-)
-{
-	b_initialized = false;
-	this->Biomass1A_reader_amp_file = amp_file;
-	this->Biomass1A_reader_phase_file = phase_file;
-	this->Biomass1A_reader_orbit_file = orbit_file;
-	this->Biomass1A_reader_xml_file = xml_file;
-	this->polarization = polarization;
-}
-
-Biomass1A_reader::~Biomass1A_reader()
-{
-}
-
-int Biomass1A_reader::init()
-{
-	if (b_initialized) return 0;
-	if (Biomass1A_reader_amp_file.empty() || Biomass1A_reader_phase_file.empty() || Biomass1A_reader_orbit_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->Biomass1A_reader_xml_file.c_str(), this->Biomass1A_reader_amp_file.c_str(),
-		this->Biomass1A_reader_phase_file.c_str(), this->Biomass1A_reader_orbit_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int Biomass1A_reader::UTC2GPS(const char* utc_time, double* gps_time)
-{
-	if (utc_time == NULL || gps_time == NULL)
-	{
-		fprintf(stderr, "UTC2GPS(): input check failed!\n");
-		return -1;
-	}
-	int ret, year, month, day, hour, minute, second/*, s*/;
-	double sec;
-	ret = sscanf(utc_time, "UTC=%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
-	if (ret != 6)
-	{
-		fprintf(stderr, "UTC2GPS(): %s: unknown format!\n", utc_time);
-		return -1;
-	}
-	second = int(floor(sec));
-	sec = sec - (double)second;
-	tm TM;
-	TM.tm_year = year - 1900;
-	TM.tm_mon = month - 1;
-	TM.tm_mday = day;
-	TM.tm_hour = hour;
-	TM.tm_min = minute;
-	TM.tm_sec = second;
-	TM.tm_isdst = 0;
-	*gps_time = double(mktime(&TM) - 315964809) + sec;
-	return 0;
-}
-
-int Biomass1A_reader::read_slc(
-	const char* amp_file,
-	const char* phase_file,
-	ComplexMat& slc)
-{
-	if (amp_file == NULL || phase_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check failed!\n");
-		return -1;
-	}
-	int ix = 1;
-	if (this->polarization == "HH") ix = 1;
-	else if (this->polarization == "HV") ix = 2;
-	else if (this->polarization == "VH") ix = 3;
-	else  ix = 4;
-	InitializeGDALOnce();
-
-	/* ===================== 读取幅度 ===================== */
-	GDALDatasetH hDS_amp = GDALOpen(amp_file, GA_ReadOnly);
-	if (hDS_amp == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", amp_file);
-		return -1;
-	}
-
-	GDALRasterBandH hBand_amp = GDALGetRasterBand(hDS_amp, ix);
-	if (hBand_amp == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get amplitude band!\n");
-		GDALClose(hDS_amp);
-		return -1;
-	}
-
-	int xsize = GDALGetRasterBandXSize(hBand_amp);
-	int ysize = GDALGetRasterBandYSize(hBand_amp);
-
-	if (xsize <= 0 || ysize <= 0)
-	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(hDS_amp);
-		return -1;
-	}
-
-	GDALDataType dataType = GDALGetRasterDataType(hBand_amp);
-
-	float* pbuf = (float*)malloc(sizeof(float) * xsize * ysize);
-	if (!pbuf)
-	{
-		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(hDS_amp);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand_amp,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		dataType,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO (amplitude) failed!\n");
-		free(pbuf);
-		GDALClose(hDS_amp);
-		return -1;
-	}
-
-	cv::Mat amplitude(ysize, xsize, CV_32F);
-	size_t offset = 0;
-	for (int i = 0; i < ysize; i++)
-		for (int j = 0; j < xsize; j++)
-			amplitude.ptr<float>(i)[j] = pbuf[offset++];
-
-	GDALClose(hDS_amp);
-
-	/* ===================== 读取相位 ===================== */
-	GDALDatasetH hDS_phase = GDALOpen(phase_file, GA_ReadOnly);
-	if (hDS_phase == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", phase_file);
-		free(pbuf);
-		return -1;
-	}
-
-	GDALRasterBandH hBand_phase = GDALGetRasterBand(hDS_phase, ix);
-	if (hBand_phase == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get phase band!\n");
-		GDALClose(hDS_phase);
-		free(pbuf);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand_phase,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		dataType,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO (phase) failed!\n");
-		GDALClose(hDS_phase);
-		free(pbuf);
-		return -1;
-	}
-
-	cv::Mat phase(ysize, xsize, CV_32F);
-	offset = 0;
-	for (int i = 0; i < ysize; i++)
-		for (int j = 0; j < xsize; j++)
-			phase.ptr<float>(i)[j] = pbuf[offset++];
-
-	GDALClose(hDS_phase);
-	free(pbuf);
-
-	/* ===================== 构造复数 SLC ===================== */
-	slc.re.create(ysize, xsize, CV_32F);
-	slc.im.create(ysize, xsize, CV_32F);
-
-	for (int i = 0; i < ysize; i++)
-		for (int j = 0; j < xsize; j++)
-		{
-			float amp = amplitude.at<float>(i, j);
-			float phs = phase.at<float>(i, j);
-			slc.re.ptr<float>(i)[j] = amp * cosf(phs);
-			slc.im.ptr<float>(i)[j] = amp * sinf(phs);
-		}
-
-	return 0;
-}
-
-int Biomass1A_reader::read_data(
-	const char* xml_file,
-	const char* amp_file,
-	const char* phase_file,
-	const char* orbit_file)
-{
-	if (!xml_file || !amp_file || !phase_file || !orbit_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(amp_file, phase_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", amp_file);
-		return -1;
-	}
-	XMLFile xmldoc, orbitdoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-	ret = orbitdoc.XMLFile_load(orbit_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", orbit_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild/*, * pchild1*/;
-	int numOfstateVec = 0;
-	pnode = NULL;
-	ret = orbitdoc.find_node("OSV", pnode);
-	while (pnode)
-	{
-		numOfstateVec += 1;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	ret = orbitdoc.find_node("OSV", pnode);
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (!pnode) break;
-		//GPS时间
-		ret = orbitdoc._find_node(pnode, "UTC", pchild);
-		ret = this->UTC2GPS(pchild->GetText(), &time);
-		//位置x
-		ret = orbitdoc._find_node(pnode, "X", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = orbitdoc._find_node(pnode, "Y", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = orbitdoc._find_node(pnode, "Z", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//速度x
-		ret = orbitdoc._find_node(pnode, "VX", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = orbitdoc._find_node(pnode, "VY", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = orbitdoc._find_node(pnode, "VZ", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.find_node("firstLineAzimuthTime", pnode);
-	this->acquisition_start_time = pnode->GetText();
-	//拍摄结束时间
-	ret = xmldoc.find_node("lastLineAzimuthTime", pnode);
-	this->acquisition_stop_time = pnode->GetText();
-	//卫星名称
-	ret = xmldoc.get_str_para("mission", this->sensor);
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("azimuthTimeInterval", &this->prf);
-	this->prf = 1.0 / this->prf;
-	//中心频率
-	ret = xmldoc.get_double_para("radarCarrierFrequency", &this->carrier_frequency);
-	this->carrier_frequency = this->carrier_frequency;
-	//最近斜距
-	ret = xmldoc.get_double_para("firstSampleSlantRangeTime", &this->slant_range_first_pixel);
-	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
-	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
-	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_resolution);
-	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_resolution);
-
-	//中心下视角incidenceAngleMidSwath
-	double inc_near = 0, inc_far = 0;
-	this->inc_center = (inc_near + inc_far) * 0.5;
-
-	//四角经纬度
-	ret = xmldoc.find_node("footprint", pnode);
-	ret = sscanf(pnode->GetText(), "%lf %lf %lf %lf %lf %lf %lf %lf",
-		&this->bottomleft_lat, &this->bottomleft_lon,
-		&this->bottomright_lat, &this->bottomright_lon, 
-		&this->topright_lat, &this->topright_lon, 
-		&this->topleft_lat, &this->topleft_lon);
-
-	return 0;
-}
-
-int Biomass1A_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	write_common_coordinates(conversion, dst_h5);
-	conversion.write_str_to_h5(dst_h5, "polarization", this->polarization.c_str());
-	return 0;
-}
-
-LUTAN_reader::LUTAN_reader(const char* data_file, const char* xml_file, int mode)
-{
-	b_initialized = false;
-	this->LT_data_file = data_file;
-	this->LT_xml_file = xml_file;
-	this->mode = mode;
-}
-
-LUTAN_reader::~LUTAN_reader()
-{
-}
-
-int LUTAN_reader::init()
-{
-	if (b_initialized) return 0;
-	if (LT_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->LT_xml_file.c_str(), this->LT_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int LUTAN_reader::read_slc(const char* data_file, ComplexMat& slc)
-{
-	if (data_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check failed!\n");
-		return -1;
-	}
-
-	InitializeGDALOnce();
-
-	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
-	if (hDataset == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		return -1;
-	}
-
-	int nBand = GDALGetRasterCount(hDataset);
-	if (nBand < 2)
-	{
-		fprintf(stderr, "read_slc(): number of bands < 2!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	/* ================= Band 1 : Real ================= */
-	GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 1!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	int xsize = GDALGetRasterBandXSize(hBand);
-	int ysize = GDALGetRasterBandYSize(hBand);
-	if (xsize <= 0 || ysize <= 0)
-	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
-	if (!pbuf)
-	{
-		fprintf(stderr, "read_slc(): out of memory!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.re.create(ysize, xsize, CV_16S);
-
-	size_t offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.re.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	/* ================= Band 2 : Imag ================= */
-	hBand = GDALGetRasterBand(hDataset, 2);
-	if (hBand == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	if (GDALRasterIO(
-		hBand,
-		GF_Read,
-		0, 0,
-		xsize, ysize,
-		pbuf,
-		xsize, ysize,
-		GDT_Int16,
-		0, 0) != CE_None)
-	{
-		fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
-		free(pbuf);
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	slc.im.create(ysize, xsize, CV_16S);
-
-	offset = 0;
-	for (int i = 0; i < ysize; i++)
-	{
-		short* rowp = slc.im.ptr<short>(i);
-		for (int j = 0; j < xsize; j++)
-			rowp[j] = pbuf[offset++];
-	}
-
-	free(pbuf);
-	GDALClose(hDataset);
-
-	return 0;
-}
-
-int LUTAN_reader::read_data(const char* xml_file, const char* data_file)
-{
-	if (!xml_file || !data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(data_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
-		return -1;
-	}
-	XMLFile xmldoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild;
-	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
-	int numOfstateVec;
-	ret = xmldoc.get_int_para("numStateVectors", &numOfstateVec);
-
-	ret = xmldoc.find_node("stateVec", pnode);
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (!pnode) break;
-		//GPS时间
-		ret = xmldoc._find_node(pnode, "timeUTC", pchild);
-		ret = UTC2GPS(pchild->GetText(), &time);
-		//位置x
-		ret = xmldoc._find_node(pnode, "posX", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = xmldoc._find_node(pnode, "posY", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = xmldoc._find_node(pnode, "posZ", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-		//速度x
-		ret = xmldoc._find_node(pnode, "velX", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = xmldoc._find_node(pnode, "velY", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = xmldoc._find_node(pnode, "velZ", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.find_node("start", pnode);
-	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
-	this->acquisition_start_time = pchild->GetText();
-	//拍摄结束时间
-	ret = xmldoc.find_node("stop", pnode);
-	ret = xmldoc._find_node(pnode, "timeUTC", pchild);
-	this->acquisition_stop_time = pchild->GetText();
-	//卫星名称
-	ret = xmldoc.get_str_para("mission", this->sensor);
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("PRF", &this->prf);
-	//中心频率
-	ret = xmldoc.get_double_para("centerFrequency", &this->carrier_frequency);
-	//最近斜距
-	ret = xmldoc.get_double_para("firstPixel", &this->slant_range_first_pixel);
-	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("columnSpacing", &this->range_spacing);
-	ret = xmldoc.get_double_para("rowSpacing", &this->azimuth_spacing);
-	ret = xmldoc.get_double_para("slantRangeResolution", &this->range_resolution);
-	ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
-
-	//中心下视角incidenceAngleMidSwath
-	ret = xmldoc.get_double_para("incidenceAngle", &this->inc_center);
-
-	//四角经纬度
-	ret = xmldoc.find_node("sceneCornerCoord", pnode);
-	//bottomleft
-	ret = xmldoc._find_node(pnode, "lat", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lat);
-	ret = xmldoc._find_node(pnode, "lon", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lon);
-	//bottomRight
-	pnode = pnode->NextSiblingElement();
-	ret = xmldoc._find_node(pnode, "lat", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lat);
-	ret = xmldoc._find_node(pnode, "lon", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lon);
-	//topLeft
-	pnode = pnode->NextSiblingElement();
-	ret = xmldoc._find_node(pnode, "lat", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lat);
-	ret = xmldoc._find_node(pnode, "lon", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lon);
-	//topRight
-	pnode = pnode->NextSiblingElement();
-	ret = xmldoc._find_node(pnode, "lat", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lat);
-	ret = xmldoc._find_node(pnode, "lon", pchild);
-	ret = sscanf(pchild->GetText(), "%lf", &this->topright_lon);
-
-	return 0;
-}
-
-int LUTAN_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	write_common_coordinates(conversion, dst_h5);
-	conversion.write_int_to_h5(dst_h5, "TR_mode", this->mode);
-	return 0;
-}
-
-
-
-
-Spacety_reader::Spacety_reader(const char* data_file, const char* xml_file)
-{
-	b_initialized = false;
-	this->Spacety_data_file = data_file;
-	this->Spacety_xml_file = xml_file;
-}
-
-Spacety_reader::~Spacety_reader()
-{
-}
-
-int Spacety_reader::init()
-{
-	if (b_initialized) return 0;
-	if (Spacety_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data(this->Spacety_xml_file.c_str(), this->Spacety_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-int Spacety_reader::init_test()
-{
-	if (b_initialized) return 0;
-	if (Spacety_data_file.empty())
-	{
-		fprintf(stderr, "init(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_data_test(this->Spacety_xml_file.c_str(), this->Spacety_data_file.c_str());
-	if (ret < 0)
-	{
-		fprintf(stderr, "init(): read_data failed!\n");
-		return -1;
-	}
-	b_initialized = true;
-	return 0;
-}
-
-//int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
-//{
-//	if (data_file == NULL)
-//	{
-//		fprintf(stderr, "read_slc(): input check failed!\n");
-//		return -1;
-//	}
-//
-//	GDALAllRegister();
-//
-//	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
-//	if (hDataset == NULL)
-//	{
-//		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-//		return -1;
-//	}
-//
-//	int nBand = GDALGetRasterCount(hDataset);
-//
-//	/* =========================================================
-//	 * 情况一：单波段 packed complex（Int32）
-//	 * 低 16 bit : Real
-//	 * 高 16 bit : Imag
-//	 * ========================================================= */
-//	if (nBand == 1)
-//	{
-//		GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
-//		if (hBand == NULL)
-//		{
-//			fprintf(stderr, "read_slc(): failed to get band 1!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		int xsize = GDALGetRasterBandXSize(hBand);
-//		int ysize = GDALGetRasterBandYSize(hBand);
-//		if (xsize <= 0 || ysize <= 0)
-//		{
-//			fprintf(stderr, "read_slc(): band rows and cols error!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		int* pbuf = (int*)malloc(sizeof(int) * xsize * ysize);
-//		if (!pbuf)
-//		{
-//			fprintf(stderr, "read_slc(): out of memory!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		if (GDALRasterIO(
-//			hBand,
-//			GF_Read,
-//			0, 0,
-//			xsize, ysize,
-//			pbuf,
-//			xsize, ysize,
-//			GDT_Int32,
-//			0, 0) != CE_None)
-//		{
-//			fprintf(stderr, "read_slc(): RasterIO failed!\n");
-//			free(pbuf);
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		slc.re.create(ysize, xsize, CV_16S);
-//		slc.im.create(ysize, xsize, CV_16S);
-//
-//		for (int i = 0; i < ysize; i++)
-//		{
-//			short* re_row = slc.re.ptr<short>(i);
-//			short* im_row = slc.im.ptr<short>(i);
-//			for (int j = 0; j < xsize; j++)
-//			{
-//				int v = pbuf[j + i * xsize];
-//				re_row[j] = (short)(v & 0xFFFF);
-//				im_row[j] = (short)((v >> 16) & 0xFFFF);
-//			}
-//		}
-//
-//		free(pbuf);
-//		GDALClose(hDataset);
-//	}
-//	/* =========================================================
-//	 * 情况二：双波段 SLC
-//	 * Band 1 : Real (Int16)
-//	 * Band 2 : Imag (Int16)
-//	 * ========================================================= */
-//	else
-//	{
-//		GDALRasterBandH hBand = GDALGetRasterBand(hDataset, 1);
-//		if (hBand == NULL)
-//		{
-//			fprintf(stderr, "read_slc(): failed to get band 1!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		int xsize = GDALGetRasterBandXSize(hBand);
-//		int ysize = GDALGetRasterBandYSize(hBand);
-//		if (xsize <= 0 || ysize <= 0)
-//		{
-//			fprintf(stderr, "read_slc(): band rows and cols error!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
-//		if (!pbuf)
-//		{
-//			fprintf(stderr, "read_slc(): out of memory!\n");
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		/* ---------- Band 1 : Real ---------- */
-//		if (GDALRasterIO(
-//			hBand,
-//			GF_Read,
-//			0, 0,
-//			xsize, ysize,
-//			pbuf,
-//			xsize, ysize,
-//			GDT_Int16,
-//			0, 0) != CE_None)
-//		{
-//			fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
-//			free(pbuf);
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		slc.re.create(ysize, xsize, CV_16S);
-//
-//		size_t offset = 0;
-//		for (int i = 0; i < ysize; i++)
-//		{
-//			short* row = slc.re.ptr<short>(i);
-//			for (int j = 0; j < xsize; j++)
-//				row[j] = pbuf[offset++];
-//		}
-//
-//		/* ---------- Band 2 : Imag ---------- */
-//		hBand = GDALGetRasterBand(hDataset, 2);
-//		if (hBand == NULL)
-//		{
-//			fprintf(stderr, "read_slc(): failed to get band 2!\n");
-//			free(pbuf);
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		if (GDALRasterIO(
-//			hBand,
-//			GF_Read,
-//			0, 0,
-//			xsize, ysize,
-//			pbuf,
-//			xsize, ysize,
-//			GDT_Int16,
-//			0, 0) != CE_None)
-//		{
-//			fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
-//			free(pbuf);
-//			GDALClose(hDataset);
-//			return -1;
-//		}
-//
-//		slc.im.create(ysize, xsize, CV_16S);
-//
-//		offset = 0;
-//		for (int i = 0; i < ysize; i++)
-//		{
-//			short* row = slc.im.ptr<short>(i);
-//			for (int j = 0; j < xsize; j++)
-//				row[j] = pbuf[offset++];
-//		}
-//
-//		free(pbuf);
-//		GDALClose(hDataset);
-//	}
-//
-//	return 0;
-//}
-
-int Spacety_reader::read_slc(const char* data_file, ComplexMat& slc)
-{
-	if (data_file == NULL)
-	{
-		fprintf(stderr, "read_slc(): input check failed!\n");
-		return -1;
-	}
-
-	InitializeGDALOnce();
-
-	GDALDatasetH hDataset = GDALOpen(data_file, GA_ReadOnly);
-	if (hDataset == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to open %s!\n", data_file);
-		return -1;
-	}
-
-	int nBand = GDALGetRasterCount(hDataset);
-	if (nBand < 1)
-	{
-		fprintf(stderr, "read_slc(): no raster band found!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	GDALRasterBandH hBand1 = GDALGetRasterBand(hDataset, 1);
-	if (hBand1 == NULL)
-	{
-		fprintf(stderr, "read_slc(): failed to get band 1!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	int xsize = GDALGetRasterBandXSize(hBand1);
-	int ysize = GDALGetRasterBandYSize(hBand1);
-	if (xsize <= 0 || ysize <= 0)
-	{
-		fprintf(stderr, "read_slc(): band rows and cols error!\n");
-		GDALClose(hDataset);
-		return -1;
-	}
-
-	GDALDataType dt = GDALGetRasterDataType(hBand1);
-	fprintf(stderr, "Band1 type = %s\n", GDALGetDataTypeName(dt));
-
-	/* =========================================================
-	 * 情况一：单波段 GDAL 复数类型，例如 CInt16
-	 * ========================================================= */
-	if (nBand == 1 && dt == GDT_CInt16)
-	{
-		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize * 2);
-		if (!pbuf)
-		{
-			fprintf(stderr, "read_slc(): out of memory!\n");
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		if (GDALRasterIO(
-			hBand1,
-			GF_Read,
-			0, 0,
-			xsize, ysize,
-			pbuf,
-			xsize, ysize,
-			GDT_CInt16,
-			0, 0) != CE_None)
-		{
-			fprintf(stderr, "read_slc(): RasterIO failed on complex band!\n");
-			free(pbuf);
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		slc.re.create(ysize, xsize, CV_16S);
-		slc.im.create(ysize, xsize, CV_16S);
-
-		size_t idx = 0;
-		for (int i = 0; i < ysize; i++)
-		{
-			short* re_row = slc.re.ptr<short>(i);
-			short* im_row = slc.im.ptr<short>(i);
-			for (int j = 0; j < xsize; j++)
-			{
-				re_row[j] = pbuf[idx++];   // real
-				im_row[j] = pbuf[idx++];   // imag
-			}
-		}
-
-		free(pbuf);
-		GDALClose(hDataset);
-		return 0;
-	}
-
-	/* =========================================================
-	 * 情况二：单波段 packed complex（自定义 Int32）
-	 * 低 16 bit : Real
-	 * 高 16 bit : Imag
-	 * ========================================================= */
-	if (nBand == 1 && dt == GDT_Int32)
-	{
-		int* pbuf = (int*)malloc(sizeof(int) * xsize * ysize);
-		if (!pbuf)
-		{
-			fprintf(stderr, "read_slc(): out of memory!\n");
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		if (GDALRasterIO(
-			hBand1,
-			GF_Read,
-			0, 0,
-			xsize, ysize,
-			pbuf,
-			xsize, ysize,
-			GDT_Int32,
-			0, 0) != CE_None)
-		{
-			fprintf(stderr, "read_slc(): RasterIO failed!\n");
-			free(pbuf);
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		slc.re.create(ysize, xsize, CV_16S);
-		slc.im.create(ysize, xsize, CV_16S);
-
-		for (int i = 0; i < ysize; i++)
-		{
-			short* re_row = slc.re.ptr<short>(i);
-			short* im_row = slc.im.ptr<short>(i);
-			for (int j = 0; j < xsize; j++)
-			{
-				unsigned int v = (unsigned int)pbuf[j + i * xsize];
-				re_row[j] = (short)(v & 0xFFFF);
-				im_row[j] = (short)((v >> 16) & 0xFFFF);
-			}
-		}
-
-		free(pbuf);
-		GDALClose(hDataset);
-		return 0;
-	}
-
-	/* =========================================================
-	 * 情况三：双波段 SLC
-	 * Band 1 : Real
-	 * Band 2 : Imag
-	 * ========================================================= */
-	if (nBand >= 2)
-	{
-		GDALRasterBandH hBand2 = GDALGetRasterBand(hDataset, 2);
-		if (hBand2 == NULL)
-		{
-			fprintf(stderr, "read_slc(): failed to get band 2!\n");
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
-		if (!pbuf)
-		{
-			fprintf(stderr, "read_slc(): out of memory!\n");
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		if (GDALRasterIO(
-			hBand1,
-			GF_Read,
-			0, 0,
-			xsize, ysize,
-			pbuf,
-			xsize, ysize,
-			GDT_Int16,
-			0, 0) != CE_None)
-		{
-			fprintf(stderr, "read_slc(): RasterIO failed on band 1!\n");
-			free(pbuf);
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		slc.re.create(ysize, xsize, CV_16S);
-		for (int i = 0; i < ysize; i++)
-		{
-			short* row = slc.re.ptr<short>(i);
-			memcpy(row, pbuf + (size_t)i * xsize, sizeof(short) * xsize);
-		}
-
-		if (GDALRasterIO(
-			hBand2,
-			GF_Read,
-			0, 0,
-			xsize, ysize,
-			pbuf,
-			xsize, ysize,
-			GDT_Int16,
-			0, 0) != CE_None)
-		{
-			fprintf(stderr, "read_slc(): RasterIO failed on band 2!\n");
-			free(pbuf);
-			GDALClose(hDataset);
-			return -1;
-		}
-
-		slc.im.create(ysize, xsize, CV_16S);
-		for (int i = 0; i < ysize; i++)
-		{
-			short* row = slc.im.ptr<short>(i);
-			memcpy(row, pbuf + (size_t)i * xsize, sizeof(short) * xsize);
-		}
-
-		free(pbuf);
-		GDALClose(hDataset);
-		return 0;
-	}
-
-	fprintf(stderr, "read_slc(): unsupported data format!\n");
-	GDALClose(hDataset);
-	return -1;
-}
-
-int Spacety_reader::read_data(const char* xml_file, const char* data_file)
-{
-	if (!xml_file || !data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(data_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
-		return -1;
-	}
-	XMLFile xmldoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild, * pchild1;
-	int numOfstateVec;
-	ret = xmldoc.find_node("orbitList", pnode);
-	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &numOfstateVec);
-
-	ret = xmldoc.find_node("orbit", pnode);
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (!pnode) break;
-		//GPS时间
-		ret = xmldoc._find_node(pnode, "time", pchild);
-		ret = UTC2GPS(pchild->GetText(), &time);
-		ret = xmldoc._find_node(pnode, "position", pchild1);
-		//位置x
-		ret = xmldoc._find_node(pchild1, "x", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = xmldoc._find_node(pchild1, "y", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = xmldoc._find_node(pchild1, "z", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-
-		ret = xmldoc._find_node(pnode, "velocity", pchild1);
-		//速度x
-		ret = xmldoc._find_node(pchild1, "x", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = xmldoc._find_node(pchild1, "y", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = xmldoc._find_node(pchild1, "z", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.get_str_para("productFirstLineUtcTime", this->acquisition_start_time);
-	//拍摄结束时间
-	ret = xmldoc.get_str_para("productLastLineUtcTime", this->acquisition_stop_time);
-	//卫星名称
-	this->sensor = "fucheng-1";
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("azimuthTimeInterval", &this->prf);
-	this->prf = 1.0 / this->prf;
-	//中心频率
-	ret = xmldoc.get_double_para("radarFrequency", &this->carrier_frequency);
-	//this->carrier_frequency = this->carrier_frequency * 1e9;
-	//最近斜距
-	ret = xmldoc.get_double_para("slantRangeTime", &this->slant_range_first_pixel);
-	this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("rangePixelSpacing", &this->range_spacing);
-	ret = xmldoc.get_double_para("azimuthPixelSpacing", &this->azimuth_spacing);
-	//ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
-	//ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
-	
-	//中心下视角incidenceAngleMidSwath
-	ret = xmldoc.get_double_para("incidenceAngleMidSwath", &this->inc_center);
-
-	//四角经纬度
-	int num_geolocation_points = 0;
-	ret = xmldoc.find_node("geolocationGridPointList", pnode);
-	ret = sscanf(pnode->FirstAttribute()->Value(), "%d", &num_geolocation_points);
-	ret = xmldoc.find_node("geolocationGridPoint", pnode);
-	int line, pixel;
-	// removed unused: latitude, longitude (geolocation grid parsing not completed)
-	for (int i = 0; i < num_geolocation_points; i++)
-	{
-		if (!pnode) break;
-		//行数
-		ret = xmldoc._find_node(pnode, "line", pchild);
-		ret = sscanf(pchild->GetText(), "%d", &line);
-		//列数
-		ret = xmldoc._find_node(pnode, "pixel", pchild);
-		ret = sscanf(pchild->GetText(), "%d", &pixel);
-		if (line == 0 && pixel == 0)
-		{
-			ret = xmldoc._find_node(pnode, "latitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lat);
-			ret = xmldoc._find_node(pnode, "longitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->topleft_lon);
-		}
-		if (line == 0 && pixel != 0)
-		{
-			ret = xmldoc._find_node(pnode, "latitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->topright_lat);
-			ret = xmldoc._find_node(pnode, "longitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->topright_lon);
-		}
-		if (line != 0 && pixel == 0)
-		{
-			ret = xmldoc._find_node(pnode, "latitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lat);
-			ret = xmldoc._find_node(pnode, "longitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->bottomleft_lon);
-		}
-		if (line != 0 && pixel != 0)
-		{
-			ret = xmldoc._find_node(pnode, "latitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lat);
-			ret = xmldoc._find_node(pnode, "longitude", pchild);
-			ret = sscanf(pchild->GetText(), "%lf", &this->bottomright_lon);
-		}
-		pnode = pnode->NextSiblingElement();
-	}
-
-	return 0;
-}
-
-int Spacety_reader::read_data_test(const char* xml_file, const char* data_file)
-{
-	if (!xml_file || !data_file)
-	{
-		fprintf(stderr, "read_data(): input check failed!\n");
-		return -1;
-	}
-	int ret = read_slc(data_file, slc);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't read slc from %s\n", data_file);
-		return -1;
-	}
-	XMLFile xmldoc;
-	ret = xmldoc.XMLFile_load(xml_file);
-	if (ret < 0)
-	{
-		fprintf(stderr, "read_data(): can't load %s\n", xml_file);
-		return -1;
-	}
-
-	//读取轨道参数
-	TiXmlElement* pnode, * pchild;
-	// removed unused: pchild1 (copy-paste remnant from similar XML parsing)
-	int numOfstateVec = 6;
-	pnode = NULL;
-	double time, x, y, z, vx, vy, vz;
-	state_vec.create(numOfstateVec, 7, CV_64F);
-	for (int i = 0; i < numOfstateVec; i++)
-	{
-		if (i == 0) ret = xmldoc.find_node("GPSParam", pnode);
-		
-		//GPS时间
-		ret = xmldoc._find_node(pnode, "TimeStamp", pchild);
-		string tmp = pchild->GetText();
-		int rpos = static_cast<int>(tmp.rfind("-"));
-		string tmp2 = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
-		ret = UTC2GPS(tmp2.c_str(), &time);
-		//位置x
-		ret = xmldoc._find_node(pnode, "xPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &x);
-		//位置y
-		ret = xmldoc._find_node(pnode, "yPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &y);
-		//位置z
-		ret = xmldoc._find_node(pnode, "zPosition", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &z);
-
-		//速度x
-		ret = xmldoc._find_node(pnode, "xVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vx);
-		//速度y
-		ret = xmldoc._find_node(pnode, "yVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vy);
-		//速度z
-		ret = xmldoc._find_node(pnode, "zVelocity", pchild);
-		ret = sscanf(pchild->GetText(), "%lf", &vz);
-
-		//赋值
-		state_vec.at<double>(i, 0) = time;
-		state_vec.at<double>(i, 1) = x;
-		state_vec.at<double>(i, 2) = y;
-		state_vec.at<double>(i, 3) = z;
-		state_vec.at<double>(i, 4) = vx;
-		state_vec.at<double>(i, 5) = vy;
-		state_vec.at<double>(i, 6) = vz;
-		pnode = pnode->NextSiblingElement();
-	}
-
-	//拍摄起始时间
-	ret = xmldoc.get_str_para("imagingTimestart", this->acquisition_start_time);
-	string tmp = this->acquisition_start_time;
-	int rpos = static_cast<int>(tmp.rfind("-"));
-	this->acquisition_start_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
-	//拍摄结束时间
-	ret = xmldoc.get_str_para("imagingTimeend", this->acquisition_stop_time);
-	tmp = this->acquisition_stop_time;
-	rpos = static_cast<int>(tmp.rfind("-"));
-	this->acquisition_stop_time = tmp.substr(0, rpos) + "T" + tmp.substr(rpos + 1, tmp.length() - rpos - 1);
-	//卫星名称
-	this->sensor = "fucheng-1";
-	//脉冲重复频率
-	ret = xmldoc.get_double_para("eqvPRF", &this->prf);
-	//中心频率
-	ret = xmldoc.get_double_para("RadarCenterFrequency", &this->carrier_frequency);
-	this->carrier_frequency = this->carrier_frequency * 1e9;
-	//最近斜距
-	ret = xmldoc.get_double_para("nearRange", &this->slant_range_first_pixel);
-	//this->slant_range_first_pixel = this->slant_range_first_pixel * VEL_C / 2.0;
-	//距离方位采样间隔/分辨率
-	ret = xmldoc.get_double_para("widthspace", &this->range_spacing);
-	ret = xmldoc.get_double_para("heightspace", &this->azimuth_spacing);
-	//ret = xmldoc.get_double_para("rangeResolution", &this->range_resolution);
-	//ret = xmldoc.get_double_para("azimuthResolution", &this->azimuth_resolution);
-
-	//中心下视角incidenceAngleMidSwath
-	ret = xmldoc.get_double_para("incidenceAngleNearRange", &this->inc_center);
-
-	//四角经纬度
-	double latitude, longitude;
-	ret = xmldoc.get_double_para("latitude", &latitude);
-	ret = xmldoc.get_double_para("longitude", &longitude);
-	this->topleft_lat = latitude + 0.2;
-	this->bottomleft_lat = latitude - 0.2;
-	this->topright_lat = latitude + 0.2;
-	this->bottomright_lat = latitude - 0.2;
-	this->topleft_lon = longitude - 0.2;
-	this->topright_lon = longitude + 0.2;
-	this->bottomleft_lon = longitude - 0.2;
-	this->bottomright_lon = longitude + 0.2;
-
-	return 0;
-}
-
-int Spacety_reader::write_custom_h5_data(FormatConversion& conversion, const char* dst_h5)
-{
-	write_common_coordinates(conversion, dst_h5);
-	return 0;
-}

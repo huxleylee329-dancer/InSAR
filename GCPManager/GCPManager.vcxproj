@@ -164,7 +164,15 @@
     <ClCompile Include="GCPManager.cpp" />
     <ClCompile Include="OrbitRefinement.cpp" />
   </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+    <ItemGroup>
+    <ProjectReference Include="..\ComplexMat\ComplexMat.vcxproj">
+      <Project>{1722AA5B-2D2B-4F87-A36C-5D25A2F7AF42}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Utils\Utils.vcxproj">
+      <Project>{72E5449A-CF52-4C0B-BC12-3B65D8852C78}</Project>
+    </ProjectReference>
+  </ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>

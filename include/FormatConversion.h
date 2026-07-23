@@ -31,7 +31,7 @@ public:
 	/** @brief 创建新的工程文件
 	
 	@param project_path       工程路径
-	@param project_name       工程名
+	@param project_name       工程�?
 	@param project_version    工程文件版本
 	*/
 	int XMLFile_creat_new_project(
@@ -41,8 +41,8 @@ public:
 	);
 	/** @brief 添加导入原始数据节点
 
-	@param datanode_node  节点名
-	@param node_name      图像名
+	@param datanode_node  节点�?
+	@param node_name      图像�?
 	@param node_path      图像路径
 	@param sensor         卫星
 	*/
@@ -53,10 +53,10 @@ public:
 		const char* sensor = "unknown"
 	);
 	/** @brief 添加导入原始数据节点(14_project)
-	* @param datanode_node  节点名
-	* @param node_name      图像名
+	* @param datanode_node  节点�?
+	* @param node_name      图像�?
 	* @param node_path      图像路径
-	* @param mode           收发模式（1：单发单收，2：单发双收，3：乒乓，4：双频乒乓）
+	* @param mode           收发模式�?：单发单收，2：单发双收，3：乒乓，4：双频乒乓）
 	* @param sensor         卫星
 	*/
 	int XMLFile_add_origin_14(
@@ -68,9 +68,9 @@ public:
 	);
 	/** @brief 添加裁剪图像节点
 
-	@param datanode_node  裁剪图像节点名
-	@param master_index   裁剪节点主图序号（1-based）
-	@param node_name      裁剪图像名
+	@param datanode_node  裁剪图像节点�?
+	@param master_index   裁剪节点主图序号�?-based�?
+	@param node_name      裁剪图像�?
 	@param node_path      裁剪图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
@@ -93,9 +93,9 @@ public:
 	);
 
 	/** @brief 添加裁剪图像节点
-	@param datanode_node  裁剪图像节点名
-	@param master_index   裁剪节点主图序号（1-based）
-	@param node_name      裁剪图像名
+	@param datanode_node  裁剪图像节点�?
+	@param master_index   裁剪节点主图序号�?-based�?
+	@param node_name      裁剪图像�?
 	@param node_path      裁剪图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
@@ -119,14 +119,14 @@ public:
 
 	/** @brief 添加配准图像节点
 
-	@param datanode_node  配准图像节点名
-	@param node_name      配准图像名
+	@param datanode_node  配准图像节点�?
+	@param node_name      配准图像�?
 	@param node_path      配准图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
-	@param master_index   主图像序号
-	@param interp_times   插值倍数（2的n次幂）
-	@param block_size     子块尺寸（2的n次幂）
+	@param master_index   主图像序�?
+	@param interp_times   插值倍数�?的n次幂�?
+	@param block_size     子块尺寸�?的n次幂�?
 	@param temporal_baseline 时间基线估计
 	@param B_effect       垂直基线估计
 	@param B_parallel     水平基线估计
@@ -142,15 +142,15 @@ public:
 	);
 
 	/** @brief 添加配准图像节点
-	@param mode           收发模式（1：单发单收，2：单发双收，3：乒乓，4：双频乒乓）
-	@param datanode_node  配准图像节点名
-	@param node_name      配准图像名
+	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓，4：双频乒乓）
+	@param datanode_node  配准图像节点�?
+	@param node_name      配准图像�?
 	@param node_path      配准图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
-	@param master_index   主图像序号
-	@param interp_times   插值倍数（2的n次幂）
-	@param block_size     子块尺寸（2的n次幂）
+	@param master_index   主图像序�?
+	@param interp_times   插值倍数�?的n次幂�?
+	@param block_size     子块尺寸�?的n次幂�?
 	@param temporal_baseline 时间基线估计
 	@param B_effect       垂直基线估计
 	@param B_parallel     水平基线估计
@@ -167,11 +167,11 @@ public:
 	);
 
 	/** @brief 添加后向地理编码配准节点
-	* @param dataNode            配准图像数据节点名
-	* @param dataName            配准图像数据名
+	* @param dataNode            配准图像数据节点�?
+	* @param dataName            配准图像数据�?
 	* @param dataPath            配准图像数据储存路径（相对路径）
-	* @param masterIndex         主图像序号
-	* @return 成功返回0，否则返回-1
+	* @param masterIndex         主图像序�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_backgeocoding(
 		const char* dataNode,
@@ -179,12 +179,12 @@ public:
 		const char* dataPath,
 		int masterIndex
 	);
-	/** @brief 添加单视复图像去参考相位节点
-	* @param dataNode            配准图像数据节点名
-	* @param dataName            配准图像数据名
+	/** @brief 添加单视复图像去参考相位节�?
+	* @param dataNode            配准图像数据节点�?
+	* @param dataName            配准图像数据�?
 	* @param dataPath            配准图像数据储存路径（相对路径）
-	* @param masterIndex         主图像序号
-	* @return 成功返回0，否则返回-1
+	* @param masterIndex         主图像序�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_SLC_deramp(
 		const char* dataNode,
@@ -193,13 +193,13 @@ public:
 		int masterIndex
 	);
 
-	/** @brief 添加单视复图像去参考相位节点
-	* @param mode                收发模式（1：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
-	* @param dataNode            配准图像数据节点名
-	* @param dataName            配准图像数据名
+	/** @brief 添加单视复图像去参考相位节�?
+	* @param mode                收发模式�?：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
+	* @param dataNode            配准图像数据节点�?
+	* @param dataName            配准图像数据�?
 	* @param dataPath            配准图像数据储存路径（相对路径）
-	* @param masterIndex         主图像序号
-	* @return 成功返回0，否则返回-1
+	* @param masterIndex         主图像序�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_SLC_deramp_14(
 		int mode,
@@ -210,10 +210,10 @@ public:
 	);
 
 	/** @brief 添加小基线集时间序列分析节点
-	* @param dataNode            SBAS时间序列分析数据节点名
-	* @param dataName            SBAS时间序列分析数据名
+	* @param dataNode            SBAS时间序列分析数据节点�?
+	* @param dataName            SBAS时间序列分析数据�?
 	* @param dataPath            SBAS时间序列分析图像数据储存路径（相对路径）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_SBAS(
 		const char* dataNode,
@@ -221,10 +221,10 @@ public:
 		const char* dataPath
 	);
 	/** @brief 添加哨兵一号burst拼接节点
-	* @param dataNode            deburst图像数据节点名
-	* @param dataName            deburst图像数据名
+	* @param dataNode            deburst图像数据节点�?
+	* @param dataName            deburst图像数据�?
 	* @param dataPath            deburst图像数据储存路径（相对路径）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_S1_Deburst(
 		const char* dataNode,
@@ -232,11 +232,11 @@ public:
 		const char* dataPath
 	);
 	/** @brief 添加地理编码节点
-	* @param dataNode            地理编码图像数据节点名
-	* @param dataName            地理编码图像数据名
+	* @param dataNode            地理编码图像数据节点�?
+	* @param dataName            地理编码图像数据�?
 	* @param dataPath            地理编码图像数据储存路径（相对路径）
 	* @param level               数据等级
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_geocoding(
 		const char* dataNode,
@@ -246,16 +246,16 @@ public:
 	);
 
 	/** @brief 添加干涉相位生成节点
-	* @param datanode_node                 干涉相位图像节点名
-	* @param node_name                     干涉相位图像名
+	* @param datanode_node                 干涉相位图像节点�?
+	* @param node_name                     干涉相位图像�?
 	* @param node_path                     干涉相位图像路径
-	* @param master_name                   干涉相位主图像
+	* @param master_name                   干涉相位主图�?
 	* @param rank                          节点等级
-	* @param offset_row                    主图像行偏移量
-	* @param offset_col                    主图像列偏移量
-	* @param multilook_rg                  多视倍数（距离向）
-	* @param multilook_az                  多视倍数（方位向）
-	* @return 成功返回0，否则返回-1
+	* @param offset_row                    主图像行偏移�?
+	* @param offset_col                    主图像列偏移�?
+	* @param multilook_rg                  多视倍数（距离向�?
+	* @param multilook_az                  多视倍数（方位向�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int XMLFile_add_interferometric_phase_14(
 		const char* datanode_name,
@@ -271,20 +271,20 @@ public:
 
 	/** @brief 添加干涉相位生成节点
 
-	@param datanode_node  干涉相位图像节点名
-	@param node_name      干涉相位图像名
+	@param datanode_node  干涉相位图像节点�?
+	@param node_name      干涉相位图像�?
 	@param node_path      干涉相位图像路径
-	@param master_name    干涉相位主图像
+	@param master_name    干涉相位主图�?
 	@param rank			  节点等级
-	@param offset_row     主图像行偏移量
-	@param offset_col     主图像列偏移量
-	@param isdeflat       是否去平地
-	@param istopo_removal 是否去地形
+	@param offset_row     主图像行偏移�?
+	@param offset_col     主图像列偏移�?
+	@param isdeflat       是否去平�?
+	@param istopo_removal 是否去地�?
 	@param iscoherence    是否估计相干系数
 	@param win_w          相干系数估计窗口宽度
 	@param win_h          相干系数估计窗口高度
-	@param multilook_rg   多视倍数（距离向）
-	@param multilook_az   多视倍数（方位向）
+	@param multilook_rg   多视倍数（距离向�?
+	@param multilook_az   多视倍数（方位向�?
 	*/
 	int XMLFile_add_interferometric_phase(
 		const char* datanode_name,
@@ -298,19 +298,19 @@ public:
 	);
 
 	/** @brief 添加滤波图像节点
-	@param mode           收发模式（1：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
-	@param datanode_node  滤波图像节点名
-	@param node_name      滤波图像名
+	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
+	@param datanode_node  滤波图像节点�?
+	@param node_name      滤波图像�?
 	@param node_path      滤波图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
 	@param method		  方法名称
 	@param Slop_win		  斜坡自适应窗口尺寸
-	@param Pre_win		  预窗口尺寸
+	@param Pre_win		  预窗口尺�?
 	@param Goldstein_win  Goldstein滤波FFT窗口尺寸
 	@param Goldstein_filled_win		Goldstein滤波补零窗口尺寸
-	@param alpha		  Goldstein滤波阈值
-	@param filter_dl_path			深度学习滤波可执行程序路径
+	@param alpha		  Goldstein滤波阈�?
+	@param filter_dl_path			深度学习滤波可执行程序路�?
 	@param dl_model_file			深度学习滤波模型路径
 	@param tmp_path        深度学习滤波中间文件路径
 	*/
@@ -329,18 +329,18 @@ public:
 
 	/** @brief 添加滤波图像节点
 
-	@param datanode_node  滤波图像节点名
-	@param node_name      滤波图像名
+	@param datanode_node  滤波图像节点�?
+	@param node_name      滤波图像�?
 	@param node_path      滤波图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
 	@param method		  方法名称
 	@param Slop_win		  斜坡自适应窗口尺寸
-	@param Pre_win		  预窗口尺寸
+	@param Pre_win		  预窗口尺�?
 	@param Goldstein_win  Goldstein滤波FFT窗口尺寸
 	@param Goldstein_filled_win		Goldstein滤波补零窗口尺寸
-	@param alpha		  Goldstein滤波阈值
-	@param filter_dl_path			深度学习滤波可执行程序路径
+	@param alpha		  Goldstein滤波阈�?
+	@param filter_dl_path			深度学习滤波可执行程序路�?
 	@param dl_model_file			深度学习滤波模型路径
 	@param tmp_path        深度学习滤波中间文件路径
 	*/
@@ -357,13 +357,13 @@ public:
 	);
 	/** @brief 添加解缠图像节点
 
-	@param datanode_node  解缠图像节点名
-	@param node_name      解缠图像名
+	@param datanode_node  解缠图像节点�?
+	@param node_name      解缠图像�?
 	@param node_path      解缠图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
 	@param method		  方法名称
-	@param threshold	  综合法阈值
+	@param threshold	  综合法阈�?
 	*/
 	int XMLFile_add_unwrap(
 		const char* datanode_name,
@@ -376,14 +376,14 @@ public:
 	);
 
 	/** @brief 添加解缠图像节点
-	@param mode           收发模式（1：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
-	@param datanode_node  解缠图像节点名
-	@param node_name      解缠图像名
+	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
+	@param datanode_node  解缠图像节点�?
+	@param node_name      解缠图像�?
 	@param node_path      解缠图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
 	@param method		  方法名称
-	@param threshold	  综合法阈值
+	@param threshold	  综合法阈�?
 	*/
 	int XMLFile_add_unwrap_14(
 		int mode,
@@ -398,8 +398,8 @@ public:
 
 	/** @brief 添加Dem图像节点
 
-	@param datanode_node  Dem图像节点名
-	@param node_name      Dem图像名
+	@param datanode_node  Dem图像节点�?
+	@param node_name      Dem图像�?
 	@param node_path      Dem图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
@@ -417,9 +417,9 @@ public:
 	);
 
 	/** @brief 添加Dem图像节点
-	@param mode           收发模式（1：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
-	@param datanode_node  Dem图像节点名
-	@param node_name      Dem图像名
+	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
+	@param datanode_node  Dem图像节点�?
+	@param node_name      Dem图像�?
 	@param node_path      Dem图像路径
 	@param Row_offset     行偏移量
 	@param Col_offset     列偏移量
@@ -440,7 +440,7 @@ public:
 	/** @brief 删除图像节点
 	@param datanode_node  待删除图像节点名
 	@param node_name      待删除图像名
-	@param node_path      待删除图像路径
+	@param node_path      待删除图像路�?
 	*/
 	int XMLFile_remove_node(
 		const char* datanode_name,
@@ -448,14 +448,14 @@ public:
 		const char* node_path
 	);
 
-	/** @brief 返回字符串
+	/** @brief 返回字符�?
 
-	@param n			输入整数值
+	@param n			输入整数�?
 	*/
 	string int2str(int n);
 	/** @brief 返回整型
 
-	@param s			输入字符串
+	@param s			输入字符�?
 	*/
 	int str2int(const string& s);
 	/** @brief 保存XML
@@ -470,11 +470,11 @@ public:
 
 
 	/*XML文件加载
-	* 参数1：待加载文件名
+	* 参数1：待加载文件�?
 	*/
 	int XMLFile_load(const char* xmlFileName);
 	/*
-	* 按名称查找节点
+	* 按名称查找节�?
 	* 参数1：根节点（返回值）
 	*/
 	int get_root(TiXmlElement*& root);
@@ -485,24 +485,24 @@ public:
 	*/
 	int get_children_count(TiXmlElement* pRoot, int* count);
 	/*
-	* 按名称查找节点
+	* 按名称查找节�?
 	* 参数1：节点名
 	* 参数2：节点名
 	* 参数3：节点指针（返回值）
 	*/
 	int _find_node(TiXmlElement* pRoot, const char* node_name, TiXmlElement*& pnode);
 	/*
-	* 按名称查找节点
+	* 按名称查找节�?
 	* 参数1：节点名
 	* 参数2：节点指针（返回值）
 	*/
 	int find_node(const char* node_name, TiXmlElement*& pnode);
 	/*
-	* 按名称及属性值查找节点
+	* 按名称及属性值查找节�?
 	* 参数1：根节点（遍历用，非文件根节点）
 	* 参数2：节点名
 	* 参数3：节点属性名（关键属性）
-	* 参数4：节点属性值
+	* 参数4：节点属性�?
 	* 参数5：节点指针（返回值）
 	*/
 	int find_node_with_attribute(
@@ -513,12 +513,12 @@ public:
 		TiXmlElement*& pnode);
 
 	/*
-	* 按名称及属性值查找节点
-	* @param             节点名
+	* 按名称及属性值查找节�?
+	* @param             节点�?
 	* @param             节点属性名
-	* @param             节点属性值
+	* @param             节点属性�?
 	* @param             节点指针（返回值）
-	* @return 成功找到返回0， 否则返回-1
+	* @return 成功找到返回0�?否则返回-1
 	*/
 	int find_node_with_attribute(
 		const char* node_name,
@@ -529,34 +529,34 @@ public:
 
 	/*
 	* 从XML文件中读出字符串参数
-	* 参数1：参数名（节点名）
-	* 参数2：参数值（输出）
+	* 参数1：参数名（节点名�?
+	* 参数2：参数值（输出�?
 	*/
 	int get_str_para(const char* node_name, string& value);
 	/*
 	* 从XML文件中读出double类型参数
-	* 参数1：参数名（节点名）
-	* 参数2：参数值（输出）
+	* 参数1：参数名（节点名�?
+	* 参数2：参数值（输出�?
 	*/
 	int get_double_para(const char* node_name, double* value);
 	/* 从xml文件中读出double数组
-	* @param node_name                   数据节点名
+	* @param node_name                   数据节点�?
 	* @param Array                       数组
 	* @param rootNode                    根节点（默认为NULL，若提供根节点，则在根节点下面搜索）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getDoubleArray(const char* node_name, Mat& Array, TiXmlElement* rootNode = NULL);
 	/*
-	* 从XML文件中读出整型参数
-	* 参数1：参数名（节点名）
-	* 参数2：参数值（输出）
+	* 从XML文件中读出整型参�?
+	* 参数1：参数名（节点名�?
+	* 参数2：参数值（输出�?
 	*/
 	int get_int_para(const char* node_name, int* value);
 	/* 从xml文件中读出int数组
-	* @param node_name                   数据节点名
+	* @param node_name                   数据节点�?
 	* @param Array                       数组
 	* @param rootNode                    根节点（默认为NULL，若提供根节点，则在根节点下面搜索）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getIntArray(const char* node_name, Mat& Array, TiXmlElement* rootNode = NULL);
 
@@ -569,34 +569,34 @@ public:
 
 	/*
 	* 从TerraSAR-X GEOREF.xml文件中读出控制点参数
-	* 参数1：控制点参数（输出值，N×6矩阵，每列分别为：经，纬，高，行，列，下视角）
+	* 参数1：控制点参数（输出值，N×6矩阵，每列分别为：经，纬，高，行，列，下视角�?
 	*/
 	int get_gcps_from_TSX(Mat& gcps);
 	/*
-	* 从TerraSAR-X的主XML文件中读出轨道数据
-	* 参数1：轨道参数（输出值，N×7矩阵，每列分别是：GPS时间，位置，速度）
+	* 从TerraSAR-X的主XML文件中读出轨道数�?
+	* 参数1：轨道参数（输出值，N×7矩阵，每列分别是：GPS时间，位置，速度�?
 	*/
 	int get_stateVec_from_TSX(Mat& stateVec);
 	/*
 	* 从TerraSAR-X主xml文件中读出多普勒中心频率参数估计系数
-	* 参数1：多普勒中心频率（输出值， N×(N_order+2)矩阵，N为多普勒中心估计数，N_order为斜距向多普勒中心拟合阶数, 另外两个是零阶系数和参考点距离向时间）
+	* 参数1：多普勒中心频率（输出值， N×(N_order+2)矩阵，N为多普勒中心估计数，N_order为斜距向多普勒中心拟合阶�? 另外两个是零阶系数和参考点距离向时间）
 	*/
 	int get_dopplerCentroid_from_TSX(Mat& doppler);
 
 
 	/*
 	* 从sentinel1卫星数据xml文件中读出地面控制点数据
-	* 参数1：控制点数据（输出值，N×6矩阵，每列分别为：经，纬，高，行，列，下视角）
+	* 参数1：控制点数据（输出值，N×6矩阵，每列分别为：经，纬，高，行，列，下视角�?
 	*/
 	int get_gcps_from_sentinel(Mat& gcps);
 	/*
 	* 从sentinel1卫星数据xml文件中读出多普勒中心频率参数
-	* 参数1：多普勒中心频率（输出值， N×(N_order+2)矩阵，N为多普勒中心估计数，N_order为斜距向多普勒中心拟合阶数, 另外两个是零阶系数和参考点距离向时间）
+	* 参数1：多普勒中心频率（输出值， N×(N_order+2)矩阵，N为多普勒中心估计数，N_order为斜距向多普勒中心拟合阶�? 另外两个是零阶系数和参考点距离向时间）
 	*/
 	int get_dopplerCentroid_from_sentinel(Mat& doppler);
 	/*
-	* 从sentinel1卫星数据xml文件中读出轨道参数
-	* 参数1：轨道参数（输出值，N×7矩阵，每列分别是：GPS时间，位置，速度）
+	* 从sentinel1卫星数据xml文件中读出轨道参�?
+	* 参数1：轨道参数（输出值，N×7矩阵，每列分别是：GPS时间，位置，速度�?
 	*/
 	int get_stateVec_from_sentinel(Mat& stateVec);
 
@@ -660,17 +660,17 @@ public:
 	* 参数2：GPS时间
 	*/
 	int utc2gps(const char* utc_time, double* gps_time);
-	/** @brief 创建新的h5文件（若文件已存在则覆盖）
+	/** @brief 创建新的h5文件（若文件已存在则覆盖�?
 
-	@param filename     文件名
+	@param filename     文件�?
 	*/
 	int creat_new_h5(const char* filename);
-	/** @brief 获取 HDF5 数据集维度 (Rows 和 Cols)
-	* @param filename       H5 文件名
+	/** @brief 获取 HDF5 数据集维�?(Rows �?Cols)
+	* @param filename       H5 文件�?
 	* @param dataset_name   数据集名
 	* @param rows           输出行数指针
 	* @param cols           输出列数指针
-	* @return 成功返回 0，否则返回 -1
+	* @return 成功返回 0，否则返�?-1
 	*/
 	int get_dataset_dims(
 		const char* filename,
@@ -679,23 +679,23 @@ public:
 		int* cols
 	);
 	/** @brief 功能：向h5文件中写入零矩阵
-	* @param filename                文件名
-	* @param dataset_name            dataset名
-	* @param type                    数据类型（CV_8U/CV_16S/CV_32S/CV_32F/CV_64F）
+	* @param filename                文件�?
+	* @param dataset_name            dataset�?
+	* @param type                    数据类型（CV_8U/CV_16S/CV_32S/CV_32F/CV_64F�?
 	* @param rows                    dataset行数
 	* @param cols                    dataset列数
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int write_zero_array_to_h5(const char* filename, const char* dataset_name, int type, int rows, int cols);
-	/** @brief 在 H5 文件中创建一个空的且延迟分配物理空间的二维 Dataset 结构
+	/** @brief �?H5 文件中创建一个空的且延迟分配物理空间的二�?Dataset 结构
 	* @param filePath                      H5 文件路径
-	* @param datasetName                   数据集名称
-	* @param rows                          数据集总行数
-	* @param cols                          数据集总列数
-	* @param dataType                      OpenCV 数据类型 (CV_32F, CV_64F, CV_16S 等)
-	* @param chunkRows                     分块行数（默认256，可根据 Burst 写入尺寸优化）
-	* @param chunkCols                     分块列数（默认256，可根据 Burst 写入尺寸优化）
-	* @return 成功返回0， 否则返回-1
+	* @param datasetName                   数据集名�?
+	* @param rows                          数据集总行�?
+	* @param cols                          数据集总列�?
+	* @param dataType                      OpenCV 数据类型 (CV_32F, CV_64F, CV_16S �?
+	* @param chunkRows                     分块行数（默�?56，可根据 Burst 写入尺寸优化�?
+	* @param chunkCols                     分块列数（默�?56，可根据 Burst 写入尺寸优化�?
+	* @return 成功返回0�?否则返回-1
 	*/
 	int create_empty_dataset(
 		const char* filePath,
@@ -707,28 +707,28 @@ public:
 		int chunkCols = 256
 	);
 	/*
-	* 功能：向h5文件中写入实数矩阵（干涉相位，相干系数等）,input_array可以是16位整型或者double/float型
+	* 功能：向h5文件中写入实数矩阵（干涉相位，相干系数等�?input_array可以�?6位整型或者double/float�?
 	* 参数1：文件名
-	* 参数2：dataset名
-	* 参数3 待写入矩阵
+	* 参数2：dataset�?
+	* 参数3 待写入矩�?
 	*/
 	int write_array_to_h5(const char* filename, const char* dataset_name, const Mat& input_array);
-	/** @brief 向h5文件中写入double类型数
+	/** @brief 向h5文件中写入double类型�?
 	* @param h5File                     h5文件
-	* @param datasetName                数据名
-	* @param data                       double型数据
-	* @return 成功返回0，否则返回-1
+	* @param datasetName                数据�?
+	* @param data                       double型数�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int write_double_to_h5(
 		const char* h5File,
 		const char* datasetName,
 		double data
 	);
-	/** @brief 向h5文件中写入int类型数
+	/** @brief 向h5文件中写入int类型�?
 	* @param h5File                     h5文件
-	* @param datasetName                数据名
-	* @param data                       double型数据
-	* @return 成功返回0，否则返回-1
+	* @param datasetName                数据�?
+	* @param data                       double型数�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int write_int_to_h5(
 		const char* h5File,
@@ -736,17 +736,17 @@ public:
 		int data
 	);
 	/*
-	* 功能：从h5文件中读出实数矩阵(读出类型为double型、16位整型或者32位整型)
+	* 功能：从h5文件中读出实数矩�?读出类型为double型�?6位整型或�?2位整�?
 	* 参数1：文件名
-	* 参数2：dataset名
-	* 参数3：输出矩阵
+	* 参数2：dataset�?
+	* 参数3：输出矩�?
 	*/
 	int read_array_from_h5(const char* filename, const char* dataset_name, Mat& out_array);
 	/** @brief 从h5文件中读出double数据
 	* @param h5File                      h5文件
-	* @param datasetName                 数据名
+	* @param datasetName                 数据�?
 	* @param data                        数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_double_from_h5(
 		const char* h5File,
@@ -755,9 +755,9 @@ public:
 	);
 	/** @brief 从h5文件中读出int数据
 	* @param h5File                      h5文件
-	* @param datasetName                 数据名
+	* @param datasetName                 数据�?
 	* @param data                        数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_int_from_h5(
 		const char* h5File,
@@ -765,14 +765,14 @@ public:
 		int* data
 	);
 	/*
-	* 功能：从h5文件中读取矩阵数据子集
-	* 参数1：h5文件名
-	* 参数2：dataset名
-	* 参数3：行偏移量(从0开始)
-	* 参数4：列偏移量（从0开始）
-	* 参数5：子集行数
-	* 参数6：子集列数
-	* 参数7：输出子集矩阵
+	* 功能：从h5文件中读取矩阵数据子�?
+	* 参数1：h5文件�?
+	* 参数2：dataset�?
+	* 参数3：行偏移�?�?开�?
+	* 参数4：列偏移量（�?开始）
+	* 参数5：子集行�?
+	* 参数6：子集列�?
+	* 参数7：输出子集矩�?
 	*/
 	int read_subarray_from_h5(
 		const char* filename,
@@ -785,14 +785,14 @@ public:
 	);
 	/** @brief 向已有的H5文件指定数据集矩阵中的指定位置写入子矩阵
 
-	@param h5_filename                   h5文件名
-	@param dataset_name                  数据集名称
-	@param subarray                      子矩阵数据
+	@param h5_filename                   h5文件�?
+	@param dataset_name                  数据集名�?
+	@param subarray                      子矩阵数�?
 	@param offset_row                    行偏移量（从0开始）
 	@param offset_col                    列偏移量（从0开始）
 	@param rows_subarray                 子集（矩阵）行数
 	@param cols_subarray                 子集（矩阵）列数
-	@return 成功返回0， 否则返回-1
+	@return 成功返回0�?否则返回-1
 	*/
 	int write_subarray_to_h5(
 		const char* h5_filename,
@@ -804,21 +804,21 @@ public:
 		int cols_subarray
 	);
 	/*
-	* 功能：向h5文件写入字符串参数
+	* 功能：向h5文件写入字符串参�?
 	* 参数1：文件名
-	* 参数2：dataset名
-	* 参数3：待写入字符串参数
+	* 参数2：dataset�?
+	* 参数3：待写入字符串参�?
 	*/
 	int write_str_to_h5(const char* filename, const char* dataset_name, const char* str);
 	/*
 	* 功能：从h5文件中读出字符串参数
 	* 参数1：文件名
-	* 参数2：dataset名
+	* 参数2：dataset�?
 	* 参数3：输出字符串参数
 	*/
 	int read_str_from_h5(const char* filename, const char* dataset_name, string& string);
 	/*
-	* 功能：向h5文件写入复图像数据（SLC），如果已经存在则不写入。
+	* 功能：向h5文件写入复图像数据（SLC），如果已经存在则不写入�?
 	* 参数1：文件名
 	* 参数2：复数据
 	*/
@@ -836,18 +836,18 @@ public:
 	/*------------------------------------------------*/
 
 	/*
-	* 从TerraSAR-X卫星的.cos数据中读出slc数据(不改变类型，仍然是16位整型)
-	* 参数1：.cos文件名
+	* 从TerraSAR-X卫星�?cos数据中读出slc数据(不改变类型，仍然�?6位整�?
+	* 参数1�?cos文件�?
 	* 参数2：复数据矩阵（输出值）
 	*/
 	int read_slc_from_TSXcos(const char* filename, ComplexMat& slc);
 	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式
 
-	@param cosar_filename                     TerraSAR-X .cos文件名
-	@param xml_filename                       TerraSAR-X 主xml文件名
-	@param GEOREF_filename                    TerraSAR-X GEOREF.xml文件名
+	@param cosar_filename                     TerraSAR-X .cos文件�?
+	@param xml_filename                       TerraSAR-X 主xml文件�?
+	@param GEOREF_filename                    TerraSAR-X GEOREF.xml文件�?
 	@param dst_h5_filename                    目标h5文件（若文件已经存在则覆盖）
-	@return 成功返回0，否则返回-1
+	@return 成功返回0，否则返�?1
 	*/
 	int TSX2h5(
 		const char* cosar_filename,
@@ -859,12 +859,12 @@ public:
 	);
 	/** @brief 将TerraSAR-X卫星数据格式转换为自定义的h5格式
 
-	@param xml_filename                       TerraSAR-X 主xml文件名
+	@param xml_filename                       TerraSAR-X 主xml文件�?
 	@param dst_h5_filename                    目标h5文件
 	@param polarization                       极化方式
 	@param progressCallback                   进度回调函数
-	@param userData                           用户自定义数据
-	@return 成功返回0，否则返回-1
+	@param userData                           用户自定义数�?
+	@return 成功返回0，否则返�?1
 	*/
 	int TSX2h5(
 		const char* xml_filename,
@@ -889,8 +889,8 @@ public:
 	/*------------------------------------------------*/
 
 	/*
-	* 从sentinel1卫星精密轨道数据文件中读出精密轨道数据
-	* 参数1：精密轨道数据文件
+	* 从sentinel1卫星精密轨道数据文件中读出精密轨道数�?
+	* 参数1：精密轨道数据文�?
 	* 参数2：粗轨道数据起始时间
 	* 参数3：粗轨道数据结束时间
 	* 参数4：目标h5文件
@@ -898,26 +898,26 @@ public:
 	int read_POD(const char* POD_filename, double start_time, double stop_time, const char* dst_h5_filename);
 	/** @brief 从sentinel1卫星数据中读出slc数据（读出数据类型为16位整型）
 	* 
-	* @param filename                    sentinel1卫星数据文件名
+	* @param filename                    sentinel1卫星数据文件�?
 	* @param xml_filename                xml参数文件
-	* @param slc                         复矩阵（读出的slc数据）
-	* @param gcps_line                   deburst之后控制点行坐标（int型，1×n）
-	* @return 成功返回0，否则返回-1
+	* @param slc                         复矩阵（读出的slc数据�?
+	* @param gcps_line                   deburst之后控制点行坐标（int型，1×n�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_slc_from_Sentinel(const char* filename, const char* xml_filename, ComplexMat& slc, Mat& gcps_line, ProgressCallback progressCallback = nullptr, void* userData = nullptr);
 	/*
-	* 功能：sentinel1数据deburst(数据类型为16位整型)
+	* 功能：sentinel1数据deburst(数据类型�?6位整�?
 	* 参数1：用于deburst的xml参数文件
 	* 参数2：待处理slc数据（原地操作）
-	* 参数3：无效行积累标志数据(CV_32S型)
+	* 参数3：无效行积累标志数据(CV_32S�?
 	*/
 	int sentinel_deburst(const char* xml_filename, ComplexMat& slc, Mat& sentinel);
 	/*
 	* 将sentinel1卫星数据格式转换为自定义的h5格式
-	* 参数1：tiff格式文件名（储存SLC图像）
-	* 参数2：xml文件名
-	* 参数3：目标h5文件名
-	* 参数4：精密轨道数据文件
+	* 参数1：tiff格式文件名（储存SLC图像�?
+	* 参数2：xml文件�?
+	* 参数3：目标h5文件�?
+	* 参数4：精密轨道数据文�?
 	*/
 	int sentinel2h5(
 		const char* tiff_filename,
@@ -933,13 +933,13 @@ public:
 		ProgressCallback progressCallback,
 		void* userData
 	);
-	/** 导入sentinel卫星数据至h5文件中
+	/** 导入sentinel卫星数据至h5文件�?
 	* @param manifest                            sentinel卫星数据manifest文件
-	* @param subswath_name                       sentinel卫星IW模式中为（iw1/iw2/iw3）
-	* @param polarization                        极化方式（vv/vh）
+	* @param subswath_name                       sentinel卫星IW模式中为（iw1/iw2/iw3�?
+	* @param polarization                        极化方式（vv/vh�?
 	* @param dest_h5_file                        目标h5文件
 	* @param PODFile                             精轨数据文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int import_sentinel(
 		const char* manifest,
@@ -964,12 +964,12 @@ public:
 	/** @brief 读出一个burst数据
 	* 
 	* @param pnode                         burst节点信息
-	* @param xmldoc                        xml结构体
+	* @param xmldoc                        xml结构�?
 	* @param fp                            图像文件指针
 	* @param linesPerBurst                 每个burst数据行数
 	* @param samplesPerBurst               每行数据点数
 	* @param burst                         读出的burst数据
-	* @return 成功返回0，否则返回-1（返回-1会自动关闭文件指针）
+	* @return 成功返回0，否则返�?1（返�?1会自动关闭文件指针）
 	*/
 	int get_a_burst(
 		TiXmlElement* pnode,
@@ -985,7 +985,7 @@ public:
 	* @param xml_file                          xml文件
 	* @param tiff_file                         tiff数据文件
 	* @param burst                             burst数据
-	* @param overlapSize                       重叠区域尺寸（方位向）
+	* @param overlapSize                       重叠区域尺寸（方位向�?
 	*/
 	int get_burst_sentinel(
 		int burst_num,
@@ -994,12 +994,12 @@ public:
 		ComplexMat& burst,
 		int* overlapSize
 	);
-	/** @brief 计算burst之间的重叠区域尺寸
+	/** @brief 计算burst之间的重叠区域尺�?
 	* 
 	* @param last_burst                      上一个burst
 	* @param this_burst                      待计算重叠区域尺寸的burst
 	* @param overlapSize                     重叠区域尺寸
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int deburst_overlapSize(
 		ComplexMat& last_burst,
@@ -1010,9 +1010,9 @@ public:
 	* 
 	* @param src_burst                 被拼接burst
 	* @param dst_burst                 拼接burst
-	* @param stitch_type               缝合方式（low/mid/high）
+	* @param stitch_type               缝合方式（low/mid/high�?
 	* @param overlapSize               重叠区域尺寸
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int burst_stitch(
 		ComplexMat& src_burst,
@@ -1028,24 +1028,24 @@ public:
 	/*------------------------------------------------*/
 
 	/*
-	* 从ALOS1/2 CEOS格式Level-1.1产品中读取slc数据(float型)
-	* 参数1：图像文件
+	* 从ALOS1/2 CEOS格式Level-1.1产品中读取slc数据(float�?
+	* 参数1：图像文�?
 	* 参数2：slc数据
 	*/
 	int read_slc_from_ALOS(const char* img_file, ComplexMat& slc);
 	/*
-	* 从ALOS1/2 CEOS格式Level-1.1产品中读取卫星轨道数据
+	* 从ALOS1/2 CEOS格式Level-1.1产品中读取卫星轨道数�?
 	* 参数1：ALOS LED文件
-	* 参数2：轨道数据
+	* 参数2：轨道数�?
 	*/
 	int read_stateVec_from_ALOS(const char* LED_file, Mat& stateVec);
 	/*
-	* 从ALOS1/2 CEOS格式Level-1.1产品中读取经纬坐标与图像坐标之间的转换关系系数
+	* 从ALOS1/2 CEOS格式Level-1.1产品中读取经纬坐标与图像坐标之间的转换关系系�?
 	* 参数1：ALOS LED文件
-	* 参数2：图像坐标（行、列）与经度之间的转换关系（行列-->经度）
-	* 参数3：图像坐标（行、列）与纬度之间的转换关系（行列-->纬度）
-	* 参数4：经纬度与行坐标之间的转换关系（经纬度-->行数）
-	* 参数5：经纬度与列坐标之间的转换关系（经纬度-->列数）
+	* 参数2：图像坐标（行、列）与经度之间的转换关系（行列-->经度�?
+	* 参数3：图像坐标（行、列）与纬度之间的转换关系（行列-->纬度�?
+	* 参数4：经纬度与行坐标之间的转换关系（经纬�?->行数�?
+	* 参数5：经纬度与列坐标之间的转换关系（经纬�?->列数�?
 	*/
 	int read_conversion_coefficient_from_ALOS(
 		const char* LED_file,
@@ -1055,7 +1055,7 @@ public:
 		Mat& col_coefficient
 	);
 	/*
-	* 将ALOS1/2 CEOS格式Level-1.1产品数据读出到自定义的hdf5文件中
+	* 将ALOS1/2 CEOS格式Level-1.1产品数据读出到自定义的hdf5文件�?
 	* 参数1：ALOS IMG文件
 	* 参数2：ALOS LED文件
 	* 参数3：自定义h5文件
@@ -1068,7 +1068,7 @@ public:
 		ProgressCallback progressCallback,
 		void* userData
 	);
-	/** @brief 将原h5文件中的参数信息拷贝到另一个h5中
+	/** @brief 将原h5文件中的参数信息拷贝到另一个h5�?
 	
     @param Input_file        原始h5文件
 	@param Output_file       输出h5文件
@@ -1079,76 +1079,76 @@ public:
 	/*               GEDI产品数据导入工具             */
 	/*------------------------------------------------*/
 
-	/** @brief 从GEDI L2B级产品中读取DSM、DTM以及地理坐标等信息
-	* @param gedi_h5_file                        GEDI L2B级产品文件（HDF5格式）
+	/** @brief 从GEDI L2B级产品中读取DSM、DTM以及地理坐标等信�?
+	* @param gedi_h5_file                        GEDI L2B级产品文件（HDF5格式�?
 	* @param rh100                               rh100参数
-	* @param elev_lowestmode                     林下地形参数（DTM）
-	* @param elev_highestreturn                  冠层高度信息（DSM）
+	* @param elev_lowestmode                     林下地形参数（DTM�?
+	* @param elev_highestreturn                  冠层高度信息（DSM�?
 	* @param lon                                 经度信息
 	* @param lat                                 纬度信息
 	* @param dem                                 TanDEM-X 90m 高程信息
 	* @param quality_index                       质量信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_height_metric_from_GEDI_L2B(const char* gedi_h5_file, Mat& rh100, Mat& elev_lowestmode, Mat& elev_highestreturn, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index);
 
 	/** @brief 从GEDI L2A级产品中读取树高及地理坐标等信息
-	* @param gedi_h5_file                        GEDI L2A级产品文件（HDF5格式）
+	* @param gedi_h5_file                        GEDI L2A级产品文件（HDF5格式�?
 	* @param rh                                  rh参数
 	* @param lon                                 经度信息
 	* @param lat                                 纬度信息
 	* @param dem                                 TanDEM-X 90m 高程信息
 	* @param quality_index                       质量信息
-	* @param rh_percentile                       树高提取参数（rh_percentile = 1~100，默认为100）
-	* @return 成功返回0，否则返回-1
+	* @param rh_percentile                       树高提取参数（rh_percentile = 1~100，默认为100�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_height_metric_from_GEDI_L2A(const char* gedi_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 100);
 	/** @brief 从ICESat-2 L3A级产品中读取树高及地理坐标等信息
-	* @param gedi_h5_file                        ICESat-2 L3A级产品文件（HDF5格式）
+	* @param gedi_h5_file                        ICESat-2 L3A级产品文件（HDF5格式�?
 	* @param rh                                  rh参数
 	* @param lon                                 经度信息
 	* @param lat                                 纬度信息
 	* @param dem                                 高程信息
-	* @param quality_index                       质量信息([80,100]则为质量合格数据，127为无效值)
-	* @param rh_percentile                       树高提取参数（rh_percentile = 10(1), 15(2), 20(3), 25(4), 30(...),..., 80(15), 85(16), 90(17), 95(18)，默认为95(18)）
-	* @return 成功返回0，否则返回-1
+	* @param quality_index                       质量信息([80,100]则为质量合格数据�?27为无效�?
+	* @param rh_percentile                       树高提取参数（rh_percentile = 10(1), 15(2), 20(3), 25(4), 30(...),..., 80(15), 85(16), 90(17), 95(18)，默认为95(18)�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_height_metric_from_ICESat_2_L3A(const char* ICESat_2_h5_file, Mat& rh, Mat& lon, Mat& lat, Mat& dem, Mat& quality_index, int rh_percentile = 18);
 
 
 
-	/** @brief 经/纬/高 ---> x/y/z
+	/** @brief �?�?�?---> x/y/z
 	* @param lon                 经度
 	* @param lat                 纬度
 	* @param elevation           高度
 	* @param xyz                 x/y/z
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	static int ell2xyz(double lon, double lat, double elevation, Position& xyz);
-	/** @brief 将相位转换成cos和sin（实部和虚部，支持double和float）
+	/** @brief 将相位转换成cos和sin（实部和虚部，支持double和float�?
 
 	@param phase                     输入相位
 	@param cos                       实部
 	@param sin                       虚部
-	@return 成功返回0，否则返回-1
+	@return 成功返回0，否则返�?1
 	*/
 	int phase2cos(const Mat& phase, Mat& cos, Mat& sin);
-	/** @brief 生成范德蒙矩阵
-	* @param inArray                           自变量序列
-	* @param vandermondeMatrix                 范德蒙矩阵
+	/** @brief 生成范德蒙矩�?
+	* @param inArray                           自变量序�?
+	* @param vandermondeMatrix                 范德蒙矩�?
 	* @param degree                            阶数
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	static int createVandermondeMatrix(
 		Mat& inArray,
 		Mat& vandermondeMatrix,
 		int degree
 	);
-	/** @brief 多项式拟合（Ax=b）
+	/** @brief 多项式拟合（Ax=b�?
 	* @param A
 	* @param b
 	* @param x
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	static int polyFit(
 		Mat& A,
@@ -1161,7 +1161,7 @@ public:
 	* @param val
 	*/
 	static int polyVal(Mat& coefficient, double x, double* val);
-	/*求取两幅辅图像的实相关函数
+	/*求取两幅辅图像的实相关函�?
 	 参数1 主图像（复）
 	 参数2 辅图像（复）
 	 参数3 行偏移量（返回值）
@@ -1188,13 +1188,15 @@ struct BurstIndices
 	int secondBurstIndex;
 	bool inUpperPartOfFirstBurst;
 	bool inUpperPartOfSecondBurst;
-	/*默认构造函数*/
+	/*默认构造函�?/
+*/
 	BurstIndices()
 	{
 		firstBurstIndex = secondBurstIndex = -1;
 		inUpperPartOfFirstBurst = inUpperPartOfSecondBurst = false;
 	}
-	/*拷贝构造函数*/
+	/*拷贝构造函�?/
+*/
 	BurstIndices(const BurstIndices& cp)
 	{
 		this->firstBurstIndex = cp.firstBurstIndex;
@@ -1202,7 +1204,8 @@ struct BurstIndices
 		this->inUpperPartOfSecondBurst = cp.inUpperPartOfSecondBurst;
 		this->secondBurstIndex = cp.secondBurstIndex;
 	}
-	/*赋值函数*/
+	/*赋值函�?/
+*/
 	BurstIndices& operator=(const BurstIndices& cp)
 	{
 		this->firstBurstIndex = cp.firstBurstIndex;
@@ -1221,13 +1224,13 @@ class InSAR_API DigitalElevationModel
 public:
 	DigitalElevationModel();
 	~DigitalElevationModel();
-	/** @brief 计算SRTM高程文件名
-	* @param lonMin                       最小经度
-	* @param lonMax                       最大经度
-	* @param latMin                       最小纬度
-	* @param latMax                       最大纬度
-	* @param name                         文件名
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算SRTM高程文件�?
+	* @param lonMin                       最小经�?
+	* @param lonMax                       最大经�?
+	* @param latMin                       最小纬�?
+	* @param latMax                       最大纬�?
+	* @param name                         文件�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getSRTMFileName(
 		double lonMin,
@@ -1237,17 +1240,17 @@ public:
 		vector<string>& name
 	);
 	/** @brief 下载SRTM高程数据
-	* @param name                         文件名
-	* @return 成功返回0，否则返回-1
+	* @param name                         文件�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int downloadSRTM(const char* name);
 	/** @brief 获取数字高程模型
 	* @param filepath                     文件路径
-	* @param lonMin                       最小经度
-	* @param lonMax                       最大经度
-	* @param latMin                       最小纬度
-	* @param latMax                       最大纬度
-	* @return 成功返回0，否则返回-1
+	* @param lonMin                       最小经�?
+	* @param lonMax                       最大经�?
+	* @param latMin                       最小纬�?
+	* @param latMax                       最大纬�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getRawDEM(
 		const char* filepath,
@@ -1256,11 +1259,11 @@ public:
 		double latMin,
 		double latMax
 	);
-	/** @brief 根据经纬度获取高程(平均插值法)
+	/** @brief 根据经纬度获取高�?平均插值法)
 	* @param lon                          经度
 	* @param lat                          纬度
 	* @param elevation                    高度
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getElevation(
 		double lon,
@@ -1270,16 +1273,16 @@ public:
 	/** @brief 读取SRTM中的geotiff高程数据
 	* @param geotiffFile                  geotiff文件
 	* @param outDEM                       读出的DEM数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	static int geotiffread(
 		const char* geotiffFile,
 		Mat& outDEM
 	);
 	/** @brief 解压文件到指定文件夹
-	* @param srcFile                      待解压压缩文件
-	* @param dstPath                      目标文件夹
-	* @return 成功返回0，否则返回-1
+	* @param srcFile                      待解压压缩文�?
+	* @param dstPath                      目标文件�?
+	* @return 成功返回0，否则返�?1
 	*/
 	static int unzip(const char* srcFile, const char* dstPath);
 
@@ -1290,13 +1293,17 @@ public:
 	int rows;
 	/*DEM数据列数*/
 	int cols;
-	/*左上角经度*/
+	/*左上角经�?/
+*/
 	double lonUpperLeft;
-	/*左上角纬度*/
+	/*左上角纬�?/
+*/
 	double latUpperLeft;
-	/*右下角经度*/
+	/*右下角经�?/
+*/
 	double lonLowerRight;
-	/*右下角纬度*/
+	/*右下角纬�?/
+*/
 	double latLowerRight;
 	/*DEM经度采样间隔*/
 	double lonSpacing;
@@ -1327,7 +1334,7 @@ public:
 	/** @brief 设置场景拍摄起始终止时间
 	* @param startTime
 	* @param stopTime
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int setSceneStartStopTime(double startTime, double stopTime);
 	/** @brief 获取拍摄起始时刻
@@ -1339,38 +1346,38 @@ public:
 	*/
 	double get_stop_time();
 	/** @brief 获取卫星三维位置信息（拉格朗日插值）
-	* @param azimuthTime                   方位向时间
+	* @param azimuthTime                   方位向时�?
 	* @param position                      卫星三维位置
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getPosition(double azimuthTime, Position& position);
 	/** @brief 获取卫星三维速度信息（拉格朗日插值）
-	* @param azimuthTime                   方位向时间
+	* @param azimuthTime                   方位向时�?
 	* @param velocity                      卫星三维速度
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getVelocity(double azimuthTime, Velocity& velocity);
 	/** @brief 根据方位向时间获取statevector（多项式插值）
-	* @param time                          方位向时间
+	* @param time                          方位向时�?
 	* @param osv                           轨道信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getOrbitData(double time, OSV* osv);
 	/** @brief 更新轨道信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int applyOrbit(ProgressCallback progressCallback = nullptr, void* userData = nullptr);
 
-	/** @brief 零多普勒时间搜索算法（移自 Utils 以消除循环依赖）
+	/** @brief 零多普勒时间搜索算法（移�?Utils 以消除循环依赖）
 	* @param stateVectors                  轨道数据
 	* @param groundPosition                目标地心三维坐标
 	* @param wavelength                    雷达波长
-	* @param time_interval                 方位向时间间隔（脉冲重复间隔或行间隔时间）
-	* @param dopplerFrequency              目标多普勒频率（通常为 0.0）
+	* @param time_interval                 方位向时间间隔（脉冲重复间隔或行间隔时间�?
+	* @param dopplerFrequency              目标多普勒频率（通常�?0.0�?
 	* @param zeroDopplerTime               解算得到的零多普勒时刻（返回值）
 	* @param distance                      解算得到的传感器与地面点斜距（返回值）
-	* @param dopplerThreshold              搜索截止频偏阈值（Hz，默认 0.01）
-	* @return 成功返回 true，否则返回 false
+	* @param dopplerThreshold              搜索截止频偏阈值（Hz，默�?0.01�?
+	* @return 成功返回 true，否则返�?false
 	*/
 	static bool findZeroDopplerTime(
 		orbitStateVectors& stateVectors,
@@ -1392,7 +1399,8 @@ private:
 	int polyDegree = 3;
 	double startTime;
 	double stopTime;
-	/*轨道信息是否已更新*/
+	/*轨道信息是否已更�?/
+*/
 	bool isOrbitUpdated;
 };
 #endif
@@ -1443,9 +1451,9 @@ class InSAR_API CSK_reader : public SARDataReader
 public:
 	CSK_reader(const char* csk_data_file);
 	~CSK_reader();
-	/** @brief 初始化
+	/** @brief 初始�?
 	* @param csk_data_file                    COSMO-SkyMed源hdf5数据文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 
@@ -1454,9 +1462,9 @@ protected:
 
 private:
 
-	/** @brief 从COSMO-SkyMed源hdf5数据L1A产品中读取数据
+	/** @brief 从COSMO-SkyMed源hdf5数据L1A产品中读取数�?
 	* @param CSK_data_file                    COSMO-SkyMed源hdf5数据文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* CSK_data_file
@@ -1464,24 +1472,24 @@ private:
 	/** @brief 从COSMO-SkyMed源hdf5数据L1A产品中读取单视复图像
 	* @param CSK_data_file                    COSMO-SkyMed源hdf5数据文件
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
 		const char* CSK_data_file,
 		ComplexMat& slc
 	);
-	/** @brief 从hdf5文件读取string类型属性
+	/** @brief 从hdf5文件读取string类型属�?
 	* @param object_id                       相应的object
 	* @param attribute_name                  string属性名
 	* @param attribute_value                 string属性值（返回值）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
-	/** @brief 从hdf5文件读取数组类型属性
+	/** @brief 从hdf5文件读取数组类型属�?
 	* @param object_id                       相应的object
 	* @param attribute_name                  属性名
 	* @param attribute_value                 属性值（返回值）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 private:
 	string csk_data_file;
@@ -1497,10 +1505,10 @@ private:
 class InSAR_API HTHT_reader : public SARDataReader
 {
 public:
-	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0为单星模式,mode=1为多星干涉模式
+	HTHT_reader(const char* data_file, const char* xml_file, int mode = 0);//mode=0为单星模�?mode=1为多星干涉模�?
 	~HTHT_reader();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 
@@ -1509,19 +1517,19 @@ protected:
 
 private:
 
-	/** @brief 从宏图L1产品中读取数据
-	@param xml_file                    宏图xml数据文件（.xml）
-	@param data_file                   宏图xml数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	/** @brief 从宏图L1产品中读取数�?
+	@param xml_file                    宏图xml数据文件�?xml�?
+	@param data_file                   宏图xml数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
 	/** @brief 从宏图数据L1产品中读取单视复图像
-	* @param data_file                        宏图图像数据文件（.tiff）
+	* @param data_file                        宏图图像数据文件�?tiff�?
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
@@ -1542,8 +1550,8 @@ class InSAR_API AIRSAT_reader : public SARDataReader
 public:
 	AIRSAT_reader(const char* data_file, const char* xml_file);
 	~AIRSAT_reader();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 
@@ -1552,26 +1560,26 @@ protected:
 
 private:
 
-	/** @brief 时间戳转换（UTC2GPS）
-	* @param utc_time                  UTC时间戳  
+	/** @brief 时间戳转换（UTC2GPS�?
+	* @param utc_time                  UTC时间�? 
 	* @param gps_time                  GPS时间
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int UTC2GPS(const char* utc_time, double* gps_time);
 
-	/** @brief 从L1产品中读取数据
-	@param xml_file                    xml数据文件（.xml）
-	@param data_file                   xml数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	/** @brief 从L1产品中读取数�?
+	@param xml_file                    xml数据文件�?xml�?
+	@param data_file                   xml数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
 	/** @brief 从L1产品中读取单视复图像
-	* @param data_file                        图像数据文件（.tiff）
+	* @param data_file                        图像数据文件�?tiff�?
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
@@ -1591,8 +1599,8 @@ class InSAR_API Biomass1A_reader : public SARDataReader
 public:
 	Biomass1A_reader(const char* amp_file, const char* phase_file, const char* xml_file, const char* orbit_file, const char* polarization);
 	~Biomass1A_reader();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 
@@ -1601,19 +1609,19 @@ protected:
 
 private:
 
-	/** @brief 时间戳转换（UTC2GPS）
-	* @param utc_time                  UTC时间戳
+	/** @brief 时间戳转换（UTC2GPS�?
+	* @param utc_time                  UTC时间�?
 	* @param gps_time                  GPS时间
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int UTC2GPS(const char* utc_time, double* gps_time);
 
-	/** @brief 从L1产品中读取数据
-	@param xml_file                    xml数据文件（.xml）
-	@param amp_file                    幅度数据文件（.tiff）
-	@param orbit_file                  轨道数据文件（.tiff）
-	@param phase_file                  相位数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	/** @brief 从L1产品中读取数�?
+	@param xml_file                    xml数据文件�?xml�?
+	@param amp_file                    幅度数据文件�?tiff�?
+	@param orbit_file                  轨道数据文件�?tiff�?
+	@param phase_file                  相位数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* xml_file,
@@ -1622,10 +1630,10 @@ private:
 		const char* phase_file
 	);
 	/** @brief 从L1产品中读取单视复图像
-	* @param amp_file                         幅度数据文件（.tiff）
-	* @param phase_file                       相位数据文件（.tiff）
+	* @param amp_file                         幅度数据文件�?tiff�?
+	* @param phase_file                       相位数据文件�?tiff�?
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
@@ -1639,15 +1647,15 @@ private:
 
 
 /*------------------------------------------------*/
-/*               陆探1号数据读取工具              */
+/*               陆探1号数据读取工�?             */
 /*------------------------------------------------*/
 class InSAR_API LUTAN_reader : public SARDataReader
 {
 public:
-	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1为单星模式,mode=2为双星干涉模式
+	LUTAN_reader(const char* data_file, const char* xml_file, int mode = 1);//mode=1为单星模�?mode=2为双星干涉模�?
 	~LUTAN_reader();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 
@@ -1656,19 +1664,19 @@ protected:
 
 private:
 
-	/** @brief 从陆探一号L1产品中读取数据
-	@param xml_file                    陆探一号xml数据文件（.xml）
-	@param data_file                   陆探一号xml数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	/** @brief 从陆探一号L1产品中读取数�?
+	@param xml_file                    陆探一号xml数据文件�?xml�?
+	@param data_file                   陆探一号xml数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
 	/** @brief 从陆探一号L1产品中读取单视复图像
-	* @param data_file                        陆探一号图像数据文件（.tiff）
+	* @param data_file                        陆探一号图像数据文件（.tiff�?
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
@@ -1684,19 +1692,19 @@ private:
 
 
 /*------------------------------------------------*/
-/*             天仪涪城一号数据读取工具           */
+/*             天仪涪城一号数据读取工�?          */
 /*------------------------------------------------*/
 class InSAR_API Spacety_reader : public SARDataReader
 {
 public:
 	Spacety_reader(const char* data_file, const char* xml_file);
 	~Spacety_reader();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
 	/** @brief 初始化（聚束模式数据测试用）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int init_test();
 
@@ -1705,28 +1713,28 @@ protected:
 
 private:
 
-	/** @brief 从天仪L1产品中读取数据
-	@param xml_file                    天仪xml数据文件（.xml）
-	@param data_file                   天仪xml数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	/** @brief 从天仪L1产品中读取数�?
+	@param xml_file                    天仪xml数据文件�?xml�?
+	@param data_file                   天仪xml数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data(
 		const char* xml_file,
 		const char* data_file
 	);
 	/** @brief 从天仪L1产品中读取数据（聚束模式数据测试用）
-	@param xml_file                    天仪xml数据文件（.xml）
-	@param data_file                   天仪xml数据文件（.tiff）
-	@return 成功返回0，否则返回-1
+	@param xml_file                    天仪xml数据文件�?xml�?
+	@param data_file                   天仪xml数据文件�?tiff�?
+	@return 成功返回0，否则返�?1
 	*/
 	int read_data_test(
 		const char* xml_file,
 		const char* data_file
 	);
 	/** @brief 从天仪数据L1产品中读取单视复图像
-	* @param data_file                        天仪图像数据文件（.tiff）
+	* @param data_file                        天仪图像数据文件�?tiff�?
 	* @param slc                              读出的单视复数据矩阵
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 
 	int read_slc(
@@ -1738,7 +1746,7 @@ private:
 };
 
 /*------------------------------------------------*/
-/*               哨兵一号数据读取工具             */
+/*               哨兵一号数据读取工�?            */
 /*------------------------------------------------*/
 class InSAR_API Sentinel1Reader
 {
@@ -1749,92 +1757,92 @@ public:
 	/* 加载xml文件
 	* @param xmlfile            xml文件
 	* @param tiffFile           tiff文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int load(const char* xmlfile, const char* tiffFile);
-	/* 获取多普勒中心频率估计数据
-	* @param dcEstimateList               多普勒中心频率估计数据（count×5）
-	* @return 成功返回0，否则返回-1
+	/* 获取多普勒中心频率估计数�?
+	* @param dcEstimateList               多普勒中心频率估计数据（count×5�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getDcEstimateList();
 	/* 获取多普勒调频率数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getAzimuthFmRateList();
 	/* 获取antennaPattern数据
 	* @param antennaPattern_slantRangeTime
 	* @param antennaPattern_elevationAngle
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getAntennaPattern();
 	/* @brief 获取burst个数
 	* @param burstCount                 burst个数
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getBurstCount(int* burstCount);
 	/** @brief 获取每个burst第一行方位向时间
-	* @return 成功返回0， 否则返回-1
+	* @return 成功返回0�?否则返回-1
 	*/
 	int getBurstAzimuthTime();
-	/** @brief 获取每个burst每行第一个有效像素列数
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取每个burst每行第一个有效像素列�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getFirstValidSample();
-	/** @brief 获取每个burst每行最后一个有效像素列数
-	* @param firstValidSample                        每个burst每行最后一个有效像素列数(burstCount×1)
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取每个burst每行最后一个有效像素列�?
+	* @param firstValidSample                        每个burst每行最后一个有效像素列�?burstCount×1)
+	* @return 成功返回0，否则返�?1
 	*/
 	int getLastValidSample();
-	/** @brief 获取每个burst第一行有效像素行数
-	* @param firstValidLine                          每个burst第一行有效像素行数(burstCount×1)
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取每个burst第一行有效像素行�?
+	* @param firstValidLine                          每个burst第一行有效像素行�?burstCount×1)
+	* @return 成功返回0，否则返�?1
 	*/
 	int getFirstValidLine();
-	/** @brief 获取每个burst最后一行有效像素行数
-	* @param lastValidLine                           每个burst最后一行有效像素行数(burstCount×1)
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取每个burst最后一行有效像素行�?
+	* @param lastValidLine                           每个burst最后一行有效像素行�?burstCount×1)
+	* @return 成功返回0，否则返�?1
 	*/
 	int getLastValidLine();
-	/** @brief 获取地面控制点信息
-	* @param geolocationGridPoint                    地面控制点(n×6，经/纬/高/行/列/下视角)
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取地面控制点信�?
+	* @param geolocationGridPoint                    地面控制�?n×6，经/�?�?�?�?下视�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getGeolocationGridPoint();
-	/** @brief 更新控制点信息
-	* @return 成功返回0，否则返回-1
+	/** @brief 更新控制点信�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int updateGeolocationGridPoint();
-	/** @brief 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关系
-	* @return 成功返回0，否则返回-1
+	/** @brief 根据控制点数据拟合经纬度、下视角与像素坐标（行、列）之间的多项式关�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int fitCoordinateConversionCoefficient();
 	/** @brief 获取轨道信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getOrbitList();
 	/** @brief 获取精密轨道数据
 	* @param POD_file                                精密轨道数据文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getPOD(const char* POD_file);
 	/** @brief 获取其他参数
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getOtherParameters();
 
 	/** @brief 准备数据
 	* @param PODFile                                  精密轨道数据文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int prepareData(const char* PODFile = NULL);
 	/** @brief 从TIFF文件中读出复图像数据
-	* @param slc                                     复图像数据
-	* @return 成功返回0，否则返回-1
+	* @param slc                                     复图像数�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getSLC(ComplexMat& slc);
 	/** @brief 将数据写入h5文件
 	* @param h5File                                  目标h5文件(默认为NULL)
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int writeToh5(
 		const char* h5File,
@@ -1846,23 +1854,28 @@ public:
 
 private:
 
-	/*方位向时间间隔*/
+	/*方位向时间间�?/
+*/
 	double azimuthTimeInterval;
-	/*方位向采样间隔*/
+	/*方位向采样间�?/
+*/
 	double azimuthPixelSpacing;
 	/*距离向采样率*/
 	double rangeSamplingRate;
-	/*距离向采样间隔*/
+	/*距离向采样间�?/
+*/
 	double rangePixelSpacing;
 	/*雷达载频*/
 	double radarFrequency;
 	/*方位向扫频率*/
 	double azimuthSteeringRate;
-	/*最近斜距时间*/
+	/*最近斜距时�?/
+*/
 	double slantRangeTime;
 	/*Heading*/
 	double headingAngle;
-	/*中心下视角*/
+	/*中心下视�?/
+*/
 	double incidence_center;
 	/*数据行数*/
 	int numberOfLines;
@@ -1879,7 +1892,8 @@ private:
 	string polarization;
 	/*子带名称*/
 	string swath;
-	/*升降轨*/
+	/*升降�?/
+*/
 	string pass;
 	/*拍摄起始UTC时间*/
 	string startTime;
@@ -1891,17 +1905,22 @@ private:
 
 	/*方位向调频率估计数据*/
 	Mat AzimuthFmRateList;
-	/*多普勒中心频率估计数据*/
+	/*多普勒中心频率估计数�?/
+*/
 	Mat DcEstimateList;
 	/*每个burst第一行方位向时间*/
 	Mat burstAzimuthTime;
-	/*每个burst每行第一个有效像素列数*/
+	/*每个burst每行第一个有效像素列�?/
+*/
 	Mat firstValidSample;
-	/*每个burst每行最后一个有效像素列数*/
+	/*每个burst每行最后一个有效像素列�?/
+*/
 	Mat lastValidSample;
-	/*每个burst第一行有效数据行数*/
+	/*每个burst第一行有效数据行�?/
+*/
 	Mat firstValidLine;
-	/*每个burst最后一行有效数据行数*/
+	/*每个burst最后一行有效数据行�?/
+*/
 	Mat lastValidLine;
 	/*轨道原始数据*/
 	Mat orbitList;
@@ -1911,7 +1930,8 @@ private:
 	Mat antennaPattern_slantRangeTime;
 	/*antennaPattern_elevationAngle*/
 	Mat antennaPattern_elevationAngle;
-	/*地面控制点*/
+	/*地面控制�?/
+*/
 	Mat geolocationGridPoint;
 
 
@@ -1919,11 +1939,14 @@ private:
 	Mat lon_coefficient;
 	/*纬度拟合系数*/
 	Mat lat_coefficient;
-	/*行坐标拟合系数*/
+	/*行坐标拟合系�?/
+*/
 	Mat row_coefficient;
-	/*列坐标拟合系数*/
+	/*列坐标拟合系�?/
+*/
 	Mat col_coefficient;
-	/*下视角拟合系数*/
+	/*下视角拟合系�?/
+*/
 	Mat inc_coefficient;
 
 
@@ -1942,7 +1965,7 @@ private:
 
 
 /*------------------------------------------------*/
-/*                哨兵一号计算工具                */
+/*                哨兵一号计算工�?               */
 /*------------------------------------------------*/
 enum SentinelZeroDopplerFailureReason
 {
@@ -2024,61 +2047,63 @@ struct SentinelBurstQualityStatus
 	int invalidPoints;
 	int zeroDopplerFailures;
 	int rangeOrBurstFailures;
+	int slantRangeFailures;
+	int invalidInputFailures;
 	int fitPointCount;
 	double fitRms;
 	int qualityCode;
 
 	SentinelBurstQualityStatus()
 		: imageIndex(0), burstIndex(0), attemptedPoints(0), validPoints(0), invalidPoints(0),
-		zeroDopplerFailures(0), rangeOrBurstFailures(0), fitPointCount(0), fitRms(0.0),
-		qualityCode(SENTINEL_BURST_NOT_PROCESSED)
+		zeroDopplerFailures(0), rangeOrBurstFailures(0), slantRangeFailures(0), invalidInputFailures(0),
+		fitPointCount(0), fitRms(0.0), qualityCode(SENTINEL_BURST_NOT_PROCESSED)
 	{
 	}
 };
 
 /*------------------------------------------------*/
-/*                哨兵一号计算工具                */
+/*                哨兵一号计算工�?               */
 /*------------------------------------------------*/
 class InSAR_API Sentinel1Utils
 {
 public:
-	/** @brief 默认构造函数
+	/** @brief 默认构造函�?
 	*/
 	Sentinel1Utils(const char* h5File);
 	~Sentinel1Utils();
-	/** @brief 初始化
-	* @return 成功返回0，否则返回-1
+	/** @brief 初始�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init();
-	/** @brief 计算每个burst的方位向参考时间
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算每个burst的方位向参考时�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeReferenceTime();
 	/** @brief 计算每个burst的方位向多普勒调频率
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeRangeDependDopplerRate();
-	/** @brief 计算每个burst的方位向多普勒中心频率
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算每个burst的方位向多普勒中心频�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeDopplerCentroid();
 	/** @brief 计算每个burst的总多普勒率（调频率加扫频率）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeDopplerRate();
 	/** @brief 计算burst数据的去斜相位和去模相位
 	* @param burstIndex                           burst序号
 	* @param derampDemodPhase                     去斜去模相位
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeDerampDemodPhase(
 		int burstIndex,
 		Mat& derampDemodPhase
 	);
-	/** @brief 从h5文件中读出一个burst的数据
+	/** @brief 从h5文件中读出一个burst的数�?
 	* @param burstIndex                          burst序号
 	* @param burstSLC                            一个burst的复数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getBurst(
 		int burstIndex,
@@ -2087,12 +2112,12 @@ public:
 
 
 
-	/** @brief 计算多普勒频率
-	* @param groundPosition                       地面点位置
+	/** @brief 计算多普勒频�?
+	* @param groundPosition                       地面点位�?
 	* @param satellitePosition                    卫星位置
 	* @param satelliteVelocity                    卫星速度
 	* @param dopplerFrequency                     多普勒频率（返回值）
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getDopplerFrequency(
 		Position groundPosition,
@@ -2100,11 +2125,11 @@ public:
 		Velocity satelliteVelocity,
 		double* dopplerFrequency
 	);
-	/** @brief 计算地面点对应的零多普勒方位向时刻
-	* @param groundPosition                       地面点位置
-	* @param zeroDopplerTime                      零多普勒方位向时刻
-	* @param dopplerFrequency                     多普勒频率(默认为0)
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算地面点对应的零多普勒方位向时�?
+	* @param groundPosition                       地面点位�?
+	* @param zeroDopplerTime                      零多普勒方位向时�?
+	* @param dopplerFrequency                     多普勒频�?默认�?)
+	* @return 成功返回0，否则返�?1
 	*/
 	int getZeroDopplerTime(
 		Position groundPosition,
@@ -2113,10 +2138,10 @@ public:
 	);
 	/** @brief 计算地面点投影到SAR图像坐标系下的距离向和方位向坐标
 	* @param burstIndex                           burst序号
-	* @param groundPosition                       地面点位置
-	* @param rangeIndex                           距离向坐标
-	* @param azimuthIndex                         方位向坐标
-	* @return 成功返回0，否则返回-1
+	* @param groundPosition                       地面点位�?
+	* @param rangeIndex                           距离向坐�?
+	* @param azimuthIndex                         方位向坐�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getRgAzPosition(
 		int burstIndex,
@@ -2124,11 +2149,11 @@ public:
 		double* rangeIndex,
 		double* azimuthIndex
 	);
-	/** @brief 计算给定卫星方位向时间和地面点位置时的斜距
-	* @param azimuthTime                         方位向时间
-	* @param groundPosition                      地面点位置
+	/** @brief 计算给定卫星方位向时间和地面点位置时的斜�?
+	* @param azimuthTime                         方位向时�?
+	* @param groundPosition                      地面点位�?
 	* @param slantRange                          斜距
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getSlantRange(
 		double azimuthTime,
@@ -2136,20 +2161,20 @@ public:
 		double* slantRange
 	);
 	/** @brief 获取地面点目标所在burst信息
-	* @param groundPosition                      地面点目标
+	* @param groundPosition                      地面点目�?
 	* @param burstIndice                         burst信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int getBurstIndice(
 		Position groundPosition,
 		BurstIndices& burstIndice
 	);
-	/** @brief 计算场景地理位置（经纬度）边界
-	* @param lonMin                           最小经度
-	* @param lonMax                           最大经度
-	* @param latMin                           最小纬度
-	* @param latMax                           最大纬度
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算场景地理位置（经纬度）边�?
+	* @param lonMin                           最小经�?
+	* @param lonMax                           最大经�?
+	* @param latMin                           最小纬�?
+	* @param latMax                           最大纬�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeImageGeoBoundry(
 		double* lonMin,
@@ -2157,13 +2182,13 @@ public:
 		double* latMin,
 		double* latMax
 	);
-	/** @brief 计算场景地理位置（经纬度）边界
-	* @param lonMin                           最小经度
-	* @param lonMax                           最大经度
-	* @param latMin                           最小纬度
-	* @param latMax                           最大纬度
-	* @param burstIndex                       burst序号（1-based）
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算场景地理位置（经纬度）边�?
+	* @param lonMin                           最小经�?
+	* @param lonMax                           最大经�?
+	* @param latMin                           最小纬�?
+	* @param latMax                           最大纬�?
+	* @param burstIndex                       burst序号�?-based�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeImageGeoBoundry(
 		double* lonMin,
@@ -2174,24 +2199,28 @@ public:
 	);
 	/** @brief burst拼接
 	* @param outFile                          deburst输出h5文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int deburst(const char* outFile);
 public:
 
-	/*方位向时间间隔*/
+	/*方位向时间间�?/
+*/
 	double azimuthTimeInterval;
-	/*方位向采样间隔*/
+	/*方位向采样间�?/
+*/
 	double azimuthPixelSpacing;
 	/*距离向采样率*/
 	double rangeSamplingRate;
-	/*距离向采样间隔*/
+	/*距离向采样间�?/
+*/
 	double rangePixelSpacing;
 	/*雷达载频*/
 	double radarFrequency;
 	/*方位向扫频率*/
 	double azimuthSteeringRate;
-	/*最近斜距时间*/
+	/*最近斜距时�?/
+*/
 	double slantRangeTime;
 	/*数据行数*/
 	int numberOfLines;
@@ -2210,41 +2239,51 @@ public:
 	string polarization;
 	/*子带名称*/
 	string swath;
-	/*升降轨*/
+	/*升降�?/
+*/
 	string pass;
 	/*Heading*/
 	double headingAngle;
 
 
 
-	/*每个burst方位向参考时间（range_dependent）*/
+	/*每个burst方位向参考时间（range_dependent�?/
+*/
 	Mat referenceTime;
 	bool isReferenceTimeAvailable;
-	/*每个burst多普勒中心频率（range_dependent）*/
+	/*每个burst多普勒中心频率（range_dependent�?/
+*/
 	Mat dopplerCentroid;
 	bool isDopplerCentroidAvailable;
-	/*每个burst多普勒调频率（range_dependent）*/
+	/*每个burst多普勒调频率（range_dependent�?/
+*/
 	Mat rangeDependDopplerRate;
 	bool isRangeDependDopplerRateAvailiable;
 	/*方位向调频率估计数据*/
 	Mat AzimuthFmRateList;
-	/*多普勒中心频率估计数据*/
+	/*多普勒中心频率估计数�?/
+*/
 	Mat DcEstimateList;
 	/*每个burst第一行方位向时间*/
 	Mat burstAzimuthTime;
-	/*每个burst每行第一个有效像素列数*/
+	/*每个burst每行第一个有效像素列�?/
+*/
 	Mat firstValidSample;
-	/*每个burst每行最后一个有效像素列数*/
+	/*每个burst每行最后一个有效像素列�?/
+*/
 	Mat lastValidSample;
-	/*每个burst第一行有效数据行数*/
+	/*每个burst第一行有效数据行�?/
+*/
 	Mat firstValidLine;
-	/*每个burst最后一行有效数据行数*/
+	/*每个burst最后一行有效数据行�?/
+*/
 	Mat lastValidLine;
 	/*antennaPattern_slantRangeTime*/
 	Mat antennaPattern_slantRangeTime;
 	/*antennaPattern_elevationAngle*/
 	Mat antennaPattern_elevationAngle;
-	/*地面控制点*/
+	/*地面控制�?/
+*/
 	Mat geolocationGridPoint;
 	/*每个burst的总多普勒率（调频率加扫频率）*/
 	Mat dopplerRate;
@@ -2261,7 +2300,8 @@ public:
 	string h5File;
 
 
-	/*burst偏移量*/
+	/*burst偏移�?/
+*/
 	int burstOffset;
 
 	bool bInitialized;
@@ -2270,9 +2310,9 @@ public:
 };
 
 /*--------------------------------------------------*/
-/*              哨兵一号后向地理编码配准            */
+/*              哨兵一号后向地理编码配�?           */
 constexpr uint32_t SENTINEL_REFINEMENT_OPTIONS_VERSION = 2;
-constexpr uint32_t SENTINEL_REFINEMENT_RESULT_VERSION = 1;
+constexpr uint32_t SENTINEL_REFINEMENT_RESULT_VERSION = 2;
 constexpr uint32_t SENTINEL_REFINEMENT_TRANSACTION_STATUS_VERSION = 1;
 
 enum SentinelRefinementQualityCode
@@ -2298,6 +2338,14 @@ enum SentinelRangeOffsetMode
 	SENTINEL_RANGE_OFFSET_NONE = 0,
 	SENTINEL_RANGE_OFFSET_PROVIDED = 1,
 	SENTINEL_RANGE_OFFSET_ESTIMATE = 2
+};
+
+// Set only for a successful DLL call; UNSPECIFIED means no successful path was reported.
+enum SentinelRefinementExecutionPath
+{
+	SENTINEL_EXECUTION_PATH_UNSPECIFIED = 0,
+	SENTINEL_EXECUTION_PATH_CORE_ONLY_BASELINE = 1,
+	SENTINEL_EXECUTION_PATH_POST_REGISTRATION_REFINEMENT = 2
 };
 
 enum SentinelRefinementTransactionState
@@ -2358,8 +2406,50 @@ struct SentinelRefinementResult
 	SentinelRefinementImageResult* images;
 	int imageCapacity;
 	int imageCount;
+	int executionPath;
 };
 
+enum SentinelBackGeocodingVerificationMismatchFlags
+{
+	SENTINEL_VERIFICATION_MISMATCH_NONE = 0,
+	SENTINEL_VERIFICATION_MISMATCH_DIMENSIONS = 1 << 0,
+	SENTINEL_VERIFICATION_MISMATCH_SLC = 1 << 1,
+	SENTINEL_VERIFICATION_MISMATCH_COEFFICIENTS = 1 << 2,
+	SENTINEL_VERIFICATION_MISMATCH_ESD_OFFSET = 1 << 3,
+	SENTINEL_VERIFICATION_MISMATCH_RANGE_OFFSET = 1 << 4,
+	SENTINEL_VERIFICATION_MISMATCH_REQUIRED_DATASET = 1 << 5,
+	SENTINEL_VERIFICATION_MISMATCH_DEBURST_ORIGIN = 1 << 6
+};
+struct SentinelBackGeocodingVerificationImageResult;
+struct SentinelBackGeocodingVerificationResult
+{
+	SentinelBackGeocodingVerificationImageResult* images;
+	int imageCapacity;
+	int imageCount;
+	int passed;
+};
+
+
+// The caller owns images. imageIndex is 1-based. Errors are absolute values.
+struct SentinelBackGeocodingVerificationImageResult
+{
+	int imageIndex;
+	int outputRows;
+	int outputColumns;
+	int referenceRows;
+	int outputFirstSourceRow;
+	int outputFirstSourceColumn;
+	int referenceFirstSourceRow;
+	int referenceFirstSourceColumn;
+	int referenceColumns;
+	int comparedCoefficientBursts;
+	uint32_t mismatchFlags;
+	double maxCoefficientAbsError;
+	double esdOffsetAbsError;
+	double rangeOffsetAbsError;
+	double maxSlcComponentAbsError;
+	double rmsSlcComponentError;
+};
 // POD status for the output-directory transaction. COMPLETE is returned only
 // after the manifest and every H5 marker agree on the transaction ID.
 struct SentinelRefinementTransactionStatus
@@ -2376,12 +2466,12 @@ class InSAR_API Sentinel1BackGeocoding
 public:
 	Sentinel1BackGeocoding();
 	~Sentinel1BackGeocoding();
-	/** @brief 初始化后向地理编码配准
-	* @param h5Files                       哨兵一号原始数据文件
+	/** @brief 初始化后向地理编码配�?
+	* @param h5Files                       哨兵一号原始数据文�?
 	* @param outFiles                      处理结果保存文件
 	* @param DEMPath                       DEM文件路径
-	* @param masterIndex                   主影像序号
-	* @return 成功返回0，否则返回-1
+	* @param masterIndex                   主影像序�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int init(
 		vector<string>& h5Files,
@@ -2391,23 +2481,24 @@ public:
 		InSARDiagnosticCallback diagnosticCallback = nullptr,
 		void* diagnosticUserData = nullptr
 	);
-	/** @brief 加载哨兵一号数据
-	* @param h5Files                       哨兵一号原始数据文件
-	* @return 成功返回0，否则返回-1
+	/** @brief 加载哨兵一号数�?
+	* @param h5Files                       哨兵一号原始数据文�?
+	* @return 成功返回0，否则返�?1
 	*/
+private:
 	int loadData(vector<string>& h5Files);
 	/** @brief 设置DEM文件路径
 	* @param DEMPath                       DEM文件路径
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int setDEMPath(const char* DEMPath);
 	/** @brief 加载数字高程模型
 	* @param filepath                      DEM文件路径
-	* @param lonMin                        最小经度
-	* @param lonMax                        最大经度
-	* @param latMin                        最小纬度
-	* @param latMax                        最大纬度
-	* @return 成功返回0，否则返回-1
+	* @param lonMin                        最小经�?
+	* @param lonMax                        最大经�?
+	* @param latMin                        最小纬�?
+	* @param latMax                        最大纬�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int loadDEM(
 		const char* filepath,
@@ -2418,55 +2509,55 @@ public:
 	);
 	/** @brief 加载处理结果保存文件
 	* @param outFiles                     处理结果保存文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int loadOutFiles(vector<string>& outFiles);
 	/** @brief 准备结果保存文件
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int prepareOutFiles();
-	/** @brief 设置主影像
-	* @param masterIndex                  主影像序号
-	* @return 成功返回0，否则返回-1
+	/** @brief 设置主影�?
+	* @param masterIndex                  主影像序�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int setMasterIndex(int masterIndex);
 
 
 
-	/** @brief 计算主辅图像之间的burst偏移量
-	* @return 成功返回0，否则返回-1
+	/** @brief 计算主辅图像之间的burst偏移�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeBurstOffset();
 	/** @brief 去斜去模操作
 	* @param derampDemodPhase                 斜模相位
-	* @param slc                              复图像数据
-	* @return 成功返回0，否则返回-1
+	* @param slc                              复图像数�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int performDerampDemod(
 		Mat& derampDemodPhase,
 		ComplexMat& slc
 	);
-	/** @brief 计算DEM点投影在SAR辅图像中的位置
-	* @param slaveImageIndex                       辅图像序号
+	/** @brief 计算DEM点投影在SAR辅图像中的位�?
+	* @param slaveImageIndex                       辅图像序�?
 	* @param mBurstIndex                           主图像burst序号
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeSlavePosition(
 		int slaveImagesIndex,
 		int mBurstIndex
 	);
-	/** @brief 计算辅图像偏移
+	/** @brief 计算辅图像偏�?
 	* @param slaveAzimuthOffset                    辅图像方位向偏移
 	* @param slaveRangeOffset                      辅图像距离向偏移
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& slaveRangeOffset);
-	/** @brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
-	* @param slaveOffset                           偏移量
+	/** @brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y�?
+	* @param slaveOffset                           偏移�?
 	* @param a0                                    拟合系数
 	* @param a1                                    拟合系数
 	* @param a2                                    拟合系数
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int fitSlaveOffset(
 		Mat& slaveOffset,
@@ -2476,15 +2567,15 @@ public:
 	);
 	/** @brief 复图像双线性插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
-	* @param dstHeight                             重采样图像高度
-	* @param dstWidth                              重采样图像宽度
-	* @param a0Rg                                  距离向偏移拟合系数
-	* @param a1Rg                                  距离向偏移拟合系数
-	* @param a2Rg                                  距离向偏移拟合系数
-	* @param a0Az                                  方位向偏移拟合系数
-	* @param a1Az                                  方位向偏移拟合系数
-	* @param a2Az                                  方位向偏移拟合系数
-	* @return 成功返回0，否则返回-1
+	* @param dstHeight                             重采样图像高�?
+	* @param dstWidth                              重采样图像宽�?
+	* @param a0Rg                                  距离向偏移拟合系�?
+	* @param a1Rg                                  距离向偏移拟合系�?
+	* @param a2Rg                                  距离向偏移拟合系�?
+	* @param a0Az                                  方位向偏移拟合系�?
+	* @param a1Az                                  方位向偏移拟合系�?
+	* @param a2Az                                  方位向偏移拟合系�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int performBilinearResampling(
 		ComplexMat& slc,
@@ -2495,15 +2586,15 @@ public:
 	);
 	/** @brief 复图像sinc插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）
-	* @param dstHeight                             重采样图像高度
-	* @param dstWidth                              重采样图像宽度
-	* @param a0Rg                                  距离向偏移拟合系数
-	* @param a1Rg                                  距离向偏移拟合系数
-	* @param a2Rg                                  距离向偏移拟合系数
-	* @param a0Az                                  方位向偏移拟合系数
-	* @param a1Az                                  方位向偏移拟合系数
-	* @param a2Az                                  方位向偏移拟合系数
-	* @return 成功返回0，否则返回-1
+	* @param dstHeight                             重采样图像高�?
+	* @param dstWidth                              重采样图像宽�?
+	* @param a0Rg                                  距离向偏移拟合系�?
+	* @param a1Rg                                  距离向偏移拟合系�?
+	* @param a2Rg                                  距离向偏移拟合系�?
+	* @param a0Az                                  方位向偏移拟合系�?
+	* @param a1Az                                  方位向偏移拟合系�?
+	* @param a2Az                                  方位向偏移拟合系�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int performSincResampling(
 		ComplexMat& slc,
@@ -2514,23 +2605,36 @@ public:
 	);
 	/** @brief 辅图像双线性插值重采样
 	* @param mBurstIndex                           主图像burst序号
-	* @param slaveImageIndex                       辅图像序号
+	* @param slaveImageIndex                       辅图像序�?
 	* @param slaveSLC                              重采样后的辅图像数据
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
-	int slaveBilinearInterpolation(
+	// Uses Deramp -> sinc SLC/phase resampling -> Reramp.
+	int slaveSincInterpolation(
 		int mBurstIndex,
 		int slaveImageIndex,
 		ComplexMat& slaveSLC
 	);
 	/** @brief 计算deburst信息
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int deBurstConfig();
+	int materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile);
+
+public:
 	/** @brief 后向地理编码配准
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返�?1
 	*/
 	int backGeoCodingCoregistration(
+		InSARDiagnosticCallback diagnosticCallback = nullptr,
+		void* diagnosticUserData = nullptr
+	);
+	// Unified second-round entry point. When both refinement arguments are
+	// supplied, initial back-geocoding and post-registration refinement run as
+	// one DLL-owned workflow. Passing both as null preserves the legacy core run.
+	int backGeoCodingCoregistration(
+		const SentinelRefinementOptions* refinementOptions,
+		SentinelRefinementResult* refinementResult,
 		InSARDiagnosticCallback diagnosticCallback = nullptr,
 		void* diagnosticUserData = nullptr
 	);
@@ -2547,35 +2651,50 @@ public:
 	);
 	int getPostRegistrationRefinementTransactionStatus(
 		SentinelRefinementTransactionStatus& status) const;
+	// Compares final current H5 outputs with fixed reference H5 outputs inside the DLL.
+	int verifyOutputsAgainstReference(
+		const vector<string>& referenceFiles,
+		double coefficientTolerance,
+		double offsetTolerance,
+		double slcTolerance,
+		SentinelBackGeocodingVerificationResult& result) const;
+	int recoverPostRegistrationRefinementTransaction();
 	/** Configure the callback used by subsequent task calls on this instance. */
 	void setDiagnosticCallback(InSARDiagnosticCallback diagnosticCallback, void* diagnosticUserData) noexcept;
+	// Restores original outputs from a failed or interrupted refinement
+	// transaction, then removes its manifest and temporary artifacts. This can
+	// be called after init() rejects a failed transaction because init retains
+	// the validated output paths for recovery.
 	/** @brief Thread-safe cooperative cancellation. Cancelled operations return -2. */
 	void requestCancel() noexcept;
 	void clearCancelRequest() noexcept;
 	bool isCancelRequested() const noexcept;
 	/** @brief 获取最近一次零多普勒求解失败的诊断信息
-	* @return 有诊断信息返回0，否则返回-1
+	* @return 有诊断信息返�?，否则返�?1
 	*/
 	int getLastZeroDopplerDiagnostic(SentinelZeroDopplerDiagnostic& diagnostic) const;
 	/** @brief Get zero-Doppler failure counts grouped by image, burst, reason, and call path.
 	* @return 0 on success, -1 when no diagnostic state exists.
 	*/
 	int getZeroDopplerFailureStatistics(vector<SentinelZeroDopplerFailureStatistic>& statistics) const;
-	/** @brief 获取当前任务的burst几何质量状态
-	* @return 成功返回0，否则返回-1
+	/** @brief 获取当前任务的burst几何质量状�?
+	* @return 成功返回0，否则返�?1
 	*/
 	int getBurstQualityStatus(vector<SentinelBurstQualityStatus>& status) const;
 
-public:
+private:
 
 	/*影像数量*/
 	int numOfImages;
-	/*主影像序号*/
+	/*主影像序�?/
+*/
 	int masterIndex;
-	/*哨兵一号数据*/
+	/*哨兵一号数�?/
+*/
 	vector<Sentinel1Utils*> su;
 	/*处理结果保存文件*/
 	vector<string> outFiles;
+	vector<string> fullBurstFiles;
 	/*数字高程模型*/
 	DigitalElevationModel* dem;
 	/*数字高程模型路径*/
@@ -2600,11 +2719,14 @@ public:
 	/*burst配置信息是否计算完成*/
 	bool isdeBurstConfig;
 
-	/*无效坐标（-1.0）*/
+	/*无效坐标�?1.0�?/
+*/
 	double invalidRgAzIndex = -1.0;
-	/*无效偏移量（-9999.0）*/
+	/*无效偏移量（-9999.0�?/
+*/
 	double invalidOffset = -9999.0;
 	bool burstOffsetComputed;
+	bool deferFinalDeburstOutput;
 	char error_head[256];
 
 private:

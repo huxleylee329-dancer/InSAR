@@ -44,6 +44,23 @@
     <ClCompile Include="Utils.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+	<ClCompile Include="S1Merge.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="UtilsGeocoding.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="UtilsDem.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="UtilsBaseline.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="UtilsInterferometry.cpp">
+	  <Filter>源文件</Filter>
+	</ClCompile>
+	<ClCompile Include="UtilsAoi.cpp">
+	  <Filter>源文件</Filter>
     <ClCompile Include="orbitStateVectors.cpp">
       <Filter>源文件</Filter>
     </ClCompile>

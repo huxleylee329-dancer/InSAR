@@ -158,7 +158,39 @@
     <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp" />
     <ClCompile Include="test2.cpp" />
   </ItemGroup>
-  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+    <ItemGroup>
+    <ProjectReference Include="..\Utils\Utils.vcxproj">
+      <Project>{72E5449A-CF52-4C0B-BC12-3B65D8852C78}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Unwrap\Unwrap.vcxproj">
+      <Project>{A76767A4-FCC8-4A8E-9FD1-BAA28DEA5998}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Registration\Registration.vcxproj">
+      <Project>{15214729-7277-466D-AB38-0058FA1E31BC}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Filter\Filter.vcxproj">
+      <Project>{8C9EE325-6D41-46CC-819A-CB94D91B3FAD}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Deflat\Deflat.vcxproj">
+      <Project>{99718CCC-93F7-407A-927F-2AF0571F9A0B}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Dem\Dem.vcxproj">
+      <Project>{B0857982-407A-4F6E-A5BD-5D0A55CBD819}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\ComplexMat\ComplexMat.vcxproj">
+      <Project>{1722AA5B-2D2B-4F87-A36C-5D25A2F7AF42}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\FormatConversion\FormatConversion.vcxproj">
+      <Project>{68a3d4f6-c5c9-4604-9de1-5d9c04eb456e}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\SBAS\SBAS.vcxproj">
+      <Project>{409c460b-bd71-4a0d-89c7-d0404e4d642e}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\simulation\simulation.vcxproj">
+      <Project>{b9a40c11-866d-4c98-b43b-df2f7299a3f8}</Project>
+    </ProjectReference>
+  </ItemGroup>
+<Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
 </Project>
