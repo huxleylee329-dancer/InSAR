@@ -2527,11 +2527,14 @@ int SLC_simulator::SLC_deramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, nullptr, cb, "Deramping file 1/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5File1_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5File1_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -2543,11 +2546,14 @@ int SLC_simulator::SLC_deramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, nullptr, cb, "Deramping file 2/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File2, slcH5File2_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File2, slcH5File2_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File2, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File2, "offset_col", &offset_col);
@@ -2559,11 +2565,14 @@ int SLC_simulator::SLC_deramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, nullptr, cb, "Deramping file 3/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File3, slcH5File3_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File3, slcH5File3_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File3, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File3, "offset_col", &offset_col);
@@ -2575,11 +2584,14 @@ int SLC_simulator::SLC_deramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, nullptr, cb, "Deramping file 4/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File4, slcH5File4_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File4, slcH5File4_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File4, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File4_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File4, "offset_col", &offset_col);
@@ -2743,6 +2755,8 @@ int SLC_simulator::SLC_deramp_14(
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2750,6 +2764,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[0].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -2763,12 +2778,15 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File3, slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_array_to_h5(slcH5FilesListOut[1].c_str(), "slantRange", R);
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[1].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File3, slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_col", &offset_col);
@@ -2785,6 +2803,8 @@ int SLC_simulator::SLC_deramp_14(
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2792,6 +2812,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[0].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -2805,12 +2826,15 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -4.0 * PI / wavelength, true, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File3, slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_array_to_h5(slcH5FilesListOut[1].c_str(), "slantRange", R);
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[1].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File3, slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_col", &offset_col);
@@ -2827,6 +2851,8 @@ int SLC_simulator::SLC_deramp_14(
 		Mat R = Mat::zeros(sceneHeight, sceneWidth, CV_64F);
 
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2834,6 +2860,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[0].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -2848,6 +2875,8 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[1].c_str(), slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2855,6 +2884,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[1].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[1].c_str(), slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[1].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[1].c_str(), "offset_col", &offset_col);
@@ -2867,6 +2897,8 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5File3, slcH5FilesListOut[3].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2874,6 +2906,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[3].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File3, slcH5FilesListOut[3].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File3, "offset_col", &offset_col);
@@ -2886,6 +2919,8 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 		if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[2].c_str(), slcH5FilesListOut[2].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2893,6 +2928,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_slc_to_h5(slcH5FilesListOut[2].c_str(), slc);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[2].c_str(), slcH5FilesListOut[2].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[2].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[2].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[2].c_str(), "offset_col", &offset_col);
@@ -2914,8 +2950,12 @@ int SLC_simulator::SLC_deramp_14(
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength2, -4.0 * PI / wavelength2);
 
+		ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[0].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[4].c_str(), slcH5FilesListOut[4].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[4].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2928,6 +2968,7 @@ int SLC_simulator::SLC_deramp_14(
 
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5FilesListOut[0].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -2936,6 +2977,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[0].c_str(), "azimuth_len", sceneHeight);
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[4].c_str(), slcH5FilesListOut[4].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[4].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[4].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[4].c_str(), "offset_col", &offset_col);
@@ -2955,8 +2997,12 @@ int SLC_simulator::SLC_deramp_14(
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
 		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength2, -2.0 * PI / wavelength2, true);
 
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[1].c_str(), slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[1].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[5].c_str(), slcH5FilesListOut[5].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[5].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -2969,6 +3015,7 @@ int SLC_simulator::SLC_deramp_14(
 
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[1].c_str(), slcH5FilesListOut[1].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[1].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[1].c_str(), "offset_col", &offset_col);
@@ -2977,6 +3024,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[1].c_str(), "azimuth_len", sceneHeight);
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[5].c_str(), slcH5FilesListOut[5].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[5].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[5].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[5].c_str(), "offset_col", &offset_col);
@@ -2995,8 +3043,12 @@ int SLC_simulator::SLC_deramp_14(
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, -4.0 * PI / wavelength, false, &R);
 		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength2, -4.0 * PI / wavelength2);
 
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[3].c_str(), slcH5FilesListOut[3].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[3].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[7].c_str(), slcH5FilesListOut[7].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[7].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3009,6 +3061,7 @@ int SLC_simulator::SLC_deramp_14(
 
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[3].c_str(), slcH5FilesListOut[3].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[3].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[3].c_str(), "offset_col", &offset_col);
@@ -3017,6 +3070,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[3].c_str(), "azimuth_len", sceneHeight);
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[7].c_str(), slcH5FilesListOut[7].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[7].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[7].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[7].c_str(), "offset_col", &offset_col);
@@ -3035,8 +3089,12 @@ int SLC_simulator::SLC_deramp_14(
 		applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, -2.0 * PI / wavelength, true, &R);
 		applyPhaseCorrection(slc2.re, slc2.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength2, -2.0 * PI / wavelength2, true);
 
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[2].c_str(), slcH5FilesListOut[2].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[2].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
+		ret = conversion.validate_distinct_h5_output(slcH5FilesList[6].c_str(), slcH5FilesListOut[6].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(slcH5FilesListOut[6].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 
@@ -3048,6 +3106,7 @@ int SLC_simulator::SLC_deramp_14(
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[2].c_str(), slcH5FilesListOut[2].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[2].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[2].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[2].c_str(), "offset_col", &offset_col);
@@ -3056,6 +3115,7 @@ int SLC_simulator::SLC_deramp_14(
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[2].c_str(), "azimuth_len", sceneHeight);
 
 		ret = conversion.Copy_para_from_h5_2_h5(slcH5FilesList[6].c_str(), slcH5FilesListOut[6].c_str());
+		if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 		ret = conversion.read_int_from_h5(slcH5FilesList[6].c_str(), "offset_row", &offset_row);
 		ret = conversion.write_int_to_h5(slcH5FilesListOut[6].c_str(), "offset_row", offset_row);
 		ret = conversion.read_int_from_h5(slcH5FilesList[6].c_str(), "offset_col", &offset_col);
@@ -3193,11 +3253,14 @@ int SLC_simulator::SLC_reramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, Mat(), wavelength, 4.0 * PI / wavelength, false, nullptr, cb, "Reramping file 1/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File1, slcH5File1_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File1_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File1_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File1, slcH5File1_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File1, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File1_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File1, "offset_col", &offset_col);
@@ -3209,11 +3272,14 @@ int SLC_simulator::SLC_reramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true, nullptr, cb, "Reramping file 2/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File2, slcH5File2_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File2_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File2_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File2, slcH5File2_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File2, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File2_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File2, "offset_col", &offset_col);
@@ -3225,11 +3291,14 @@ int SLC_simulator::SLC_reramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate2, Mat(), wavelength, 4.0 * PI / wavelength, false, nullptr, cb, "Reramping file 3/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File3, slcH5File3_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File3_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File3_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File3, slcH5File3_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File3, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File3_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File3, "offset_col", &offset_col);
@@ -3241,11 +3310,14 @@ int SLC_simulator::SLC_reramp(
 	if (return_check(ret, "read_slc_from_h5()", error_head)) return -1;
 	if (slc.type() != CV_32F) slc.convertTo(slc, CV_32F);
 	if (!applyPhaseCorrection(slc.re, slc.im, mappedLat, mappedLon, mappedDEM, sate1, sate2, wavelength, 2.0 * PI / wavelength, true, nullptr, cb, "Reramping file 4/4...")) return -2;
+	ret = conversion.validate_distinct_h5_output(slcH5File4, slcH5File4_out);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 	ret = conversion.creat_new_h5(slcH5File4_out);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	ret = conversion.write_slc_to_h5(slcH5File4_out, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(slcH5File4, slcH5File4_out);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	ret = conversion.read_int_from_h5(slcH5File4, "offset_row", &offset_row);
 	ret = conversion.write_int_to_h5(slcH5File4_out, "offset_row", offset_row);
 	ret = conversion.read_int_from_h5(slcH5File4, "offset_col", &offset_col);

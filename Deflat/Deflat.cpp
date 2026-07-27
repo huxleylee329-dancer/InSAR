@@ -1845,6 +1845,8 @@ int Deflat::SLCs_deramp(
 	int images_num = static_cast<int>(outSLCH5Files.size());
 	for (int i = 0; i < images_num; i++)
 	{
+		ret = conversion.validate_distinct_h5_output(SLCH5Files[i].c_str(), outSLCH5Files[i].c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(outSLCH5Files[i].c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	}

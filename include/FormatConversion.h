@@ -665,6 +665,9 @@ public:
 	@param filename     文件�?
 	*/
 	int creat_new_h5(const char* filename);
+	// Must be called before a workflow creates or writes its output when that
+	// output will later receive metadata copied from sourceFilename.
+	int validate_distinct_h5_output(const char* sourceFilename, const char* outputFilename);
 	/** @brief 获取 HDF5 数据集维�?(Rows �?Cols)
 	* @param filename       H5 文件�?
 	* @param dataset_name   数据集名

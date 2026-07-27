@@ -884,6 +884,10 @@ int FormatConversion::creat_new_h5(const char* filename)
 {
 	return Hdf5IO::createFile(filename);
 }
+int FormatConversion::validate_distinct_h5_output(const char* sourceFilename, const char* outputFilename)
+{
+	return Hdf5IO::validateDistinctFilePaths(sourceFilename, outputFilename);
+}
 int FormatConversion::get_dataset_dims(const char* filename, const char* dataset_name, int* rows, int* cols)
 {
 	return Hdf5IO::getDatasetDims(filename, dataset_name, rows, cols);
@@ -7868,7 +7872,15 @@ int XMLFile::get_stateVec_from_sentinel(Mat& stateVec)
 
 int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char* Output_file)
 {
-	if (!Input_file || !Output_file) return -1;
+	if (!Input_file || !*Input_file || !Output_file || !*Output_file) return Hdf5IO::kInvalidArgument;
+
+	// Keep the conservative global HDF5 lock across identity validation and both
+	// copy batches. A lock only serializes time; it never makes self-copy valid.
+	Hdf5BatchGuard hdf5Batch;
+	if (hdf5Batch.status() != 0) return hdf5Batch.status();
+	int sameFile = 0;
+	if (Hdf5IO::areSameExistingFile(Input_file, Output_file, &sameFile) != 0) return -1;
+	if (sameFile != 0) return Hdf5IO::kInvalidArgument;
 
 	static const char* const stringDatasets[] = {
 		"file_type", "sensor", "polarization", "imaging_mode", "lookside", "orbit_dir", "swath",
@@ -7882,11 +7894,11 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 		"topLeftLat", "topRightLon", "topRightLat", "bottomLeftLon", "bottomLeftLat", "bottomRightLon",
 		"bottomRightLat", "TR_mode" };
 
-	Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, stringDatasets,
+	int result = Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, stringDatasets,
 		static_cast<int>(sizeof(stringDatasets) / sizeof(stringDatasets[0])), false);
-	Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, arrayDatasets,
+	if (result != 0) return result;
+	return Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, arrayDatasets,
 		static_cast<int>(sizeof(arrayDatasets) / sizeof(arrayDatasets[0])), true);
-	return 0;
 }
 int FormatConversion::read_height_metric_from_GEDI_L2B(
 	const char* gedi_h5_file,
@@ -10119,7 +10131,9 @@ int Sentinel1Utils::deburst(const char* outFile)
 	//�����µ�deburst�ļ�
 
 	FormatConversion conversion;
-	int ret = conversion.creat_new_h5(outFile);
+	int ret = conversion.validate_distinct_h5_output(this->h5File.c_str(), outFile);
+	if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
+	ret = conversion.creat_new_h5(outFile);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 	Mat start(this->burstCount, 1, CV_32S), end(this->burstCount, 1, CV_32S);
 	start.at<int>(0, 0) = 1;
@@ -10163,6 +10177,7 @@ int Sentinel1Utils::deburst(const char* outFile)
 	ret = conversion.write_slc_to_h5(outFile, slc);
 	if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
 	ret = conversion.Copy_para_from_h5_2_h5(this->h5File.c_str(), outFile);
+	if (return_check(ret, "Copy_para_from_h5_2_h5()", error_head)) return -1;
 	conversion.write_str_to_h5(outFile, "process_state", "deburst");
 	conversion.write_str_to_h5(outFile, "comment", "complex-1.0");
 	conversion.write_int_to_h5(outFile, "offset_row", 0);

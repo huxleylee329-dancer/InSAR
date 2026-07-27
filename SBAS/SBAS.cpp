@@ -777,6 +777,8 @@ int SBAS::generate_interferograms(
 		snprintf(str, sizeof(str), "\\%d.h5", i + 1);
 		h5file = path + str;
 		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+		ret = conversion.validate_distinct_h5_output(SLCH5Files[master_ix - 1].c_str(), h5file.c_str());
+		if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 		ret = conversion.creat_new_h5(h5file.c_str());
 		if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
@@ -1622,6 +1624,8 @@ int SBAS::generate_interferograms(
 				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
 				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+				ret = conversion.validate_distinct_h5_output(SLCH5Files[master_ix - 1].c_str(), h5file.c_str());
+				if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 				ret = conversion.creat_new_h5(h5file.c_str());
 				if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
@@ -1780,6 +1784,8 @@ int SBAS::adaptive_multilooking(
 
 				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
+				ret = conversion.validate_distinct_h5_output(coregis_slc_files[master_ix - 1].c_str(), h5file.c_str());
+				if (return_check(ret, "validate_distinct_h5_output()", error_head)) return -1;
 				ret = conversion.creat_new_h5(h5file.c_str());
 				if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;

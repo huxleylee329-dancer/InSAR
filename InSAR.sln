@@ -24,6 +24,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FormatConversion", "FormatC
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Hdf5IO", "Hdf5IO\Hdf5IO.vcxproj", "{D2EF3583-99B5-423E-A7B5-28B6404B951E}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Hdf5AuditHarness", "Hdf5AuditHarness\Hdf5AuditHarness.vcxproj", "{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}"
+EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Dem", "Dem\Dem.vcxproj", "{B0857982-407A-4F6E-A5BD-5D0A55CBD819}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "unziptool", "unziptool\unziptool.vcxproj", "{8615DB84-73AD-465B-A391-7E21B62E924C}"
@@ -210,6 +212,14 @@ Global
 		{D2EF3583-99B5-423E-A7B5-28B6404B951E}.Release|Win32.Build.0 = Release|x64
 		{D2EF3583-99B5-423E-A7B5-28B6404B951E}.Release|x64.ActiveCfg = Release|x64
 		{D2EF3583-99B5-423E-A7B5-28B6404B951E}.Release|x64.Build.0 = Release|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Debug|ARM.ActiveCfg = Debug|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Debug|Mixed Platforms.ActiveCfg = Debug|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Debug|Win32.ActiveCfg = Debug|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Debug|x64.ActiveCfg = Debug|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Release|ARM.ActiveCfg = Release|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Release|Mixed Platforms.ActiveCfg = Release|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Release|Win32.ActiveCfg = Release|x64
+		{B3FA4290-5D61-4E10-9CC5-28C9AE6DC0B9}.Release|x64.ActiveCfg = Release|x64
 		{B0857982-407A-4F6E-A5BD-5D0A55CBD819}.Debug|ARM.ActiveCfg = Debug|Win32
 		{B0857982-407A-4F6E-A5BD-5D0A55CBD819}.Debug|Mixed Platforms.ActiveCfg = Debug|Win32
 		{B0857982-407A-4F6E-A5BD-5D0A55CBD819}.Debug|Mixed Platforms.Build.0 = Debug|Win32

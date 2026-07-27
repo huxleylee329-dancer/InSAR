@@ -6,15 +6,151 @@
 
 #include <mutex>
 #include <algorithm>
+#include <atomic>
 #include <limits>
 #include <new>
 #include <cstring>
+#include <deque>
 #include <string>
 #include <vector>
 
 namespace
 {
+	// Local names are shared by processes in the same Windows logon session.
+	// This is a conservative implementation detail, not a documented
+	// cross-process HDF5 coordination protocol.
 	constexpr wchar_t kHdf5MutexName[] = L"Local\\InSAR.Hdf5IO.v1";
+
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+	struct FileIdentity
+	{
+		unsigned long volumeSerialNumber = 0;
+		unsigned long fileIndexHigh = 0;
+		unsigned long fileIndexLow = 0;
+		bool available = false;
+	};
+
+	struct AuditSnapshot
+	{
+		uint64_t generation = 0;
+		unsigned int majorVersion = 0;
+		unsigned int minorVersion = 0;
+		unsigned int releaseVersion = 0;
+		bool enabled = false;
+	};
+
+	struct AuditState
+	{
+		std::mutex mutex;
+		std::deque<Hdf5IO::Hdf5AuditEvent> events;
+		size_t capacity = 0;
+		unsigned long long dropped = 0;
+		uint64_t firstDroppedOperationId = 0;
+		uint64_t lastDroppedOperationId = 0;
+		uint64_t firstDroppedMonotonicMilliseconds = 0;
+		uint64_t lastDroppedMonotonicMilliseconds = 0;
+		std::atomic<uint64_t> nextFileHandleId{ 1 };
+		bool enabled = false;
+		bool evidenceComplete = true;
+		unsigned int majorVersion = 0;
+		unsigned int minorVersion = 0;
+		unsigned int releaseVersion = 0;
+		uint64_t generation = 0;
+	};
+	AuditState g_audit;
+	thread_local uint64_t g_auditOperationId = 0;
+
+	AuditSnapshot getAuditSnapshot()
+	{
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		AuditSnapshot snapshot;
+		snapshot.generation = g_audit.generation;
+		snapshot.majorVersion = g_audit.majorVersion;
+		snapshot.minorVersion = g_audit.minorVersion;
+		snapshot.releaseVersion = g_audit.releaseVersion;
+		snapshot.enabled = g_audit.enabled;
+		return snapshot;
+	}
+
+	uint64_t reserveAuditFileHandleId(const AuditSnapshot& snapshot)
+	{
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		if (!snapshot.enabled || !g_audit.enabled || snapshot.generation != g_audit.generation) return 0;
+		return g_audit.nextFileHandleId.fetch_add(1);
+	}
+
+	void markAuditEvidenceIncomplete(const AuditSnapshot& snapshot)
+	{
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		if (snapshot.enabled && g_audit.enabled && snapshot.generation == g_audit.generation)
+			g_audit.evidenceComplete = false;
+	}
+
+	void appendAuditEvent(const AuditSnapshot& snapshot, const Hdf5IO::Hdf5AuditEvent& event)
+	{
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		if (!snapshot.enabled || !g_audit.enabled || snapshot.generation != g_audit.generation) return;
+		if (g_audit.events.size() >= g_audit.capacity)
+		{
+			if (g_audit.dropped == 0)
+			{
+				g_audit.firstDroppedOperationId = event.operationId;
+				g_audit.firstDroppedMonotonicMilliseconds = event.monotonicMilliseconds;
+			}
+			++g_audit.dropped;
+			g_audit.lastDroppedOperationId = event.operationId;
+			g_audit.lastDroppedMonotonicMilliseconds = event.monotonicMilliseconds;
+			g_audit.evidenceComplete = false;
+			return;
+		}
+		g_audit.events.push_back(event);
+	}
+
+	bool getFileIdentity(const char* path, FileIdentity& identity)
+	{
+		// This opens the requested path after HDF5 has opened its own file. It is
+		// useful event correlation only: an uncoordinated replacement can rebind
+		// the path between those operations, so it cannot identify HDF5's object.
+		identity = {};
+		if (!path || !*path) return false;
+		const HANDLE handle = CreateFileA(path, FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (handle == INVALID_HANDLE_VALUE) return false;
+		BY_HANDLE_FILE_INFORMATION information = {};
+		const BOOL result = GetFileInformationByHandle(handle, &information);
+		CloseHandle(handle);
+		if (!result) return false;
+		identity.volumeSerialNumber = information.dwVolumeSerialNumber;
+		identity.fileIndexHigh = information.nFileIndexHigh;
+		identity.fileIndexLow = information.nFileIndexLow;
+		identity.available = true;
+		return true;
+	}
+
+	void recordFileEvent(const AuditSnapshot& snapshot, uint64_t operationId, int kind, uint64_t fileHandleId,
+		const char* path, const char* mode, herr_t status, const FileIdentity& identity)
+	{
+		if (operationId == 0) markAuditEvidenceIncomplete(snapshot);
+		Hdf5IO::Hdf5AuditEvent event = {};
+		event.operationId = operationId;
+		event.fileHandleId = fileHandleId;
+		event.monotonicMilliseconds = GetTickCount64();
+		event.threadId = GetCurrentThreadId();
+		event.kind = kind;
+		event.success = status >= 0 ? 1 : 0;
+		event.hdf5Status = static_cast<int>(status);
+		event.volumeSerialNumber = identity.volumeSerialNumber;
+		event.fileIndexHigh = identity.fileIndexHigh;
+		event.fileIndexLow = identity.fileIndexLow;
+		event.hdf5MajorVersion = snapshot.majorVersion;
+		event.hdf5MinorVersion = snapshot.minorVersion;
+		event.hdf5ReleaseVersion = snapshot.releaseVersion;
+		if (path) strncpy_s(event.path, path, _TRUNCATE);
+		if (mode) strncpy_s(event.mode, mode, _TRUNCATE);
+		appendAuditEvent(snapshot, event);
+	}
+#endif
 
 	class ScopedHdf5Lock
 	{
@@ -80,6 +216,111 @@ namespace
 		herr_t(*closer_)(hid_t);
 	};
 
+	// The only owner for path-created HDF5 file IDs. It preserves the global
+	// lock contract supplied by its callers while making every actual H5F open,
+	// create, and close observable by the opt-in audit channel.
+	class ScopedAuditedH5File
+	{
+	public:
+		ScopedAuditedH5File() = default;
+		~ScopedAuditedH5File() { close(); }
+		ScopedAuditedH5File(const ScopedAuditedH5File&) = delete;
+		ScopedAuditedH5File& operator=(const ScopedAuditedH5File&) = delete;
+
+		int open(const char* path, unsigned flags, const char* mode)
+		{
+			if (file_ >= 0 || !path || !mode) return -1;
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+			auditSnapshot_ = getAuditSnapshot();
+			auditOperationId_ = g_auditOperationId;
+#endif
+			file_ = H5Fopen(path, flags, H5P_DEFAULT);
+			if (file_ < 0)
+			{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+				recordFileEvent(auditSnapshot_, auditOperationId_, Hdf5IO::HDF5_AUDIT_OPEN, 0, path, mode, -1, identity_);
+#endif
+				return -1;
+			}
+			recordSuccessfulOpen(path, mode);
+			return 0;
+		}
+
+		int create(const char* path, unsigned flags, const char* mode)
+		{
+			if (file_ >= 0 || !path || !mode) return -1;
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+			auditSnapshot_ = getAuditSnapshot();
+			auditOperationId_ = g_auditOperationId;
+#endif
+			file_ = H5Fcreate(path, flags, H5P_DEFAULT, H5P_DEFAULT);
+			if (file_ < 0)
+			{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+				recordFileEvent(auditSnapshot_, auditOperationId_, Hdf5IO::HDF5_AUDIT_OPEN, 0, path, mode, -1, identity_);
+#endif
+				return -1;
+			}
+			recordSuccessfulOpen(path, mode);
+			return 0;
+		}
+
+		herr_t close()
+		{
+			if (file_ < 0) return 0;
+			const hid_t file = file_;
+			file_ = -1;
+			const herr_t status = H5Fclose(file);
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+			if (auditHandleId_ != 0)
+				recordFileEvent(auditSnapshot_, auditOperationId_, Hdf5IO::HDF5_AUDIT_CLOSE, auditHandleId_, path_, mode_, status, identity_);
+			auditHandleId_ = 0;
+#endif
+			return status;
+		}
+
+		// A failed/abandoned mutex acquisition must not issue an unprotected HDF5
+		// close. Keep the legacy leak-on-lock-failure behavior, but flag any
+		// active diagnostic run as incomplete instead of reporting a false pair.
+		void abandonWithoutClose()
+		{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+			if (file_ >= 0 && auditHandleId_ != 0) markAuditEvidenceIncomplete(auditSnapshot_);
+			auditHandleId_ = 0;
+#endif
+			file_ = -1;
+		}
+
+		operator hid_t() const noexcept { return file_; }
+		bool valid() const noexcept { return file_ >= 0; }
+
+	private:
+		void recordSuccessfulOpen(const char* path, const char* mode)
+		{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+			strncpy_s(path_, path, _TRUNCATE);
+			strncpy_s(mode_, mode, _TRUNCATE);
+			auditHandleId_ = reserveAuditFileHandleId(auditSnapshot_);
+			if (auditHandleId_ == 0) return;
+			if (!getFileIdentity(path, identity_)) markAuditEvidenceIncomplete(auditSnapshot_);
+			recordFileEvent(auditSnapshot_, auditOperationId_, Hdf5IO::HDF5_AUDIT_OPEN, auditHandleId_, path_, mode_, 0, identity_);
+#else
+			(void)path;
+			(void)mode;
+#endif
+		}
+
+		hid_t file_ = -1;
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		uint64_t auditHandleId_ = 0;
+		uint64_t auditOperationId_ = 0;
+		char path_[512] = {};
+		char mode_[16] = {};
+		FileIdentity identity_;
+		AuditSnapshot auditSnapshot_;
+#endif
+	};
+
 	int h5TypeToCvType(hid_t type)
 	{
 		const H5T_class_t typeClass = H5Tget_class(type);
@@ -120,11 +361,44 @@ namespace
 		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 	}
 
-	int openDataset(const char* filename, const char* datasetName, ScopedH5Id& file, ScopedH5Id& dataset)
+	int sameExistingFile(const char* firstFilename, const char* secondFilename, int* sameFile)
+	{
+		if (!firstFilename || !*firstFilename || !secondFilename || !*secondFilename || !sameFile) return -1;
+		*sameFile = 0;
+
+		// OPEN_EXISTING follows reparse points by default. FILE_SHARE_DELETE lets
+		// this read-only identity probe coexist with the normal HDF5 open path.
+		const HANDLE first = CreateFileA(firstFilename, FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (first == INVALID_HANDLE_VALUE) return -1;
+		const HANDLE second = CreateFileA(secondFilename, FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (second == INVALID_HANDLE_VALUE)
+		{
+			CloseHandle(first);
+			return -1;
+		}
+
+		BY_HANDLE_FILE_INFORMATION firstInfo = {};
+		BY_HANDLE_FILE_INFORMATION secondInfo = {};
+		const BOOL firstResult = GetFileInformationByHandle(first, &firstInfo);
+		const BOOL secondResult = GetFileInformationByHandle(second, &secondInfo);
+		CloseHandle(second);
+		CloseHandle(first);
+		if (!firstResult || !secondResult) return -1;
+
+		*sameFile = firstInfo.dwVolumeSerialNumber == secondInfo.dwVolumeSerialNumber &&
+			firstInfo.nFileIndexHigh == secondInfo.nFileIndexHigh &&
+			firstInfo.nFileIndexLow == secondInfo.nFileIndexLow;
+		return 0;
+	}
+
+	int openDataset(const char* filename, const char* datasetName, ScopedAuditedH5File& file, ScopedH5Id& dataset)
 	{
 		if (!isRegularFile(filename)) return -1;
-		file = ScopedH5Id(H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
-		if (!file.valid()) return -1;
+		if (file.open(filename, H5F_ACC_RDONLY, "read") != 0) return -1;
 		const std::string path = datasetPath(datasetName);
 		if (path.empty()) return -1;
 		if (H5Lexists(file, path.c_str(), H5P_DEFAULT) <= 0) return -1;
@@ -132,19 +406,17 @@ namespace
 		return dataset.valid() ? 0 : -1;
 	}
 
-	int openWritableFile(const char* filename, ScopedH5Id& file)
+	int openWritableFile(const char* filename, ScopedAuditedH5File& file)
 	{
 		if (!isRegularFile(filename)) return -1;
-		file = ScopedH5Id(H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT), H5Fclose);
-		return file.valid() ? 0 : -1;
+		return file.open(filename, H5F_ACC_RDWR, "read-write");
 	}
 
-	int openOrCreateWritableFile(const char* filename, ScopedH5Id& file)
+	int openOrCreateWritableFile(const char* filename, ScopedAuditedH5File& file)
 	{
 		if (!filename) return -1;
 		if (openWritableFile(filename, file) == 0) return 0;
-		file = ScopedH5Id(H5Fcreate(filename, H5F_ACC_EXCL, H5P_DEFAULT, H5P_DEFAULT), H5Fclose);
-		return file.valid() ? 0 : -1;
+		return file.create(filename, H5F_ACC_EXCL, "create-excl");
 	}
 
 	int createChunkedDataset(
@@ -155,7 +427,7 @@ namespace
 		const hid_t type = cvTypeToNativeH5Type(cvType);
 		const std::string path = datasetPath(datasetName);
 		if (type < 0 || path.empty()) return -1;
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openOrCreateWritableFile(filename, file) != 0 || H5Lexists(file, path.c_str(), H5P_DEFAULT) > 0) return -1;
 		const hsize_t dimensions[2] = { static_cast<hsize_t>(rows), static_cast<hsize_t>(columns) };
 		const hsize_t chunkDimensions[2] = {
@@ -254,12 +526,12 @@ namespace Hdf5IO
 {
 	struct ReadSession
 	{
-		hid_t file;
+		ScopedAuditedH5File file;
 	};
 
 	struct WriteSession
 	{
-		hid_t file;
+		ScopedAuditedH5File file;
 	};
 
 	struct BatchLock
@@ -282,6 +554,169 @@ namespace Hdf5IO
 		delete lock;
 	}
 
+	int getRuntimeInfo(Hdf5RuntimeInfo* info)
+	{
+		if (!info) return kInvalidArgument;
+		*info = {};
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+
+		unsigned int majorVersion = 0;
+		unsigned int minorVersion = 0;
+		unsigned int releaseVersion = 0;
+		hbool_t isThreadSafe = 0;
+		const herr_t versionStatus = H5get_libversion(&majorVersion, &minorVersion, &releaseVersion);
+		const herr_t threadSafetyStatus = H5is_library_threadsafe(&isThreadSafe);
+		if (versionStatus < 0 || threadSafetyStatus < 0) return -1;
+
+		info->majorVersion = majorVersion;
+		info->minorVersion = minorVersion;
+		info->releaseVersion = releaseVersion;
+		info->libraryThreadSafe = isThreadSafe != 0 ? 1 : 0;
+		return 0;
+	}
+
+	int getRuntimeModulePath(char* buffer, size_t bufferSize)
+	{
+		if (!buffer || bufferSize < 2 || bufferSize > static_cast<size_t>(std::numeric_limits<DWORD>::max()))
+			return kInvalidArgument;
+		buffer[0] = '\0';
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+
+		HMODULE module = nullptr;
+		if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+			GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+			reinterpret_cast<LPCSTR>(H5get_libversion), &module)) return -1;
+		const DWORD pathLength = GetModuleFileNameA(module, buffer, static_cast<DWORD>(bufferSize));
+		if (pathLength == 0 || pathLength >= bufferSize)
+		{
+			buffer[bufferSize - 1] = '\0';
+			return -1;
+		}
+		return 0;
+	}
+
+	int enableAuditDiagnostics(size_t queueCapacity)
+	{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		if (queueCapacity == 0) return kInvalidArgument;
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+		unsigned int majorVersion = 0, minorVersion = 0, releaseVersion = 0;
+		if (H5get_libversion(&majorVersion, &minorVersion, &releaseVersion) < 0) return -1;
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		g_audit.events.clear();
+		g_audit.capacity = queueCapacity;
+		g_audit.dropped = 0;
+		g_audit.firstDroppedOperationId = 0;
+		g_audit.lastDroppedOperationId = 0;
+		g_audit.firstDroppedMonotonicMilliseconds = 0;
+		g_audit.lastDroppedMonotonicMilliseconds = 0;
+		g_audit.evidenceComplete = true;
+		g_audit.majorVersion = majorVersion;
+		g_audit.minorVersion = minorVersion;
+		g_audit.releaseVersion = releaseVersion;
+		++g_audit.generation;
+		g_audit.enabled = true;
+		return 0;
+#else
+		(void)queueCapacity;
+		return kAuditDisabled;
+#endif
+	}
+
+	void disableAuditDiagnostics()
+	{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		g_audit.enabled = false;
+		++g_audit.generation;
+#endif
+	}
+
+	void setAuditOperationId(uint64_t operationId)
+	{
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		g_auditOperationId = operationId;
+#else
+		(void)operationId;
+#endif
+	}
+
+	int getAuditStatus(Hdf5AuditStatus* status)
+	{
+		if (!status) return kInvalidArgument;
+		*status = {};
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		status->enabled = g_audit.enabled ? 1 : 0;
+		status->evidenceComplete = g_audit.evidenceComplete ? 1 : 0;
+		status->droppedEventCount = g_audit.dropped;
+		status->firstDroppedOperationId = g_audit.firstDroppedOperationId;
+		status->lastDroppedOperationId = g_audit.lastDroppedOperationId;
+		status->firstDroppedMonotonicMilliseconds = g_audit.firstDroppedMonotonicMilliseconds;
+		status->lastDroppedMonotonicMilliseconds = g_audit.lastDroppedMonotonicMilliseconds;
+		return 0;
+#else
+		return kAuditDisabled;
+#endif
+	}
+
+	int pollAuditEvent(Hdf5AuditEvent* event)
+	{
+		if (!event) return kInvalidArgument;
+#if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
+		std::lock_guard<std::mutex> guard(g_audit.mutex);
+		if (!g_audit.enabled) return kAuditDisabled;
+		if (g_audit.events.empty()) return 1;
+		*event = g_audit.events.front();
+		g_audit.events.pop_front();
+		return 0;
+#else
+		return kAuditDisabled;
+#endif
+	}
+
+	int areSameExistingFile(const char* firstFilename, const char* secondFilename, int* sameFile)
+	{
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+		return sameExistingFile(firstFilename, secondFilename, sameFile);
+	}
+
+	int validateDistinctFilePaths(const char* sourceFilename, const char* outputFilename)
+	{
+		if (!sourceFilename || !*sourceFilename || !outputFilename || !*outputFilename) return kInvalidArgument;
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+
+		const HANDLE source = CreateFileA(sourceFilename, FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (source == INVALID_HANDLE_VALUE) return -1;
+		const HANDLE output = CreateFileA(outputFilename, FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (output == INVALID_HANDLE_VALUE)
+		{
+			const DWORD error = GetLastError();
+			CloseHandle(source);
+			return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND ? 0 : -1;
+		}
+
+		BY_HANDLE_FILE_INFORMATION sourceInfo = {};
+		BY_HANDLE_FILE_INFORMATION outputInfo = {};
+		const BOOL sourceResult = GetFileInformationByHandle(source, &sourceInfo);
+		const BOOL outputResult = GetFileInformationByHandle(output, &outputInfo);
+		CloseHandle(output);
+		CloseHandle(source);
+		if (!sourceResult || !outputResult) return -1;
+		return sourceInfo.dwVolumeSerialNumber == outputInfo.dwVolumeSerialNumber &&
+			sourceInfo.nFileIndexHigh == outputInfo.nFileIndexHigh &&
+			sourceInfo.nFileIndexLow == outputInfo.nFileIndexLow ? kInvalidArgument : 0;
+	}
+
 	static hid_t outputCvTypeToH5Type(int cvType)
 	{
 		switch (cvType)
@@ -300,8 +735,8 @@ namespace Hdf5IO
 		if (!filename) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file(H5Fcreate(filename, H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT), H5Fclose);
-		return file.valid() ? 0 : -1;
+		ScopedAuditedH5File file;
+		return file.create(filename, H5F_ACC_TRUNC, "create-trunc");
 	}
 
 	int getDatasetDims(const char* filename, const char* datasetName, int* rows, int* columns)
@@ -310,7 +745,7 @@ namespace Hdf5IO
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
 
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		ScopedH5Id dataset;
 		if (openDataset(filename, datasetName, file, dataset) != 0) return -1;
 		ScopedH5Id space(H5Dget_space(dataset), H5Sclose);
@@ -330,7 +765,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		ScopedH5Id dataset;
 		if (openDataset(filename, datasetName, file, dataset) != 0) return -1;
 		ScopedH5Id space(H5Dget_space(dataset), H5Sclose);
@@ -354,10 +789,13 @@ namespace Hdf5IO
 		if (!filename) return nullptr;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return nullptr;
-		const hid_t file = H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT);
-		if (file < 0) return nullptr;
-		ReadSession* session = new (std::nothrow) ReadSession{ file };
-		if (!session) H5Fclose(file);
+		ReadSession* session = new (std::nothrow) ReadSession();
+		if (!session) return nullptr;
+		if (session->file.open(filename, H5F_ACC_RDONLY, "read") != 0)
+		{
+			delete session;
+			return nullptr;
+		}
 		return session;
 	}
 
@@ -365,7 +803,8 @@ namespace Hdf5IO
 	{
 		if (!session) return;
 		ScopedHdf5Lock lock;
-		if (lock.result() == 0 && session->file >= 0) H5Fclose(session->file);
+		if (lock.result() == 0) session->file.close();
+		else session->file.abandonWithoutClose();
 		delete session;
 	}
 
@@ -374,10 +813,13 @@ namespace Hdf5IO
 		if (!filename) return nullptr;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return nullptr;
-		const hid_t file = H5Fopen(filename, H5F_ACC_RDWR, H5P_DEFAULT);
-		if (file < 0) return nullptr;
-		WriteSession* session = new (std::nothrow) WriteSession{ file };
-		if (!session) H5Fclose(file);
+		WriteSession* session = new (std::nothrow) WriteSession();
+		if (!session) return nullptr;
+		if (session->file.open(filename, H5F_ACC_RDWR, "read-write") != 0)
+		{
+			delete session;
+			return nullptr;
+		}
 		return session;
 	}
 
@@ -385,7 +827,8 @@ namespace Hdf5IO
 	{
 		if (!session) return;
 		ScopedHdf5Lock lock;
-		if (lock.result() == 0 && session->file >= 0) H5Fclose(session->file);
+		if (lock.result() == 0) session->file.close();
+		else session->file.abandonWithoutClose();
 		delete session;
 	}
 
@@ -572,7 +1015,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName || input.empty() || input.channels() != 1) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		return writeArrayLocked(file, datasetName, input, false);
 	}
@@ -582,7 +1025,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName || input.empty() || input.channels() != 1) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		return writeArrayLocked(file, datasetName, input, true);
 	}
@@ -608,7 +1051,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName || input.empty() || offsetRow < 0 || offsetColumn < 0) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		const std::string path = datasetPath(datasetName);
 		if (path.empty()) return -1;
@@ -635,7 +1078,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		return replaceScalarDataset(file, datasetName, H5T_NATIVE_DOUBLE, &value, true);
 	}
@@ -645,7 +1088,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		return replaceScalarDataset(file, datasetName, H5T_NATIVE_INT, &value, true);
 	}
@@ -675,7 +1118,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName || !value) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		ScopedH5Id type(H5Tcopy(H5T_C_S1), H5Tclose);
 		if (!type.valid() || H5Tset_size(type, strlen(value) + 1) < 0 || H5Tset_strpad(type, H5T_STR_NULLTERM) < 0) return -1;
@@ -687,7 +1130,7 @@ namespace Hdf5IO
 		if (!filename) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		return createStringLocked(file, datasetName, value);
 	}
@@ -699,7 +1142,7 @@ namespace Hdf5IO
 		if (path.empty()) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		if (openWritableFile(filename, file) != 0) return -1;
 		if (H5Lexists(file, path.c_str(), H5P_DEFAULT) <= 0) return 1;
 		return H5Ldelete(file, path.c_str(), H5P_DEFAULT) < 0 ? -1 : 0;
@@ -713,9 +1156,10 @@ namespace Hdf5IO
 		if (path.empty()) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id source(H5Fopen(sourceFilename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
-		ScopedH5Id destination(H5Fopen(destinationFilename, H5F_ACC_RDWR, H5P_DEFAULT), H5Fclose);
-		if (!source.valid() || !destination.valid()) return -1;
+		ScopedAuditedH5File source;
+		ScopedAuditedH5File destination;
+		if (source.open(sourceFilename, H5F_ACC_RDONLY, "read") != 0 ||
+			destination.open(destinationFilename, H5F_ACC_RDWR, "read-write") != 0) return -1;
 		if (H5Lexists(source, path.c_str(), H5P_DEFAULT) <= 0) return 1;
 		if (H5Lexists(destination, path.c_str(), H5P_DEFAULT) > 0)
 		{
@@ -731,19 +1175,22 @@ namespace Hdf5IO
 		if (!sourceFilename || !destinationFilename || !datasetNames || datasetCount < 0) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id source(H5Fopen(sourceFilename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
-		ScopedH5Id destination(H5Fopen(destinationFilename, H5F_ACC_RDWR, H5P_DEFAULT), H5Fclose);
-		if (!source.valid() || !destination.valid()) return -1;
+		ScopedAuditedH5File source;
+		ScopedAuditedH5File destination;
+		if (source.open(sourceFilename, H5F_ACC_RDONLY, "read") != 0 ||
+			destination.open(destinationFilename, H5F_ACC_RDWR, "read-write") != 0) return -1;
 		for (int index = 0; index < datasetCount; ++index)
 		{
+			if (!datasetNames[index]) return kInvalidArgument;
 			const std::string path = datasetPath(datasetNames[index]);
-			if (path.empty() || H5Lexists(source, path.c_str(), H5P_DEFAULT) <= 0) continue;
+			if (path.empty()) return kInvalidArgument;
+			if (H5Lexists(source, path.c_str(), H5P_DEFAULT) <= 0) continue;
 			if (H5Lexists(destination, path.c_str(), H5P_DEFAULT) > 0)
 			{
 				if (!replaceExisting) continue;
-				if (H5Ldelete(destination, path.c_str(), H5P_DEFAULT) < 0) continue;
+				if (H5Ldelete(destination, path.c_str(), H5P_DEFAULT) < 0) return -1;
 			}
-			H5Ocopy(source, path.c_str(), destination, path.c_str(), H5P_DEFAULT, H5P_DEFAULT);
+			if (H5Ocopy(source, path.c_str(), destination, path.c_str(), H5P_DEFAULT, H5P_DEFAULT) < 0) return -1;
 		}
 		return 0;
 	}
@@ -753,7 +1200,7 @@ namespace Hdf5IO
 		if (!filename || !datasetName) return -1;
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
-		ScopedH5Id file;
+		ScopedAuditedH5File file;
 		ScopedH5Id dataset;
 		if (openDataset(filename, datasetName, file, dataset) != 0) return -1;
 		ScopedH5Id type(H5Dget_type(dataset), H5Tclose);
@@ -774,7 +1221,8 @@ namespace Hdf5IO
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
 
-		ScopedH5Id file(H5Fopen(filename, H5F_ACC_RDONLY, H5P_DEFAULT), H5Fclose);
-		return file.valid() ? readSubarrayLocked(file, datasetName, offsetRow, offsetColumn, rows, columns, output) : -1;
+		ScopedAuditedH5File file;
+		return file.open(filename, H5F_ACC_RDONLY, "read") == 0 ?
+			readSubarrayLocked(file, datasetName, offsetRow, offsetColumn, rows, columns, output) : -1;
 	}
 }
