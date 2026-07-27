@@ -438,45 +438,17 @@ int Registration::fftshift2(Mat& matrix)
 
 int Registration::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col)
 {
-	//if (Master.GetRows() < 1 ||
-	//	Master.GetCols() < 1 ||
-	//	Master.GetRows() != Slave.GetRows() ||
-	//	Master.GetCols() != Slave.GetCols())
-	//{
-	//	fprintf(stderr, "real_coherent(): input check failed!\n\n");
-	//	return -1;
-	//}
-	//int ret;
-	//Mat img1;
-	//Mat img2;
-	//img1 = Master.GetMod();
-	//img2 = Slave.GetMod();
-	//Mat im1fft;
-	//Mat im2fft;
-	//ret = fft2(img1, im1fft);
-	//if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	//ret = fft2(img2, im2fft);
-	//if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	//Mat spectrum;
-	//mulSpectrums(im1fft, im2fft, spectrum, 0, true);
+	double d_row = 0.0, d_col = 0.0;
+	int ret = real_coherent(Master, Slave, &d_row, &d_col, nullptr);
+	if (ret == 0 && offset_row && offset_col) {
+		*offset_row = static_cast<int>(std::round(d_row));
+		*offset_col = static_cast<int>(std::round(d_col));
+	}
+	return ret;
+}
 
-	//Mat result;
-	//idft(spectrum, result, DFT_REAL_OUTPUT);//需要显示图像时可以用DFT_SCALE
-
-	//ret = fftshift2(result);
-	//if (return_check(ret, "fftshift2(*)", error_head)) return -1;
-	//normalize(result, result, 0, 1, NORM_MINMAX);
-
-	//int r = result.rows / 2;
-	//int c = result.cols / 2;
-	//Point peak_loc;
-	//minMaxLoc(result, NULL, NULL, NULL, &peak_loc);
-
-	//*offset_row = r - peak_loc.y;
-	//*offset_col = c - peak_loc.x;
-	//return 0;
-
-
+int Registration::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, double* offset_row, double* offset_col, double* snr)
+{
 	if (Master.GetRows() < 1 ||
 		Master.GetCols() < 1 ||
 		Master.GetRows() != Slave.GetRows() ||
@@ -504,7 +476,7 @@ int Registration::real_coherent(const ComplexMat& Master, const ComplexMat& Slav
 	if (return_check(ret, "fft2(*, *)", error_head)) return -1;
 	img2.release();
 
-	// 3) 直接复用 fft1 作为互功率谱结果，少开一个 spectrum
+	// 3) 直接复用 fft1 作为互功率谱结果
 	mulSpectrums(fft1, fft2_mat, fft1, 0, true);
 	fft2_mat.release();
 
@@ -513,20 +485,58 @@ int Registration::real_coherent(const ComplexMat& Master, const ComplexMat& Slav
 	idft(fft1, corr, DFT_REAL_OUTPUT);
 	fft1.release();
 
-	// 不再做 normalize，也不做 fftshift2
+	corr.convertTo(corr, CV_64F); // Ensure double precision for safe access
+
 	// 直接在未 shift 的相关图中找峰值
+	double maxVal;
 	Point peak_loc;
-	minMaxLoc(corr, nullptr, nullptr, nullptr, &peak_loc);
+	minMaxLoc(corr, nullptr, &maxVal, nullptr, &peak_loc);
 
 	const int rows = corr.rows;
 	const int cols = corr.cols;
 	const int half_r = rows / 2;
 	const int half_c = cols / 2;
 
+	// --- 亚像素抛物线拟合 (考虑到 FFT correlation 是周期的) ---
+	double sub_dx = 0.0;
+	double sub_dy = 0.0;
+	int x = peak_loc.x;
+	int y = peak_loc.y;
+
+	int left_x = (x - 1 + cols) % cols;
+	int right_x = (x + 1) % cols;
+	int up_y = (y - 1 + rows) % rows;
+	int down_y = (y + 1) % rows;
+
+	double c1_x = corr.at<double>(y, left_x);
+	double c2_x = corr.at<double>(y, x);
+	double c3_x = corr.at<double>(y, right_x);
+	double denom_x = 2.0 * (c1_x - 2.0 * c2_x + c3_x);
+	if (std::abs(denom_x) > 1e-6) sub_dx = (c1_x - c3_x) / denom_x;
+
+	double c1_y = corr.at<double>(up_y, x);
+	double c2_y = corr.at<double>(y, x);
+	double c3_y = corr.at<double>(down_y, x);
+	double denom_y = 2.0 * (c1_y - 2.0 * c2_y + c3_y);
+	if (std::abs(denom_y) > 1e-6) sub_dy = (c1_y - c3_y) / denom_y;
+
+	double y_cont = y + sub_dy;
+	double x_cont = x + sub_dx;
+
 	// 将未 shift 的峰值位置转换为有符号偏移
-	// 对应原来 fftshift 后 center - peak 的效果
-	*offset_row = (peak_loc.y <= half_r) ? (-peak_loc.y) : (rows - peak_loc.y);
-	*offset_col = (peak_loc.x <= half_c) ? (-peak_loc.x) : (cols - peak_loc.x);
+	*offset_row = (y_cont <= half_r) ? (-y_cont) : (rows - y_cont);
+	*offset_col = (x_cont <= half_c) ? (-x_cont) : (cols - x_cont);
+
+	// --- 计算信噪比 SNR ---
+	if (snr != nullptr)
+	{
+		Scalar mean, stddev;
+		meanStdDev(corr, mean, stddev);
+		if (stddev[0] > 1e-6)
+			*snr = (maxVal - mean[0]) / stddev[0];
+		else
+			*snr = 0.0;
+	}
 
 	return 0;
 }
@@ -724,7 +734,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 	Mat Col_weight(1, 4, CV_64F, col_weight);
 
-	
+
 	//权矩阵
 	Mat Weight = Row_weight * Col_weight;
 
@@ -776,11 +786,11 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 
 
 
-	
+
 	Mat image_slave_regis_re = Mat::zeros(nr, nc, CV_64F);
 	Mat image_slave_regis_im = Mat::zeros(nr, nc, CV_64F);
 
-	
+
 	int ret;
 	std::atomic<bool> parallel_flag(true);
 #pragma omp parallel for schedule(guided) \
@@ -788,7 +798,7 @@ int Registration::interp_cubic(ComplexMat& InputMatrix, ComplexMat& OutputMatrix
 	for (int i = 0; i <= nr - 1; i++)
 	{
 		if (!parallel_flag) continue;
-		
+
 		for (int j = 0; j <= nc - 1; j++)
 		{
 			if (!parallel_flag) continue;
@@ -891,7 +901,7 @@ int Registration::registration_subpixel(ComplexMat& Master, ComplexMat& Slave, i
 	for (int i = 0; i < nsubc; i++)
 	{
 		if (!parallel_flag) continue;
-		
+
 		for (int j = 0; j < nsubr; j++)
 		{
 			if (!parallel_flag) continue;
@@ -1095,7 +1105,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 		return -1;
 	}
 	Mat offset_r = Mat::zeros(m, n, CV_64F); Mat offset_c = Mat::zeros(m, n, CV_64F);
-	Mat offset_coord_row = Mat::zeros(m, n, CV_64F); 
+	Mat offset_coord_row = Mat::zeros(m, n, CV_64F);
 	Mat offset_coord_col = Mat::zeros(m, n, CV_64F);
 	Mat sentinel0 = Mat::zeros(m, n, CV_64F);
 	//子块中心坐标
@@ -1173,7 +1183,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 			real_coherent(master_sub_interp, slave_sub_interp, &offset_row, &offset_col);
 			offset_r.at<double>(i, j) = (double)offset_row / (double)interp_times;
 			offset_c.at<double>(i, j) = (double)offset_col / (double)interp_times;
-			
+
 		}
 		int current_completed = ++completed_blocks;
 		if (cb && current_completed % block_step == 0)
@@ -1194,7 +1204,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	/*
 	* 拟合公式为 offser_row/offser_col = a0 + a1*x + a2*y
 	*/
-	
+
 	////剔除outliers
 	Mat sentinel = Mat::zeros(m, n, CV_64F);
 	// removed unused: ix, iy, delta, thresh (commented-out outlier removal below)
@@ -1205,7 +1215,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	//	{
 	//		count = 0;
 	//		//上
-	//		ix = j; 
+	//		ix = j;
 	//		iy = i - 1; iy = iy < 0 ? 0 : iy;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
@@ -1218,7 +1228,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	//		if (fabs(delta) >= thresh) count++;
 	//		//左
 	//		ix = j - 1; ix = ix < 0 ? 0 : ix;
-	//		iy = i; 
+	//		iy = i;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 	//		if (fabs(delta) >= thresh) count++;
@@ -1290,7 +1300,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 	cv::transpose(A, A_t);
 
 	Mat b_r, b_c, coef_r, coef_c, error_r, error_c, b_t, a, a_t;
-	
+
 	A.copyTo(a);
 	cv::transpose(a, a_t);
 	offset_r.copyTo(b_r);
@@ -1378,7 +1388,7 @@ int Registration::coregistration_subpixel(ComplexMat& master, ComplexMat& slave,
 
 			ii += offset_rows;
 			jj += offset_cols;
-			
+
 			double re_val = bilinear_interp2d(slave.re, ii, jj);
 			double im_val = bilinear_interp2d(slave.im, ii, jj);
 
@@ -1626,7 +1636,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	//	{
 	//		count = 0;
 	//		//上
-	//		ix = j; 
+	//		ix = j;
 	//		iy = i - 1; iy = iy < 0 ? 0 : iy;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
@@ -1639,7 +1649,7 @@ int Registration::coregistration_subpixel_sinc(ComplexMat& master, ComplexMat& s
 	//		if (fabs(delta) >= thresh) count++;
 	//		//左
 	//		ix = j - 1; ix = ix < 0 ? 0 : ix;
-	//		iy = i; 
+	//		iy = i;
 	//		delta = fabs(offset_c.at<double>(i, j) - offset_c.at<double>(iy, ix));
 	//		delta += fabs(offset_r.at<double>(i, j) - offset_r.at<double>(iy, ix));
 	//		if (fabs(delta) >= thresh) count++;
@@ -2041,13 +2051,13 @@ int Registration::gcps_sift(int rows, int cols, int move_rows, int move_cols, Ma
 
 int Registration::getDEMRgAzPos(
 	Mat& DEM,
-	Mat& stateVector, 
+	Mat& stateVector,
 	Mat& rangePos,
-	Mat& azimuthPos, 
+	Mat& azimuthPos,
 	double lon_upperleft,
 	double lat_upperleft,
-	int offset_row, 
-	int offset_col, 
+	int offset_row,
+	int offset_col,
 	int sceneHeight,
 	int sceneWidth,
 	double prf,
@@ -2157,7 +2167,7 @@ int Registration::fitSlaveOffset(Mat& slaveOffset, Mat& masterRange,
 	Mat& masterAzimuth, double* a0, double* a1, double* a2)
 {
 	if (slaveOffset.empty() ||
-		slaveOffset.type() != CV_64F || 
+		slaveOffset.type() != CV_64F ||
 		masterRange.type() != CV_64F ||
 		masterAzimuth.type() != CV_64F ||
 		masterRange.rows != slaveOffset.rows ||
@@ -2220,10 +2230,10 @@ int Registration::fitSlaveOffset(Mat& slaveOffset, Mat& masterRange,
 
 int Registration::computeSlaveOffset(
 	Mat& masterRange,
-	Mat& masterAzimuth, 
+	Mat& masterAzimuth,
 	Mat& slaveRange,
 	Mat& slaveAzimuth,
-	Mat& slaveAzimuthOffset, 
+	Mat& slaveAzimuthOffset,
 	Mat& slaveRangeOffset
 )
 {
@@ -2269,10 +2279,10 @@ int Registration::computeSlaveOffset(
 }
 
 int Registration::performBilinearResampling(
-	ComplexMat& slave, 
+	ComplexMat& slave,
 	int dstHeight,
-	int dstWidth, 
-	double a0Rg, double a1Rg, double a2Rg, 
+	int dstWidth,
+	double a0Rg, double a1Rg, double a2Rg,
 	double a0Az, double a1Az, double a2Az,
 	int* offset_row,
 	int* offset_col,
@@ -2303,7 +2313,7 @@ int Registration::performBilinearResampling(
 		slcResampled.re.create(dstHeight, dstWidth, CV_64F);
 		slcResampled.im.create(dstHeight, dstWidth, CV_64F);
 	}
-	
+
 	Mat coef_r(3, 1, CV_64F), coef_c(3, 1, CV_64F);
 	coef_r.at<double>(0, 0) = a0Az;
 	coef_r.at<double>(1, 0) = a1Az;
@@ -2639,11 +2649,31 @@ static int CalculateOffsetAndCoherenceImpl(
 		return -1;
 	}
 
+	// 验证 ABI 兼容性 (第一个元素的 structSize)
+	if (out_results[0].structSize != sizeof(AlignmentResult))
+	{
+		fprintf(stderr, "ABI Mismatch in AlignmentResult: expected %zu, got %u\n", sizeof(AlignmentResult), out_results[0].structSize);
+		return -100;
+	}
+
 	int rows = 0;
 	int cols = 0;
 	if (Hdf5IO::getDatasetDims(master_h5_path, "s_re", &rows, &cols) != 0)
 	{
 		return -2;
+	}
+
+	int s_rows = 0;
+	int s_cols = 0;
+	if (Hdf5IO::getDatasetDims(slave_h5_path, "s_re", &s_rows, &s_cols) != 0 || s_rows != rows || s_cols != cols)
+	{
+		return -2; // Ensure slave dimensions match master
+	}
+
+	// Ensure search_size is not larger than image dimensions
+	if (search_size > rows || search_size > cols)
+	{
+		return -3; // Image too small for search_size
 	}
 
 	for (int i = 0; i < points_count; ++i)
@@ -2712,15 +2742,40 @@ static int CalculateOffsetAndCoherenceImpl(
 		cv::Point maxLoc;
 		cv::minMaxLoc(match_res, nullptr, &maxVal, nullptr, &maxLoc);
 
-		// 结算匹配偏差偏移量 (dy, dx)
-		int dy = maxLoc.y - (search_size - template_size) / 2;
-		int dx = maxLoc.x - (search_size - template_size) / 2;
+		// 结算匹配偏差偏移量 (dy, dx)，并采用抛物线拟合计算亚像素偏移
+		double sub_dx = 0.0;
+		double sub_dy = 0.0;
+		if (maxLoc.x > 0 && maxLoc.x < match_res.cols - 1 && maxLoc.y > 0 && maxLoc.y < match_res.rows - 1) {
+			double c1_x = match_res.at<float>(maxLoc.y, maxLoc.x - 1);
+			double c2_x = match_res.at<float>(maxLoc.y, maxLoc.x);
+			double c3_x = match_res.at<float>(maxLoc.y, maxLoc.x + 1);
+			double denom_x = 2.0 * (c1_x - 2.0 * c2_x + c3_x);
+			if (std::abs(denom_x) > 1e-6) sub_dx = (c1_x - c3_x) / denom_x;
 
+			double c1_y = match_res.at<float>(maxLoc.y - 1, maxLoc.x);
+			double c2_y = match_res.at<float>(maxLoc.y, maxLoc.x);
+			double c3_y = match_res.at<float>(maxLoc.y + 1, maxLoc.x);
+			double denom_y = 2.0 * (c1_y - 2.0 * c2_y + c3_y);
+			if (std::abs(denom_y) > 1e-6) sub_dy = (c1_y - c3_y) / denom_y;
+		}
+
+		double dy = (maxLoc.y - (search_size - template_size) / 2.0) + sub_dy;
+		double dx = (maxLoc.x - (search_size - template_size) / 2.0) + sub_dx;
+
+		double snr = 0.0;
+		cv::Scalar mean_sc, stddev_sc;
+		cv::meanStdDev(match_res, mean_sc, stddev_sc);
+		if (stddev_sc[0] > 1e-6) {
+			snr = (maxVal - mean_sc[0]) / stddev_sc[0];
+		}
+
+		out_results[i].snr = snr;
 		out_results[i].maxCorrelation = maxVal;
 		out_results[i].offsetY = dy;
 		out_results[i].offsetX = dx;
 		out_results[i].imageWidth = template_size;
 		out_results[i].imageHeight = template_size;
+		out_results[i].reserved = 0;
 
 		// 5. 零位移相干性结算 (读取未偏移的同尺寸 Slave 块)
 		cv::Mat S_re_zero, S_im_zero;
@@ -2738,8 +2793,8 @@ static int CalculateOffsetAndCoherenceImpl(
 		out_results[i].coherenceZeroShift = coh_zero_mean;
 
 		// 6. 最佳位移相干性结算 (读取偏移后对齐的 Slave 块)
-		int s_opt_row = m_row + dy;
-		int s_opt_col = m_col + dx;
+		int s_opt_row = m_row + static_cast<int>(std::round(dy));
+		int s_opt_col = m_col + static_cast<int>(std::round(dx));
 		if (s_opt_row < 0) s_opt_row = 0;
 		if (s_opt_col < 0) s_opt_col = 0;
 		if (s_opt_row + template_size > rows) s_opt_row = rows - template_size;
@@ -2760,7 +2815,7 @@ static int CalculateOffsetAndCoherenceImpl(
 		out_results[i].coherenceOptimal = coh_opt_mean;
 
 		char message[512] = {};
-		sprintf_s(message, "Amplitude matching sample %d: row=%d, column=%d, offsetY=%d, offsetX=%d, correlation=%.6f, coherenceZeroShift=%.6f, coherenceOptimal=%.6f.",
+		sprintf_s(message, "Amplitude matching sample %d: row=%d, column=%d, offsetY=%.2f, offsetX=%.2f, correlation=%.6f, coherenceZeroShift=%.6f, coherenceOptimal=%.6f.",
 			i + 1, m_row, m_col, dy, dx, maxVal, coh_zero_mean, coh_opt_mean);
 		emit_registration_diagnostic(diagnosticCallback, diagnosticUserData, "amplitude_matching.sample", message,
 			"Offsets are measured in pixels after template matching.", slave_h5_path);
@@ -2827,6 +2882,12 @@ extern "C" REGISTRATION_API void FreeAlignmentResults(
 	int count
 ) {
 	if (results == nullptr) return;
+
+	if (count > 0 && results[0].structSize != sizeof(AlignmentResult)) {
+		fprintf(stderr, "ABI Mismatch in FreeAlignmentResults: expected %zu, got %u\n", sizeof(AlignmentResult), results[0].structSize);
+		return;
+	}
+
 	for (int i = 0; i < count; ++i)
 	{
 		if (results[i].heatmap_rgb != nullptr)
@@ -2857,6 +2918,13 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 		output_coherence_jpg == nullptr || output_phase_jpg == nullptr || out_result == nullptr)
 	{
 		return -1;
+	}
+
+	// 验证 ABI 兼容性
+	if (out_result->structSize != sizeof(CropEvalResult))
+	{
+		fprintf(stderr, "ABI Mismatch in CropEvalResult: expected %zu, got %u\n", sizeof(CropEvalResult), out_result->structSize);
+		return -100;
 	}
 
 	// 1. 设置阈值默认缺省值
@@ -2890,6 +2958,7 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	{
 		return -4;
 	}
+
 
 	// 3. 精度强制转换为 CV_32F，保障指针操作安全，规避 mismatch
 	if (M_re.type() != CV_32F) M_re.convertTo(M_re, CV_32F);
@@ -2994,6 +3063,89 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	out_result->medianCoherence = coh_median;
 	out_result->maxCoherence = max_coh;
 	out_result->highCoherencePct = high_coh_pct;
+	// --- 新增：中心区域残余偏移量评估 ---
+	double residual_dx = -9999.0;
+	double residual_dy = -9999.0;
+	double snr = 0.0;
+	double coherent_dx = -9999.0;
+	double coherent_dy = -9999.0;
+	double coherent_snr = 0.0;
+	int coherent_status = -1;
+	int win_r = std::min(rows, 200);
+	int win_c = std::min(cols, 200);
+	int tmpl_r = std::max(16, win_r - 32);
+	int tmpl_c = std::max(16, win_c - 32);
+
+	if (tmpl_r < win_r && tmpl_c < win_c) {
+		int sr = (rows - win_r) / 2;
+		int sc = (cols - win_c) / 2;
+
+		cv::Mat Amp_M, Amp_S;
+		cv::magnitude(M_re(cv::Rect(sc, sr, win_c, win_r)), M_im(cv::Rect(sc, sr, win_c, win_r)), Amp_M);
+		cv::magnitude(S_re(cv::Rect(sc, sr, win_c, win_r)), S_im(cv::Rect(sc, sr, win_c, win_r)), Amp_S);
+
+		cv::Mat Amp_M_smooth, Amp_S_smooth;
+		cv::blur(Amp_M, Amp_M_smooth, cv::Size(5, 5));
+		cv::blur(Amp_S, Amp_S_smooth, cv::Size(5, 5));
+
+		int tmpl_offset_r = (win_r - tmpl_r) / 2;
+		int tmpl_offset_c = (win_c - tmpl_c) / 2;
+		cv::Mat Tmpl_M = Amp_M_smooth(cv::Rect(tmpl_offset_c, tmpl_offset_r, tmpl_c, tmpl_r));
+
+		cv::Mat match_res;
+		cv::matchTemplate(Amp_S_smooth, Tmpl_M, match_res, cv::TM_CCOEFF_NORMED);
+
+		double maxVal = 0.0;
+		cv::Point maxLoc;
+		cv::minMaxLoc(match_res, nullptr, &maxVal, nullptr, &maxLoc);
+
+		double sub_dx = 0.0;
+		double sub_dy = 0.0;
+		if (maxLoc.x > 0 && maxLoc.x < match_res.cols - 1 && maxLoc.y > 0 && maxLoc.y < match_res.rows - 1) {
+			double c1_x = match_res.at<float>(maxLoc.y, maxLoc.x - 1);
+			double c2_x = match_res.at<float>(maxLoc.y, maxLoc.x);
+			double c3_x = match_res.at<float>(maxLoc.y, maxLoc.x + 1);
+			double denom_x = 2.0 * (c1_x - 2.0 * c2_x + c3_x);
+			if (std::abs(denom_x) > 1e-6) sub_dx = (c1_x - c3_x) / denom_x;
+
+			double c1_y = match_res.at<float>(maxLoc.y - 1, maxLoc.x);
+			double c2_y = match_res.at<float>(maxLoc.y, maxLoc.x);
+			double c3_y = match_res.at<float>(maxLoc.y + 1, maxLoc.x);
+			double denom_y = 2.0 * (c1_y - 2.0 * c2_y + c3_y);
+			if (std::abs(denom_y) > 1e-6) sub_dy = (c1_y - c3_y) / denom_y;
+		}
+
+		cv::Scalar mean_sc, stddev_sc;
+		cv::meanStdDev(match_res, mean_sc, stddev_sc);
+		if (stddev_sc[0] > 1e-6) {
+			snr = (maxVal - mean_sc[0]) / stddev_sc[0];
+		}
+
+		residual_dy = (maxLoc.y - tmpl_offset_r) + sub_dy;
+		residual_dx = (maxLoc.x - tmpl_offset_c) + sub_dx;
+
+		cv::Mat M_re_center = M_re(cv::Rect(sc, sr, win_c, win_r));
+		cv::Mat M_im_center = M_im(cv::Rect(sc, sr, win_c, win_r));
+		cv::Mat S_re_center = S_re(cv::Rect(sc, sr, win_c, win_r));
+		cv::Mat S_im_center = S_im(cv::Rect(sc, sr, win_c, win_r));
+		ComplexMat master_center(M_re_center, M_im_center);
+		ComplexMat slave_center(S_re_center, S_im_center);
+		Registration coherent_registration;
+		coherent_status = coherent_registration.real_coherent(
+			master_center, slave_center, &coherent_dy, &coherent_dx, &coherent_snr);
+	} else {
+		status = 2; // FAILED: dimensions too small
+	}
+
+
+	const bool use_coherent_result = coherent_status == 0 &&
+		std::isfinite(coherent_dy) && std::isfinite(coherent_dx) && std::isfinite(coherent_snr);
+	const double final_offset_y = use_coherent_result ? coherent_dy : residual_dy;
+	const double final_offset_x = use_coherent_result ? coherent_dx : residual_dx;
+	const double final_snr = use_coherent_result ? coherent_snr : snr;
+	out_result->snr = final_snr;
+	out_result->offsetY = final_offset_y;
+	out_result->offsetX = final_offset_x;
 	out_result->assessmentStatus = status;
 
 	// 8. 图像直接落盘保存 (JPG 质量 95，静默覆盖)
@@ -3002,7 +3154,7 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	phase_mat.convertTo(phase_8u, CV_8U, 255.0 / (2.0 * INSAR_PI), 127.5);
 	cv::Mat phase_color;
 	cv::applyColorMap(phase_8u, phase_color, cv::COLORMAP_JET);
-	
+
 	std::vector<int> compression_params;
 	compression_params.push_back(cv::IMWRITE_JPEG_QUALITY);
 	compression_params.push_back(95);

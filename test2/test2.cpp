@@ -14,6 +14,8 @@
 #include"opencv2\imgproc\imgproc.hpp"
 #include"opencv2\opencv.hpp"
 #include <omp.h>  /*多线程计算库*/
+#include <cstring>
+#include "RegistrationSubpixelRegression.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
 #include"..\include\Unwrap.h"
@@ -1034,6 +1036,11 @@ inline float ReverseFloat(const float inFloat)
 int main(int argc, char* argv[])
 {
 	// removed unused: rangeSpacing2, nearRangeTime2, prf2, start2, end2, a0, a1, a2, b0, b1, b2, sceneHeight2, sceneWidth2, offset_row2, offset_col2 (all references in commented-out code)
+	if (argc == 2 && std::strcmp(argv[1], "--registration-subpixel-regression") == 0)
+	{
+		return RunRegistrationSubpixelRegression();
+	}
+
 	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,
 		nearRangeTime, wavelength, prf,
 		start, end;

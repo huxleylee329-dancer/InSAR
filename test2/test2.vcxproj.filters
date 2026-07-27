@@ -30,5 +30,13 @@
     <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="RegistrationSubpixelRegression.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="RegistrationSubpixelRegression.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

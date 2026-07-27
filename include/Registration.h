@@ -25,29 +25,34 @@ struct Point2D {
 
 // 单个样点的分析计算结果
 struct AlignmentResult {
-	// 1. 定量偏差与相干性指标
+	unsigned int structSize;    // API 版本控制与 ABI 兼容性，调用方需传入 sizeof(AlignmentResult)
+	int imageWidth;             // 图像像素宽度
+	int imageHeight;            // 图像像素高度
+	int reserved;               // 保留字段，凑齐 8 字节对齐
+
+	double snr;                 // 配准峰值信噪比
 	double maxCorrelation;      // 最大相关度 (TM_CCORR_NORMED 峰值)
-	int offsetY;                // 垂直向配准偏差 / 方位向行偏移量 (dy)
-	int offsetX;                // 水平向配准偏差 / 距离向列偏移量 (dx)
+	double offsetY;             // 垂直向配准偏差 / 方位向行偏移量 (dy)
+	double offsetX;             // 水平向配准偏差 / 距离向列偏移量 (dx)
 	double coherenceZeroShift;  // 零位移平均相干系数
 	double coherenceOptimal;    // 最佳位移平均相干系数
 
-	// 2. 图像渲染输出属性（伪彩色图与红青叠合图均与模板块 template_size 尺寸一致，如 200x200）
-	int imageWidth;             // 图像像素宽度
-	int imageHeight;            // 图像像素高度
-
-	// 3. RGB 原始像素数据指针 (大小均为 imageWidth * imageHeight * 3 字节，由 DLL 内部使用 new[] 分配)
 	unsigned char* heatmap_rgb; // 2D 相干热力图 RGB 原始像素数据指针
 	unsigned char* overlay_rgb; // 红-青叠合对比图 RGB 原始像素数据指针
 };
 
 // 裁剪节点配准评估结果指标结构体
 struct CropEvalResult {
+	unsigned int structSize;    // API 版本控制，调用方需传入 sizeof(CropEvalResult)
+	int assessmentStatus;       // 评估状态: 0-成功(PASS), 1-提醒(WARNING), 2-失败(FAILED)
+
+	double snr;                 // 配准峰值信噪比
 	double meanCoherence;       // 裁剪区域的相干系数均值 (值域 0.0 ~ 1.0)
-	double medianCoherence;     // 裁剪区域的相干系数中位数 (通过直方图法 O(N) 快速估算)
+	double medianCoherence;     // 裁剪区域的相干系数中位数
 	double maxCoherence;        // 裁剪区域的最大相干系数值 (值域 0.0 ~ 1.0)
 	double highCoherencePct;    // 相干系数 > 0.5 的像素百分比 (值域 0.0 ~ 1.0)
-	int assessmentStatus;       // 评估状态: 0-成功(PASS), 1-提醒(WARNING), 2-失败(FAILED)
+	double offsetY;             // 垂直向残余偏差 (dy)
+	double offsetX;             // 水平向残余偏差 (dx)
 };
 
 #pragma pack(pop)
@@ -58,7 +63,6 @@ extern "C" REGISTRATION_API int DetectAdaptiveSamplingPoints(
 	Point2D* out_points,
 	int points_count
 );
-
 extern "C" REGISTRATION_API int CalculateOffsetAndCoherence(
 	const char* master_h5_path,
 	const char* slave_h5_path,
@@ -100,9 +104,7 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	CropEvalResult* out_result
 );
 
-
 class REGISTRATION_API Registration
-
 {
 public:
 	Registration();
@@ -114,6 +116,16 @@ public:
 	 参数4 列偏移量（返回值）
 	*/
 	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col);
+
+	/*求取两幅辅图像的实相关函数 (亚像素精度与质量反馈)
+	 参数1 主图像（复）
+	 参数2 辅图像（复）
+	 参数3 行偏移量，亚像素精度（返回值）
+	 参数4 列偏移量，亚像素精度（返回值）
+	 参数5 匹配点信噪比（SNR）（返回值，可选）
+	*/
+	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, double* offset_row, double* offset_col, double* snr = nullptr);
+
 	/*2D FFTSHIFT(原地操作)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT

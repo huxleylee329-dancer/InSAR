@@ -142,7 +142,7 @@ public:
 	*/
 	int set_balance(bool b_balanced);
 	/*打印邻接边序号
-	* 
+	*
 	*/
 	int print_neighbour() const;
 	/*获取邻接边个数
@@ -197,7 +197,7 @@ private:
 	std::vector<long> neigh_edges;
 
 	/*****************PS-InSAR处理变量*******************/
-	
+
 	/*形变速率*/
 	double vel = 0.0;
 	/*高程误差*/
@@ -356,7 +356,7 @@ struct edge_index
 	{
 		return a.quality > b.quality;
 	}
-	
+
 };
 
 /*-------------------------------------------------------*/
@@ -525,7 +525,7 @@ public:
 	*/
 	static int polyVal(Mat& coefficient, double x, double* val);
 	/** @brief 求int型矩阵的众数
-	
+
 	@param input                  输入矩阵（int型）
 	@param out                    输出结果
 	@return 成功返回0，否则返回-1
@@ -546,7 +546,7 @@ public:
 	int generate_phase(const ComplexMat& Master, const ComplexMat& Slave, Mat& phase);
 
 	/** @brief 最大似然相干估算器
-	 
+
 	@param master_image                       主图像（复）
 	@param slave_image                        辅图像（复）
 	@param coherence                          相干系数（返回值）
@@ -554,7 +554,7 @@ public:
 	*/
 	int real_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 最大似然相干估算器（带估计窗口尺寸接口）
-	
+
 	@param master_image                       主图像（复）
 	@param slave_image                        辅图像（复）
 	@param est_wndsize_rg                     估计窗口距离向尺寸（奇数）
@@ -570,7 +570,7 @@ public:
 		NewtonProgressCallback cb = nullptr
 	);
 	/** @brief 频率无关相干估算器
-	
+
 	 @param master_image                        主图像（复）
 	 @param slave_image                         辅图像（复）
 	 @param coherence                           相干系数（返回值）
@@ -578,7 +578,7 @@ public:
 	*/
 	int complex_coherence(ComplexMat& master_image, ComplexMat& slave_image, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 频率无关相干估算器（带估计窗口尺寸接口）
-	
+
 	@param master_image                         主图像
 	@param slave_image                          辅图像
 	@param est_wndsize_rg                       估计窗口距离向尺寸（奇数）
@@ -601,7 +601,7 @@ public:
 	*/
 	int phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb = nullptr);
 	/** @brief 根据干涉相位求相关系数（带估计窗口尺寸接口）
-	
+
 	@param phase                          输入相位
 	@param est_wndsize_rg                 估计窗口距离向尺寸（奇数）
 	@param est_wndsize_az                 估计窗口方位向尺寸（奇数）
@@ -751,7 +751,7 @@ public:
 		Mat& cost
 	);
 	/** @brief 写入DIMACS文件（描述最小费用问题，Delaunay三角网络）
-	
+
 	@param DIMACS_file_problem                         目标DIMACS文件
 	@param triange                                     Delaunay三角形结构体数组
 	@param nodes                                       Delaunay三角网节点数组
@@ -791,7 +791,7 @@ public:
 		int num_triangle
 	);
 	/** @brief 读取DIMACS文件（获取求解器求解结果）
-	
+
 	@param DIMACS_file_solution                         最小费用流问题解文件
 	@param edges                                        Delaunay三角网边结构体数组
 	@param nodes                                        Delaunay三角网节点数组
@@ -822,7 +822,7 @@ public:
 	*/
 	int multilook(ComplexMat& Master, ComplexMat& Slave, Mat& phase, int multilook_times, NewtonProgressCallback cb = nullptr);
 	/** @brief InSAR多视处理（不改变图像尺寸）
-	
+
 	@param master_slc                    主图像
 	@param slave_slc                     辅图像
 	@param multilook_rg                  距离向多视倍数
@@ -839,9 +839,9 @@ public:
 	* @return 成功返回0，否则返回-1
 	*/
 	int Multilook(
-		const ComplexMat& master, 
-		const ComplexMat& slave, 
-		int multilook_rg, 
+		const ComplexMat& master,
+		const ComplexMat& slave,
+		int multilook_rg,
 		int multilook_az,
 		Mat& phase,
 		NewtonProgressCallback cb = nullptr
@@ -875,7 +875,7 @@ public:
 		NewtonProgressCallback cb = nullptr
 	);
 	/** @brief 将相位转换成cos和sin（实部和虚部，支持double和float）
-	
+
 	@param phase                     输入相位
 	@param cos                       实部
 	@param sin                       虚部
@@ -992,7 +992,7 @@ public:
 	*/
 	int read_edges(const char* filename, tri_edge** edges, long* num_edges, int** neighbours, long num_nodes);
 	/** @brief 从.edge文件读取Delaunay三角网的边信息
-	
+
 	@param edge_file               .edge文件
 	@param num_nodes               节点数
 	@param edges                   Delaunay三角网边数组（返回值）
@@ -1024,7 +1024,7 @@ public:
 		int num_nodes
 	);
 	/** @brief 初始化Delaunay三角网节点
-	
+
 	@param node_array                 节点数组（返回值）
 	@param phase                      相位值
 	@param mask                       相位掩膜
@@ -1042,7 +1042,7 @@ public:
 		int num_nodes
 	);
 	/** @brief 初始化Delaunay三角网络边相位差
-	
+
 	@param edges                  Delaunay三角网络边数组（已经使用read_edges函数初始化过的）
 	@param node_array             Delaunay三角网络节点数组（已经使用init_tri_node函数初始化过的）
 	@return 成功返回0，否则返回-1
@@ -1059,7 +1059,7 @@ public:
 	*/
 	int init_edges_quality(Mat& quality, tri_edge* edges, int num_edges, vector<tri_node>& nodes);
 	/** @brief 初始化Delaunay三角网边的相位质量指数
-	
+
 	@param quality_index                  相位质量图指数（与相位质量相反）
 	@param edges                          Delaunay三角网边结构体数组
 	@param nodes                          Delaunay三角网节点数组
@@ -1089,7 +1089,7 @@ public:
 		int num_edgs
 	);
 	/** @brief 从.ele文件和.neigh文件读取Delaunay三角网的三角形信息
-	
+
 	@param ele_file                        .ele文件
 	@param neigh_file                      .neigh文件
 	@param triangle                        三角形结构体数组（返回值）
@@ -1179,9 +1179,9 @@ public:
 		int cols
 	);
 	/** @brief 时序SAR图像联合配准(所有slc同时载入内存)
-	
+
 	@param SAR_images            时序SAR图像（inplace，原地操作）
-	@param offset                配准后左上角偏移量(尺寸：n_images × 2) 
+	@param offset                配准后左上角偏移量(尺寸：n_images × 2)
 	@param Master_index          主图像序号(序号从1开始)
 	@param coh_method            采用实相关还是复相关（0代表实相关， 1代表复相关）
 	@param interp_times          插值倍数（2的n次幂）
@@ -1196,7 +1196,7 @@ public:
 		int blocksize
 	);
 	/** @brief 时序SAR图像联合配准(slc串行载入内存，以节省内存)
-	
+
 	@param SAR_images            时序SAR图像文件
 	@param SAR_images_out        配准结果文件
 	@param offset                配准后左上角偏移量(尺寸：n_images × 2)
@@ -1213,7 +1213,7 @@ public:
 		int blocksize
 	);
 	/** @brief 时序SAR图像联合配准（串行、分块配准，支持16位整型和64位浮点型输入）
-	* 
+	*
 	* @param SAR_images                     时序SAR图像文件
 	* @param SAR_images_out                 配准结果文件
 	* @param Master_index                   主图像序号（从1开始）
@@ -1303,7 +1303,7 @@ public:
 		int* offset_col = NULL
 	);
 	/** @brief 从h5（SLC）文件中裁剪出AOI区域
-	
+
 	@param h5_file h5文件
 	@param lon_center AOI中心经度
 	@param lat_center AOI中心纬度
@@ -1347,7 +1347,7 @@ public:
 		int* offset_col = NULL
 	);
 	/** @brief 坐标转换工具函数
-	
+
 	@param coefficient       转换系数矩阵
 	@param coord_in_1        原坐标矩阵1(1和2的顺序很重要，经度/行坐标在前)
 	@param coord_in_2        原坐标矩阵2
@@ -1392,14 +1392,30 @@ public:
 		double* sigma_B_effect = NULL,
 		double* sigma_B_parallel = NULL
 	);
-	/** @brief 基线估计
+	int baseline_estimation(
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		const Mat& lon_coef,
+		const Mat& lat_coef,
+		double offset_row,
+		double offset_col,
+		int scene_height,
+		int scene_width,
+		double interp_interval1,
+		double interp_interval2,
+		double* B_effect,
+		double* B_parallel,
+		double* sigma_B_effect = NULL,
+		double* sigma_B_parallel = NULL
+	);
+	/** @brief 基线估计（中心经纬度版）
 
 	@param stateVec1               主星轨道（未插值）
 	@param stateVec2               辅星轨道（未插值）
-	@param lon_center              主图像场景中心坐标（经度）
-	@param lat_center              主图像场景中心坐标（维度）
-	@param offset_row              主图像左上角在原始图像中的行偏移量
-	@param offset_col              主图像左上角在原始图像中的列偏移量
+	@param lon_center              主图像目标场景中心地理坐标（经度，须为已结合列偏移折算后的真实中心经度）
+	@param lat_center              主图像目标场景中心地理坐标（纬度，须为已结合列偏移折算后的真实中心纬度）
+	@param offset_row              主图像方位向行偏移量（用于轨道零多普勒时间轴连续亚像素插值）
+	@param offset_col              主图像距离向列偏移量（保留形参以维持接口一致性；中心地理坐标须已包含列偏移）
 	@param scene_height            场景高度(像素行数)
 	@param scene_width             场景宽度(像素列数)
 	@param interp_interval1        主星轨道插值时间间隔（1/prf）
@@ -1421,15 +1437,29 @@ public:
 		double* B_effect,
 		double* B_parallel
 	);
-	/** @brief 基线估计
+	int baseline_estimation(
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		double lon_center,
+		double lat_center,
+		double offset_row,
+		double offset_col,
+		int scene_height,
+		int scene_width,
+		double interp_interval1,
+		double interp_interval2,
+		double* B_effect,
+		double* B_parallel
+	);
+	/** @brief 基线估计（DEM中心坐标版）
 
 	@param stateVec1               主星轨道（未插值）
 	@param stateVec2               辅星轨道（未插值）
-	@param lon_center              主图像场景中心坐标（经度）
-	@param lat_center              主图像场景中心坐标（维度）
+	@param lon_center              主图像目标场景中心地理坐标（经度，须为已结合列偏移折算后的真实中心经度）
+	@param lat_center              主图像目标场景中心地理坐标（纬度，须为已结合列偏移折算后的真实中心纬度）
 	@param dem_center              主图像场景中心坐标（高度）
-	@param offset_row              主图像左上角在原始图像中的行偏移量
-	@param offset_col              主图像左上角在原始图像中的列偏移量
+	@param offset_row              主图像方位向行偏移量（用于轨道零多普勒时间轴连续亚像素插值）
+	@param offset_col              主图像距离向列偏移量（保留形参以维持接口一致性；中心地理坐标须已包含列偏移）
 	@param scene_height            场景高度(像素行数)
 	@param scene_width             场景宽度(像素列数)
 	@param interp_interval1        主星轨道插值时间间隔（1/prf）
@@ -1445,6 +1475,21 @@ public:
 		double dem_center,
 		int offset_row,
 		int offset_col,
+		int scene_height,
+		int scene_width,
+		double interp_interval1,
+		double interp_interval2,
+		double* B_effect,
+		double* B_parallel
+	);
+	int baseline_estimation(
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		double lon_center,
+		double lat_center,
+		double dem_center,
+		double offset_row,
+		double offset_col,
 		int scene_height,
 		int scene_width,
 		double interp_interval1,
@@ -1477,14 +1522,14 @@ public:
 	int SKP_decomposition(
 		ComplexMat& inputMat,
 		int nr1,
-		int nc1, 
+		int nc1,
 		int nr2,
 		int nc2,
 		vector<ComplexMat>& outputMat1,
 		vector<ComplexMat>& outputMat2
 	);
 	/** @brief 统计同质检验
-	
+
 	@param pixel1            待检验像元1幅度序列(size: n_images×1)
 	@param pixel2            待检验像元2幅度序列(size: n_images×1)
 	@param homo_flag         是否为同质像元(返回0则为同质像元，-1则为非同质像元)
@@ -1519,11 +1564,11 @@ public:
 		const char* method = "KS"
 	);
 	/** @brief Hermitian矩阵特征值分解
-	
+
 	@param input               输入复矩阵（n×n, double型）
 	@param eigenvalue          特征值（n×1实矩阵,从大到小排列）
 	@param eigenvector         特征向量（n×n复矩阵， 列向量为特征向量）
-	@return                    成功返回0，否则返回-1              
+	@return                    成功返回0，否则返回-1
 	*/
 	int HermitianEVD(
 		const ComplexMat& input,
@@ -1531,7 +1576,7 @@ public:
 		ComplexMat& eigenvector
 	);
 	/** @brief 时序SAR图像复相关矩阵估计
-	
+
 	@param slc_series               slc数据堆栈
 	@param coherence_matrix         相关矩阵（复数, 返回值）
 	@param est_window_width         估计窗口宽度（奇数）
@@ -1540,7 +1585,7 @@ public:
 	@param ref_col                  （若进行统计同质检验）参考点列坐标，不进行同质检验则不需要此参数
 	@param b_homogeneous_test       是否进行统计同质检验（同质检验参考像素默认为中间点像素）
 	@param b_normalize              估计相关矩阵时slc序列是否归一化处理
-	@return                         成功返回0，否则返回-1 
+	@return                         成功返回0，否则返回-1
 	*/
 	int coherence_matrix_estimation(
 		const vector<ComplexMat>& slc_series,
@@ -1553,7 +1598,7 @@ public:
 		bool b_normalize = true
 	);
 	/** @brief 多基线时间序列相位估计（分块读取、计算、储存）
-	
+
 	@param coregis_slc_files              配准后SAR图像数据堆栈（文件）
 	@param phase_files                    时间序列干涉相位（文件，与coregis_slc_files数量相同，主图像相位为0）
 	@param coherence_files                各辅图像与主图像之间的相关系数文件（是否估计相关系数取决于输入参数b_coh_est）
@@ -1595,7 +1640,7 @@ public:
 		Mat& spatial
 	);
 	/** @brief 区域生长法解缠（delaunay三角网）
-	
+
 	@param nodes                       Delaunay三角网络节点数组
 	@param edges                       Delaunay三角网络边结构体数组
 	@param start_edge                  积分起始边序号（从1开始）
@@ -2199,7 +2244,7 @@ public:
 	// 根据经纬度获取大地水准面高差
 	static double getGeoidHeight(
 		const std::string& geoidFilePath,
-		double lon, 
+		double lon,
 		double lat
 	);
 private:

@@ -156,7 +156,11 @@
     <ClCompile Include="..\FormatConversion\tinyxml.cpp" />
     <ClCompile Include="..\FormatConversion\tinyxmlerror.cpp" />
     <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp" />
+    <ClCompile Include="RegistrationSubpixelRegression.cpp" />
     <ClCompile Include="test2.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="RegistrationSubpixelRegression.h" />
   </ItemGroup>
     <ItemGroup>
     <ProjectReference Include="..\Utils\Utils.vcxproj">
