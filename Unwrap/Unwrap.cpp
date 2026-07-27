@@ -2920,7 +2920,7 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase, UnwrapPr
 	int x = Min.x;
 	int y = Min.y;
 	int mark = 0;
-	tmp.ptr<double>(y)[x] = tmp.ptr<double>(y)[x];
+	tmp.ptr<double>(y)[x] = wrapped_phase.ptr<double>(y)[x];
 	count++;
 	flag.ptr<double>(y)[x] = 0;
 	for (int d = 0; d < 4; ++d)

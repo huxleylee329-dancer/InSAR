@@ -1,6 +1,6 @@
-#include"pch.h"                                                                              
-#include <direct.h>     // ��� _mkdir �Ҳ�����ʶ������                                      
-#include <mutex>        // ��� std::once_flag/call_once ����                                
+#include"pch.h"
+#include <direct.h>     // ��� _mkdir �Ҳ�����ʶ������
+#include <mutex>        // ��� std::once_flag/call_once ����
 #include <io.h>         // ��� _findfirst ����
 #include <map>
 #include <memory>
@@ -12,17 +12,18 @@
 #include <fstream>
 #include <iterator>
 #include <sstream>
+#include <iomanip>
 #include <vector>
-#include"gdal_priv.h"   // ��� GDALDataset �� GDAL C++ API ��ʶ��δ��������                 
+#include"gdal_priv.h"   // ��� GDALDataset �� GDAL C++ API ��ʶ��δ��������
 #include"..\include\FormatConversion.h"
 #include"..\include\Hdf5IO.h"
 #include"..\include\Registration.h"
 #include"..\include\Utils.h"
-#include"..\include\tinyxml.h"                                                               
-//#include<atlconv.h>                                                                        
-//#include<tchar.h>                                                                          
-#include<urlmon.h>                                                                           
-#pragma comment(lib,"URlmon")   
+#include"..\include\tinyxml.h"
+//#include<atlconv.h>
+//#include<tchar.h>
+#include<urlmon.h>
+#pragma comment(lib,"URlmon")
 #include <windows.h>
 
 
@@ -505,15 +506,15 @@ static std::string gps2utc(double gps_time) {
 #endif
 
 	char buf[64];
-	sprintf(buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06lld", 
-			TM.tm_year + 1900, TM.tm_mon + 1, TM.tm_mday, 
+	sprintf(buf, "%04d-%02d-%02dT%02d:%02d:%02d.%06lld",
+			TM.tm_year + 1900, TM.tm_mon + 1, TM.tm_mday,
 			TM.tm_hour, TM.tm_min, TM.tm_sec, subsec_us);
 	return std::string(buf);
 }
 
 static std::once_flag g_gdal_init_flag;
-static void InitializeGDALOnce()                                                             
-{                                                                                            
+static void InitializeGDALOnce()
+{
 	std::call_once(g_gdal_init_flag, [](){
 		GDALAllRegister();
 	});
@@ -1407,8 +1408,8 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
 	{
 		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = double(rows) * 0.5; 
-		temp.at<double>(0, 1) = double(rows) + 1e-10; 
+		temp.at<double>(0, 0) = double(rows) * 0.5;
+		temp.at<double>(0, 1) = double(rows) + 1e-10;
 		temp.at<double>(0, 2) = mean_lon;
 		temp.at<double>(0, 3) = max_lon - min_lon + 1e-10;
 		temp.at<double>(0, 4) = mean_lat;
@@ -1540,7 +1541,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	*/
 	string file_type, sensor, polarization, imaging_mode,
 		lookside, orbit_dir, acquisition_start_time, acquisition_stop_time, process_state;
-	
+
 	//��������
 	ret = Hdf5IO::createString(writeSession.get(), "file_type", "SLC");
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
@@ -1589,7 +1590,7 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	tmp.at<double>(0, 0) = -1;
 	ret = Hdf5IO::writeArray(writeSession.get(), "orbit_altitude", tmp);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
-	
+
 	TiXmlElement* pnode, * pchild;
 
 	//������ʼʱ��
@@ -1896,7 +1897,7 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 }
 
 int FormatConversion::read_slc_from_Sentinel(
-	const char* filename, 
+	const char* filename,
 	const char* xml_filename,
 	ComplexMat& slc,
 	Mat& gcps_line,
@@ -2207,7 +2208,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
 	row = (row + 1 - double(rows) * 0.5) / (double(rows) + 1e-10);//sentinel�������Ϊ0��+1ͳһΪ1.
 	col = (col + 1 - double(cols) * 0.5) / (double(cols) + 1e-10);
-	
+
 	// ����5�׷����ɾ���
 	Mat A, temp, coefficient;
 	double rms;
@@ -2362,8 +2363,8 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
 	{
 		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = double(rows) * 0.5; 
-		temp.at<double>(0, 1) = double(rows) + 1e-10; 
+		temp.at<double>(0, 0) = double(rows) * 0.5;
+		temp.at<double>(0, 1) = double(rows) + 1e-10;
 		temp.at<double>(0, 2) = mean_lon;
 		temp.at<double>(0, 3) = max_lon - min_lon + 1e-10;
 		temp.at<double>(0, 4) = mean_lat;
@@ -2476,7 +2477,7 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	ret = write_array_to_h5(dst_h5_filename, "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 
-	
+
 
 	/*
 	* д�����������Ƶ������
@@ -2770,7 +2771,7 @@ int FormatConversion::get_a_burst(
 	XMLFile& xmldoc,
 	FILE*& fp,
 	int linesPerBurst,
-	int samplesPerBurst, 
+	int samplesPerBurst,
 	ComplexMat& burst
 )
 {
@@ -2949,7 +2950,7 @@ int FormatConversion::get_burst_sentinel(
 		pchild = pchild->NextSiblingElement();
 		count++;
 	}
-	
+
 
 	size_t bytesoffset;
 	double azimuthAnxTime, azimuthAnxTime2;
@@ -3119,7 +3120,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	nr = last_burst.GetRows(); nc = last_burst.GetCols(); nr2 = this_burst.GetRows(); nc2 = this_burst.GetCols();
 	match_wnd_cols = 1000;
 	match_wnd_rows = (nr < nr2 ? nr : nr2) / 3;
-	col_start = nc / 2 - match_wnd_cols; 
+	col_start = nc / 2 - match_wnd_cols;
 	col_start = col_start < 0 ? 0 : col_start;
 	col_end = col_start + match_wnd_cols;
 	col_end = col_end > nc ? nc : col_end;
@@ -3129,7 +3130,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	match_wnd2 = this_burst(cv::Range(0, match_wnd_rows), cv::Range(0, nc));
 	match_wnd.convertTo(match_wnd, CV_64F);
 	match_wnd2.convertTo(match_wnd2, CV_64F);
-	
+
 
 	//��ȡƫ����
 	//ComplexMat t1, t2;
@@ -3142,7 +3143,7 @@ int FormatConversion::deburst_overlapSize(ComplexMat& last_burst, ComplexMat& th
 	if (return_check(ret, "real_coherent()", error_head)) return -1;
 
 	//ˮƽ����this_burst
-	
+
 	//if (offset_col > 0)
 	//{
 	//	ComplexMat tmp_burst, tmp_burst2;
@@ -3189,7 +3190,7 @@ int FormatConversion::burst_stitch(
 	}
 
 	//stitch
-	
+
 	int nr, nc, nr2, nc2;
 	nr = dst_burst.GetRows(); nc = dst_burst.GetCols(); nr2 = src_burst.GetRows(); nc2 = nc;
 	Mat src_lowerpart_real, src_lowerpart_imag;
@@ -3348,11 +3349,11 @@ int FormatConversion::read_stateVec_from_ALOS(const char* LED_file, Mat& stateVe
 		if (fp) fclose(fp);
 		return -1;
 	}
-	
+
 	stateVec.create(num_stateVec, 7, CV_64F);
 
 	//����GPSʱ��
-	
+
 	char str[10240];
 	memset(str, 0, 10240);
 	string year, month, day, hour, minute, second;
@@ -3879,7 +3880,7 @@ int FormatConversion::ALOS2h5(const char* IMG_file, const char* LED_file, const 
 		{
 			lookside = "RIGHT";
 		}
-		
+
 		//�������
 		if (filename[38] == 'D')
 		{
@@ -4178,7 +4179,7 @@ int XMLFile::XMLFile_add_origin_14(const char* datanode_node, const char* node_n
 		DataNode->SetAttribute("index", "1");
 		DataNode->SetAttribute("data_count", "1");
 		DataNode->SetAttribute("data_processing", "import");
-		
+
 		DataNode->SetAttribute("rank", rank);
 		TiXmlElement* Data = new TiXmlElement("Data");
 		DataNode->LinkEndChild(Data);
@@ -4270,9 +4271,9 @@ int XMLFile::XMLFile_add_cut(
 	const char* node_name,
 	const char* node_path,
 	int Row_offset,
-	int Col_offset, 
-	double lon, 
-	double lat, 
+	int Col_offset,
+	double lon,
+	double lat,
 	double width,
 	double height,
 	const char* data_rank
@@ -4311,8 +4312,8 @@ int XMLFile::XMLFile_add_cut(
 		DataNode->SetAttribute("data_count", "1");
 		DataNode->SetAttribute("data_processing", "cut");
 		DataNode->SetAttribute("rank", data_rank);
-		
-		
+
+
 		TiXmlElement* Data = new TiXmlElement("Data");
 		DataNode->LinkEndChild(Data);
 		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
@@ -4433,11 +4434,11 @@ int XMLFile::XMLFile_add_cut_14(
 	const char* datanode_name,
 	int master_index,
 	const char* node_name,
-	const char* node_path, 
-	int Row_offset, 
+	const char* node_path,
+	int Row_offset,
 	int Col_offset,
 	double lon,
-	double lat, 
+	double lat,
 	double width,
 	double height,
 	const char* data_rank
@@ -4533,7 +4534,7 @@ int XMLFile::XMLFile_add_cut_14(
 			master_image->LinkEndChild(new TiXmlText(tmp2));
 			Data_Processing_Parameters->LinkEndChild(master_image);
 		}
-		
+
 
 		if (!root)
 		{
@@ -4628,7 +4629,7 @@ int XMLFile::XMLFile_add_regis(const char* datanode_name, const char* node_name,
 		DataNode->SetAttribute("data_count", "1");
 		DataNode->SetAttribute("data_processing", "coregistration");
 		DataNode->SetAttribute("rank", "complex-2.0");
-		
+
 		TiXmlElement* Data = new TiXmlElement("Data");
 		DataNode->LinkEndChild(Data);
 		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
@@ -4739,18 +4740,173 @@ int XMLFile::XMLFile_add_regis(const char* datanode_name, const char* node_name,
 	return 0;
 }
 
+
+int XMLFile::XMLFile_add_regis(const char* datanode_name, const char* node_name, const char* node_path, double Row_offset, double Col_offset, int master_index, int interp_times, int block_size, const char* temporal_baseline, const char* B_effect, const char* B_parallel)
+{
+	if (datanode_name == NULL ||
+		node_name == NULL ||
+		node_path == NULL ||
+		B_effect == NULL ||
+		B_parallel == NULL
+		)
+	{
+		fprintf(stderr, "XMLFile_add_regis(): input check failed!\n");
+		return -1;
+	}
+	TiXmlElement* DataNode = NULL;
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	string tmp;
+	if (!DataNode)
+	{
+		DataNode = new TiXmlElement("DataNode");
+		DataNode->SetAttribute("name", datanode_name);
+		int index = 1;
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		for (; root != NULL; root = root->NextSiblingElement(), index++)
+		{
+			if (strcmp(safe_rank(root), "complex-0.0") == 0 ||
+				strcmp(safe_rank(root), "complex-1.0") == 0 ||
+				strcmp(safe_rank(root), "complex-2.0") == 0)
+				continue;
+			else
+				break;
+		}
+		string index_str = int2str(index);
+		DataNode->SetAttribute("index", index_str.c_str());
+		DataNode->SetAttribute("data_count", "1");
+		DataNode->SetAttribute("data_processing", "coregistration");
+		DataNode->SetAttribute("rank", "complex-2.0");
+
+		TiXmlElement* Data = new TiXmlElement("Data");
+		DataNode->LinkEndChild(Data);
+		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
+		Data_Name->LinkEndChild(new TiXmlText(node_name));
+		Data->LinkEndChild(Data_Name);
+		TiXmlElement* Data_Rank = new TiXmlElement("Data_Rank");
+		Data_Rank->LinkEndChild(new TiXmlText("complex-2.0"));
+		Data->LinkEndChild(Data_Rank);
+		TiXmlElement* Data_Index = new TiXmlElement("Data_Index");
+		Data_Index->LinkEndChild(new TiXmlText("1"));
+		Data->LinkEndChild(Data_Index);
+		TiXmlElement* Data_Path = new TiXmlElement("Data_Path");
+		Data_Path->LinkEndChild(new TiXmlText(node_path));
+		Data->LinkEndChild(Data_Path);
+
+		TiXmlElement* Row_Offset = new TiXmlElement("Row_Offset");
+		tmp = double2str(Row_offset);
+		Row_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Row_Offset);
+		TiXmlElement* Col_Offset = new TiXmlElement("Col_Offset");
+		tmp = double2str(Col_offset);
+		Col_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Col_Offset);
+
+		TiXmlElement* Data_Processing_Parameters = new TiXmlElement("Data_Processing_Parameters");
+		DataNode->LinkEndChild(Data_Processing_Parameters);
+		TiXmlElement* Master_index = new TiXmlElement("master_image");
+		tmp = int2str(master_index);
+		Master_index->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Master_index);
+		TiXmlElement* Blocksize = new TiXmlElement("blocksize");
+		tmp = int2str(block_size);
+		Blocksize->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Blocksize);
+		TiXmlElement* Interp_times = new TiXmlElement("interp_times");
+		tmp = int2str(interp_times);
+		Interp_times->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Interp_times);
+		TiXmlElement* Temporal_baseline = new TiXmlElement("temporal_baseline_distribution");
+		Temporal_baseline->SetAttribute("unit", "day");
+		Temporal_baseline->LinkEndChild(new TiXmlText(temporal_baseline));
+		Data_Processing_Parameters->LinkEndChild(Temporal_baseline);
+		TiXmlElement* V_baseline = new TiXmlElement("effect_baseline_distribution");
+		V_baseline->SetAttribute("unit", "m");
+		V_baseline->LinkEndChild(new TiXmlText(B_effect));
+		Data_Processing_Parameters->LinkEndChild(V_baseline);
+		TiXmlElement* H_baseline = new TiXmlElement("parallel_baseline_distribution");
+		H_baseline->SetAttribute("unit", "m");
+		H_baseline->LinkEndChild(new TiXmlText(B_parallel));
+		Data_Processing_Parameters->LinkEndChild(H_baseline);
+		if (!root)
+		{
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
+		}
+		else
+		{
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			while (root)
+			{
+				index_str = int2str(++index);
+				root->SetAttribute("index", index_str.c_str());
+				root = root->NextSiblingElement();
+			}
+
+		}
+	}
+	else
+	{
+		string str = DataNode->Attribute("data_count");
+		int index = str2int(str) + 1;
+		tmp = int2str(index);
+		DataNode->SetAttribute("data_count", tmp.c_str());
+		TiXmlElement* LastNode = DataNode->LastChild()->ToElement();
+
+		TiXmlElement* Data = new TiXmlElement("Data");
+
+		int data_count = 0;
+		ret = get_children_count(DataNode, &data_count);
+		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
+		Data_Name->LinkEndChild(new TiXmlText(node_name));
+		Data->LinkEndChild(Data_Name);
+		TiXmlElement* Data_Rank = new TiXmlElement("Data_Rank");
+		Data_Rank->LinkEndChild(new TiXmlText("complex-2.0"));
+		Data->LinkEndChild(Data_Rank);
+		TiXmlElement* Data_Index = new TiXmlElement("Data_Index");
+		Data_Index->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Data_Index);
+		TiXmlElement* Data_Path = new TiXmlElement("Data_Path");
+		Data_Path->LinkEndChild(new TiXmlText(node_path));
+		Data->LinkEndChild(Data_Path);
+
+		TiXmlElement* Row_Offset = new TiXmlElement("Row_Offset");
+		tmp = double2str(Row_offset);
+		Row_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Row_Offset);
+		TiXmlElement* Col_Offset = new TiXmlElement("Col_Offset");
+		tmp = double2str(Col_offset);
+		Col_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Col_Offset);
+		DataNode->InsertBeforeChild(LastNode, *Data);
+	}
+	return 0;
+}
+
+int XMLFile::XMLFile_add_regis(const char* datanode_name, const std::vector<std::string>& node_names, const std::vector<std::string>& node_paths, const std::vector<double>& row_offsets, const std::vector<double>& col_offsets, int master_index, int interp_times, int block_size, const std::vector<std::string>& temporal_baselines, const std::vector<std::string>& B_effects, const std::vector<std::string>& B_parallels)
+{
+	size_t count = node_names.size();
+	if (node_paths.size() != count || row_offsets.size() != count || col_offsets.size() != count) return -1;
+	for (size_t i = 0; i < count; ++i) {
+		const char* tb = (i < temporal_baselines.size()) ? temporal_baselines[i].c_str() : "";
+		const char* be = (i < B_effects.size()) ? B_effects[i].c_str() : "";
+		const char* bp = (i < B_parallels.size()) ? B_parallels[i].c_str() : "";
+		int ret = XMLFile_add_regis(datanode_name, node_names[i].c_str(), node_paths[i].c_str(), row_offsets[i], col_offsets[i], master_index, interp_times, block_size, tb, be, bp);
+		if (ret != 0) return ret;
+	}
+	return 0;
+}
+
 int XMLFile::XMLFile_add_regis14(
 	int mode,
-	const char* datanode_name, 
-	const char* node_name, 
-	const char* node_path, 
-	int Row_offset, 
-	int Col_offset, 
-	int master_index, 
-	int interp_times, 
-	int block_size, 
-	const char* temporal_baseline, 
-	const char* B_effect, 
+	const char* datanode_name,
+	const char* node_name,
+	const char* node_path,
+	int Row_offset,
+	int Col_offset,
+	int master_index,
+	int interp_times,
+	int block_size,
+	const char* temporal_baseline,
+	const char* B_effect,
 	const char* B_parallel
 )
 {
@@ -4779,7 +4935,7 @@ int XMLFile::XMLFile_add_regis14(
 			if (ret == 2 && level <= 2.0) continue;
 			else break;
 		}
-		
+
 		sprintf(rank, "%d-complex-2.0", mode2);
 		string index_str = int2str(index);
 		DataNode->SetAttribute("index", index_str.c_str());
@@ -4898,6 +5054,164 @@ int XMLFile::XMLFile_add_regis14(
 	return 0;
 }
 
+
+int XMLFile::XMLFile_add_regis14(int mode, const char* datanode_name, const char* node_name, const char* node_path, double Row_offset, double Col_offset, int master_index, int interp_times, int block_size, const char* temporal_baseline, const char* B_effect, const char* B_parallel)
+{
+	if (datanode_name == NULL ||
+		node_name == NULL ||
+		node_path == NULL ||
+		B_effect == NULL ||
+		B_parallel == NULL
+		)
+	{
+		fprintf(stderr, "XMLFile_add_regis14(): input check failed!\n");
+		return -1;
+	}
+	TiXmlElement* DataNode = NULL;
+	int ret = find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode);
+	string tmp;
+	char rank[64] = {};
+	if (!DataNode)
+	{
+		DataNode = new TiXmlElement("DataNode");
+		DataNode->SetAttribute("name", datanode_name);
+		int index = 1;
+		int mode2 = mode;
+		double level = 0.0;
+		TiXmlElement* root = impl_->doc.RootElement()->FirstChildElement()->NextSiblingElement();
+		for (; root != NULL; root = root->NextSiblingElement(), index++)
+		{
+			ret = sscanf(safe_rank(root), "%d-complex-%lf", &mode2, &level);
+			if (ret == 2 && level <= 2.0) continue;
+			else break;
+		}
+
+		sprintf(rank, "%d-complex-2.0", mode2);
+		string index_str = int2str(index);
+		DataNode->SetAttribute("index", index_str.c_str());
+		DataNode->SetAttribute("data_count", "1");
+		DataNode->SetAttribute("data_processing", "coregistration");
+		DataNode->SetAttribute("rank", rank);
+
+		TiXmlElement* Data = new TiXmlElement("Data");
+		DataNode->LinkEndChild(Data);
+		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
+		Data_Name->LinkEndChild(new TiXmlText(node_name));
+		Data->LinkEndChild(Data_Name);
+		TiXmlElement* Data_Rank = new TiXmlElement("Data_Rank");
+		Data_Rank->LinkEndChild(new TiXmlText(rank));
+		Data->LinkEndChild(Data_Rank);
+		TiXmlElement* Data_Index = new TiXmlElement("Data_Index");
+		Data_Index->LinkEndChild(new TiXmlText("1"));
+		Data->LinkEndChild(Data_Index);
+		TiXmlElement* Data_Path = new TiXmlElement("Data_Path");
+		Data_Path->LinkEndChild(new TiXmlText(node_path));
+		Data->LinkEndChild(Data_Path);
+
+		TiXmlElement* Row_Offset = new TiXmlElement("Row_Offset");
+		tmp = double2str(Row_offset);
+		Row_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Row_Offset);
+		TiXmlElement* Col_Offset = new TiXmlElement("Col_Offset");
+		tmp = double2str(Col_offset);
+		Col_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Col_Offset);
+
+		TiXmlElement* Data_Processing_Parameters = new TiXmlElement("Data_Processing_Parameters");
+		DataNode->LinkEndChild(Data_Processing_Parameters);
+		TiXmlElement* Master_index = new TiXmlElement("master_image");
+		tmp = int2str(master_index);
+		Master_index->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Master_index);
+		TiXmlElement* Blocksize = new TiXmlElement("blocksize");
+		tmp = int2str(block_size);
+		Blocksize->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Blocksize);
+		TiXmlElement* Interp_times = new TiXmlElement("interp_times");
+		tmp = int2str(interp_times);
+		Interp_times->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data_Processing_Parameters->LinkEndChild(Interp_times);
+		TiXmlElement* Temporal_baseline = new TiXmlElement("temporal_baseline_distribution");
+		Temporal_baseline->SetAttribute("unit", "day");
+		Temporal_baseline->LinkEndChild(new TiXmlText(temporal_baseline));
+		Data_Processing_Parameters->LinkEndChild(Temporal_baseline);
+		TiXmlElement* V_baseline = new TiXmlElement("effect_baseline_distribution");
+		V_baseline->SetAttribute("unit", "m");
+		V_baseline->LinkEndChild(new TiXmlText(B_effect));
+		Data_Processing_Parameters->LinkEndChild(V_baseline);
+		TiXmlElement* H_baseline = new TiXmlElement("parallel_baseline_distribution");
+		H_baseline->SetAttribute("unit", "m");
+		H_baseline->LinkEndChild(new TiXmlText(B_parallel));
+		Data_Processing_Parameters->LinkEndChild(H_baseline);
+		if (!root)
+		{
+			impl_->doc.RootElement()->LinkEndChild(DataNode);
+		}
+		else
+		{
+			impl_->doc.RootElement()->InsertBeforeChild(root, *DataNode);
+			while (root)
+			{
+				index_str = int2str(++index);
+				root->SetAttribute("index", index_str.c_str());
+				root = root->NextSiblingElement();
+			}
+
+		}
+	}
+	else
+	{
+		string str = DataNode->Attribute("data_count");
+		int index = str2int(str) + 1;
+		tmp = int2str(index);
+		DataNode->SetAttribute("data_count", tmp.c_str());
+		TiXmlElement* LastNode = DataNode->LastChild()->ToElement();
+
+		TiXmlElement* Data = new TiXmlElement("Data");
+
+		sprintf(rank, "%d-complex-2.0", mode);
+		int data_count = 0;
+		ret = get_children_count(DataNode, &data_count);
+		TiXmlElement* Data_Name = new TiXmlElement("Data_Name");
+		Data_Name->LinkEndChild(new TiXmlText(node_name));
+		Data->LinkEndChild(Data_Name);
+		TiXmlElement* Data_Rank = new TiXmlElement("Data_Rank");
+		Data_Rank->LinkEndChild(new TiXmlText(rank));
+		Data->LinkEndChild(Data_Rank);
+		TiXmlElement* Data_Index = new TiXmlElement("Data_Index");
+		Data_Index->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Data_Index);
+		TiXmlElement* Data_Path = new TiXmlElement("Data_Path");
+		Data_Path->LinkEndChild(new TiXmlText(node_path));
+		Data->LinkEndChild(Data_Path);
+
+		TiXmlElement* Row_Offset = new TiXmlElement("Row_Offset");
+		tmp = double2str(Row_offset);
+		Row_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Row_Offset);
+		TiXmlElement* Col_Offset = new TiXmlElement("Col_Offset");
+		tmp = double2str(Col_offset);
+		Col_Offset->LinkEndChild(new TiXmlText(tmp.c_str()));
+		Data->LinkEndChild(Col_Offset);
+		DataNode->InsertBeforeChild(LastNode, *Data);
+	}
+	return 0;
+}
+
+int XMLFile::XMLFile_add_regis14(int mode, const char* datanode_name, const std::vector<std::string>& node_names, const std::vector<std::string>& node_paths, const std::vector<double>& row_offsets, const std::vector<double>& col_offsets, int master_index, int interp_times, int block_size, const std::vector<std::string>& temporal_baselines, const std::vector<std::string>& B_effects, const std::vector<std::string>& B_parallels)
+{
+	size_t count = node_names.size();
+	if (node_paths.size() != count || row_offsets.size() != count || col_offsets.size() != count) return -1;
+	for (size_t i = 0; i < count; ++i) {
+		const char* tb = (i < temporal_baselines.size()) ? temporal_baselines[i].c_str() : "";
+		const char* be = (i < B_effects.size()) ? B_effects[i].c_str() : "";
+		const char* bp = (i < B_parallels.size()) ? B_parallels[i].c_str() : "";
+		int ret = XMLFile_add_regis14(mode, datanode_name, node_names[i].c_str(), node_paths[i].c_str(), row_offsets[i], col_offsets[i], master_index, interp_times, block_size, tb, be, bp);
+		if (ret != 0) return ret;
+	}
+	return 0;
+}
+
 int XMLFile::XMLFile_add_backgeocoding(const char* dataNode, const char* dataName, const char* dataPath, int masterIndex)
 {
 	if (!dataNode ||
@@ -4961,7 +5275,7 @@ int XMLFile::XMLFile_add_backgeocoding(const char* dataNode, const char* dataNam
 		tmp = int2str(masterIndex);
 		Master_index->LinkEndChild(new TiXmlText(tmp.c_str()));
 		Data_Processing_Parameters->LinkEndChild(Master_index);
-		
+
 		if (!root)
 		{
 			impl_->doc.RootElement()->LinkEndChild(DataNode);
@@ -5139,10 +5453,10 @@ int XMLFile::XMLFile_add_SLC_deramp(const char* dataNode, const char* dataName, 
 }
 
 int XMLFile::XMLFile_add_SLC_deramp_14(
-	int mode, 
-	const char* dataNode, 
-	const char* dataName, 
-	const char* dataPath, 
+	int mode,
+	const char* dataNode,
+	const char* dataName,
+	const char* dataPath,
 	int masterIndex
 )
 {
@@ -5570,14 +5884,14 @@ int XMLFile::XMLFile_add_geocoding(const char* dataNode, const char* dataName, c
 }
 
 int XMLFile::XMLFile_add_interferometric_phase_14(
-	const char* datanode_name, 
+	const char* datanode_name,
 	const char* node_name,
 	const char* node_path,
-	const char* master_name, 
+	const char* master_name,
 	const char* rank,
-	int offset_row, 
-	int offset_col, 
-	int multilook_rg, 
+	int offset_row,
+	int offset_col,
+	int multilook_rg,
 	int multilook_az
 )
 {
@@ -5644,7 +5958,7 @@ int XMLFile::XMLFile_add_interferometric_phase_14(
 		TiXmlElement* Master_image = new TiXmlElement("master_image");
 		Master_image->LinkEndChild(new TiXmlText(master_name));
 		Data_Processing_Parameters->LinkEndChild(Master_image);
-		
+
 		TiXmlElement* Multilook_rg = new TiXmlElement("multilook_rg");
 		tmp = int2str(multilook_rg);
 		Multilook_rg->LinkEndChild(new TiXmlText(tmp.c_str()));
@@ -5874,15 +6188,15 @@ int XMLFile::XMLFile_add_denoise_14(
 	const char* node_name,
 	const char* node_path,
 	int Row_offset,
-	int Col_offset, 
-	const char* method, 
+	int Col_offset,
+	const char* method,
 	int Slop_win,
 	int Pre_win,
 	int Goldstein_win,
 	int Goldstein_filled_win,
 	double alpha,
-	const char* filter_dl_path, 
-	const char* dl_model_file, 
+	const char* filter_dl_path,
+	const char* dl_model_file,
 	const char* tmp_path
 )
 {
@@ -6588,7 +6902,7 @@ int XMLFile::XMLFile_add_dem(const char* datanode_name, const char* node_name, c
 
 		if (strcmp(method, "Iteration") == 0)
 		{
-			
+
 			TiXmlElement* Iter_times = new TiXmlElement("iter_times");
 			tmp = int2str(times);
 			Iter_times->LinkEndChild(new TiXmlText(tmp.c_str()));
@@ -6852,6 +7166,16 @@ int XMLFile::XMLFile_remove_node(const char* datanode_name, const char* node_nam
 	return 0;
 }
 
+string XMLFile::double2str(double d)
+{
+	string sResult;
+	stringstream ssTmp;
+	ssTmp.imbue(std::locale::classic());
+	ssTmp << std::setprecision(17) << d;
+	sResult = ssTmp.str();
+	return sResult;
+}
+
 string XMLFile::int2str(int n)
 {
 	string sResult;
@@ -6938,7 +7262,7 @@ int XMLFile::_find_node(TiXmlElement* pRoot, const char* node_name, TiXmlElement
 	{
 		if (0 == _find_node(p, node_name, pnode)) return 0;
 	}
-	
+
 	return -1;
 }
 
@@ -8146,42 +8470,97 @@ int FormatConversion::polyVal(Mat& coefficient, double x, double* val)
 
 int FormatConversion::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col)
 {
+	double d_row = 0.0, d_col = 0.0;
+	int ret = real_coherent(Master, Slave, &d_row, &d_col, nullptr);
+	if (ret == 0 && offset_row && offset_col) {
+		*offset_row = static_cast<int>(std::round(d_row));
+		*offset_col = static_cast<int>(std::round(d_col));
+	}
+	return ret;
+}
+
+int FormatConversion::real_coherent(const ComplexMat& Master, const ComplexMat& Slave, double* offset_row, double* offset_col, double* snr)
+{
 	if (Master.GetRows() < 1 ||
 		Master.GetCols() < 1 ||
 		Master.GetRows() != Slave.GetRows() ||
-		Master.GetCols() != Slave.GetCols())
+		Master.GetCols() != Slave.GetCols() ||
+		offset_row == nullptr ||
+		offset_col == nullptr)
 	{
 		fprintf(stderr, "real_coherent(): input check failed!\n\n");
 		return -1;
 	}
+
 	int ret;
-	Mat img1;
-	Mat img2;
-	img1 = Master.GetMod();
-	img2 = Slave.GetMod();
-	Mat im1fft;
-	Mat im2fft;
-	ret = fft2(img1, im1fft);
+	Mat img1 = Master.GetMod();
+	Mat img2 = Slave.GetMod();
+
+	Mat fft1, fft2_mat;
+	ret = fft2(img1, fft1);
 	if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	ret = fft2(img2, im2fft);
+	img1.release();
+
+	ret = fft2(img2, fft2_mat);
 	if (return_check(ret, "fft2(*, *)", error_head)) return -1;
-	Mat spectrum;
-	mulSpectrums(im1fft, im2fft, spectrum, 0, true);
+	img2.release();
 
-	Mat result;
-	idft(spectrum, result, cv::DFT_REAL_OUTPUT);//��Ҫ��ʾͼ��ʱ������DFT_SCALE
+	mulSpectrums(fft1, fft2_mat, fft1, 0, true);
+	fft2_mat.release();
 
-	ret = fftshift2(result);
-	if (return_check(ret, "fftshift2(*)", error_head)) return -1;
-	normalize(result, result, 0, 1, cv::NORM_MINMAX);
+	Mat corr;
+	idft(fft1, corr, cv::DFT_REAL_OUTPUT);
+	fft1.release();
 
-	int r = result.rows / 2;
-	int c = result.cols / 2;
+	corr.convertTo(corr, CV_64F);
+
+	double maxVal;
 	cv::Point peak_loc;
-	minMaxLoc(result, NULL, NULL, NULL, &peak_loc);
+	minMaxLoc(corr, nullptr, &maxVal, nullptr, &peak_loc);
 
-	*offset_row = r - peak_loc.y;
-	*offset_col = c - peak_loc.x;
+	const int rows = corr.rows;
+	const int cols = corr.cols;
+	const int half_r = rows / 2;
+	const int half_c = cols / 2;
+
+	double sub_dx = 0.0;
+	double sub_dy = 0.0;
+	int x = peak_loc.x;
+	int y = peak_loc.y;
+
+	int left_x = (x - 1 + cols) % cols;
+	int right_x = (x + 1) % cols;
+	int up_y = (y - 1 + rows) % rows;
+	int down_y = (y + 1) % rows;
+
+	double c1_x = corr.at<double>(y, left_x);
+	double c2_x = corr.at<double>(y, x);
+	double c3_x = corr.at<double>(y, right_x);
+	double denom_x = 2.0 * (c1_x - 2.0 * c2_x + c3_x);
+	if (std::abs(denom_x) > 1e-6) sub_dx = (c1_x - c3_x) / denom_x;
+
+	double c1_y = corr.at<double>(up_y, x);
+	double c2_y = corr.at<double>(y, x);
+	double c3_y = corr.at<double>(down_y, x);
+	double denom_y = 2.0 * (c1_y - 2.0 * c2_y + c3_y);
+	if (std::abs(denom_y) > 1e-6) sub_dy = (c1_y - c3_y) / denom_y;
+
+	double y_cont = y + sub_dy;
+	double x_cont = x + sub_dx;
+
+	*offset_row = (y_cont <= half_r) ? (-y_cont) : (rows - y_cont);
+	*offset_col = (x_cont <= half_c) ? (-x_cont) : (cols - x_cont);
+
+	if (snr != nullptr)
+	{
+		cv::Scalar mean, stddev;
+		meanStdDev(corr, mean, stddev);
+		if (stddev[0] > 1e-6)
+			*snr = (maxVal - mean[0]) / stddev[0];
+		else
+			*snr = 0.0;
+	}
+
 	return 0;
 }
 
@@ -8671,7 +9050,7 @@ int Sentinel1Reader::updateGeolocationGridPoint()
 	for (int i = 0; i < geolocationGridPoint.rows; i++)
 	{
 		double time = geolocationGridPoint.at<double>(i, 6);
-		
+
 		if (fabs(time - startTime) > azimuthTimeInterval)
 		{
 			geolocationGridPoint.at<double>(i, 3) = (time - startTime) / azimuthTimeInterval;
@@ -9174,7 +9553,7 @@ int Sentinel1Reader::getSLC(ComplexMat& slc)
 	}
 	int byteOffset;
 	ret = xmldoc.get_int_para("byteOffset", &byteOffset);
-	if (return_check(ret, "get_int_para()", error_head)) {  
+	if (return_check(ret, "get_int_para()", error_head)) {
 		if (fp) fclose(fp);
 		return -1;
 	}
@@ -9250,19 +9629,19 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 
 		// 3. Shift all GCP row coordinates and re-fit geometric polynomials (no filtering to prevent rank-deficiency failure)
 		this->updateGeolocationGridPoint(); // Sync/align baseline coordinates first
-		
+
 		double start_line = (double)start_burst * original_linesPerBurst;
 		for (int i = 0; i < this->geolocationGridPoint.rows; i++) {
 			this->geolocationGridPoint.at<double>(i, 3) -= start_line; // Shift row coordinate to subset system
 		}
-		
+
 		this->fitCoordinateConversionCoefficient(); // Re-fit polynomials with the shifted coordinates
 
 		// 4. Update overall dimensions
 		this->burstCount = num_selected_bursts;
 		this->numberOfLines = num_selected_bursts * original_linesPerBurst;
 	}
-	
+
 	FormatConversion conversion;
 	ret = conversion.creat_new_h5(h5File);
 	if (return_check(ret, "creat_new_h5()", error_head)) return -1;
@@ -9391,7 +9770,7 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	}
 	int byteOffset;
 	ret = xmldoc.get_int_para("byteOffset", &byteOffset);
-	if (return_check(ret, "get_int_para()", error_head)) {  
+	if (return_check(ret, "get_int_para()", error_head)) {
 		fclose(fp_tiff);
 		return -1;
 	}
@@ -9670,7 +10049,7 @@ int Sentinel1Utils::computeRangeDependDopplerRate()
 			{
 				k = AzimuthFmRateList.rows - 1;
 				dt = slrt - AzimuthFmRateList.at<double>(k, 1);
-				
+
 			}
 			else
 			{
@@ -9689,7 +10068,7 @@ int Sentinel1Utils::computeRangeDependDopplerRate()
 			c1 = AzimuthFmRateList.at<double>(k, 3);
 			c2 = AzimuthFmRateList.at<double>(k, 4);
 			rangeDependDopplerRate.at<double>(i, j) = c0 + c1 * dt + c2 * dt * dt;
-			
+
 		}
 	}
 	isRangeDependDopplerRateAvailiable = true;
@@ -9852,7 +10231,7 @@ int Sentinel1Utils::getBurst(int burstIndex, ComplexMat& burstSLC)
 
 int Sentinel1Utils::getDopplerFrequency(
 	Position groundPosition,
-	Position satellitePosition, 
+	Position satellitePosition,
 	Velocity satelliteVelocity,
 	double* dopplerFrequency
 )
@@ -9921,7 +10300,7 @@ int Sentinel1Utils::getRgAzPosition(
 		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
 		return -1;
 	}
-	double zeroDopplerTime, slantRange; 
+	double zeroDopplerTime, slantRange;
 	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
 	if (return_failed(ret)) return -1;
 	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
@@ -10248,7 +10627,7 @@ int DigitalElevationModel::getSRTMFileName(
 			name.push_back(formatSRTMName(startCol, endRow));
 		}
 	}
-	
+
 	return 0;
 }
 
@@ -10284,7 +10663,7 @@ int DigitalElevationModel::getRawDEM(
 	{
 		string searchPath = string(filepath) + "\\*.tif";
 		std::replace(searchPath.begin(), searchPath.end(), '/', '\\');
-		
+
 		intptr_t handle;
 		struct _finddata_t fileinfo;
 		handle = _findfirst(searchPath.c_str(), &fileinfo);
@@ -10435,20 +10814,20 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
 	return 0;
 }
 
-    int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)             
-    {                                                                                     
+    int DigitalElevationModel::geotiffread(const char* filename, Mat& outDEM)
+    {
         if (!filename)
             return -1;
-                                                                                          
+
         InitializeGDALOnce();    // ע����֪���������̰߳�ȫ
-                                                                                          
+
         GDALDataset* poDataset = (GDALDataset*)GDALOpen(filename, GA_ReadOnly);
         if (poDataset == NULL)
         {
             fprintf(stderr, "geotiffread(): failed to open %s!\n", filename);
             return -1;
         }
-                                                                                          
+
         int nBand = poDataset->GetRasterCount();
         if (nBand != 1)
         {
@@ -10456,7 +10835,7 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             GDALClose(poDataset);
             return -1;
         }
-                                                                                          
+
         GDALRasterBand* poBand = poDataset->GetRasterBand(1);
         if (poBand == NULL)
         {
@@ -10464,7 +10843,7 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             GDALClose(poDataset);
             return -1;
         }
-                                                                                          
+
         int xsize = poBand->GetXSize();  // cols
         int ysize = poBand->GetYSize();  // rows
         if (xsize <= 0 || ysize <= 0)
@@ -10473,10 +10852,10 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             GDALClose(poDataset);
             return -1;
         }
-                                                                                          
+
         /* ԭʼ�������ͣ�����Ϊ GDT_Int16�� */
         GDALDataType srcType = poBand->GetRasterDataType();
-                                                                                          
+
         /* ���仺������short�� */
         short* pbuf = (short*)malloc(sizeof(short) * xsize * ysize);
         if (!pbuf)
@@ -10485,29 +10864,29 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
             GDALClose(poDataset);
             return -1;
         }
-                                                                                          
+
         /* ��ȡ��ǿ���� GDT_Int16 ��������� memcpy ���Ͳ�ƥ�� */
         if (poBand->RasterIO(GF_Read, 0, 0, xsize, ysize, pbuf, xsize, ysize, GDT_Int16, 0,
-  0) != CE_None)                                                                          
+  0) != CE_None)
         {
             fprintf(stderr, "geotiffread(): RasterIO failed\n");
             free(pbuf);
             GDALClose(poDataset);
             return -1;
         }
-                                                                                          
+
         outDEM.create(ysize, xsize, CV_16S);
         memcpy(outDEM.data, pbuf, sizeof(short) * xsize * ysize);
-    
+
         free(pbuf);
         pbuf = NULL;
         GDALClose(poDataset);
-                                                                                          
+
         /* ����ֵ���㣨������ԭ���� OpenMP �߼��� */
         int rows = outDEM.rows;
         int cols = outDEM.cols;
-                                                                                          
-    #pragma omp parallel for schedule(guided)                                             
+
+    #pragma omp parallel for schedule(guided)
         for (int i = 0; i < rows; i++)
         {
             short* rowp = outDEM.ptr<short>(i);
@@ -10517,9 +10896,9 @@ int DigitalElevationModel::getElevation(double lon, double lat, double* elevatio
                     rowp[j] = 0;
             }
         }
-                                                                                          
+
         return 0;
-    } 
+    }
 
 
 
@@ -10805,7 +11184,7 @@ int Sentinel1BackGeocoding::setDEMPath(const char* DEMPath)
 
 int Sentinel1BackGeocoding::loadDEM(
 	const char* filepath,
-	double lonMin, 
+	double lonMin,
 	double lonMax,
 	double latMin,
 	double latMax
@@ -11619,9 +11998,9 @@ int Sentinel1BackGeocoding::slaveSincInterpolation(
 )
 {
 	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData, slaveImageIndex, mBurstIndex);
-	if (slaveImageIndex < 1 || 
+	if (slaveImageIndex < 1 ||
 		slaveImageIndex > numOfImages ||
-		mBurstIndex < 1 || 
+		mBurstIndex < 1 ||
 		mBurstIndex > su[masterIndex - 1]->burstCount)
 	{
 		fprintf(stderr, "slaveSincInterpolation(): input check failed!\n");
@@ -12086,6 +12465,7 @@ namespace
 		Point2D points[5];
 		if (DetectAdaptiveSamplingPoints(masterPath, points, 5) < 0) return -1;
 		AlignmentResult results[5] = {};
+		for (int i = 0; i < 5; ++i) results[i].structSize = sizeof(AlignmentResult);
 		for (int index = 0; index < 5; ++index)
 		{
 			results[index].heatmap_rgb = nullptr;
@@ -12100,7 +12480,7 @@ namespace
 		}
 
 		double sum = 0.0;
-		std::vector<int> validOffsets;
+		std::vector<double> validOffsets;
 		for (int index = 0; index < 5; ++index)
 		{
 			if (results[index].maxCorrelation >= 0.15 && std::abs(results[index].offsetX) <= 1)
@@ -12111,8 +12491,8 @@ namespace
 		}
 		if (validOffsets.size() >= 2)
 		{
-			const int minimum = *std::min_element(validOffsets.begin(), validOffsets.end());
-			const int maximum = *std::max_element(validOffsets.begin(), validOffsets.end());
+			const double minimum = *std::min_element(validOffsets.begin(), validOffsets.end());
+			const double maximum = *std::max_element(validOffsets.begin(), validOffsets.end());
 			if (maximum - minimum <= 1) offset = sum / validOffsets.size();
 		}
 		else if (validOffsets.size() == 1)
@@ -12850,9 +13230,9 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 		this->isOrbitUpdated = true;//�����ٸ��¹��
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
-	
-	
-	
+
+
+
 	setSceneStartStopTime(startTime, stopTime);
 }
 

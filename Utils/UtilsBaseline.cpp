@@ -12,18 +12,38 @@ using namespace std;
 extern int utc_to_gps(const char* utc_time, double* gps_time);
 int Utils::baseline_estimation(
 	const Mat& stateVec1,
-	const Mat& stateVec2, 
+	const Mat& stateVec2,
 	const Mat& lon_coef,
-	const Mat& lat_coef, 
+	const Mat& lat_coef,
 	int offset_row,
 	int offset_col,
-	int scene_height, 
+	int scene_height,
 	int scene_width,
 	double time_interval,
 	double time_interval2,
 	double* B_effect,
 	double* B_parallel,
-	double* sigma_B_effect, 
+	double* sigma_B_effect,
+	double* sigma_B_parallel
+)
+{
+	return baseline_estimation(stateVec1, stateVec2, lon_coef, lat_coef, static_cast<double>(offset_row), static_cast<double>(offset_col), scene_height, scene_width, time_interval, time_interval2, B_effect, B_parallel, sigma_B_effect, sigma_B_parallel);
+}
+
+int Utils::baseline_estimation(
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	const Mat& lon_coef,
+	const Mat& lat_coef,
+	double offset_row,
+	double offset_col,
+	int scene_height,
+	int scene_width,
+	double time_interval,
+	double time_interval2,
+	double* B_effect,
+	double* B_parallel,
+	double* sigma_B_effect,
 	double* sigma_B_parallel
 )
 {
@@ -114,12 +134,19 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-			sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
-			sate1_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate1_xyz.rows) { idx0 = sate1_xyz.rows - 1; idx1 = sate1_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate1_xyz.row(idx0) + alpha * sate1_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate1_v.row(idx0) + alpha * sate1_v.row(idx1);
+			pos.copyTo(sate1.row(j));
+			vel.copyTo(satev1.row(j));
 		}
 	}
 
@@ -146,17 +173,24 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-			sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
-			sate2_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev2(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate2_xyz.rows) { idx0 = sate2_xyz.rows - 1; idx1 = sate2_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate2_xyz.row(idx0) + alpha * sate2_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate2_v.row(idx0) + alpha * sate2_v.row(idx1);
+			pos.copyTo(sate2.row(j));
+			vel.copyTo(satev2.row(j));
 		}
 	}
 
 	/*
-	*估计基线 
+	*估计基线
 	*/
 	Mat B_effe(rows, 1, CV_64F); Mat B_para(rows, 1, CV_64F);
 #pragma omp parallel for schedule(guided)
@@ -199,20 +233,39 @@ int Utils::baseline_estimation(
 }
 
 int Utils::baseline_estimation(
-	const Mat& stateVec1, 
-	const Mat& stateVec2, 
+	const Mat& stateVec1,
+	const Mat& stateVec2,
 	double lon_center,
-	double lat_center, 
-	int offset_row, 
-	int offset_col, 
+	double lat_center,
+	int offset_row,
+	int offset_col,
 	int scene_height,
-	int scene_width, 
+	int scene_width,
 	double time_interval,
 	double time_interval2,
 	double* B_effect,
 	double* B_parallel
 )
 {
+	return baseline_estimation(stateVec1, stateVec2, lon_center, lat_center, static_cast<double>(offset_row), static_cast<double>(offset_col), scene_height, scene_width, time_interval, time_interval2, B_effect, B_parallel);
+}
+
+int Utils::baseline_estimation(
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	double lon_center,
+	double lat_center,
+	double offset_row,
+	double offset_col,
+	int scene_height,
+	int scene_width,
+	double time_interval,
+	double time_interval2,
+	double* B_effect,
+	double* B_parallel
+)
+{
+	(void)offset_col; // Reserved for API signature consistency; WGS84 lon_center/lat_center define target ECEF vector
 	if (stateVec1.cols != 7 ||
 		stateVec1.rows < 7 ||
 		stateVec2.cols != 7 ||
@@ -275,12 +328,19 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-			sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
-			sate1_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate1_xyz.rows) { idx0 = sate1_xyz.rows - 1; idx1 = sate1_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate1_xyz.row(idx0) + alpha * sate1_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate1_v.row(idx0) + alpha * sate1_v.row(idx1);
+			pos.copyTo(sate1.row(j));
+			vel.copyTo(satev1.row(j));
 		}
 	}
 
@@ -307,12 +367,19 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-			sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
-			sate2_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev2(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate2_xyz.rows) { idx0 = sate2_xyz.rows - 1; idx1 = sate2_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate2_xyz.row(idx0) + alpha * sate2_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate2_v.row(idx0) + alpha * sate2_v.row(idx1);
+			pos.copyTo(sate2.row(j));
+			vel.copyTo(satev2.row(j));
 		}
 	}
 
@@ -354,14 +421,34 @@ int Utils::baseline_estimation(
 	double dem_center,
 	int offset_row,
 	int offset_col,
-	int scene_height, 
-	int scene_width, 
+	int scene_height,
+	int scene_width,
 	double time_interval,
 	double time_interval2,
-	double* B_effect, 
+	double* B_effect,
 	double* B_parallel
 )
 {
+	return baseline_estimation(stateVec1, stateVec2, lon_center, lat_center, dem_center, static_cast<double>(offset_row), static_cast<double>(offset_col), scene_height, scene_width, time_interval, time_interval2, B_effect, B_parallel);
+}
+
+int Utils::baseline_estimation(
+	const Mat& stateVec1,
+	const Mat& stateVec2,
+	double lon_center,
+	double lat_center,
+	double dem_center,
+	double offset_row,
+	double offset_col,
+	int scene_height,
+	int scene_width,
+	double time_interval,
+	double time_interval2,
+	double* B_effect,
+	double* B_parallel
+)
+{
+	(void)offset_col; // Reserved for API signature consistency; WGS84 lon_center/lat_center/dem_center define target ECEF vector
 	if (stateVec1.cols != 7 ||
 		stateVec1.rows < 7 ||
 		stateVec2.cols != 7 ||
@@ -424,12 +511,19 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate1_xyz.rows - 1) ? (sate1_xyz.rows - 1) : (peak_loc.y + j);
-			sate1_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate1(Range(j, j + 1), Range(0, 3)));
-			sate1_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev1(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate1_xyz.rows) { idx0 = sate1_xyz.rows - 1; idx1 = sate1_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate1_xyz.row(idx0) + alpha * sate1_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate1_v.row(idx0) + alpha * sate1_v.row(idx1);
+			pos.copyTo(sate1.row(j));
+			vel.copyTo(satev1.row(j));
 		}
 	}
 
@@ -456,12 +550,19 @@ int Utils::baseline_estimation(
 		}
 		Point peak_loc;
 		cv::minMaxLoc(dop, NULL, NULL, &peak_loc, NULL);
-		int orbit_idx;
 		for (int j = 0; j < rows; j++)
 		{
-			orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
-			sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
-			sate2_v(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(satev2(Range(j, j + 1), Range(0, 3)));
+			double target_r = peak_loc.y + j + offset_row;
+			int idx0 = static_cast<int>(std::floor(target_r));
+			int idx1 = idx0 + 1;
+			double alpha = target_r - idx0;
+			if (idx0 < 0) { idx0 = 0; idx1 = 0; alpha = 0.0; }
+			if (idx1 >= sate2_xyz.rows) { idx0 = sate2_xyz.rows - 1; idx1 = sate2_xyz.rows - 1; alpha = 0.0; }
+
+			Mat pos = (1.0 - alpha) * sate2_xyz.row(idx0) + alpha * sate2_xyz.row(idx1);
+			Mat vel = (1.0 - alpha) * sate2_v.row(idx0) + alpha * sate2_v.row(idx1);
+			pos.copyTo(sate2.row(j));
+			vel.copyTo(satev2.row(j));
 		}
 	}
 
@@ -508,7 +609,7 @@ int Utils::spatialTemporalBaselineEstimation(
 		return -1;
 	}
 	Utils util;
-	int ret, offset_row, offset_col, num_images, sceneHeight, sceneWidth;
+	int ret, num_images, sceneHeight, sceneWidth;
 	double prf1, prf2, acquisitionTime1, acquisitionTime2, B_temporal, B_spatial_para, B_spatial_effect;
 	double topleft_lon, topright_lon, bottomleft_lon, bottomright_lon,
 		topleft_lat, topright_lat, bottomleft_lat, bottomright_lat;
@@ -526,10 +627,21 @@ int Utils::spatialTemporalBaselineEstimation(
 	ret = Hdf5IO::readString(SLCH5Files[reference - 1].c_str(), "acquisition_start_time", start);
 	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
 	ret = utc_to_gps(start.c_str(), &acquisitionTime1);
-	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_row", &offset_row);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
-	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_col", &offset_col);
-	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+	double offset_row_d = 0.0, offset_col_d = 0.0;
+	if (Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "offset_row", &offset_row_d) != 0)
+	{
+		int off_r = 0;
+		ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_row", &off_r);
+		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+		offset_row_d = static_cast<double>(off_r);
+	}
+	if (Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "offset_col", &offset_col_d) != 0)
+	{
+		int off_c = 0;
+		ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "offset_col", &off_c);
+		if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
+		offset_col_d = static_cast<double>(off_c);
+	}
 	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "range_len", &sceneWidth);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 	ret = Hdf5IO::readInt(SLCH5Files[reference - 1].c_str(), "azimuth_len", &sceneHeight);
@@ -547,8 +659,13 @@ int Utils::spatialTemporalBaselineEstimation(
 	double lon_center, lat_center;
 	if (ret2 == 0)
 	{
-		lon_center = (topleft_lon + topright_lon + bottomleft_lon + bottomright_lon) / 4.0;
-		lat_center = (topleft_lat + topright_lat + bottomleft_lat + bottomright_lat) / 4.0;
+		double dlon_dcol = (topright_lon - topleft_lon + bottomright_lon - bottomleft_lon) / (2.0 * (sceneWidth > 0 ? sceneWidth : 1.0));
+		double dlat_dcol = (topright_lat - topleft_lat + bottomright_lat - bottomleft_lat) / (2.0 * (sceneWidth > 0 ? sceneWidth : 1.0));
+		double dlon_drow = (bottomleft_lon - topleft_lon + bottomright_lon - topright_lon) / (2.0 * (sceneHeight > 0 ? sceneHeight : 1.0));
+		double dlat_drow = (bottomleft_lat - topleft_lat + bottomright_lat - topright_lat) / (2.0 * (sceneHeight > 0 ? sceneHeight : 1.0));
+
+		lon_center = (topleft_lon + topright_lon + bottomleft_lon + bottomright_lon) / 4.0 + offset_col_d * dlon_dcol + offset_row_d * dlon_drow;
+		lat_center = (topleft_lat + topright_lat + bottomleft_lat + bottomright_lat) / 4.0 + offset_col_d * dlat_dcol + offset_row_d * dlat_drow;
 	}
 
 	for (int i = 0; i < num_images; i++)
@@ -563,13 +680,13 @@ int Utils::spatialTemporalBaselineEstimation(
 		if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 		if (ret2 == 0)
 		{
-			util.baseline_estimation(statevec1, statevec2, lon_center, lat_center,
-				offset_row, offset_col, sceneHeight, sceneWidth, 1.0 / prf1, 1.0 / prf2, &B_spatial_effect, &B_spatial_para);
+			ret = util.baseline_estimation(statevec1, statevec2, lon_center, lat_center,
+				offset_row_d, offset_col_d, sceneHeight, sceneWidth, 1.0 / prf1, 1.0 / prf2, &B_spatial_effect, &B_spatial_para);
 			if (return_check(ret, "baseline_estimation()", error_head)) return -1;
 		}
 		else
 		{
-			ret = util.baseline_estimation(statevec1, statevec2, lon_coef, lat_coef, offset_row, offset_col,
+			ret = util.baseline_estimation(statevec1, statevec2, lon_coef, lat_coef, offset_row_d, offset_col_d,
 				sceneHeight, sceneWidth, 1.0 / prf1, 1.0 / prf2, &B_spatial_effect, &B_spatial_para);
 			if (return_check(ret, "baseline_estimation()", error_head)) return -1;
 		}

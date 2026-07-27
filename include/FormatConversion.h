@@ -140,6 +140,26 @@ public:
 		int master_index, int interp_times, int block_size,
 		const char* temporal_baseline, const char* B_effect, const char* B_parallel
 	);
+	int XMLFile_add_regis(
+		const char* datanode_name,
+		const char* node_name,
+		const char* node_path,
+		double Row_offset,
+		double Col_offset,
+		int master_index, int interp_times, int block_size,
+		const char* temporal_baseline, const char* B_effect, const char* B_parallel
+	);
+	int XMLFile_add_regis(
+		const char* datanode_name,
+		const std::vector<std::string>& node_names,
+		const std::vector<std::string>& node_paths,
+		const std::vector<double>& row_offsets,
+		const std::vector<double>& col_offsets,
+		int master_index, int interp_times, int block_size,
+		const std::vector<std::string>& temporal_baselines,
+		const std::vector<std::string>& B_effects,
+		const std::vector<std::string>& B_parallels
+	);
 
 	/** @brief 添加配准图像节点
 	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓，4：双频乒乓）
@@ -164,6 +184,28 @@ public:
 		int Col_offset,
 		int master_index, int interp_times, int block_size,
 		const char* temporal_baseline, const char* B_effect, const char* B_parallel
+	);
+	int XMLFile_add_regis14(
+		int mode,
+		const char* datanode_name,
+		const char* node_name,
+		const char* node_path,
+		double Row_offset,
+		double Col_offset,
+		int master_index, int interp_times, int block_size,
+		const char* temporal_baseline, const char* B_effect, const char* B_parallel
+	);
+	int XMLFile_add_regis14(
+		int mode,
+		const char* datanode_name,
+		const std::vector<std::string>& node_names,
+		const std::vector<std::string>& node_paths,
+		const std::vector<double>& row_offsets,
+		const std::vector<double>& col_offsets,
+		int master_index, int interp_times, int block_size,
+		const std::vector<std::string>& temporal_baselines,
+		const std::vector<std::string>& B_effects,
+		const std::vector<std::string>& B_parallels
 	);
 
 	/** @brief 添加后向地理编码配准节点
@@ -453,6 +495,7 @@ public:
 	@param n			输入整数�?
 	*/
 	string int2str(int n);
+	string double2str(double d);
 	/** @brief 返回整型
 
 	@param s			输入字符�?
@@ -1168,6 +1211,7 @@ public:
 	 参数4 列偏移量（返回值）
 	*/
 	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, int* offset_row, int* offset_col);
+	int real_coherent(const ComplexMat& Master, const ComplexMat& Slave, double* offset_row, double* offset_col, double* snr = nullptr);
 	/*2D FFTSHIFT(原地操作)*/
 	int fftshift2(Mat& matrix);
 	/*2D FFT
