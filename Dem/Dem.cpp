@@ -6,7 +6,13 @@
 #include"..\include\FormatConversion.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
+#include"..\include\Hdf5IO.h"
+#include "ProgressReporter.h"
 #include <atomic>
+#include <algorithm>
+#include <set>
+#include <string>
+#include <vector>
 #ifdef _DEBUG
 #pragma comment(lib, "FormatConversion_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -19,7 +25,201 @@
 #pragma comment(lib, "ComplexMat.lib")
 #endif // _DEBUG
 using namespace cv;
+using DemInternal::ProgressReporter;
 
+namespace
+{
+	bool diagnosticFieldCovered(const DemDiagnosticOptions* options, size_t offset, size_t size)
+	{
+		return options && options->structSize >= offset + size;
+	}
+
+	const char* hdf5ReadStageName(int stage)
+	{
+		switch (stage)
+		{
+		case Hdf5IO::HDF5_READ_STAGE_OPEN_FILE: return "open_file";
+		case Hdf5IO::HDF5_READ_STAGE_DATASET_PATH: return "dataset_path";
+		case Hdf5IO::HDF5_READ_STAGE_OPEN_DATASET: return "open_dataset";
+		case Hdf5IO::HDF5_READ_STAGE_DATA_SPACE: return "data_space";
+		case Hdf5IO::HDF5_READ_STAGE_DATA_TYPE: return "data_type";
+		case Hdf5IO::HDF5_READ_STAGE_RANK: return "rank";
+		case Hdf5IO::HDF5_READ_STAGE_DIMENSIONS: return "dimensions";
+		case Hdf5IO::HDF5_READ_STAGE_OUTPUT_ALLOCATION: return "output_allocation";
+		case Hdf5IO::HDF5_READ_STAGE_DATA_READ: return "data_read";
+		default: return "unknown";
+		}
+	}
+
+	struct DemDiagnosticContext
+	{
+		DemDiagnosticCallback callback = nullptr;
+		void* userData = nullptr;
+		DemLogLevel minimumLevel = DEM_LOG_INFO;
+		std::string callId = "none";
+		std::set<std::string> successfulReads;
+		DemProgressCallbackEx progressCallback = nullptr;
+		void* progressUserData = nullptr;
+
+		void emit(DemLogLevel level, DemError error, const char* stage, const char* message,
+			const std::string& detail = std::string(), const char* h5File = nullptr,
+			const char* dataset = nullptr, int hdf5Status = 0, int rows = -1,
+			int columns = -1, int cvType = -1) const
+		{
+			if (!callback || level < minimumLevel) return;
+			const DemDiagnosticEvent event = { level, error, callId.c_str(), stage, message,
+				detail.empty() ? nullptr : detail.c_str(), h5File, dataset, hdf5Status,
+				rows, columns, cvType };
+			callback(&event, userData);
+		}
+	};
+
+	int initializeDiagnosticContext(const DemDiagnosticOptions* options, DemDiagnosticContext& context)
+	{
+		if (!options) return 0;
+		// A non-null pointer must be readable through structSize by caller contract.
+		if (options->structSize < DEM_DIAGNOSTIC_OPTIONS_MIN_SIZE ||
+			(options->version != DEM_DIAGNOSTIC_OPTIONS_VERSION_V1 &&
+				options->version != DEM_DIAGNOSTIC_OPTIONS_VERSION)) return DEM_ERROR_INVALID_DIAGNOSTIC_OPTIONS;
+		if (diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, callId), sizeof(options->callId)) && options->callId)
+			context.callId = options->callId;
+		if (diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, logLevel), sizeof(options->logLevel)))
+		{
+			if (options->logLevel < DEM_LOG_DEBUG || options->logLevel > DEM_LOG_ERROR)
+				return DEM_ERROR_INVALID_DIAGNOSTIC_OPTIONS;
+			context.minimumLevel = static_cast<DemLogLevel>(options->logLevel);
+		}
+		if (diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, callback), sizeof(options->callback)))
+			context.callback = options->callback;
+		if (diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, userData), sizeof(options->userData)))
+			context.userData = options->userData;
+		if (options->version >= DEM_DIAGNOSTIC_OPTIONS_VERSION &&
+			diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, progressCallback), sizeof(options->progressCallback)))
+		{
+			context.progressCallback = options->progressCallback;
+			if (diagnosticFieldCovered(options, offsetof(DemDiagnosticOptions, progressUserData), sizeof(options->progressUserData)))
+				context.progressUserData = options->progressUserData;
+		}
+		return 0;
+	}
+
+	std::string normalizeAbsolutePath(std::string path)
+	{
+		std::replace(path.begin(), path.end(), '/', '\\');
+		const DWORD required = GetFullPathNameA(path.c_str(), 0, nullptr, nullptr);
+		if (required == 0) return path;
+		std::vector<char> buffer(required + 1, '\0');
+		const DWORD written = GetFullPathNameA(path.c_str(), static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+		return written == 0 || written >= buffer.size() ? path : std::string(buffer.data(), written);
+	}
+
+	bool isAbsoluteWindowsPath(const std::string& path)
+	{
+		return (path.size() >= 3 && ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
+			path[1] == ':' && (path[2] == '\\' || path[2] == '/')) ||
+			(path.size() >= 2 && path[0] == '\\' && path[1] == '\\');
+	}
+
+	bool pathIsWithinRoot(const std::string& root, const std::string& path)
+	{
+		if (root.empty() || path.size() < root.size() || _strnicmp(root.c_str(), path.c_str(), root.size()) != 0) return false;
+		return path.size() == root.size() || root.back() == '\\' || path[root.size()] == '\\';
+	}
+
+	std::string finalExistingPath(const std::string& path, bool directory)
+	{
+		const HANDLE handle = CreateFileA(path.c_str(), FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			directory ? FILE_FLAG_BACKUP_SEMANTICS : FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (handle == INVALID_HANDLE_VALUE) return std::string();
+		const DWORD needed = GetFinalPathNameByHandleA(handle, nullptr, 0, FILE_NAME_NORMALIZED);
+		std::vector<char> buffer(needed + 1, '\0');
+		const DWORD written = needed == 0 ? 0 : GetFinalPathNameByHandleA(handle, buffer.data(),
+			static_cast<DWORD>(buffer.size()), FILE_NAME_NORMALIZED);
+		CloseHandle(handle);
+		if (written == 0 || written >= buffer.size()) return std::string();
+		std::string result(buffer.data(), written);
+		if (result.rfind("\\\\?\\", 0) == 0) result.erase(0, 4);
+		return result;
+	}
+
+	struct SourcePathResolution
+	{
+		std::string raw;
+		std::string normalized;
+		bool projectRelative = false;
+		bool exists = false;
+		bool insideProject = true;
+	};
+
+	SourcePathResolution resolveSourcePath(const std::string& raw, const std::string& projectRoot)
+	{
+		SourcePathResolution result;
+		result.raw = raw;
+		result.projectRelative = !isAbsoluteWindowsPath(raw);
+		std::string relativePart = raw;
+		if (result.projectRelative)
+		{
+			while (!relativePart.empty() && (relativePart[0] == '\\' || relativePart[0] == '/')) relativePart.erase(0, 1);
+			result.normalized = normalizeAbsolutePath(projectRoot + "\\" + relativePart);
+			result.insideProject = pathIsWithinRoot(projectRoot, result.normalized);
+		}
+		else result.normalized = normalizeAbsolutePath(raw);
+		const DWORD attributes = GetFileAttributesA(result.normalized.c_str());
+		result.exists = attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+		if (result.projectRelative && result.exists)
+		{
+			const std::string physicalRoot = finalExistingPath(projectRoot, true);
+			const std::string physicalSource = finalExistingPath(result.normalized, false);
+			if (!physicalRoot.empty() && !physicalSource.empty()) result.insideProject = pathIsWithinRoot(physicalRoot, physicalSource);
+		}
+		return result;
+	}
+
+	std::string sourcePathDetail(const SourcePathResolution& source, const std::string& projectRoot)
+	{
+		return "raw=" + source.raw + "; pathType=" + (source.projectRelative ? "project-relative" : "absolute") +
+			"; base=" + projectRoot + "; normalized=" + source.normalized +
+			"; exists=" + (source.exists ? "true" : "false");
+	}
+
+	int readDemArray(DemDiagnosticContext& context, const char* file, const char* dataset,
+		const char* stage, Mat& output)
+	{
+		Hdf5IO::Hdf5ReadDiagnostic diagnostic = {};
+		const int status = Hdf5IO::readArrayDiagnosed(file, dataset, output, &diagnostic);
+		if (status != 0)
+		{
+			const std::string detail = std::string("hdf5Stage=") + hdf5ReadStageName(diagnostic.stage) +
+				"; hdf5Status=" + std::to_string(diagnostic.hdf5Status) + "; errorStack=" + diagnostic.errorStack;
+			context.emit(DEM_LOG_ERROR, DEM_ERROR_HDF5_READ, stage, "HDF5 array read failed.", detail,
+				file, dataset, diagnostic.hdf5Status, diagnostic.rows, diagnostic.columns, diagnostic.cvType);
+			return DEM_ERROR_HDF5_READ;
+		}
+		const std::string key = std::string(file) + "\n" + dataset;
+		if (context.successfulReads.insert(key).second)
+		{
+			const std::string detail = std::string("hdf5Type=") + diagnostic.hdf5Type +
+				"; conversionTargetCvType=" + std::to_string(diagnostic.cvType);
+			context.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), stage, "HDF5 array read succeeded.", detail,
+				file, dataset, 0, diagnostic.rows, diagnostic.columns, diagnostic.cvType);
+		}
+		return 0;
+	}
+
+	int readDemString(DemDiagnosticContext& context, const char* file, const char* dataset,
+		const char* stage, std::string& output)
+	{
+		Hdf5IO::Hdf5ReadDiagnostic diagnostic = {};
+		const int status = Hdf5IO::readStringDiagnosed(file, dataset, output, &diagnostic);
+		if (status == 0) return 0;
+		const std::string detail = std::string("hdf5Stage=") + hdf5ReadStageName(diagnostic.stage) +
+			"; hdf5Status=" + std::to_string(diagnostic.hdf5Status) + "; errorStack=" + diagnostic.errorStack;
+		context.emit(DEM_LOG_ERROR, DEM_ERROR_HDF5_READ, stage, "HDF5 string read failed.", detail,
+			file, dataset, diagnostic.hdf5Status);
+		return DEM_ERROR_HDF5_READ;
+	}
+}
 
 
 
@@ -111,6 +311,8 @@ int Dem::phase2dem_newton_iter(
 		fprintf(stderr, "phase2dem_newton_iter(): input check failed!\n\n");
 		return -1;
 	}
+	ProgressReporter progressReporter(cb);
+	if (!progressReporter.report(0, "Preparing DEM input...")) return -2;
 	double C = 4 * 3.1415926535;
 	if (mode == TR_MODE_SINGLE_TX_DOUBLE_RX)
 	{
@@ -267,9 +469,9 @@ int Dem::phase2dem_newton_iter(
 	int fine_size_rows = unwrapped_phase.rows;
 	int fine_size_cols = unwrapped_phase.cols;
 	Mat fd = doppler_frequency;
-	if (!Utils::newton_iter_core(iters, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core_ex(iters, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda, cb))
+	                 R_M, R_F, fd, lambda, ProgressReporter::callback, &progressReporter))
 	{
 		return -2;
 	}
@@ -283,10 +485,10 @@ int Dem::phase2dem_newton_iter(
 	private(ret)
 	for (int i = 0; i < fine_size_rows; i++)
 	{
-		if (!parallel_flag) continue;
+		if (!parallel_flag || progressReporter.cancelled()) continue;
 		for (int j = 0; j < fine_size_cols; j++)
 		{
-			if (!parallel_flag) continue;
+			if (!parallel_flag || progressReporter.cancelled()) continue;
 			double lat, lon, h;
 			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat, lon, h);
 			if (ret < 0)
@@ -298,16 +500,16 @@ int Dem::phase2dem_newton_iter(
 		}
 
 		int current_completed = ++completed_rows;
-		if (cb && current_completed % step == 0)
+		if (current_completed % step == 0)
 		{
 			int progress = 90 + (current_completed * 10) / fine_size_rows;
-			if (!cb(progress, "Converting coordinates..."))
+			if (!progressReporter.reportCoordinateConversion(progress))
 			{
 				parallel_flag = false;
 			}
 		}
 	}
-	if (!parallel_flag) return -2;
+	if (!parallel_flag || progressReporter.cancelled()) return -2;
 	double lat, lon, h;
 	ret = Utils::xyz2ell(
 		Control_Point_Position.at<double>(0, 0),
@@ -317,33 +519,81 @@ int Dem::phase2dem_newton_iter(
 	);
 	if (return_check(ret, "Utils::xyz2ell(*, *)", error_head)) return -1;
 	DEM_height = DEM_height + h - DEM_height.at<double>(row - 1, col - 1);
+	if (!progressReporter.reportSuccess()) return -2;
 	return 0;
 }
 
 int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times, int mode, DemProgressCallback cb)
 {
+	const int result = dem_newton_iter_impl(unwrapped_phase_file, dem, project_path, iter_times, mode, nullptr, cb, true);
+	return result == 0 || result == -2 ? result : -1;
+}
+
+int Dem::dem_newton_iter_ex(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times,
+	int mode, const DemDiagnosticOptions* diagnostics, DemProgressCallback cb)
+{
+	return dem_newton_iter_impl(unwrapped_phase_file, dem, project_path, iter_times, mode, diagnostics, cb, false);
+}
+
+int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const char* project_path, int iter_times,
+	int mode, const DemDiagnosticOptions* diagnostics, DemProgressCallback cb, bool legacyConsoleLogging)
+{
+	DemDiagnosticContext diagnosticContext;
+	const int diagnosticResult = initializeDiagnosticContext(diagnostics, diagnosticContext);
+	if (diagnosticResult != 0) return diagnosticResult;
+	auto processingFailure = [&](const char* stage, int code) {
+		if (legacyConsoleLogging) return_check(code, stage, error_head);
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_PROCESSING, stage, "DEM Newton iteration processing failed.",
+			"internalReturnCode=" + std::to_string(code));
+		return legacyConsoleLogging ? -1 : static_cast<int>(DEM_ERROR_PROCESSING);
+	};
+	auto hdfReadFailure = [&](int code, const char* operation) {
+		if (code == 0) return 0;
+		if (legacyConsoleLogging)
+		{
+			return_check(-1, operation, error_head);
+			return -1;
+		}
+		return code;
+	};
 	if (unwrapped_phase_file == NULL ||
 		project_path == NULL ||
 		iter_times < 1 ||
 		(mode == TR_MODE_SINGLE_TX_SINGLE_RX || mode == TR_MODE_SINGLE_TX_DOUBLE_RX) == false)
 	{
-		fprintf(stderr, "dem_newton_iter(): input check failed!\n");
-		return -1;
+		if (legacyConsoleLogging) fprintf(stderr, "dem_newton_iter(): input check failed!\n");
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_INPUT, "entry.validate_input", "DEM Newton iteration input validation failed.");
+		return DEM_ERROR_INVALID_INPUT;
 	}
+	ProgressReporter progressReporter(diagnosticContext.progressCallback ? nullptr : cb,
+		diagnosticContext.progressCallback, diagnosticContext.progressUserData);
+	auto cancellationResult = [&]() {
+		if (!legacyConsoleLogging)
+		{
+			diagnosticContext.emit(DEM_LOG_INFO, DEM_ERROR_CANCELLED, "cancelled_by_progress_callback",
+				"DEM Newton iteration cancelled by progress callback.");
+		}
+		return legacyConsoleLogging ? -2 : static_cast<int>(DEM_ERROR_CANCELLED);
+	};
+	if (!progressReporter.report(0, "Preparing DEM input...")) return cancellationResult();
 
 	/*
 	* 校正至绝对相位
 	*/
 
-	FormatConversion conversion; Utils util;
+	Utils util;
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2;
-	string source_1, source_2, tmp;
-	string project(project_path);
+	string source_1_raw, source_2_raw;
+	std::string project = normalizeAbsolutePath(project_path);
+	while (project.size() > 3 && (project.back() == '\\' || project.back() == '/')) project.pop_back();
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "entry", "Starting DEM Newton iteration.",
+		"phaseH5=" + std::string(unwrapped_phase_file) + "; projectRoot=" + project +
+		"; iterations=" + std::to_string(iter_times) + "; mode=" + std::to_string(mode));
 	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
-	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, unwrapped_phase_file, "phase", "input.phase", unwrapped_phase);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
 	if (unwrapped_phase.type() != CV_64F)
 	{
 		unwrapped_phase.convertTo(unwrapped_phase, CV_64F);
@@ -351,44 +601,88 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
 	if (nr < 1 || nc < 1)
 	{
-		fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
-		return -1;
+		if (legacyConsoleLogging) fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, "input.phase", "Phase dataset has an invalid shape.",
+			"rows=" + std::to_string(nr) + "; columns=" + std::to_string(nc), unwrapped_phase_file, "phase", 0, nr, nc, unwrapped_phase.type());
+		return DEM_ERROR_INVALID_SHAPE;
 	}
-	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_1", source_1);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_2", source_2);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	tmp = project;
-	source_1 = tmp + source_1;
-	source_2 = tmp + source_2;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "gcps", gcps);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_row", temp);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, unwrapped_phase_file, "flat_phase_coefficient", "input.flat_phase_coefficient", flat_phase_coefficient);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (flat_phase_coefficient.type() != CV_64F || flat_phase_coefficient.rows < 1 || flat_phase_coefficient.cols < 6)
+	{
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, "input.flat_phase_coefficient", "Flat phase coefficient dataset has an invalid shape or type.",
+			"expected=CV_64F with at least 1x6; actualRows=" + std::to_string(flat_phase_coefficient.rows) +
+			"; actualColumns=" + std::to_string(flat_phase_coefficient.cols) + "; actualCvType=" + std::to_string(flat_phase_coefficient.type()),
+			unwrapped_phase_file, "flat_phase_coefficient", 0, flat_phase_coefficient.rows, flat_phase_coefficient.cols, flat_phase_coefficient.type());
+		return DEM_ERROR_INVALID_SHAPE;
+	}
+	ret = readDemString(diagnosticContext, unwrapped_phase_file, "source_1", "input.source_1", source_1_raw);
+	if (ret != 0) return hdfReadFailure(ret, "read_str_from_h5()");
+	ret = readDemString(diagnosticContext, unwrapped_phase_file, "source_2", "input.source_2", source_2_raw);
+	if (ret != 0) return hdfReadFailure(ret, "read_str_from_h5()");
+	const SourcePathResolution source1 = resolveSourcePath(source_1_raw, project);
+	const SourcePathResolution source2 = resolveSourcePath(source_2_raw, project);
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_1", "Resolved source_1 path.", sourcePathDetail(source1, project));
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_2", "Resolved source_2 path.", sourcePathDetail(source2, project));
+	if (!legacyConsoleLogging && ((source1.projectRelative && !source1.insideProject) || (source2.projectRelative && !source2.insideProject)))
+	{
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_SOURCE_PATH, "input.source_path", "A project-relative source path resolves outside the project root.");
+		return DEM_ERROR_SOURCE_PATH;
+	}
+	const string source_1 = legacyConsoleLogging ? string(project_path) + source_1_raw : source1.normalized;
+	const string source_2 = legacyConsoleLogging ? string(project_path) + source_2_raw : source2.normalized;
+	auto invalidShape = [&](const char* stage, const char* file, const char* dataset, const Mat& value,
+		const char* expectation) {
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, stage, "HDF5 dataset shape or type is invalid.",
+			std::string("expected=") + expectation + "; actualRows=" + std::to_string(value.rows) +
+			"; actualColumns=" + std::to_string(value.cols) + "; actualCvType=" + std::to_string(value.type()),
+			file, dataset, 0, value.rows, value.cols, value.type());
+		return static_cast<int>(DEM_ERROR_INVALID_SHAPE);
+	};
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "gcps", "source_1.master.gcps", gcps);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "offset_row", "source_1.master.offset_row", temp);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (temp.type() != CV_32S || temp.total() != 1) return invalidShape("source_1.master.offset_row", source_1.c_str(), "offset_row", temp, "CV_32S scalar");
 	offset_row = temp.at<int>(0, 0);
-	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_col", temp);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "offset_col", "source_1.master.offset_col", temp);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (temp.type() != CV_32S || temp.total() != 1) return invalidShape("source_1.master.offset_col", source_1.c_str(), "offset_col", temp, "CV_32S scalar");
 	offset_col = temp.at<int>(0, 0);
-	ret = conversion.read_array_from_h5(source_1.c_str(), "range_spacing", range_spacing);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "state_vec", stateVec1);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_2.c_str(), "state_vec", stateVec2);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "prf", prf1);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "range_spacing", "source_1.master.range_spacing", range_spacing);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "state_vec", "source_1.master.state_vec", stateVec1);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_2.c_str(), "state_vec", "source_2.slave.state_vec", stateVec2);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "prf", "source_1.master.prf", prf1);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (prf1.type() != CV_64F || prf1.total() != 1) return invalidShape("source_1.master.prf", source_1.c_str(), "prf", prf1, "CV_64F scalar");
 	time_interval1 = 1.0 / (prf1.at<double>(0, 0) + 1e-10);
-	ret = conversion.read_array_from_h5(source_2.c_str(), "prf", prf2);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, source_2.c_str(), "prf", "source_2.slave.prf", prf2);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (prf2.type() != CV_64F || prf2.total() != 1) return invalidShape("source_2.slave.prf", source_2.c_str(), "prf", prf2, "CV_64F scalar");
 	time_interval2 = 1.0 / (prf2.at<double>(0, 0) + 1e-10);
-	ret = conversion.read_array_from_h5(source_1.c_str(), "lat_coefficient", lat_coefficient);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "lon_coefficient", lon_coefficient);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_array_from_h5(source_1.c_str(), "carrier_frequency", carrier_frequency);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "lat_coefficient", "source_1.master.lat_coefficient", lat_coefficient);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "lon_coefficient", "source_1.master.lon_coefficient", lon_coefficient);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	ret = readDemArray(diagnosticContext, source_1.c_str(), "carrier_frequency", "source_1.master.carrier_frequency", carrier_frequency);
+	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
+	if (gcps.type() != CV_64F || gcps.rows < 1 || gcps.cols < 5)
+		return invalidShape("source_1.master.gcps", source_1.c_str(), "gcps", gcps, "CV_64F with at least 1x5");
+	if (range_spacing.type() != CV_64F || range_spacing.total() != 1)
+		return invalidShape("source_1.master.range_spacing", source_1.c_str(), "range_spacing", range_spacing, "CV_64F scalar");
+	if (stateVec1.type() != CV_64F || stateVec1.rows < 1 || stateVec1.cols < 7)
+		return invalidShape("source_1.master.state_vec", source_1.c_str(), "state_vec", stateVec1, "CV_64F with at least 1x7");
+	if (stateVec2.type() != CV_64F || stateVec2.rows < 1 || stateVec2.cols < 7)
+		return invalidShape("source_2.slave.state_vec", source_2.c_str(), "state_vec", stateVec2, "CV_64F with at least 1x7");
+	if (lat_coefficient.type() != CV_64F || lat_coefficient.empty())
+		return invalidShape("source_1.master.lat_coefficient", source_1.c_str(), "lat_coefficient", lat_coefficient, "non-empty CV_64F");
+	if (lon_coefficient.type() != CV_64F || lon_coefficient.empty())
+		return invalidShape("source_1.master.lon_coefficient", source_1.c_str(), "lon_coefficient", lon_coefficient, "non-empty CV_64F");
+	if (carrier_frequency.type() != CV_64F || carrier_frequency.total() != 1)
+		return invalidShape("source_1.master.carrier_frequency", source_1.c_str(), "carrier_frequency", carrier_frequency, "CV_64F scalar");
 
 	//寻找图像范围内的控制点信息
 
@@ -420,25 +714,25 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		row_coord.at<double>(0, 0) = offset_row + double(nr) / 2.0;
 		col_coord.at<double>(0, 0) = offset_col + double(nc) / 2.0;
 		ret = util.coord_conversion(lat_coefficient, row_coord, col_coord, lat);
-		if (return_check(ret, "coord_conversion", error_head)) return -1;
+		if (ret != 0) return processingFailure("coord_conversion", ret);
 		ret = util.coord_conversion(lon_coefficient, row_coord, col_coord, lon);
-		if (return_check(ret, "coord_conversion", error_head)) return -1;
+		if (ret != 0) return processingFailure("coord_conversion", ret);
 		llh.at<double>(0, 0) = lat.at<double>(0, 0);
 		llh.at<double>(0, 1) = lon.at<double>(0, 0);
 		llh.at<double>(0, 2) = 0.0;
 		row = (int)nr / 2; col = (int)nc / 2;
 	}
 	ret = util.ell2xyz(llh, xyz_ground);
-	if (return_check(ret, "ell2xyz", error_head)) return -1;
+	if (ret != 0) return processingFailure("ell2xyz", ret);
 
 
 	/*
 	* 轨道插值
 	*/
 	ret = util.stateVec_interp(stateVec1, time_interval1, stateVec1);
-	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
+	if (ret != 0) return processingFailure("stateVec_interp()", ret);
 	ret = util.stateVec_interp(stateVec2, time_interval2, stateVec2);
-	if (return_check(ret, "stateVec_interp()", error_head)) return -1;
+	if (ret != 0) return processingFailure("stateVec_interp()", ret);
 	/*
 	* 寻找图像左上角成像卫星位置
 	*/
@@ -455,14 +749,14 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	row_coord.at<double>(0, 0) = offset_row;
 	col_coord.at<double>(0, 0) = offset_col + double(nc) / 2.0;
 	ret = util.coord_conversion(lat_coefficient, row_coord, col_coord, lat);
-	if (return_check(ret, "coord_conversion", error_head)) return -1;
+	if (ret != 0) return processingFailure("coord_conversion", ret);
 	ret = util.coord_conversion(lon_coefficient, row_coord, col_coord, lon);
-	if (return_check(ret, "coord_conversion", error_head)) return -1;
+	if (ret != 0) return processingFailure("coord_conversion", ret);
 	llh_upperleft.at<double>(0, 0) = lat.at<double>(0, 0);
 	llh_upperleft.at<double>(0, 1) = lon.at<double>(0, 0);
 	llh_upperleft.at<double>(0, 2) = 0.0;
 	ret = util.ell2xyz(llh_upperleft, xyz);
-	if (return_check(ret, "ell2xyz", error_head)) return -1;
+	if (ret != 0) return processingFailure("ell2xyz", ret);
 	Mat dop = Mat::zeros(sate1_xyz.rows, 1, CV_64F);
 	Mat r;
 	for (int j = 0; j < sate1_xyz.rows; j++)
@@ -553,11 +847,13 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	if (!Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core_ex(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda, cb))
+	                 R_M, R_F, fd, lambda, ProgressReporter::callback, &progressReporter))
 	{
-		return -2;
+		if (progressReporter.cancelled()) return cancellationResult();
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_PROCESSING, "newton_iteration", "Newton iteration did not converge or was cancelled.", "internalReturnCode=-2");
+		return legacyConsoleLogging ? -2 : static_cast<int>(DEM_ERROR_PROCESSING);
 	}
 	std::atomic<bool> parallel_flag(true);
 	dem.create(nr, nc, CV_64F);
@@ -569,10 +865,10 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		if (!parallel_flag) continue;
+		if (!parallel_flag || progressReporter.cancelled()) continue;
 		for (int j = 0; j < nc; j++)
 		{
-			if (!parallel_flag) continue;
+			if (!parallel_flag || progressReporter.cancelled()) continue;
 			double lat, lon, h;
 			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat, lon, h);
 			if (ret < 0)
@@ -584,17 +880,25 @@ int Dem::dem_newton_iter(const char* unwrapped_phase_file, Mat& dem, const char*
 		}
 
 		int current_completed = ++completed_rows;
-		if (cb && current_completed % step == 0)
+		if (current_completed % step == 0)
 		{
 			int progress = 90 + (current_completed * 10) / nr;
-			if (!cb(progress, "Converting coordinates..."))
+			if (!progressReporter.reportCoordinateConversion(progress))
 			{
 				parallel_flag = false;
 			}
 		}
 	}
-	if (!parallel_flag) return -2;
+	if (!parallel_flag || progressReporter.cancelled())
+	{
+		if (progressReporter.cancelled()) return cancellationResult();
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_PROCESSING, "coordinate_conversion", "Coordinate conversion did not complete.", "internalReturnCode=-2");
+		return legacyConsoleLogging ? -2 : static_cast<int>(DEM_ERROR_PROCESSING);
+	}
 	dem = dem + llh.at<double>(0, 2) - dem.at<double>(row, col);
+	if (!progressReporter.reportSuccess()) return cancellationResult();
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "complete", "DEM Newton iteration completed successfully.",
+		"rows=" + std::to_string(dem.rows) + "; columns=" + std::to_string(dem.cols));
 	return 0;
 }
 
@@ -608,6 +912,8 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		fprintf(stderr, "dem_newton_iter(): input check failed!\n");
 		return -1;
 	}
+	ProgressReporter progressReporter(cb);
+	if (!progressReporter.report(0, "Preparing DEM input...")) return -2;
 
 	/*
 	* 校正至绝对相位
@@ -856,9 +1162,9 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	Mat P2 = ones * xyz_ground.at<double>(0, 1);
 	Mat P3 = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	if (!Utils::newton_iter_core(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core_ex(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda, cb))
+	                 R_M, R_F, fd, lambda, ProgressReporter::callback, &progressReporter))
 	{
 		return -2;
 	}
@@ -874,10 +1180,10 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		if (!parallel_flag) continue;
+		if (!parallel_flag || progressReporter.cancelled()) continue;
 		for (int j = 0; j < nc; j++)
 		{
-			if (!parallel_flag) continue;
+			if (!parallel_flag || progressReporter.cancelled()) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(P1.at<double>(i, j), P2.at<double>(i, j), P3.at<double>(i, j), lat_val, lon_val, h_val);
 			if (ret < 0)
@@ -891,16 +1197,16 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		}
 
 		int current_completed = ++completed_rows;
-		if (cb && current_completed % step == 0)
+		if (current_completed % step == 0)
 		{
 			int progress = 90 + (current_completed * 10) / nr;
-			if (!cb(progress, "Converting coordinates..."))
+			if (!progressReporter.reportCoordinateConversion(progress))
 			{
 				parallel_flag = false;
 			}
 		}
 	}
-	if (!parallel_flag) return -2;
+	if (!parallel_flag || progressReporter.cancelled()) return -2;
 	//dem = dem + llh.at<double>(0, 2) - dem.at<double>(row - 1, col - 1);
 	Mat error(static_cast<int>(valid_row.size()), 3, CV_64F);
 
@@ -918,6 +1224,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 		error.at<double>(i, 2) = dem.at<double>(r - 1, c - 1) - gcps.at<double>(valid_row[i], 4);
 	}
 	//util.cvmat2bin("G:\\tmp\\error.bin", error);
+	if (!progressReporter.reportSuccess()) return -2;
 	return 0;
 }
 
@@ -945,6 +1252,8 @@ int Dem::dem_newton_iter_14(
 		fprintf(stderr, "dem_newton_iter_14(): input check failed!\n");
 		return -1;
 	}
+	ProgressReporter progressReporter(cb);
+	if (!progressReporter.report(0, "Preparing DEM input...")) return -2;
 
 	/*
 	* 校正至绝对相位
@@ -1200,9 +1509,9 @@ int Dem::dem_newton_iter_14(
 	dem_y = ones * xyz_ground.at<double>(0, 1);
 	dem_z = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	if (!Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core_ex(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda, cb))
+	                 R_M, R_F, fd, lambda, ProgressReporter::callback, &progressReporter))
 	{
 		return -2;
 	}
@@ -1217,10 +1526,10 @@ int Dem::dem_newton_iter_14(
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		if (!parallel_flag) continue;
+		if (!parallel_flag || progressReporter.cancelled()) continue;
 		for (int j = 0; j < nc; j++)
 		{
-			if (!parallel_flag) continue;
+			if (!parallel_flag || progressReporter.cancelled()) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
 			if (ret < 0)
@@ -1234,16 +1543,16 @@ int Dem::dem_newton_iter_14(
 		}
 
 		int current_completed = ++completed_rows;
-		if (cb && current_completed % step == 0)
+		if (current_completed % step == 0)
 		{
 			int progress = 90 + (current_completed * 10) / nr;
-			if (!cb(progress, "Converting coordinates..."))
+			if (!progressReporter.reportCoordinateConversion(progress))
 			{
 				parallel_flag = false;
 			}
 		}
 	}
-	if (!parallel_flag) return -2;
+	if (!parallel_flag || progressReporter.cancelled()) return -2;
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
@@ -1260,6 +1569,7 @@ int Dem::dem_newton_iter_14(
 		error_llh.at<double>(i, 2) = dem.at<double>(r - 1, c - 1) - gcps.at<double>(valid_row[i], 4);
 	}
 	//util.cvmat2bin("G:\\tmp\\error.bin", error);
+	if (!progressReporter.reportSuccess()) return -2;
 	return 0;
 }
 
@@ -1287,6 +1597,8 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		fprintf(stderr, "dem_newton_iter_14_dualfreqpingpong(): input check failed!\n");
 		return -1;
 	}
+	ProgressReporter progressReporter(cb);
+	if (!progressReporter.report(0, "Preparing DEM input...")) return -2;
 
 	/*
 	* 校正至绝对相位
@@ -1517,9 +1829,9 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	dem_y = ones * xyz_ground.at<double>(0, 1);
 	dem_z = ones * xyz_ground.at<double>(0, 2);
 	Mat fd = Mat::zeros(1, nc, CV_64F);
-	if (!Utils::newton_iter_core(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
+	if (!Utils::newton_iter_core_ex(iter_times, dem_x, dem_y, dem_z, Satellite_M_T_Position, Satellite_S_T_Position,
 	                 Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs,
-	                 R_M, R_F, fd, lambda, cb))
+	                 R_M, R_F, fd, lambda, ProgressReporter::callback, &progressReporter))
 	{
 		return -2;
 	}
@@ -1534,10 +1846,10 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	private(ret)
 	for (int i = 0; i < nr; i++)
 	{
-		if (!parallel_flag) continue;
+		if (!parallel_flag || progressReporter.cancelled()) continue;
 		for (int j = 0; j < nc; j++)
 		{
-			if (!parallel_flag) continue;
+			if (!parallel_flag || progressReporter.cancelled()) continue;
 			double lat_val, lon_val, h_val;
 			ret = Utils::xyz2ell(dem_x.at<double>(i, j), dem_y.at<double>(i, j), dem_z.at<double>(i, j), lat_val, lon_val, h_val);
 			if (ret < 0)
@@ -1551,16 +1863,16 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		}
 
 		int current_completed = ++completed_rows;
-		if (cb && current_completed % step == 0)
+		if (current_completed % step == 0)
 		{
 			int progress = 90 + (current_completed * 10) / nr;
-			if (!cb(progress, "Converting coordinates..."))
+			if (!progressReporter.reportCoordinateConversion(progress))
 			{
 				parallel_flag = false;
 			}
 		}
 	}
-	if (!parallel_flag) return -2;
+	if (!parallel_flag || progressReporter.cancelled()) return -2;
 	error_llh.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	error_xyz.create(static_cast<int>(valid_row.size()), 3, CV_64F);
 	for (int i = 0; i < valid_row.size(); i++)
@@ -1577,6 +1889,7 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 		error_llh.at<double>(i, 2) = dem.at<double>(r - 1, c - 1) - gcps.at<double>(valid_row[i], 4);
 	}
 	//util.cvmat2bin("G:\\tmp\\error.bin", error);
+	if (!progressReporter.reportSuccess()) return -2;
 	return 0;
 }
 

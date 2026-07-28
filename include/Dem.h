@@ -1,6 +1,8 @@
 #pragma once
 #ifndef __DEM__H__
 #define __DEM__H__
+#include <cstddef>
+#include <cstdint>
 #include"..\include\Package.h"
 #include"..\include\Deflat.h"
 
@@ -8,6 +10,63 @@
 
 // 定义 Dem 专用的进度回调函数指针类型
 typedef bool (__stdcall *DemProgressCallback)(int progress, const char* message);
+typedef bool (__stdcall *DemProgressCallbackEx)(int progress, const char* message, void* userData);
+
+enum DemLogLevel : int32_t
+{
+	DEM_LOG_DEBUG = 0,
+	DEM_LOG_INFO = 1,
+	DEM_LOG_WARNING = 2,
+	DEM_LOG_ERROR = 3
+};
+
+enum DemError : int32_t
+{
+	DEM_ERROR_INVALID_DIAGNOSTIC_OPTIONS = -2001,
+	DEM_ERROR_INVALID_INPUT = -2002,
+	DEM_ERROR_HDF5_READ = -2003,
+	DEM_ERROR_SOURCE_PATH = -2004,
+	DEM_ERROR_INVALID_SHAPE = -2005,
+	DEM_ERROR_PROCESSING = -2006,
+	DEM_ERROR_CANCELLED = -2007
+};
+
+struct DemDiagnosticEvent
+{
+	DemLogLevel level;
+	DemError error;
+	const char* callId;
+	const char* stage;
+	const char* message;
+	const char* detail;
+	const char* h5File;
+	const char* dataset;
+	int32_t hdf5Status;
+	int32_t rows;
+	int32_t columns;
+	int32_t cvType;
+};
+
+// The callback is synchronous. All string fields are borrowed for the callback
+// duration only; callers must copy them before returning.
+typedef void (__stdcall *DemDiagnosticCallback)(const DemDiagnosticEvent* event, void* userData);
+
+struct DemDiagnosticOptions
+{
+	uint32_t structSize;
+	uint32_t version;
+	const char* callId;
+	int32_t logLevel;
+	DemDiagnosticCallback callback;
+	void* userData;
+	DemProgressCallbackEx progressCallback;
+	void* progressUserData;
+};
+
+constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_VERSION_V1 = 1;
+constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_VERSION = 2;
+constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_MIN_SIZE =
+	static_cast<uint32_t>(offsetof(DemDiagnosticOptions, version) + sizeof(uint32_t));
 
 class InSAR_API Dem
 {
@@ -66,6 +125,18 @@ public:
 		const char* project_path,
 		int iter_times,
 		int mode = TR_MODE_SINGLE_TX_SINGLE_RX,
+		DemProgressCallback cb = nullptr
+	);
+	// Extended diagnostic entry point. v1 diagnostics use cb for progress. v2
+	// diagnostics may provide progressCallback/progressUserData instead; when
+	// present, the v2 callback is used exclusively for progress notifications.
+	int dem_newton_iter_ex(
+		const char* unwrapped_phase_file,
+		Mat& dem,
+		const char* project_path,
+		int iter_times,
+		int mode,
+		const DemDiagnosticOptions* diagnostics,
 		DemProgressCallback cb = nullptr
 	);
 
@@ -149,6 +220,16 @@ public:
 	);
 
 private:
+	int dem_newton_iter_impl(
+		const char* unwrapped_phase_file,
+		Mat& dem,
+		const char* project_path,
+		int iter_times,
+		int mode,
+		const DemDiagnosticOptions* diagnostics,
+		DemProgressCallback cb,
+		bool legacyConsoleLogging
+	);
 	char error_head[256];
 	char parallel_error_head[256];
 

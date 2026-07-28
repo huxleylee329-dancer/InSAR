@@ -96,6 +96,20 @@ bool Utils::findZeroDopplerTime(
 	return orbitStateVectors::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, dopplerThreshold);
 }
 
+namespace
+{
+	struct LegacyNewtonProgressContext
+	{
+		NewtonProgressCallback callback = nullptr;
+	};
+
+	bool __stdcall forwardLegacyNewtonProgress(int progress, const char* message, void* userData)
+	{
+		const LegacyNewtonProgressContext* context = static_cast<const LegacyNewtonProgressContext*>(userData);
+		return !context || !context->callback || context->callback(progress, message);
+	}
+}
+
 bool Utils::newton_iter_core(
 	int iter_times,
 	Mat& P1, Mat& P2, Mat& P3,
@@ -110,6 +124,29 @@ bool Utils::newton_iter_core(
 	const Mat& fd,
 	double lambda,
 	NewtonProgressCallback cb)
+{
+	LegacyNewtonProgressContext context;
+	context.callback = cb;
+	return newton_iter_core_ex(iter_times, P1, P2, P3, Satellite_M_T_Position, Satellite_S_T_Position,
+		Satellite_S_R_Position, Satellite_M_R_Position, Satellite_M, Vs, R_M, R_F, fd, lambda,
+		cb ? forwardLegacyNewtonProgress : nullptr, cb ? &context : nullptr);
+}
+
+bool Utils::newton_iter_core_ex(
+	int iter_times,
+	Mat& P1, Mat& P2, Mat& P3,
+	const Mat& Satellite_M_T_Position,
+	const Mat& Satellite_S_T_Position,
+	const Mat& Satellite_S_R_Position,
+	const Mat& Satellite_M_R_Position,
+	const Mat& Satellite_M,
+	const Mat& Vs,
+	const Mat& R_M,
+	const Mat& R_F,
+	const Mat& fd,
+	double lambda,
+	NewtonProgressCallbackEx cb,
+	void* userData)
 {
 	int nr = P1.rows;
 	int nc = P1.cols;
@@ -305,7 +342,7 @@ bool Utils::newton_iter_core(
 		if (cb)
 		{
 			int progress = (i + 1) * 90 / iter_times;
-			if (!cb(progress, "Computing Newton iteration..."))
+			if (!cb(progress, "Computing Newton iteration...", userData))
 			{
 				return false;
 			}

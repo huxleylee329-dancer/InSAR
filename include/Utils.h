@@ -8,8 +8,7 @@
 
 // 定义牛顿迭代专用的进度回调函数指针类型
 typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* message);
-
-typedef bool (__stdcall *NewtonProgressCallback)(int progress, const char* message);
+typedef bool (__stdcall *NewtonProgressCallbackEx)(int progress, const char* message, void* userData);
 
 #if defined(UTILS_EXPORTS)
 #define UTILS_API __declspec(dllexport)
@@ -495,6 +494,22 @@ public:
 		const cv::Mat& fd,
 		double lambda,
 		NewtonProgressCallback cb = nullptr
+	);
+	static bool newton_iter_core_ex(
+		int iter_times,
+		cv::Mat& P1, cv::Mat& P2, cv::Mat& P3,
+		const cv::Mat& Satellite_M_T_Position,
+		const cv::Mat& Satellite_S_T_Position,
+		const cv::Mat& Satellite_S_R_Position,
+		const cv::Mat& Satellite_M_R_Position,
+		const cv::Mat& Satellite_M,
+		const cv::Mat& Vs,
+		const cv::Mat& R_M,
+		const cv::Mat& R_F,
+		const cv::Mat& fd,
+		double lambda,
+		NewtonProgressCallbackEx cb,
+		void* userData
 	);
 	/*@brief 生成范德蒙矩阵
 	* @param inArray                           自变量序列

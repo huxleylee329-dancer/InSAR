@@ -16,6 +16,7 @@
 #include <omp.h>  /*多线程计算库*/
 #include <cstring>
 #include "RegistrationSubpixelRegression.h"
+#include "..\Dem\ProgressReporter.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
 #include"..\include\Unwrap.h"
@@ -32,6 +33,8 @@
 #include<SensAPI.h>
 #include<urlmon.h>
 #include<queue>
+#include <atomic>
+#include <mutex>
 
 #ifdef _DEBUG
 #pragma comment(lib, "Utils_d.lib")
@@ -62,6 +65,130 @@
 
 using cv::Mat;
 using cv::Range;
+
+namespace
+{
+	struct DemProgressRecorder
+	{
+		std::mutex mutex;
+		std::vector<int> values;
+		int cancelAt = -1;
+	};
+
+	DemProgressRecorder* g_demProgressRecorder = nullptr;
+
+	bool __stdcall recordDemProgress(int progress, const char*)
+	{
+		std::lock_guard<std::mutex> lock(g_demProgressRecorder->mutex);
+		g_demProgressRecorder->values.push_back(progress);
+		return progress != g_demProgressRecorder->cancelAt;
+	}
+
+	int g_legacyProgressCallbackCount = 0;
+
+	bool __stdcall countLegacyDemProgress(int, const char*)
+	{
+		++g_legacyProgressCallbackCount;
+		return true;
+	}
+
+	bool __stdcall recordDemProgressEx(int progress, const char*, void* userData)
+	{
+		DemProgressRecorder* recorder = static_cast<DemProgressRecorder*>(userData);
+		std::lock_guard<std::mutex> lock(recorder->mutex);
+		recorder->values.push_back(progress);
+		return progress != recorder->cancelAt;
+	}
+
+	bool hasMonotonicProgress(const std::vector<int>& values)
+	{
+		for (size_t i = 1; i < values.size(); ++i)
+		{
+			if (values[i] < values[i - 1]) return false;
+		}
+		return true;
+	}
+
+	int RunDemProgressReporterRegression()
+	{
+		constexpr int iterTimes = 121;
+		constexpr int rowCount = 103;
+		const int step = (std::max)(1, rowCount / 10);
+
+		DemProgressRecorder successRecorder;
+		g_demProgressRecorder = &successRecorder;
+		DemInternal::ProgressReporter successReporter(recordDemProgress);
+		if (!successReporter.report(0, "Preparing DEM input...")) return 1;
+		for (int i = 0; i < iterTimes; ++i)
+		{
+			if (!successReporter.report((i + 1) * 90 / iterTimes, "Computing Newton iteration...")) return 2;
+		}
+		std::atomic<int> completedRows(0);
+		std::atomic<bool> coordinateSucceeded(true);
+#pragma omp parallel for num_threads(4) schedule(guided)
+		for (int row = 0; row < rowCount; ++row)
+		{
+			const int current = ++completedRows;
+			if (current % step == 0)
+			{
+				const int candidate = 90 + current * 10 / rowCount;
+				if (!successReporter.reportCoordinateConversion(candidate)) coordinateSucceeded = false;
+			}
+		}
+		if (!coordinateSucceeded || !successReporter.reportSuccess()) return 3;
+		{
+			std::lock_guard<std::mutex> lock(successRecorder.mutex);
+			if (successRecorder.values.empty() || successRecorder.values.front() != 0 ||
+				successRecorder.values.back() != 100 || !hasMonotonicProgress(successRecorder.values)) return 4;
+			for (int value : successRecorder.values)
+			{
+				if (value < 0 || value > 100) return 5;
+			}
+		}
+
+		DemProgressRecorder contextRecorder;
+		g_legacyProgressCallbackCount = 0;
+		DemInternal::ProgressReporter contextReporter(countLegacyDemProgress, recordDemProgressEx, &contextRecorder);
+		if (!contextReporter.report(0, "Preparing DEM input...") || !contextReporter.reportSuccess()) return 6;
+		{
+			std::lock_guard<std::mutex> lock(contextRecorder.mutex);
+			if (g_legacyProgressCallbackCount != 0 || contextRecorder.values.size() != 2 ||
+				contextRecorder.values.front() != 0 || contextRecorder.values.back() != 100) return 7;
+		}
+
+		DemProgressRecorder cancellationRecorder;
+		cancellationRecorder.cancelAt = 95;
+		g_demProgressRecorder = &cancellationRecorder;
+		DemInternal::ProgressReporter cancellationReporter(recordDemProgress);
+		if (!cancellationReporter.report(0, "Preparing DEM input...")) return 8;
+		for (int i = 0; i < iterTimes; ++i)
+		{
+			if (!cancellationReporter.report((i + 1) * 90 / iterTimes, "Computing Newton iteration...")) return 9;
+		}
+		std::atomic<int> cancelledCompletedRows(0);
+#pragma omp parallel for num_threads(4) schedule(guided)
+		for (int row = 0; row < rowCount; ++row)
+		{
+			const int current = ++cancelledCompletedRows;
+			if (current % step == 0)
+			{
+				const int candidate = 90 + current * 10 / rowCount;
+				cancellationReporter.reportCoordinateConversion(candidate);
+			}
+		}
+		if (!cancellationReporter.cancelled()) return 10;
+		{
+			std::lock_guard<std::mutex> lock(cancellationRecorder.mutex);
+			const size_t callbackCount = cancellationRecorder.values.size();
+			if (cancellationReporter.reportCoordinateConversion(99) || cancellationReporter.reportSuccess()) return 11;
+			if (cancellationRecorder.values.size() != callbackCount ||
+				std::find(cancellationRecorder.values.begin(), cancellationRecorder.values.end(), 100) != cancellationRecorder.values.end()) return 12;
+		}
+
+		g_demProgressRecorder = nullptr;
+		return 0;
+	}
+}
 
 enum ConvolutionType {
 	/* Return the full convolution, including border */
@@ -1039,6 +1166,10 @@ int main(int argc, char* argv[])
 	if (argc == 2 && std::strcmp(argv[1], "--registration-subpixel-regression") == 0)
 	{
 		return RunRegistrationSubpixelRegression();
+	}
+	if (argc == 2 && std::strcmp(argv[1], "--dem-progress-regression") == 0)
+	{
+		return RunDemProgressReporterRegression();
 	}
 
 	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,

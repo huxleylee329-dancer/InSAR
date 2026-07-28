@@ -406,6 +406,66 @@ namespace
 		return dataset.valid() ? 0 : -1;
 	}
 
+	struct Hdf5ErrorStackCapture
+	{
+		char* buffer;
+		size_t capacity;
+		size_t length;
+	};
+
+	herr_t appendHdf5Error(unsigned, const H5E_error2_t* error, void* data)
+	{
+		Hdf5ErrorStackCapture* capture = static_cast<Hdf5ErrorStackCapture*>(data);
+		if (!capture || !capture->buffer || capture->length >= capture->capacity) return 0;
+		const int written = _snprintf_s(capture->buffer + capture->length,
+			capture->capacity - capture->length, _TRUNCATE,
+			"%s:%u %s: %s\n", error && error->file_name ? error->file_name : "?",
+			error ? error->line : 0, error && error->func_name ? error->func_name : "?",
+			error && error->desc ? error->desc : "?");
+		if (written > 0) capture->length += static_cast<size_t>(written);
+		else capture->length = capture->capacity;
+		return 0;
+	}
+
+	void captureHdf5ErrorStack(Hdf5IO::Hdf5ReadDiagnostic& diagnostic)
+	{
+		diagnostic.errorStack[0] = '\0';
+		Hdf5ErrorStackCapture capture = { diagnostic.errorStack, sizeof(diagnostic.errorStack), 0 };
+		if (H5Ewalk2(H5E_DEFAULT, H5E_WALK_DOWNWARD, appendHdf5Error, &capture) < 0 || capture.length == 0)
+			strcpy_s(diagnostic.errorStack, "No HDF5 error stack was available.");
+	}
+
+	class ScopedHdf5AutoErrorSilencer
+	{
+	public:
+		ScopedHdf5AutoErrorSilencer() : callback_(nullptr), userData_(nullptr), active_(false)
+		{
+			if (H5Eget_auto2(H5E_DEFAULT, &callback_, &userData_) == 0 &&
+				H5Eset_auto2(H5E_DEFAULT, nullptr, nullptr) == 0) active_ = true;
+		}
+
+		~ScopedHdf5AutoErrorSilencer()
+		{
+			if (active_) H5Eset_auto2(H5E_DEFAULT, callback_, userData_);
+		}
+
+	private:
+		H5E_auto2_t callback_;
+		void* userData_;
+		bool active_;
+	};
+
+	void describeHdf5Type(hid_t type, char* buffer, size_t bufferSize)
+	{
+		if (!buffer || bufferSize == 0) return;
+		buffer[0] = '\0';
+		const H5T_class_t typeClass = H5Tget_class(type);
+		const size_t typeSize = H5Tget_size(type);
+		const char* className = typeClass == H5T_FLOAT ? "float" :
+			typeClass == H5T_INTEGER ? "integer" : "other";
+		sprintf_s(buffer, bufferSize, "%s(%zu bytes)", className, typeSize);
+	}
+
 	int openWritableFile(const char* filename, ScopedAuditedH5File& file)
 	{
 		if (!isRegularFile(filename)) return -1;
@@ -782,6 +842,113 @@ namespace Hdf5IO
 		output.create(rows, columns, cvType);
 		const hid_t nativeType = cvTypeToNativeH5Type(cvType);
 		return H5Dread(dataset, nativeType, H5S_ALL, H5S_ALL, H5P_DEFAULT, output.data) < 0 ? -1 : 0;
+	}
+
+	int readArrayDiagnosed(const char* filename, const char* datasetName, cv::Mat& output,
+		Hdf5ReadDiagnostic* diagnostic)
+	{
+		Hdf5ReadDiagnostic localDiagnostic = {};
+		Hdf5ReadDiagnostic& result = diagnostic ? *diagnostic : localDiagnostic;
+		result = {};
+		if (!filename || !*filename || !datasetName || !*datasetName)
+		{
+			result.stage = HDF5_READ_STAGE_INVALID_ARGUMENT;
+			result.hdf5Status = kInvalidArgument;
+			strcpy_s(result.errorStack, "Filename and dataset name are required.");
+			return kInvalidArgument;
+		}
+
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0)
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_FILE;
+			result.hdf5Status = lock.result();
+			strcpy_s(result.errorStack, "Unable to acquire the HDF5 operation lock.");
+			return lock.result();
+		}
+		ScopedHdf5AutoErrorSilencer errorSilencer;
+		auto fail = [&](int stage, int status) {
+			result.stage = stage;
+			result.hdf5Status = status;
+			captureHdf5ErrorStack(result);
+			return status;
+		};
+
+		if (!isRegularFile(filename))
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_FILE;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "The HDF5 path does not identify an existing regular file.");
+			return -1;
+		}
+
+		H5Eclear2(H5E_DEFAULT);
+		ScopedAuditedH5File file;
+		if (file.open(filename, H5F_ACC_RDONLY, "read") != 0) return fail(HDF5_READ_STAGE_OPEN_FILE, -1);
+		const std::string path = datasetPath(datasetName);
+		if (path.empty())
+		{
+			result.stage = HDF5_READ_STAGE_DATASET_PATH;
+			result.hdf5Status = kInvalidArgument;
+			strcpy_s(result.errorStack, "The HDF5 dataset path is invalid.");
+			return kInvalidArgument;
+		}
+
+		H5Eclear2(H5E_DEFAULT);
+		const htri_t exists = H5Lexists(file, path.c_str(), H5P_DEFAULT);
+		if (exists < 0) return fail(HDF5_READ_STAGE_OPEN_DATASET, static_cast<int>(exists));
+		if (exists == 0)
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_DATASET;
+			result.hdf5Status = 0;
+			strcpy_s(result.errorStack, "The requested dataset does not exist.");
+			return -1;
+		}
+
+		H5Eclear2(H5E_DEFAULT);
+		ScopedH5Id dataset(H5Dopen2(file, path.c_str(), H5P_DEFAULT), H5Dclose);
+		if (!dataset.valid()) return fail(HDF5_READ_STAGE_OPEN_DATASET, -1);
+		H5Eclear2(H5E_DEFAULT);
+		ScopedH5Id space(H5Dget_space(dataset), H5Sclose);
+		if (!space.valid()) return fail(HDF5_READ_STAGE_DATA_SPACE, -1);
+		H5Eclear2(H5E_DEFAULT);
+		ScopedH5Id type(H5Dget_type(dataset), H5Tclose);
+		if (!type.valid()) return fail(HDF5_READ_STAGE_DATA_TYPE, -1);
+
+		H5Eclear2(H5E_DEFAULT);
+		const int rank = H5Sget_simple_extent_ndims(space);
+		if (rank < 1 || rank > 2) return fail(HDF5_READ_STAGE_RANK, rank);
+		H5Eclear2(H5E_DEFAULT);
+		const int cvType = h5TypeToCvType(type);
+		if (cvType < 0) return fail(HDF5_READ_STAGE_DATA_TYPE, cvType);
+		describeHdf5Type(type, result.hdf5Type, sizeof(result.hdf5Type));
+
+		hsize_t dimensions[2] = { 1, 1 };
+		H5Eclear2(H5E_DEFAULT);
+		if (H5Sget_simple_extent_dims(space, dimensions, nullptr) < 0 ||
+			dimensions[0] > static_cast<hsize_t>(std::numeric_limits<int>::max()) ||
+			(rank == 2 && dimensions[1] > static_cast<hsize_t>(std::numeric_limits<int>::max())))
+			return fail(HDF5_READ_STAGE_DIMENSIONS, -1);
+		result.rows = static_cast<int>(dimensions[0]);
+		result.columns = rank == 1 ? 1 : static_cast<int>(dimensions[1]);
+		result.cvType = cvType;
+		try
+		{
+			output.create(result.rows, result.columns, cvType);
+		}
+		catch (const cv::Exception&)
+		{
+			result.stage = HDF5_READ_STAGE_OUTPUT_ALLOCATION;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "OpenCV could not allocate the output matrix.");
+			return -1;
+		}
+
+		H5Eclear2(H5E_DEFAULT);
+		const herr_t readStatus = H5Dread(dataset, cvTypeToNativeH5Type(cvType), H5S_ALL, H5S_ALL,
+			H5P_DEFAULT, output.data);
+		if (readStatus < 0) return fail(HDF5_READ_STAGE_DATA_READ, static_cast<int>(readStatus));
+		return 0;
 	}
 
 	ReadSession* openReadSession(const char* filename)
@@ -1210,6 +1377,106 @@ namespace Hdf5IO
 		std::vector<char> buffer(length + 1, '\0');
 		if (H5Dread(dataset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data()) < 0) return -1;
 		value.assign(buffer.data());
+		return 0;
+	}
+
+	int readStringDiagnosed(const char* filename, const char* datasetName, std::string& value,
+		Hdf5ReadDiagnostic* diagnostic)
+	{
+		Hdf5ReadDiagnostic localDiagnostic = {};
+		Hdf5ReadDiagnostic& result = diagnostic ? *diagnostic : localDiagnostic;
+		result = {};
+		if (!filename || !*filename || !datasetName || !*datasetName)
+		{
+			result.stage = HDF5_READ_STAGE_INVALID_ARGUMENT;
+			result.hdf5Status = kInvalidArgument;
+			strcpy_s(result.errorStack, "Filename and dataset name are required.");
+			return kInvalidArgument;
+		}
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0)
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_FILE;
+			result.hdf5Status = lock.result();
+			strcpy_s(result.errorStack, "Unable to acquire the HDF5 operation lock.");
+			return lock.result();
+		}
+		ScopedHdf5AutoErrorSilencer errorSilencer;
+		auto fail = [&](int stage, int status) {
+			result.stage = stage;
+			result.hdf5Status = status;
+			captureHdf5ErrorStack(result);
+			return status;
+		};
+		if (!isRegularFile(filename))
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_FILE;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "The HDF5 path does not identify an existing regular file.");
+			return -1;
+		}
+		H5Eclear2(H5E_DEFAULT);
+		ScopedAuditedH5File file;
+		if (file.open(filename, H5F_ACC_RDONLY, "read") != 0) return fail(HDF5_READ_STAGE_OPEN_FILE, -1);
+		const std::string path = datasetPath(datasetName);
+		if (path.empty())
+		{
+			result.stage = HDF5_READ_STAGE_DATASET_PATH;
+			result.hdf5Status = kInvalidArgument;
+			strcpy_s(result.errorStack, "The HDF5 dataset path is invalid.");
+			return kInvalidArgument;
+		}
+		H5Eclear2(H5E_DEFAULT);
+		const htri_t exists = H5Lexists(file, path.c_str(), H5P_DEFAULT);
+		if (exists < 0) return fail(HDF5_READ_STAGE_OPEN_DATASET, static_cast<int>(exists));
+		if (exists == 0)
+		{
+			result.stage = HDF5_READ_STAGE_OPEN_DATASET;
+			result.hdf5Status = 0;
+			strcpy_s(result.errorStack, "The requested dataset does not exist.");
+			return -1;
+		}
+		H5Eclear2(H5E_DEFAULT);
+		ScopedH5Id dataset(H5Dopen2(file, path.c_str(), H5P_DEFAULT), H5Dclose);
+		if (!dataset.valid()) return fail(HDF5_READ_STAGE_OPEN_DATASET, -1);
+		H5Eclear2(H5E_DEFAULT);
+		ScopedH5Id type(H5Dget_type(dataset), H5Tclose);
+		if (!type.valid()) return fail(HDF5_READ_STAGE_DATA_TYPE, -1);
+		H5Eclear2(H5E_DEFAULT);
+		if (H5Tget_class(type) != H5T_STRING) return fail(HDF5_READ_STAGE_DATA_TYPE, -1);
+		H5Eclear2(H5E_DEFAULT);
+		if (H5Tis_variable_str(type) > 0)
+		{
+			result.stage = HDF5_READ_STAGE_DATA_TYPE;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "Variable-length string datasets are unsupported.");
+			return -1;
+		}
+		H5Eclear2(H5E_DEFAULT);
+		const size_t length = H5Tget_size(type);
+		if (length == 0 || length > 65536)
+		{
+			result.stage = HDF5_READ_STAGE_DATA_TYPE;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "The fixed string length is invalid.");
+			return -1;
+		}
+		strcpy_s(result.hdf5Type, "fixed-string");
+		try
+		{
+			std::vector<char> buffer(length + 1, '\0');
+			H5Eclear2(H5E_DEFAULT);
+			const herr_t readStatus = H5Dread(dataset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data());
+			if (readStatus < 0) return fail(HDF5_READ_STAGE_DATA_READ, static_cast<int>(readStatus));
+			value.assign(buffer.data());
+		}
+		catch (const std::bad_alloc&)
+		{
+			result.stage = HDF5_READ_STAGE_OUTPUT_ALLOCATION;
+			result.hdf5Status = -1;
+			strcpy_s(result.errorStack, "Unable to allocate the string read buffer.");
+			return -1;
+		}
 		return 0;
 	}
 

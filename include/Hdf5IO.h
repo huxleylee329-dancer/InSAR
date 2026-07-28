@@ -26,6 +26,35 @@
 	constexpr int kInvalidArgument = -101;
 	constexpr int kAuditDisabled = -102;
 
+	// Diagnostic details are caller-owned and valid only for the duration of a
+	// single readArrayDiagnosed call. The fixed buffers keep this C-compatible
+	// structure independent of cross-DLL allocation.
+	enum Hdf5ReadStage
+	{
+		HDF5_READ_STAGE_NONE = 0,
+		HDF5_READ_STAGE_INVALID_ARGUMENT,
+		HDF5_READ_STAGE_OPEN_FILE,
+		HDF5_READ_STAGE_DATASET_PATH,
+		HDF5_READ_STAGE_OPEN_DATASET,
+		HDF5_READ_STAGE_DATA_SPACE,
+		HDF5_READ_STAGE_DATA_TYPE,
+		HDF5_READ_STAGE_RANK,
+		HDF5_READ_STAGE_DIMENSIONS,
+		HDF5_READ_STAGE_OUTPUT_ALLOCATION,
+		HDF5_READ_STAGE_DATA_READ
+	};
+
+	struct Hdf5ReadDiagnostic
+	{
+		int stage;
+		int hdf5Status;
+		int rows;
+		int columns;
+		int cvType;
+		char hdf5Type[96];
+		char errorStack[4096];
+	};
+
 	enum Hdf5AuditEventKind { HDF5_AUDIT_OPEN = 1, HDF5_AUDIT_CLOSE = 2 };
 	struct Hdf5AuditEvent
 	{
@@ -104,6 +133,10 @@
 	HDF5IO_API int createFile(const char* filename);
 	HDF5IO_API int getDatasetDims(const char* filename, const char* datasetName, int* rows, int* columns);
 	HDF5IO_API int readArray(const char* filename, const char* datasetName, cv::Mat& output);
+	// Performs the same conversion as readArray while preserving the precise
+	// failing HDF5 operation and its current-thread error stack on failure.
+	HDF5IO_API int readArrayDiagnosed(const char* filename, const char* datasetName,
+		cv::Mat& output, Hdf5ReadDiagnostic* diagnostic);
 	// Holds the HDF5 file handle inside Hdf5IO so callers never exchange hid_t
 	// values across DLL boundaries. Every session operation acquires the shared lock.
 	HDF5IO_API ReadSession* openReadSession(const char* filename);
@@ -165,6 +198,8 @@
 	HDF5IO_API int copyDatasetsIfPresent(const char* sourceFilename, const char* destinationFilename,
 		const char* const* datasetNames, int datasetCount, bool replaceExisting);
 	HDF5IO_API int readString(const char* filename, const char* datasetName, std::string& value);
+	HDF5IO_API int readStringDiagnosed(const char* filename, const char* datasetName,
+		std::string& value, Hdf5ReadDiagnostic* diagnostic);
 	HDF5IO_API int readSubarray(
 		const char* filename,
 		const char* datasetName,
