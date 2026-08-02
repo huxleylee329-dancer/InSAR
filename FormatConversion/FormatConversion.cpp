@@ -7,6 +7,7 @@
 #include <limits>
 #include <algorithm>
 #include <cstdarg>
+#include <cstring>
 #include <climits>
 #include <cmath>
 #include <fstream>
@@ -936,7 +937,18 @@ int FormatConversion::write_subarray_to_h5(const char* h5_filename, const char* 
 }
 int FormatConversion::write_str_to_h5(const char* filename, const char* dataset_name, const char* Str)
 {
-	return Hdf5IO::createString(filename, dataset_name, Str);
+	if (!filename || !dataset_name || !Str) return -1;
+	if (strcmp(dataset_name, "source_1") == 0 || strcmp(dataset_name, "source_2") == 0)
+	{
+		std::wstring sourcePath;
+		PathResolver::Error pathError = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(Str, sourcePath, &pathError)) return -1;
+	}
+	const int result = Hdf5IO::createString(filename, dataset_name, Str);
+	if (result != 0) return result;
+	if (strcmp(dataset_name, "source_1") != 0 && strcmp(dataset_name, "source_2") != 0) return 0;
+	if (Hdf5IO::writeString(filename, "source_path_encoding", "UTF-8") != 0) return -1;
+	return Hdf5IO::writeString(filename, "source_path_format_version", "2");
 }
 int FormatConversion::read_str_from_h5(const char* filename, const char* dataset_name, string& Str)
 {
@@ -8208,7 +8220,8 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 
 	static const char* const stringDatasets[] = {
 		"file_type", "sensor", "polarization", "imaging_mode", "lookside", "orbit_dir", "swath",
-		"acquisition_start_time", "acquisition_stop_time" };
+		"acquisition_start_time", "acquisition_stop_time", "source_1", "source_2",
+		"source_path_encoding", "source_path_format_version" };
 	static const char* const arrayDatasets[] = {
 		"orbit_altitude", "carrier_frequency", "heading", "prf", "inc_center", "gcps",
 		"azimuth_resolution", "range_resolution", "azimuth_spacing", "range_spacing", "state_vec",
@@ -8221,8 +8234,23 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 	int result = Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, stringDatasets,
 		static_cast<int>(sizeof(stringDatasets) / sizeof(stringDatasets[0])), false);
 	if (result != 0) return result;
-	return Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, arrayDatasets,
+	result = Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, arrayDatasets,
 		static_cast<int>(sizeof(arrayDatasets) / sizeof(arrayDatasets[0])), true);
+	if (result != 0) return result;
+
+	std::string source1;
+	std::string source2;
+	const int source1Status = Hdf5IO::readString(Output_file, "source_1", source1);
+	const int source2Status = Hdf5IO::readString(Output_file, "source_2", source2);
+	if ((source1Status == 0) != (source2Status == 0)) return -1;
+	if (source1Status != 0) return 0;
+	std::wstring source1Wide;
+	std::wstring source2Wide;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(source1, source1Wide, &pathError) ||
+		!PathResolver::utf8ToWide(source2, source2Wide, &pathError)) return -1;
+	if (Hdf5IO::writeString(Output_file, "source_path_encoding", "UTF-8") != 0) return -1;
+	return Hdf5IO::writeString(Output_file, "source_path_format_version", "2");
 }
 int FormatConversion::read_height_metric_from_GEDI_L2B(
 	const char* gedi_h5_file,
@@ -9663,7 +9691,8 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_str_to_h5(h5File, "swath", swath.c_str());
 	conversion.write_str_to_h5(h5File, "imaging_mode", "TOPS");
 	conversion.write_str_to_h5(h5File, "sensor", sensor.c_str());
-	conversion.write_str_to_h5(h5File, "source_1", this->m_xmlFileName);
+	ret = conversion.write_str_to_h5(h5File, "source_1", this->m_xmlFileName);
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	conversion.write_str_to_h5(h5File, "acquisition_start_time", startTime.c_str());
 	conversion.write_str_to_h5(h5File, "acquisition_stop_time", stopTime.c_str());
 
@@ -12473,7 +12502,7 @@ namespace
 		return 0;
 	}
 
-	int estimate_range_offset(const char* masterPath, const char* slavePath,
+	int estimate_range_offset(const char* masterPath, const char* slavePath, int imageIndex,
 		InSARDiagnosticCallback callback, void* userData, double& offset)
 	{
 		offset = 0.0;
@@ -12496,9 +12525,12 @@ namespace
 
 		double sum = 0.0;
 		std::vector<double> validOffsets;
+		bool eligible[5] = {};
+		bool used[5] = {};
 		for (int index = 0; index < 5; ++index)
 		{
-			if (results[index].maxCorrelation >= 0.15 && std::abs(results[index].offsetX) <= 1)
+			eligible[index] = results[index].maxCorrelation >= 0.15 && std::abs(results[index].offsetX) <= 1;
+			if (eligible[index])
 			{
 				validOffsets.push_back(results[index].offsetX);
 				sum += results[index].offsetX;
@@ -12508,7 +12540,11 @@ namespace
 		{
 			const double minimum = *std::min_element(validOffsets.begin(), validOffsets.end());
 			const double maximum = *std::max_element(validOffsets.begin(), validOffsets.end());
-			if (maximum - minimum <= 1) offset = sum / validOffsets.size();
+			if (maximum - minimum <= 1)
+			{
+				offset = sum / validOffsets.size();
+				for (int index = 0; index < 5; ++index) used[index] = eligible[index];
+			}
 		}
 		else if (validOffsets.size() == 1)
 		{
@@ -12518,9 +12554,32 @@ namespace
 					results[index].maxCorrelation >= 0.20)
 				{
 					offset = results[index].offsetX;
+					used[index] = true;
 					break;
 				}
 			}
+		}
+		for (int index = 0; index < 5; ++index)
+		{
+			const char* reason = nullptr;
+			if (!eligible[index])
+			{
+				if (!std::isfinite(results[index].maxCorrelation)) reason = "correlation_not_finite";
+				else if (results[index].maxCorrelation < 0.15) reason = "correlation_below_threshold";
+				else if (!std::isfinite(results[index].offsetX)) reason = "range_offset_not_finite";
+				else reason = "range_offset_out_of_bounds";
+			}
+			else if (used[index]) reason = "used_for_final_estimate";
+			else if (validOffsets.size() >= 2) reason = "eligible_offsets_inconsistent";
+			else reason = "single_eligible_correlation_below_threshold";
+
+			char message[384] = {};
+			sprintf_s(message,
+				"image=%d sample=%d/5 correlation=%.6f; range_offset=%.6f azimuth_offset=%.6f; eligible=%s used=%s; reason=%s",
+				imageIndex, index + 1, results[index].maxCorrelation, results[index].offsetX, results[index].offsetY,
+				eligible[index] ? "true" : "false", used[index] ? "true" : "false", reason);
+			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "refinement", "refinement.range_sample", message,
+				"Range amplitude sample decision after threshold and whole-set consistency evaluation.", slavePath, "offset_r");
 		}
 		FreeAlignmentResults(results, 5);
 		return 0;
@@ -12632,7 +12691,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_ESTIMATE)
 			{
 				if (estimate_range_offset(transactionFiles[masterIndex - 1].fullBurstTemporaryPath.c_str(),
-					transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), diagnosticCallback, diagnosticUserData,
+					transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), imageResult.imageIndex, diagnosticCallback, diagnosticUserData,
 					imageResult.rangeOffset) != 0)
 				{
 					imageResult.rangeOffset = 0.0;

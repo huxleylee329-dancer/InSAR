@@ -10,12 +10,65 @@
 #include <limits>
 #include <new>
 #include <cstring>
+#include <clocale>
 #include <deque>
 #include <string>
 #include <vector>
 
 namespace
 {
+	bool isValidUtf8Path(const char* path)
+	{
+		if (!path || !*path) return false;
+		return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, nullptr, 0) > 0;
+	}
+
+	// HDF5 1.14's Windows VFD is backed by the C runtime's narrow I/O. Keep
+	// its filename conversion on UTF-8 for the duration of the H5F call, rather
+	// than inheriting the process ANSI code page.
+	class ScopedUtf8FileLocale
+	{
+	public:
+		bool activate()
+		{
+			const char* locale = setlocale(LC_CTYPE, nullptr);
+			if (!locale) return false;
+			previousLocale_ = locale;
+			previousThreadMode_ = _configthreadlocale(_ENABLE_PER_THREAD_LOCALE);
+			if (previousThreadMode_ == -1) return false;
+			threadLocaleEnabled_ = true;
+			if (setlocale(LC_CTYPE, ".UTF8")) return true;
+			_configthreadlocale(previousThreadMode_);
+			threadLocaleEnabled_ = false;
+			return false;
+		}
+
+		~ScopedUtf8FileLocale()
+		{
+			if (!threadLocaleEnabled_) return;
+			setlocale(LC_CTYPE, previousLocale_.c_str());
+			_configthreadlocale(previousThreadMode_);
+		}
+
+	private:
+		std::string previousLocale_;
+		int previousThreadMode_ = -1;
+		bool threadLocaleEnabled_ = false;
+	};
+
+	HANDLE openFileAttributesUtf8(const char* path)
+	{
+		if (!path || !*path) return INVALID_HANDLE_VALUE;
+		const int length = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, nullptr, 0);
+		if (length <= 0) return INVALID_HANDLE_VALUE;
+		std::vector<wchar_t> widePath(static_cast<size_t>(length));
+		if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, widePath.data(), length) != length)
+			return INVALID_HANDLE_VALUE;
+		return CreateFileW(widePath.data(), FILE_READ_ATTRIBUTES,
+			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL, nullptr);
+	}
+
 	// Local names are shared by processes in the same Windows logon session.
 	// This is a conservative implementation detail, not a documented
 	// cross-process HDF5 coordination protocol.
@@ -113,9 +166,7 @@ namespace
 		// the path between those operations, so it cannot identify HDF5's object.
 		identity = {};
 		if (!path || !*path) return false;
-		const HANDLE handle = CreateFileA(path, FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL, nullptr);
+		const HANDLE handle = openFileAttributesUtf8(path);
 		if (handle == INVALID_HANDLE_VALUE) return false;
 		BY_HANDLE_FILE_INFORMATION information = {};
 		const BOOL result = GetFileInformationByHandle(handle, &information);
@@ -229,7 +280,9 @@ namespace
 
 		int open(const char* path, unsigned flags, const char* mode)
 		{
-			if (file_ >= 0 || !path || !mode) return -1;
+			if (file_ >= 0 || !isValidUtf8Path(path) || !mode) return -1;
+			ScopedUtf8FileLocale utf8Locale;
+			if (!utf8Locale.activate()) return -1;
 #if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
 			auditSnapshot_ = getAuditSnapshot();
 			auditOperationId_ = g_auditOperationId;
@@ -248,7 +301,9 @@ namespace
 
 		int create(const char* path, unsigned flags, const char* mode)
 		{
-			if (file_ >= 0 || !path || !mode) return -1;
+			if (file_ >= 0 || !isValidUtf8Path(path) || !mode) return -1;
+			ScopedUtf8FileLocale utf8Locale;
+			if (!utf8Locale.activate()) return -1;
 #if defined(HDF5IO_ENABLE_AUDIT_DIAGNOSTICS)
 			auditSnapshot_ = getAuditSnapshot();
 			auditOperationId_ = g_auditOperationId;
@@ -357,8 +412,12 @@ namespace
 	bool isRegularFile(const char* filename)
 	{
 		if (!filename || !*filename) return false;
-		const DWORD attributes = GetFileAttributesA(filename);
-		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+		const HANDLE file = openFileAttributesUtf8(filename);
+		if (file == INVALID_HANDLE_VALUE) return false;
+		BY_HANDLE_FILE_INFORMATION information = {};
+		const BOOL result = GetFileInformationByHandle(file, &information);
+		CloseHandle(file);
+		return result && (information.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
 	}
 
 	int sameExistingFile(const char* firstFilename, const char* secondFilename, int* sameFile)
@@ -368,13 +427,9 @@ namespace
 
 		// OPEN_EXISTING follows reparse points by default. FILE_SHARE_DELETE lets
 		// this read-only identity probe coexist with the normal HDF5 open path.
-		const HANDLE first = CreateFileA(firstFilename, FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL, nullptr);
+		const HANDLE first = openFileAttributesUtf8(firstFilename);
 		if (first == INVALID_HANDLE_VALUE) return -1;
-		const HANDLE second = CreateFileA(secondFilename, FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL, nullptr);
+		const HANDLE second = openFileAttributesUtf8(secondFilename);
 		if (second == INVALID_HANDLE_VALUE)
 		{
 			CloseHandle(first);
@@ -751,13 +806,9 @@ namespace Hdf5IO
 		ScopedHdf5Lock lock;
 		if (lock.result() != 0) return lock.result();
 
-		const HANDLE source = CreateFileA(sourceFilename, FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL, nullptr);
+		const HANDLE source = openFileAttributesUtf8(sourceFilename);
 		if (source == INVALID_HANDLE_VALUE) return -1;
-		const HANDLE output = CreateFileA(outputFilename, FILE_READ_ATTRIBUTES,
-			FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
-			FILE_ATTRIBUTE_NORMAL, nullptr);
+		const HANDLE output = openFileAttributesUtf8(outputFilename);
 		if (output == INVALID_HANDLE_VALUE)
 		{
 			const DWORD error = GetLastError();
@@ -1376,7 +1427,16 @@ namespace Hdf5IO
 		if (length == 0 || length > 65536) return -1;
 		std::vector<char> buffer(length + 1, '\0');
 		if (H5Dread(dataset, type, H5S_ALL, H5S_ALL, H5P_DEFAULT, buffer.data()) < 0) return -1;
-		value.assign(buffer.data());
+		const std::vector<char>::iterator terminator = std::find(buffer.begin(), buffer.begin() + length, '\0');
+		if (terminator != buffer.begin() + length)
+		{
+			// A fixed-width HDF5 string may contain zero padding after its normal
+			// terminator, but non-zero bytes after it are an embedded NUL.
+			if (std::find_if(terminator + 1, buffer.begin() + length,
+				[](char value) { return value != '\0'; }) != buffer.begin() + length) return -1;
+			value.assign(buffer.data(), static_cast<size_t>(terminator - buffer.begin()));
+		}
+		else value.assign(buffer.data(), length);
 		return 0;
 	}
 

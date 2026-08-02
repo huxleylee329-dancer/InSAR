@@ -273,7 +273,7 @@ int Utils::S1_subswath_merge(
 	ret = Hdf5IO::writeString(merged_phase_h5file, "source_2_IW2", source_2.c_str());
 	ret = Hdf5IO::readString(IW3_h5file, "source_1", source_1);
 	ret = Hdf5IO::writeString(merged_phase_h5file, "source_1_IW3", source_1.c_str());
-	ret = Hdf5IO::readString(IW3_h5file, "source_1", source_1);
+	ret = Hdf5IO::readString(IW3_h5file, "source_2", source_2);
 	ret = Hdf5IO::writeString(merged_phase_h5file, "source_2_IW3", source_2.c_str());
 
 	if (cb && !cb(100, "Sentinel-1 subswath merge complete.")) return -2;

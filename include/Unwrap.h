@@ -5,10 +5,54 @@
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
 #include"globalparam.h"
+#include <cstdint>
 
 
 // 定义 Unwrap 专用的进度回调函数指针类型
 typedef bool (__stdcall *UnwrapProgressCallback)(int progress, const char* message);
+
+enum UnwrapDiagnosticAlgorithm : uint32_t
+{
+	UNWRAP_DIAGNOSTIC_ALGORITHM_UNKNOWN = 0,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_MCF = 1,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_MCF_IMPROVED = 2,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_MCF_DELAUNAY = 3,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_QUALITY_GUIDED_MCF = 4,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE = 5,
+	UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_MATRIX = 6
+};
+
+enum UnwrapDiagnosticStage : uint32_t
+{
+	UNWRAP_DIAGNOSTIC_STAGE_NONE = 0,
+	UNWRAP_DIAGNOSTIC_STAGE_INTERNAL = 1,
+	UNWRAP_DIAGNOSTIC_STAGE_INPUT = 2,
+	UNWRAP_DIAGNOSTIC_STAGE_PATH = 3,
+	UNWRAP_DIAGNOSTIC_STAGE_PREPARE = 4,
+	UNWRAP_DIAGNOSTIC_STAGE_LAUNCH = 5,
+	UNWRAP_DIAGNOSTIC_STAGE_JOB = 6,
+	UNWRAP_DIAGNOSTIC_STAGE_CANCEL = 7,
+	UNWRAP_DIAGNOSTIC_STAGE_PROCESS_EXIT = 8,
+	UNWRAP_DIAGNOSTIC_STAGE_OUTPUT = 9,
+	UNWRAP_DIAGNOSTIC_STAGE_COMPLETED = 10
+};
+
+// Fixed-layout v1 output structure. The caller must zero-initialize it and
+// set structSize to sizeof(UnwrapDiagnostic) before calling an *Ex method.
+struct UnwrapDiagnostic
+{
+	uint32_t structSize;
+	uint32_t algorithm;
+	uint32_t stage;
+	int32_t operationStatus;
+	uint32_t win32Error;
+	uint32_t exitCode;
+	uint8_t cancelled;
+	uint8_t reserved[3];
+	char tool[32];
+	char summary[512];
+	char stderrTail[1024];
+};
 
 class InSAR_API Unwrap
 {
@@ -31,6 +75,15 @@ public:
 		const char* MCF_EXE_PATH,
 		UnwrapProgressCallback cb = nullptr
 	);
+	int MCFEx(
+		Mat& wrapped_phase,
+		Mat& unwrapped_phase,
+		Mat& coherence, Mat& residue,
+		const char* MCF_problem_file,
+		const char* MCF_EXE_PATH,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
+	);
 	/*@brief 改进的最小费用流算法
 	* @param wrapped_phase                待解缠相位
 	* @param unwrapped_phase              解缠相位（返回值）
@@ -46,6 +99,15 @@ public:
 		const char* MCF_exe_path,
 		double coh_thresh = 0.75,
 		UnwrapProgressCallback cb = nullptr
+	);
+	int MCFImprovedEx(
+		Mat& wrapped_phase,
+		Mat& unwrapped_phase,
+		const char* MCF_problem_file,
+		const char* MCF_exe_path,
+		double coh_thresh,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
 	);
 	/*@brief 基于相位质量的洪水淹没法积分解缠
 	* @param wrapped_phase                待解缠相位
@@ -140,6 +202,12 @@ public:
 		const char* MCF_EXE_PATH,
 		UnwrapProgressCallback cb = nullptr
 	);
+	int McfDelaunayEx(
+		const char* MCF_problem_file,
+		const char* MCF_EXE_PATH,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
+	);
 	/*结合质量图和最小费用流的解缠法（此法需要提前计算每条边的质量值）
 	* 参数1 待解缠相位
 	* 参数2 解缠相位（返回值）
@@ -217,6 +285,16 @@ public:
 		const char* EXE_path,
 		UnwrapProgressCallback cb = nullptr
 	);
+	int QualityGuidedMCFEx(
+		const Mat& wrapped_phase,
+		Mat& unwrapped_phase,
+		double coherence_thresh,
+		double distance_thresh,
+		const char* tmp_path,
+		const char* EXE_path,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
+	);
 	/** @brief 统计费用流法解缠（SNAPHU）
 	
 	@param wrapped_phase_file                            缠绕相位文件（h5）
@@ -234,6 +312,15 @@ public:
 		const char* exe_path,
 		UnwrapProgressCallback cb = nullptr
 	);
+	int SnaphuFileEx(
+		const char* wrapped_phase_file,
+		Mat& unwrapped_phase,
+		const char* project_path,
+		const char* tmp_folder,
+		const char* exe_path,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
+	);
 
 	/*@brief 统计费用流法解缠（SNAPHU）
 	* @param wrapped_phase                               待解缠相位
@@ -246,6 +333,13 @@ public:
 		Mat& unwrapped_phase,
 		const char* tmp_folder,
 		UnwrapProgressCallback cb = nullptr
+	);
+	int SnaphuMatrixEx(
+		Mat& wrapped_phase,
+		Mat& unwrapped_phase,
+		const char* tmp_folder,
+		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
 	);
 
 	/*@brief 质量图法解缠
@@ -297,6 +391,17 @@ public:
 		UnwrapProgressCallback cb = nullptr);
 
 private:
+	int MCFInternal(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& coherence, Mat& residue,
+		const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb);
+	int MCFImprovedInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const char* MCF_problem_file,
+		const char* MCF_exe_path, double coh_thresh, UnwrapProgressCallback cb);
+	int McfDelaunayInternal(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb);
+	int QualityGuidedMCFInternal(const Mat& wrapped_phase, Mat& unwrapped_phase, double coherence_thresh,
+		double distance_thresh, const char* tmp_path, const char* EXE_path, UnwrapProgressCallback cb);
+	int SnaphuFileInternal(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
+		const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb);
+	int SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
+		UnwrapProgressCallback cb);
 	char error_head[256];
 	char parallel_error_head[256];
 

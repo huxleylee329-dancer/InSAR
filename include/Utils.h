@@ -4,6 +4,7 @@
 #include<fstream>
 #include<iostream>
 #include<string>
+#include<vector>
 #include"..\include\sar_comm.h"
 
 // 定义牛顿迭代专用的进度回调函数指针类型
@@ -17,6 +18,46 @@ typedef bool (__stdcall *NewtonProgressCallbackEx)(int progress, const char* mes
 #endif
 
 void InitializeGDALAndProjOnce();
+
+// Paths crossing module or HDF5 boundaries are UTF-8.  File-system work is
+// performed with UTF-16 Win32 APIs so it never depends on the active code page.
+namespace PathResolver
+{
+	enum class Error
+	{
+		None = 0,
+		InvalidUtf8,
+		EmbeddedNul,
+		DriveRelative,
+		RootRelative,
+		InvalidProjectRoot,
+		Hdf5ReadFailure,
+		MetadataMismatch,
+		UnsupportedMetadata
+	};
+
+	struct Resolution
+	{
+		std::string utf8;
+		std::wstring wide;
+		bool projectRelative = false;
+	};
+
+	struct SourcePathPair
+	{
+		Resolution source1;
+		Resolution source2;
+		bool legacyMetadata = false;
+	};
+
+	UTILS_API bool utf8ToWide(const std::string& utf8, std::wstring& wide, Error* error = nullptr);
+	UTILS_API bool wideToUtf8(const std::wstring& wide, std::string& utf8, Error* error = nullptr);
+	UTILS_API bool resolve(const std::string& utf8Path, const std::string& projectRoot,
+		Resolution& result, Error* error = nullptr);
+	UTILS_API bool readSourcePathPair(const char* h5File, const char* projectRoot,
+		SourcePathPair& result, Error* error = nullptr, std::string* detail = nullptr);
+	UTILS_API const char* errorMessage(Error error);
+}
 
 /*--------------------------------------*/
 /*              卫星轨道数据            */

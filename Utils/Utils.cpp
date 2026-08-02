@@ -63,6 +63,78 @@ int utc_to_gps(const char* utc_time, double* gps_time)
     else \
         ch = *instring; \
 }
+
+namespace
+{
+	constexpr double kDimacsCostScale = 1000000.0;
+
+	bool toDimacsSupply(double value, long long& output)
+	{
+		if (!std::isfinite(value) || value < static_cast<double>(LONG_MIN) || value > static_cast<double>(LONG_MAX)) return false;
+		const long long rounded = llround(value);
+		if (static_cast<double>(rounded) != value) return false;
+		output = rounded;
+		return true;
+	}
+
+	bool toDimacsCost(double value, long long& output)
+	{
+		if (!std::isfinite(value) || value < 0.0) return false;
+		const long double scaled = static_cast<long double>(value) * static_cast<long double>(kDimacsCostScale);
+		if (scaled > static_cast<long double>(LLONG_MAX) - 0.5L) return false;
+		output = llround(scaled);
+		return true;
+	}
+
+	bool validateDimacsMatrices(const Mat& residue, const Mat& cost, double threshold)
+	{
+		for (int row = 0; row < residue.rows; ++row)
+			for (int column = 0; column < residue.cols; ++column)
+			{
+				const double value = residue.at<double>(row, column);
+				if (!std::isfinite(value)) return false;
+				if (fabs(value) > threshold)
+				{
+					long long supply = 0;
+					if (!toDimacsSupply(value, supply)) return false;
+				}
+			}
+		for (int row = 0; row < cost.rows; ++row)
+			for (int column = 0; column < cost.cols; ++column)
+			{
+				long long scaled = 0;
+				if (!toDimacsCost(cost.at<double>(row, column), scaled)) return false;
+			}
+		return true;
+	}
+
+	bool validateDimacsCostMatrix(const Mat& cost)
+	{
+		for (int row = 0; row < cost.rows; ++row)
+			for (int column = 0; column < cost.cols; ++column)
+			{
+				long long scaled = 0;
+				if (!toDimacsCost(cost.at<double>(row, column), scaled)) return false;
+			}
+		return true;
+	}
+
+	long long dimacsCostText(double value)
+	{
+		long long scaled = 0;
+		return toDimacsCost(value, scaled) ? scaled : -1;
+	}
+
+	FILE* openUtf8File(const char* utf8Path, const wchar_t* mode)
+	{
+		if (!utf8Path || !mode) return nullptr;
+		std::wstring widePath;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(utf8Path, widePath, &error)) return nullptr;
+		FILE* file = nullptr;
+		return _wfopen_s(&file, widePath.c_str(), mode) == 0 ? file : nullptr;
+	}
+}
 inline bool read_check(long ret, long ret_ref, const char* detail_info, const char* error_head)
 {
 	if (ret != ret_ref)
@@ -523,8 +595,15 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
 		return -1;
 	}
+	if (!validateDimacsCostMatrix(cost)) return -1;
+	for (int i = 0; i < num_triangle; ++i)
+	{
+		long long supply = 0;
+		if (!std::isfinite((tri + i)->residue) ||
+			(fabs((tri + i)->residue) > 0.7 && !toDimacsSupply((tri + i)->residue, supply))) return -1;
+	}
 	FILE* fp = NULL;
-	fp = fopen(DIMACS_file_problem, "wt");
+	fp = openUtf8File(DIMACS_file_problem, L"wt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "write_DIMACS(): can't open %s\n", DIMACS_file_problem);
@@ -607,19 +686,19 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 	{
 		if ((tri + i) != NULL && (tri + i)->residue > thresh)
 		{
-			fprintf(fp, "n %d %lf\n", i + 1, (tri + i)->residue);
+			fprintf(fp, "n %d %lld\n", i + 1, llround((tri + i)->residue));
 			sum += (tri + i)->residue;
 		}
 		if ((tri + i) != NULL && (tri + i)->residue < -thresh)
 		{
-			fprintf(fp, "n %d %lf\n", i + 1, (tri + i)->residue);
+			fprintf(fp, "n %d %lld\n", i + 1, llround((tri + i)->residue));
 			sum += (tri + i)->residue;
 		}
 	}
 	//写入大地节点
 	if (!b_balanced)
 	{
-		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
+		fprintf(fp, "n %d %lld\n", num_triangle + 1, llround(-sum));
 	}
 
 	//写入流费用
@@ -649,9 +728,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 			nodes[(tri + i)->p3 - 1].get_pos(&rows, &cols);
 			if (rows >= 0 && rows <= nr - 1) cost_mean += cost.at<double>(rows, cols);
 			cost_mean = cost_mean / 3;
-			if ((tri + i)->neigh1 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, (tri + i)->neigh1, lower_bound, upper_bound, cost_mean);
-			if ((tri + i)->neigh2 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, (tri + i)->neigh2, lower_bound, upper_bound, cost_mean);
-			if ((tri + i)->neigh3 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, (tri + i)->neigh3, lower_bound, upper_bound, cost_mean);
+			if ((tri + i)->neigh1 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, (tri + i)->neigh1, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			if ((tri + i)->neigh2 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, (tri + i)->neigh2, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			if ((tri + i)->neigh3 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, (tri + i)->neigh3, lower_bound, upper_bound, dimacsCostText(cost_mean));
 		}
 	}
 	if (!b_balanced)
@@ -673,8 +752,8 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, triangle* tri, int num_
 				nodes[(tri + i)->p3 - 1].get_pos(&rows, &cols);
 				if (rows >= 0 && rows <= nr - 1) cost_mean += cost.at<double>(rows, cols);
 				cost_mean = cost_mean / 3;
-				fprintf(fp, "a %d %d %d %d %lf\n", i + 1, num_triangle + 1, lower_bound, upper_bound, cost_mean);
-				fprintf(fp, "a %d %d %d %d %lf\n", num_triangle + 1, i + 1, lower_bound, upper_bound, cost_mean);
+			fprintf(fp, "a %d %d %d %d %lld\n", i + 1, num_triangle + 1, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			fprintf(fp, "a %d %d %d %d %lld\n", num_triangle + 1, i + 1, lower_bound, upper_bound, dimacsCostText(cost_mean));
 			}
 		}
 	}
@@ -704,8 +783,14 @@ int Utils::write_DIMACS(
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
 		return -1;
 	}
+	if (!validateDimacsCostMatrix(cost)) return -1;
+	for (const ::triangle& item : triangle)
+	{
+		long long supply = 0;
+		if (!std::isfinite(item.residue) || (fabs(item.residue) > 0.7 && !toDimacsSupply(item.residue, supply))) return -1;
+	}
 	FILE* fp = NULL;
-	fp = fopen(DIMACS_file_problem, "wt");
+	fp = openUtf8File(DIMACS_file_problem, L"wt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "write_DIMACS(): can't open %s\n", DIMACS_file_problem);
@@ -782,19 +867,19 @@ int Utils::write_DIMACS(
 	{
 		if (triangle[i].residue > thresh)
 		{
-			fprintf(fp, "n %d %lf\n", i + 1, triangle[i].residue);
+			fprintf(fp, "n %d %lld\n", i + 1, llround(triangle[i].residue));
 			sum += triangle[i].residue;
 		}
 		if (triangle[i].residue < -thresh)
 		{
-			fprintf(fp, "n %d %lf\n", i + 1, triangle[i].residue);
+			fprintf(fp, "n %d %lld\n", i + 1, llround(triangle[i].residue));
 			sum += triangle[i].residue;
 		}
 	}
 	//写入大地节点
 	if (!b_balanced)
 	{
-		fprintf(fp, "n %d %lf\n", num_triangle + 1, -sum);
+		fprintf(fp, "n %d %lld\n", num_triangle + 1, llround(-sum));
 	}
 
 	//写入流费用
@@ -823,9 +908,9 @@ int Utils::write_DIMACS(
 			nodes[triangle[i].p3 - 1].get_pos(&rows, &cols);
 			if (rows >= 0 && rows <= nr - 1) cost_mean += cost.at<double>(rows, cols);
 			cost_mean = cost_mean / 3;
-			if (triangle[i].neigh1 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh1, lower_bound, upper_bound, cost_mean);
-			if (triangle[i].neigh2 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh2, lower_bound, upper_bound, cost_mean);
-			if (triangle[i].neigh3 > 0) fprintf(fp, "a %d %d %d %d %lf\n", i + 1, triangle[i].neigh3, lower_bound, upper_bound, cost_mean);
+			if (triangle[i].neigh1 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, triangle[i].neigh1, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			if (triangle[i].neigh2 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, triangle[i].neigh2, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			if (triangle[i].neigh3 > 0) fprintf(fp, "a %d %d %d %d %lld\n", i + 1, triangle[i].neigh3, lower_bound, upper_bound, dimacsCostText(cost_mean));
 		}
 	}
 	if (!b_balanced)
@@ -845,8 +930,8 @@ int Utils::write_DIMACS(
 				nodes[triangle[i].p3 - 1].get_pos(&rows, &cols);
 				if (rows >= 0 && rows <= nr - 1) cost_mean += cost.at<double>(rows, cols);
 				cost_mean = cost_mean / 3;
-				fprintf(fp, "a %d %d %d %d %lf\n", i + 1, num_triangle + 1, lower_bound, upper_bound, cost_mean);
-				fprintf(fp, "a %d %d %d %d %lf\n", num_triangle + 1, i + 1, lower_bound, upper_bound, cost_mean);
+			fprintf(fp, "a %d %d %d %d %lld\n", i + 1, num_triangle + 1, lower_bound, upper_bound, dimacsCostText(cost_mean));
+			fprintf(fp, "a %d %d %d %d %lld\n", num_triangle + 1, i + 1, lower_bound, upper_bound, dimacsCostText(cost_mean));
 			}
 		}
 	}
@@ -872,7 +957,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, Mat& k1, Mat& k2, int r
 	k2 = Mat::zeros(rows, cols - 1, CV_64F);
 	long earth_node_indx = (rows - 1) * (cols - 1) + 1;
 	FILE* fp = NULL;
-	fopen_s(&fp, DIMACS_file_solution, "rt");
+	fp = openUtf8File(DIMACS_file_solution, L"rt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "read_DIMACS(): can't open file %s\n\n", DIMACS_file_solution);
@@ -1054,6 +1139,11 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
 		return -1;
 	}
+	if (!validateDimacsMatrices(residue, coherence, thresh))
+	{
+		fprintf(stderr, "write_DIMACS(): costs must be finite, non-negative, and supplies must be integers!\n\n");
+		return -1;
+	}
 	long nr = residue.rows;
 	long nc = residue.cols;
 	long i, j;
@@ -1092,7 +1182,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	//}
 	//ofstream fout; // 未使用
 	FILE* fp = NULL;
-	fopen_s(&fp, DIMACS_file_problem, "wt");
+	fp = openUtf8File(DIMACS_file_problem, L"wt");
 	if (!fp)
 	{
 		fprintf(stderr, "write_DIMACS(): cant't open file %s\n\n", DIMACS_file_problem);
@@ -1115,13 +1205,13 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 			if (residue.at<double>(i, j) > thresh)
 			{
 				node_index = i * nc + j + 1;
-				fprintf(fp, "n %ld %lf\n", node_index, residue.at<double>(i, j));
+				fprintf(fp, "n %ld %lld\n", node_index, llround(residue.at<double>(i, j)));
 				sum += residue.at<double>(i, j);
 			}
 			if (residue.at<double>(i, j) < -thresh)
 			{
 				node_index = i * nc + j + 1;
-				fprintf(fp, "n %ld %lf\n", node_index, residue.at<double>(i, j));
+				fprintf(fp, "n %ld %lld\n", node_index, llround(residue.at<double>(i, j)));
 				sum += residue.at<double>(i, j);
 			}
 		}
@@ -1130,7 +1220,7 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 	/*写接地节点*/
 	
 	node_index = nc * nr + 1;
-	fprintf(fp, "n %ld %lf\n", node_index, -sum);
+	fprintf(fp, "n %ld %lld\n", node_index, llround(-sum));
 	long earth_node_index = node_index;
 
 	/*
@@ -1147,9 +1237,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		node_index = i + 1;
 		mean_coherence1 = coherence.at<double>(0, i);
 		mean_coherence2 = mean_coherence1;
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, earth_node_index, lower_bound, upper_bound, mean_coherence1,
-			earth_node_index, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 	//bottom
 	for (i = 0; i < nc; i++)
@@ -1157,9 +1247,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		node_index = nc * (nr - 1) + i + 1;
 		mean_coherence1 = coherence.at<double>(nr - 1, i);
 		mean_coherence2 = mean_coherence1;
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, earth_node_index, lower_bound, upper_bound, mean_coherence1,
-			earth_node_index, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 	//left
 	for (i = 1; i < nr - 1; i++)
@@ -1167,9 +1257,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		node_index = nc * i + 1;
 		mean_coherence1 = coherence.at<double>(i, 0);
 		mean_coherence2 = mean_coherence1;
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, earth_node_index, lower_bound, upper_bound, mean_coherence1,
-			earth_node_index, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 	//right
 	for (i = 1; i < nr - 1; i++)
@@ -1177,9 +1267,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		node_index = nc * (i + 1);
 		mean_coherence1 = coherence.at<double>(i, nc - 1);
 		mean_coherence2 = mean_coherence1;
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, earth_node_index, lower_bound, upper_bound, mean_coherence1,
-			earth_node_index, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 
 	/*非接地节点的有向弧流费用*/
@@ -1198,11 +1288,11 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 			mean_coherence3 = mean(coherence(Range(i, i + 3), Range(j, j + 2))).val[0];
 			/*逆向*/
 			mean_coherence4 = mean(coherence(Range(i, i + 3), Range(j, j + 2))).val[0];
-			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-				node_index, node_index + 1, lower_bound, upper_bound, mean_coherence1,
-				node_index + 1, node_index, lower_bound, upper_bound, mean_coherence2,
-				node_index, node_index + nc, lower_bound, upper_bound, mean_coherence3,
-				node_index + nc, node_index, lower_bound, upper_bound, mean_coherence4);
+			fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+				node_index, node_index + 1, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+				node_index + 1, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2),
+				node_index, node_index + nc, lower_bound, upper_bound, dimacsCostText(mean_coherence3),
+				node_index + nc, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence4));
 
 		}
 	}
@@ -1216,9 +1306,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		mean_coherence1 = mean(coherence(Range(nr - 1, nr + 1), Range(j, j + 3))).val[0];
 		/*逆向*/
 		mean_coherence2 = mean(coherence(Range(nr - 1, nr + 1), Range(j, j + 3))).val[0];
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, node_index + 1, lower_bound, upper_bound, mean_coherence1,
-			node_index + 1, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, node_index + 1, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			node_index + 1, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 
 	for (i = 0; i < nr - 1; i++)
@@ -1228,9 +1318,9 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		mean_coherence1 = mean(coherence(Range(i, i + 3), Range(nc - 1, nc + 1))).val[0];
 		/*逆向*/
 		mean_coherence2 = mean(coherence(Range(i, i + 3), Range(nc - 1, nc + 1))).val[0];
-		fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-			node_index, node_index + nc, lower_bound, upper_bound, mean_coherence1,
-			node_index + nc, node_index, lower_bound, upper_bound, mean_coherence2);
+		fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+			node_index, node_index + nc, lower_bound, upper_bound, dimacsCostText(mean_coherence1),
+			node_index + nc, node_index, lower_bound, upper_bound, dimacsCostText(mean_coherence2));
 	}
 	fprintf(fp, "c ");
 	fprintf(fp, "c End of file");
@@ -1255,6 +1345,11 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		thresh < 0.0)
 	{
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
+		return -1;
+	}
+	if (!validateDimacsMatrices(residue, cost, thresh))
+	{
+		fprintf(stderr, "write_DIMACS(): costs must be finite, non-negative, and supplies must be integers!\n\n");
 		return -1;
 	}
 	long nr = residue.rows;
@@ -1373,7 +1468,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	}
 	//ofstream fout; // 未使用
 	FILE* fp = NULL;
-	fopen_s(&fp, DIMACS_problem_file, "wt");
+	fp = openUtf8File(DIMACS_problem_file, L"wt");
 	if (!fp)
 	{
 		fprintf(stderr, "write_DIMACS(): cant't open file %s\n\n", DIMACS_problem_file);
@@ -1396,13 +1491,13 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 			if (residue.at<double>(i, j) > thresh)
 			{
 				node_index = i * nc + j + 1;
-				fprintf(fp, "n %ld %lf\n", node_index, residue.at<double>(i, j));
+				fprintf(fp, "n %ld %lld\n", node_index, llround(residue.at<double>(i, j)));
 				sum += residue.at<double>(i, j);
 			}
 			if (residue.at<double>(i, j) < -thresh)
 			{
 				node_index = i * nc + j + 1;
-				fprintf(fp, "n %ld %lf\n", node_index, residue.at<double>(i, j));
+				fprintf(fp, "n %ld %lld\n", node_index, llround(residue.at<double>(i, j)));
 				sum += residue.at<double>(i, j);
 			}
 		}
@@ -1413,7 +1508,7 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 	node_index = nc * nr + 1;
 	if (/*!b_balanced*/1)
 	{
-		fprintf(fp, "n %ld %lf\n", node_index, -sum);
+		fprintf(fp, "n %ld %lld\n", node_index, llround(-sum));
 	}
 
 
@@ -1434,36 +1529,36 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		{
 			node_index = i + 1;
 			mean_cost = cost.at<double>(0, i);
-			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-				node_index, earth_node_index, lower_bound, upper_bound, mean_cost,
-				earth_node_index, node_index, lower_bound, upper_bound, mean_cost);
+			fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+				node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_cost),
+				earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_cost));
 		}
 		//bottom
 		for (i = 0; i < nc; i++)
 		{
 			node_index = nc * (nr - 1) + i + 1;
 			mean_cost = cost.at<double>(nr - 1, i);
-			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-				node_index, earth_node_index, lower_bound, upper_bound, mean_cost,
-				earth_node_index, node_index, lower_bound, upper_bound, mean_cost);
+			fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+				node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_cost),
+				earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_cost));
 		}
 		//left
 		for (i = 1; i < nr - 1; i++)
 		{
 			node_index = nc * i + 1;
 			mean_cost = cost.at<double>(i, 0);
-			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-				node_index, earth_node_index, lower_bound, upper_bound, mean_cost,
-				earth_node_index, node_index, lower_bound, upper_bound, mean_cost);
+			fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+				node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_cost),
+				earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_cost));
 		}
 		//right
 		for (i = 1; i < nr - 1; i++)
 		{
 			node_index = nc * (i + 1);
 			mean_cost = cost.at<double>(i, nc - 1);
-			fprintf(fp, "a %ld %ld %ld %ld %lf\na %ld %ld %ld %ld %lf\n",
-				node_index, earth_node_index, lower_bound, upper_bound, mean_cost,
-				earth_node_index, node_index, lower_bound, upper_bound, mean_cost);
+			fprintf(fp, "a %ld %ld %ld %ld %lld\na %ld %ld %ld %ld %lld\n",
+				node_index, earth_node_index, lower_bound, upper_bound, dimacsCostText(mean_cost),
+				earth_node_index, node_index, lower_bound, upper_bound, dimacsCostText(mean_cost));
 		}
 	}
 
@@ -1482,8 +1577,8 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 				{
 					node_index2 = ii * nc + jj + 1;
 					mean_cost = mean(cost(Range(i, i + 1), Range(j, j + 1))).val[0];
-					fprintf(fp, "a %ld %ld %ld %ld %lf\n",
-						node_index, node_index2, lower_bound, upper_bound, mean_cost);
+					fprintf(fp, "a %ld %ld %ld %ld %lld\n",
+						node_index, node_index2, lower_bound, upper_bound, dimacsCostText(mean_cost));
 				}
 
 				ii = i; jj = j + 1;
@@ -1491,24 +1586,24 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 				{
 					node_index2 = ii * nc + jj + 1;
 					mean_cost = mean(cost(Range(i, i + 1), Range(j, j + 1))).val[0];
-					fprintf(fp, "a %ld %ld %ld %ld %lf\n",
-						node_index, node_index2, lower_bound, upper_bound, mean_cost);
+					fprintf(fp, "a %ld %ld %ld %ld %lld\n",
+						node_index, node_index2, lower_bound, upper_bound, dimacsCostText(mean_cost));
 				}
 				ii = i - 1; jj = j;
 				if (ii >= 0 && residue_mask.at<int>(ii, jj) == 1)
 				{
 					node_index2 = ii * nc + jj + 1;
 					mean_cost = mean(cost(Range(i, i + 1), Range(j, j + 1))).val[0];
-					fprintf(fp, "a %ld %ld %ld %ld %lf\n",
-						node_index, node_index2, lower_bound, upper_bound, mean_cost);
+					fprintf(fp, "a %ld %ld %ld %ld %lld\n",
+						node_index, node_index2, lower_bound, upper_bound, dimacsCostText(mean_cost));
 				}
 				ii = i + 1; jj = j;
 				if (ii < nr && residue_mask.at<int>(ii, jj) == 1)
 				{
 					node_index2 = ii * nc + jj + 1;
 					mean_cost = mean(cost(Range(i, i + 1), Range(j, j + 1))).val[0];
-					fprintf(fp, "a %ld %ld %ld %ld %lf\n",
-						node_index, node_index2, lower_bound, upper_bound, mean_cost);
+					fprintf(fp, "a %ld %ld %ld %ld %lld\n",
+						node_index, node_index2, lower_bound, upper_bound, dimacsCostText(mean_cost));
 				}
 			}
 		}
@@ -2577,7 +2672,7 @@ int Utils::read_DIMACS(const char* DIMACS_file_solution, tri_edge* edges, int nu
 		return -1;
 	}
 	FILE* fp = NULL;
-	fp = fopen(DIMACS_file_solution, "rt");
+	fp = openUtf8File(DIMACS_file_solution, L"rt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "read_DIMACS(): can't open %s \n", DIMACS_file_solution);
@@ -2775,7 +2870,7 @@ int Utils::read_DIMACS(
 		return -1;
 	}
 	FILE* fp = NULL;
-	fp = fopen(DIMACS_file_solution, "rt");
+	fp = openUtf8File(DIMACS_file_solution, L"rt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "read_DIMACS(): can't open %s \n", DIMACS_file_solution);
@@ -4126,7 +4221,7 @@ int Utils::read_edges(const char* filename, tri_edge** edges, long* num_edges, i
 		return -1;
 	}
 	FILE* fp = NULL;
-	fp = fopen(filename, "rt");
+	fp = openUtf8File(filename, L"rt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "read_edges(): can't open %s\n", filename);
@@ -4232,7 +4327,7 @@ int Utils::read_edges(const char* edge_file, vector<tri_edge>& edges, std::vecto
 		return -1;
 	}
 	FILE* fp = NULL;
-	fp = fopen(edge_file, "rt");
+	fp = openUtf8File(edge_file, L"rt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "read_edges(): can't open %s\n", edge_file);
@@ -4552,13 +4647,13 @@ int Utils::read_triangle(
 	FILE* fp_ele, *fp_neigh;
 	fp_ele = NULL;
 	fp_neigh = NULL;
-	fp_ele = fopen(ele_file, "rt");
+	fp_ele = openUtf8File(ele_file, L"rt");
 	if (fp_ele == NULL)
 	{
 		fprintf(stderr, "read_triangle(): can't open %s\n", ele_file);
 		return -1;
 	}
-	fp_neigh = fopen(neigh_file, "rt");
+	fp_neigh = openUtf8File(neigh_file, L"rt");
 	if (fp_neigh == NULL)
 	{
 		fprintf(stderr, "read_triangle(): can't open %s\n", neigh_file);
@@ -4699,13 +4794,13 @@ int Utils::read_triangle(
 	FILE* fp_ele, * fp_neigh;
 	fp_ele = NULL;
 	fp_neigh = NULL;
-	fp_ele = fopen(ele_file, "rt");
+	fp_ele = openUtf8File(ele_file, L"rt");
 	if (fp_ele == NULL)
 	{
 		fprintf(stderr, "read_triangle(): can't open %s\n", ele_file);
 		return -1;
 	}
-	fp_neigh = fopen(neigh_file, "rt");
+	fp_neigh = openUtf8File(neigh_file, L"rt");
 	if (fp_neigh == NULL)
 	{
 		fprintf(stderr, "read_triangle(): can't open %s\n", neigh_file);
@@ -4810,86 +4905,106 @@ int Utils::read_triangle(
 
 int Utils::gen_delaunay(const char* filename, const char* exe_path)
 {
-	if (filename == NULL ||
-		exe_path == NULL
-		)
+	if (filename == NULL || !*filename || exe_path == NULL || !*exe_path)
 	{
 		fprintf(stderr, "gen_delaunay(): input check failed!\n");
 		return -1;
 	}
-	FILE* fp = NULL;
-	fp = fopen(filename, "rt");
-	if (!fp)
+	std::wstring nodeFile;
+	std::wstring executableFolder;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(filename, nodeFile, &pathError) ||
+		!PathResolver::utf8ToWide(exe_path, executableFolder, &pathError))
 	{
-		fprintf(stderr, "gen_delaunay(): can't open %s!\n", filename);
+		fprintf(stderr, "gen_delaunay(): invalid UTF-8 path.\n");
 		return -1;
 	}
-	else
+	HANDLE input = CreateFileW(nodeFile.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (input == INVALID_HANDLE_VALUE)
 	{
-		fclose(fp);
-		fp = NULL;
+		fprintf(stderr, "gen_delaunay(): can't open input node file.\n");
+		return -1;
 	}
-	USES_CONVERSION;
-	LPWSTR szCommandLine = new TCHAR[256];
-	wcscpy(szCommandLine, A2W(exe_path));
-	wcscat(szCommandLine, L"\\delaunay.exe -en ");
-	wcscat(szCommandLine, A2W(filename));
+	CloseHandle(input);
+	if (!executableFolder.empty() && executableFolder.back() != L'\\' && executableFolder.back() != L'/') executableFolder.push_back(L'\\');
+	const std::wstring executable = executableFolder + L"delaunay.exe";
+	auto quoteArgument = [](const std::wstring& argument) {
+		std::wstring quoted = L"\"";
+		size_t slashes = 0;
+		for (wchar_t character : argument)
+		{
+			if (character == L'\\') { ++slashes; continue; }
+			if (character == L'\"') quoted.append(slashes * 2 + 1, L'\\');
+			else quoted.append(slashes, L'\\');
+			quoted.push_back(character);
+			slashes = 0;
+		}
+		quoted.append(slashes * 2, L'\\');
+		quoted.push_back(L'\"');
+		return quoted;
+	};
+	std::wstring commandLine = quoteArgument(executable) + L" -en " + quoteArgument(nodeFile);
+	std::vector<wchar_t> commandLineBuffer(commandLine.begin(), commandLine.end());
+	commandLineBuffer.push_back(L'\0');
 
-	STARTUPINFO si;
-	PROCESS_INFORMATION p_i;
-	ZeroMemory(&si, sizeof(si));
+	STARTUPINFOW si = {};
+	PROCESS_INFORMATION p_i = {};
 	si.cb = sizeof(si);
-	ZeroMemory(&p_i, sizeof(p_i));
 	si.dwFlags = STARTF_USESHOWWINDOW;
 	si.wShowWindow = FALSE;
-	BOOL bRet = ::CreateProcess(
-		NULL,           // 不在此指定可执行文件的文件名
-		szCommandLine,      // 命令行参数
-		NULL,           // 默认进程安全性
-		NULL,           // 默认线程安全性
-		FALSE,          // 指定当前进程内的句柄不可以被子进程继承
-		CREATE_NEW_CONSOLE, // 为新进程创建一个新的控制台窗口
-		NULL,           // 使用本进程的环境变量
-		NULL,           // 使用本进程的驱动器和目录
-		&si,
-		&p_i);
-	if (bRet)
+	HANDLE job = CreateJobObjectW(nullptr, nullptr);
+	if (!job)
 	{
-		char delaunay_job_name[512]; delaunay_job_name[0] = 0;
-		time_t tt = std::time(0);
-		sprintf(delaunay_job_name, "DELAUNAY_%lld", tt);
-		string delaunay_job_name_string(delaunay_job_name);
-		HANDLE hd = CreateJobObjectA(NULL, delaunay_job_name_string.c_str());
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval)
-			{
-				if (p_i.hProcess)
-				{
-					retval = AssignProcessToJobObject(hd, p_i.hProcess);
-				}
-			}
-		}
-		WaitForSingleObject(p_i.hProcess, INFINITE);
-		if (szCommandLine != NULL) delete[] szCommandLine;
-		::CloseHandle(p_i.hThread);
-		::CloseHandle(p_i.hProcess);
-		if (hd)
-		{
-			::CloseHandle(hd);
-		}
-	}
-	else
-	{
-		fprintf(stderr, "gen_triangle(): create triangle.exe process failed!\n\n");
-		if (szCommandLine != NULL) delete[] szCommandLine;
+		fprintf(stderr, "gen_delaunay(): CreateJobObjectW failed (%lu).\n", GetLastError());
 		return -1;
 	}
-
-
+	{
+		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+		limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+		if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+		{
+			fprintf(stderr, "gen_delaunay(): SetInformationJobObject failed (%lu).\n", GetLastError());
+			CloseHandle(job);
+			return -1;
+		}
+	}
+	if (!CreateProcessW(executable.c_str(), commandLineBuffer.data(), nullptr, nullptr, FALSE,
+		CREATE_NEW_CONSOLE | CREATE_SUSPENDED,
+		nullptr, nullptr, &si, &p_i))
+	{
+		fprintf(stderr, "gen_delaunay(): CreateProcessW failed (%lu).\n", GetLastError());
+		if (job) CloseHandle(job);
+		return -1;
+	}
+	if (!AssignProcessToJobObject(job, p_i.hProcess))
+	{
+		const DWORD error = GetLastError();
+		TerminateProcess(p_i.hProcess, static_cast<UINT>(-3));
+		WaitForSingleObject(p_i.hProcess, INFINITE);
+		CloseHandle(p_i.hThread);
+		CloseHandle(p_i.hProcess);
+		CloseHandle(job);
+		fprintf(stderr, "gen_delaunay(): AssignProcessToJobObject failed (%lu).\n", error);
+		return -1;
+	}
+	if (ResumeThread(p_i.hThread) == static_cast<DWORD>(-1))
+	{
+		const DWORD error = GetLastError();
+		TerminateJobObject(job, static_cast<UINT>(-3));
+		WaitForSingleObject(p_i.hProcess, INFINITE);
+		CloseHandle(p_i.hThread);
+		CloseHandle(p_i.hProcess);
+		CloseHandle(job);
+		fprintf(stderr, "gen_delaunay(): ResumeThread failed (%lu).\n", error);
+		return -1;
+	}
+	WaitForSingleObject(p_i.hProcess, INFINITE);
+	DWORD exitCode = 0;
+	const bool success = GetExitCodeProcess(p_i.hProcess, &exitCode) && exitCode == 0;
+	CloseHandle(p_i.hThread);
+	CloseHandle(p_i.hProcess);
+	CloseHandle(job);
+	if (!success) { fprintf(stderr, "gen_delaunay(): delaunay.exe failed (exit=%lu).\n", exitCode); return -1; }
 	return 0;
 }
 
@@ -4907,7 +5022,7 @@ int Utils::write_node_file(const char* filename, const Mat& mask)
 		return -1;
 	}
 	FILE* fp = NULL;
-	fp = fopen(filename, "wt");
+	fp = openUtf8File(filename, L"wt");
 	if (fp == NULL)
 	{
 		fprintf(stderr, "write_node_file(): can't open %s\n", filename);

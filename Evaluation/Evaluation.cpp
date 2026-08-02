@@ -631,8 +631,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	FormatConversion conversion; Utils util;
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2;
-	string source_1, source_2, tmp;
-	string project(project_path);
+	string source_1, source_2;
 	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
@@ -645,13 +644,16 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	}
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_1", source_1);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_2", source_2);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	tmp = project;
-	source_1 = tmp + source_1;
-	source_2 = tmp + source_2;
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(unwrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
+	{
+		fprintf(stderr, "Evaluation::Pos(): %s (%s)\n", PathResolver::errorMessage(pathError), pathDetail.c_str());
+		return -1;
+	}
+	source_1 = sourcePaths.source1.utf8;
+	source_2 = sourcePaths.source2.utf8;
 	ret = conversion.read_array_from_h5(GCP_path, "GCP", gcps);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_row", temp);

@@ -8,7 +8,14 @@
 #include <atlconv.h>
 #include<queue>
 #include <atomic>
+#include <cerrno>
+#include <climits>
 #include <limits>
+#include <cmath>
+#include <map>
+#include <set>
+#include <sstream>
+#include <algorithm>
 
 #ifdef _DEBUG
 #pragma comment(lib, "ComplexMat_d.lib")
@@ -26,26 +33,395 @@ using namespace cv;
 #include <string>
 
 namespace {
-	bool runExternalProcess(const std::wstring& cmdLine, const std::string& jobPrefix, const std::string& errorMsgPrefix, UnwrapProgressCallback cb = nullptr)
+	thread_local UnwrapDiagnostic* g_activeDiagnostic = nullptr;
+
+	void copyDiagnosticText(char* destination, size_t capacity, const std::string& text)
 	{
-		STARTUPINFO si;
-		PROCESS_INFORMATION pi;
-		ZeroMemory(&si, sizeof(si));
+		if (!destination || capacity == 0) return;
+		const size_t length = std::min(capacity - 1, text.size());
+		memcpy(destination, text.data(), length);
+		destination[length] = '\0';
+	}
+
+	bool initializeDiagnostic(UnwrapDiagnostic* diagnostic, uint32_t algorithm)
+	{
+		if (!diagnostic || diagnostic->structSize < sizeof(UnwrapDiagnostic)) return false;
+		memset(diagnostic, 0, sizeof(UnwrapDiagnostic));
+		diagnostic->structSize = sizeof(UnwrapDiagnostic);
+		diagnostic->algorithm = algorithm;
+		diagnostic->stage = UNWRAP_DIAGNOSTIC_STAGE_INTERNAL;
+		diagnostic->operationStatus = -1;
+		diagnostic->exitCode = STILL_ACTIVE;
+		return true;
+	}
+
+	class ScopedPublicDiagnostic
+	{
+	public:
+		ScopedPublicDiagnostic(UnwrapDiagnostic* diagnostic, uint32_t algorithm)
+			: previous_(g_activeDiagnostic), current_(initializeDiagnostic(diagnostic, algorithm) ? diagnostic : nullptr)
+		{
+			g_activeDiagnostic = current_;
+		}
+
+		~ScopedPublicDiagnostic() { g_activeDiagnostic = previous_; }
+
+		void finish(int status)
+		{
+			if (!current_) return;
+			current_->operationStatus = status;
+			if (status == 0 && current_->summary[0] == '\0')
+			{
+				current_->stage = UNWRAP_DIAGNOSTIC_STAGE_COMPLETED;
+				copyDiagnosticText(current_->summary, sizeof(current_->summary), "completed");
+			}
+			else if (current_->summary[0] == '\0')
+			{
+				copyDiagnosticText(current_->summary, sizeof(current_->summary),
+					"operation failed before an external diagnostic was available");
+			}
+		}
+
+	private:
+		UnwrapDiagnostic* previous_;
+		UnwrapDiagnostic* current_;
+	};
+
+	std::string redactExternalText(const std::string& text)
+	{
+		std::string result;
+		result.reserve(text.size());
+		for (size_t i = 0; i < text.size();)
+		{
+			const bool drivePath = i + 2 < text.size() &&
+				((text[i] >= 'A' && text[i] <= 'Z') || (text[i] >= 'a' && text[i] <= 'z')) &&
+				text[i + 1] == ':' && (text[i + 2] == '\\' || text[i + 2] == '/');
+			const bool uncPath = i + 1 < text.size() &&
+				((text[i] == '\\' && text[i + 1] == '\\') || (text[i] == '/' && text[i + 1] == '/'));
+			if (!drivePath && !uncPath)
+			{
+				result.push_back(text[i++]);
+				continue;
+			}
+			result += "<path>";
+			i += drivePath ? 3 : 2;
+			while (i < text.size() && text[i] != ' ' && text[i] != '\t' && text[i] != '\r' && text[i] != '\n' &&
+				text[i] != '\"' && text[i] != '\'') ++i;
+		}
+		return result;
+	}
+
+	void appendBounded(std::string& target, const char* data, size_t length, size_t capacity)
+	{
+		if (!data || length == 0 || capacity == 0) return;
+		if (length >= capacity)
+		{
+			target.assign(data + length - capacity, capacity);
+			return;
+		}
+		if (target.size() + length > capacity) target.erase(0, target.size() + length - capacity);
+		target.append(data, length);
+	}
+
+	void drainStderrPipe(HANDLE pipe, std::string& tail)
+	{
+		if (!pipe || pipe == INVALID_HANDLE_VALUE) return;
+		while (true)
+		{
+			DWORD available = 0;
+			if (!PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) || available == 0) return;
+			char buffer[512];
+			DWORD read = 0;
+			const DWORD requested = std::min<DWORD>(available, sizeof(buffer));
+			if (!ReadFile(pipe, buffer, requested, &read, nullptr) || read == 0) return;
+			appendBounded(tail, buffer, read, 2048);
+		}
+	}
+
+	struct ExternalToolResult
+	{
+		std::string tool;
+		std::string phase;
+		DWORD win32Error = ERROR_SUCCESS;
+		DWORD exitCode = STILL_ACTIVE;
+		bool cancelled = false;
+		std::string validationFailure;
+		std::string stderrTail;
+		std::vector<std::wstring> managedArtifacts;
+		std::vector<std::pair<std::wstring, DWORD>> cleanupResiduals;
+
+		~ExternalToolResult()
+		{
+			if (!g_activeDiagnostic || (!cancelled && win32Error == ERROR_SUCCESS &&
+				(exitCode == STILL_ACTIVE || exitCode == 0) && validationFailure.empty() && cleanupResiduals.empty())) return;
+			UnwrapDiagnostic& diagnostic = *g_activeDiagnostic;
+			if (tool == "MCF") copyDiagnosticText(diagnostic.tool, sizeof(diagnostic.tool), "MCF");
+			else if (tool == "SNAPHU") copyDiagnosticText(diagnostic.tool, sizeof(diagnostic.tool), "SNAPHU");
+			else copyDiagnosticText(diagnostic.tool, sizeof(diagnostic.tool), tool);
+			if (phase == "path conversion") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PATH;
+			else if (phase == "prepare solution") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PREPARE;
+			else if (phase == "create job" || phase == "configure job" || phase == "bind job" || phase == "resume process") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_JOB;
+			else if (phase == "cancel") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_CANCEL;
+			else if (phase == "process exit") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PROCESS_EXIT;
+			else if (phase == "validate solution" || phase == "validate output" || phase == "record solution" || phase == "publish solution") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_OUTPUT;
+			else if (phase == "launch") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_LAUNCH;
+			else if (phase == "input") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_INPUT;
+			diagnostic.win32Error = win32Error;
+			diagnostic.exitCode = exitCode;
+			diagnostic.cancelled = cancelled ? 1 : 0;
+			if (!validationFailure.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), validationFailure);
+			else if (cancelled) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cancelled");
+			else if (!cleanupResiduals.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cleanup left managed artifacts");
+			else copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool process failed");
+			copyDiagnosticText(diagnostic.stderrTail, sizeof(diagnostic.stderrTail), redactExternalText(stderrTail));
+		}
+	};
+
+	std::wstring quoteCommandArgument(const std::wstring& argument)
+	{
+		std::wstring quoted = L"\"";
+		size_t slashCount = 0;
+		for (const wchar_t ch : argument)
+		{
+			if (ch == L'\\') { ++slashCount; continue; }
+			if (ch == L'\"') quoted.append(slashCount * 2 + 1, L'\\');
+			else quoted.append(slashCount, L'\\');
+			quoted.push_back(ch);
+			slashCount = 0;
+		}
+		quoted.append(slashCount * 2, L'\\');
+		quoted.push_back(L'\"');
+		return quoted;
+	}
+
+	bool quoteSnaphuConfigPath(const std::string& path, std::string& quoted)
+	{
+		if (path.empty() || path.find('\0') != std::string::npos || path.find_first_of("\"\r\n") != std::string::npos) return false;
+		quoted = "\"" + path + "\"";
+		return true;
+	}
+
+	struct DimacsArc
+	{
+		long tail;
+		long head;
+		long long lower;
+		long long upper;
+		long long cost;
+	};
+
+	bool readToolTextFile(const std::string& utf8Path, std::string& text)
+	{
+		std::wstring path;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(utf8Path, path, &error)) return false;
+		HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (file == INVALID_HANDLE_VALUE) return false;
+		LARGE_INTEGER size = {};
+		if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 || size.QuadPart > 64LL * 1024 * 1024)
+		{
+			CloseHandle(file);
+			return false;
+		}
+		text.resize(static_cast<size_t>(size.QuadPart));
+		DWORD total = 0;
+		while (total < text.size())
+		{
+			const DWORD chunk = static_cast<DWORD>(std::min<size_t>(text.size() - total, 0x7ffff000));
+			DWORD read = 0;
+			if (!ReadFile(file, &text[total], chunk, &read, nullptr) || read != chunk) { CloseHandle(file); return false; }
+			total += read;
+		}
+		const bool closed = CloseHandle(file) != FALSE;
+		return closed && text.find('\0') == std::string::npos;
+	}
+
+	bool parseDimacsInteger(const std::string& value, long long& output)
+	{
+		if (value.empty()) return false;
+		char* end = nullptr;
+		errno = 0;
+		output = _strtoi64(value.c_str(), &end, 10);
+		return errno != ERANGE && end && *end == '\0';
+	}
+
+	bool parseDimacsNetwork(const std::string& text, std::vector<long long>& supply,
+		std::vector<DimacsArc>& arcs, std::map<std::pair<long, long>, size_t>& arcIndex, std::string& reason)
+	{
+		std::istringstream input(text);
+		std::string line;
+		long nodes = 0;
+		long expectedArcs = 0;
+		bool gotProblem = false;
+		std::set<long> suppliedNodes;
+		while (std::getline(input, line))
+		{
+			std::istringstream fields(line);
+			char type = 0;
+			if (!(fields >> type) || type == 'c') continue;
+			if (type == 'p')
+			{
+				std::string kind, extra;
+				if (gotProblem || !(fields >> kind >> nodes >> expectedArcs) || (fields >> extra) || kind != "min" || nodes < 1 || expectedArcs < 0)
+				{ reason = "invalid DIMACS problem line"; return false; }
+				gotProblem = true;
+				supply.assign(static_cast<size_t>(nodes) + 1, 0);
+				arcs.reserve(static_cast<size_t>(expectedArcs));
+			}
+			else if (type == 'n')
+			{
+				long node = 0; std::string value, extra; long long amount = 0;
+				if (!gotProblem || !(fields >> node >> value) || (fields >> extra) || node < 1 || node > nodes || !parseDimacsInteger(value, amount) ||
+					amount < LONG_MIN || amount > LONG_MAX || !suppliedNodes.insert(node).second)
+				{ reason = "invalid DIMACS supply"; return false; }
+				supply[node] = amount;
+			}
+			else if (type == 'a')
+			{
+				DimacsArc arc = {}; std::string lower, upper, cost, extra;
+				if (!gotProblem || !(fields >> arc.tail >> arc.head >> lower >> upper >> cost) || (fields >> extra) ||
+					arc.tail < 1 || arc.tail > nodes || arc.head < 1 || arc.head > nodes || !parseDimacsInteger(lower, arc.lower) ||
+					!parseDimacsInteger(upper, arc.upper) || !parseDimacsInteger(cost, arc.cost) || arc.lower < 0 || arc.upper < arc.lower || arc.cost < 0 ||
+					arc.upper > LONG_MAX || arc.cost > LONG_MAX || arcs.size() >= static_cast<size_t>(expectedArcs) ||
+					!arcIndex.emplace(std::make_pair(arc.tail, arc.head), arcs.size()).second)
+				{ reason = "invalid or duplicate DIMACS arc"; return false; }
+				arcs.push_back(arc);
+			}
+			else { reason = "unknown DIMACS record"; return false; }
+		}
+		if (!gotProblem || arcs.size() != static_cast<size_t>(expectedArcs)) { reason = "incomplete DIMACS network"; return false; }
+		long long total = 0;
+		for (size_t i = 1; i < supply.size(); ++i) { if ((supply[i] > 0 && total > LLONG_MAX - supply[i]) || (supply[i] < 0 && total < LLONG_MIN - supply[i])) { reason = "supply overflow"; return false; } total += supply[i]; }
+		if (total != 0) { reason = "unbalanced DIMACS network"; return false; }
+		return true;
+	}
+
+	bool validateMcfSolution(const std::string& networkPath, const std::string& solutionPath, std::string& reason)
+	{
+		std::string networkText; std::string solutionText;
+		if (!readToolTextFile(networkPath, networkText) || !readToolTextFile(solutionPath, solutionText)) { reason = "cannot read DIMACS artifact"; return false; }
+		std::vector<long long> supply; std::vector<DimacsArc> arcs; std::map<std::pair<long, long>, size_t> arcIndex;
+		if (!parseDimacsNetwork(networkText, supply, arcs, arcIndex, reason)) return false;
+		std::vector<long long> flow(arcs.size(), 0);
+		std::set<std::pair<long, long>> seen;
+		std::istringstream input(solutionText); std::string line; bool sawStatus = false; long long declaredObjective = -1;
+		while (std::getline(input, line))
+		{
+			std::istringstream fields(line); char type = 0;
+			if (!(fields >> type) || type == 'c') continue;
+			std::string first, second, third, extra;
+			if (type == 's')
+			{
+				if (sawStatus || !(fields >> first) || (fields >> extra) || !parseDimacsInteger(first, declaredObjective) || declaredObjective < 0) { reason = "invalid solution objective"; return false; }
+				sawStatus = true;
+			}
+			else if (type == 'f')
+			{
+				long long tail = 0, head = 0, value = 0;
+				if (!sawStatus || !(fields >> first >> second >> third) || (fields >> extra) || !parseDimacsInteger(first, tail) || !parseDimacsInteger(second, head) || !parseDimacsInteger(third, value) ||
+					tail < LONG_MIN || tail > LONG_MAX || head < LONG_MIN || head > LONG_MAX || value <= 0) { reason = "invalid solution flow"; return false; }
+				const std::pair<long, long> key(static_cast<long>(tail), static_cast<long>(head));
+				auto arc = arcIndex.find(key);
+				if (arc == arcIndex.end() || !seen.insert(key).second) { reason = "unknown or duplicate solution arc"; return false; }
+				flow[arc->second] = value;
+			}
+			else { reason = "unknown solution record"; return false; }
+		}
+		if (!sawStatus) { reason = "missing solution objective"; return false; }
+		long long objective = 0;
+		for (size_t i = 0; i < arcs.size(); ++i)
+		{
+			const DimacsArc& arc = arcs[i];
+			if (flow[i] < arc.lower || flow[i] > arc.upper || (flow[i] != 0 && arc.cost > LLONG_MAX / flow[i]) ||
+				flow[i] * arc.cost > LLONG_MAX - objective) { reason = "solution bounds or objective overflow"; return false; }
+			objective += flow[i] * arc.cost;
+			if ((flow[i] > 0 && supply[arc.tail] < LLONG_MIN + flow[i]) || (flow[i] > 0 && supply[arc.head] > LLONG_MAX - flow[i])) { reason = "solution conservation overflow"; return false; }
+			supply[arc.tail] -= flow[i]; supply[arc.head] += flow[i];
+		}
+		for (size_t i = 1; i < supply.size(); ++i) if (supply[i] != 0) { reason = "solution violates node conservation"; return false; }
+		if (objective != declaredObjective) { reason = "solution objective mismatch"; return false; }
+		return true;
+	}
+
+	bool runExternalProcess(const std::wstring& executable, const std::vector<std::wstring>& arguments,
+		const std::string& jobPrefix, const std::string& errorMsgPrefix, UnwrapProgressCallback cb = nullptr,
+		ExternalToolResult* output = nullptr)
+	{
+		ExternalToolResult result = output ? *output : ExternalToolResult{};
+		result.tool = jobPrefix;
+		result.phase = "create job";
+		STARTUPINFO si = {};
+		PROCESS_INFORMATION pi = {};
 		si.cb = sizeof(si);
-		ZeroMemory(&pi, sizeof(pi));
-		si.dwFlags = STARTF_USESHOWWINDOW;
+		si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
 		si.wShowWindow = FALSE;
 
-		std::vector<wchar_t> cmdLineCopy(cmdLine.begin(), cmdLine.end());
+		SECURITY_ATTRIBUTES inheritable = {};
+		inheritable.nLength = sizeof(inheritable);
+		inheritable.bInheritHandle = TRUE;
+		HANDLE nullInput = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		HANDLE nullOutput = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		HANDLE stderrRead = INVALID_HANDLE_VALUE;
+		HANDLE stderrWrite = INVALID_HANDLE_VALUE;
+		if (nullInput == INVALID_HANDLE_VALUE || nullOutput == INVALID_HANDLE_VALUE ||
+			!CreatePipe(&stderrRead, &stderrWrite, &inheritable, 0) ||
+			!SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0))
+		{
+			result.win32Error = GetLastError();
+			if (stderrRead != INVALID_HANDLE_VALUE) CloseHandle(stderrRead);
+			if (stderrWrite != INVALID_HANDLE_VALUE) CloseHandle(stderrWrite);
+			if (nullInput != INVALID_HANDLE_VALUE) CloseHandle(nullInput);
+			if (nullOutput != INVALID_HANDLE_VALUE) CloseHandle(nullOutput);
+			if (output) *output = result;
+			return false;
+		}
+		si.hStdInput = nullInput;
+		si.hStdOutput = nullOutput;
+		si.hStdError = stderrWrite;
+
+		std::wstring commandLine = quoteCommandArgument(executable);
+		for (const std::wstring& argument : arguments) commandLine += L" " + quoteCommandArgument(argument);
+		std::vector<wchar_t> cmdLineCopy(commandLine.begin(), commandLine.end());
 		cmdLineCopy.push_back(L'\0');
 
-		BOOL bRet = ::CreateProcess(
-			NULL,
+		HANDLE job = CreateJobObjectW(nullptr, nullptr);
+		if (!job)
+		{
+			result.win32Error = GetLastError();
+			CloseHandle(stderrRead);
+			CloseHandle(stderrWrite);
+			CloseHandle(nullInput);
+			CloseHandle(nullOutput);
+			if (output) *output = result;
+			return false;
+		}
+		{
+			result.phase = "configure job";
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+			{
+				result.win32Error = GetLastError();
+				CloseHandle(job);
+				CloseHandle(stderrRead);
+				CloseHandle(stderrWrite);
+				CloseHandle(nullInput);
+				CloseHandle(nullOutput);
+				if (output) *output = result;
+				return false;
+			}
+		}
+
+		result.phase = "launch";
+		BOOL bRet = ::CreateProcessW(
+			executable.c_str(),
 			cmdLineCopy.data(),
-			NULL,
-			NULL,
-			FALSE,
-			CREATE_NEW_CONSOLE,
+			nullptr,
+			nullptr,
+			TRUE,
+			CREATE_NO_WINDOW | CREATE_SUSPENDED,
 			NULL,
 			NULL,
 			&si,
@@ -53,57 +429,429 @@ namespace {
 
 		if (!bRet)
 		{
-			fprintf(stderr, "%s: create process failed!\n\n", errorMsgPrefix.c_str());
+			result.win32Error = GetLastError();
+			fprintf(stderr, "%s: CreateProcessW failed (%lu).\n\n", errorMsgPrefix.c_str(), result.win32Error);
+			CloseHandle(job);
+			CloseHandle(stderrRead);
+			CloseHandle(stderrWrite);
+			CloseHandle(nullInput);
+			CloseHandle(nullOutput);
+			if (output) *output = result;
+			return false;
+		}
+		CloseHandle(stderrWrite);
+		stderrWrite = INVALID_HANDLE_VALUE;
+		CloseHandle(nullInput);
+		CloseHandle(nullOutput);
+		result.phase = "bind job";
+		if (!AssignProcessToJobObject(job, pi.hProcess))
+		{
+			result.win32Error = GetLastError();
+			TerminateProcess(pi.hProcess, static_cast<UINT>(-3));
+			WaitForSingleObject(pi.hProcess, INFINITE);
+			CloseHandle(pi.hThread);
+			CloseHandle(pi.hProcess);
+			CloseHandle(job);
+			drainStderrPipe(stderrRead, result.stderrTail);
+			CloseHandle(stderrRead);
+			if (output) *output = result;
+			return false;
+		}
+		if (ResumeThread(pi.hThread) == static_cast<DWORD>(-1))
+		{
+			result.win32Error = GetLastError();
+			result.phase = "resume process";
+			TerminateJobObject(job, static_cast<UINT>(-3));
+			WaitForSingleObject(pi.hProcess, INFINITE);
+			CloseHandle(pi.hThread);
+			CloseHandle(pi.hProcess);
+			CloseHandle(job);
+			drainStderrPipe(stderrRead, result.stderrTail);
+			CloseHandle(stderrRead);
+			if (output) *output = result;
 			return false;
 		}
 
-		char job_name[512];
-		sprintf_s(job_name, "%s_%lld", jobPrefix.c_str(), (long long)std::time(0));
-		HANDLE hd = CreateJobObjectA(NULL, job_name);
-		if (hd)
-		{
-			JOBOBJECT_EXTENDED_LIMIT_INFORMATION extLimitInfo;
-			extLimitInfo.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-			BOOL retval = SetInformationJobObject(hd, JobObjectExtendedLimitInformation, &extLimitInfo, sizeof(extLimitInfo));
-			if (retval && pi.hProcess)
-			{
-				AssignProcessToJobObject(hd, pi.hProcess);
-			}
-		}
-
 		bool is_cancelled = false;
-		if (cb) {
-			int count = 0;
-			while (true) {
-				DWORD exitCode = 0;
-				if (GetExitCodeProcess(pi.hProcess, &exitCode)) {
-					if (exitCode != STILL_ACTIVE) {
-						break;
-					}
-				}
-				count++;
-				int simulated_progress = std::min(99, count / 5);
-				if (!cb(simulated_progress, ("Running external solver " + jobPrefix + "...").c_str())) {
-					is_cancelled = true;
-					break;
-				}
-				Sleep(100);
+		bool wait_failed = false;
+		result.phase = "process exit";
+		const std::string runningMessage = "Running external solver " + jobPrefix + " (progress unavailable)...";
+		if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
+		while (true)
+		{
+			if (is_cancelled) break;
+			const DWORD waitResult = WaitForSingleObject(pi.hProcess, 100);
+			drainStderrPipe(stderrRead, result.stderrTail);
+			if (waitResult == WAIT_OBJECT_0) break;
+			if (waitResult != WAIT_TIMEOUT)
+			{
+				result.win32Error = GetLastError();
+				wait_failed = true;
+				break;
 			}
-		} else {
-			WaitForSingleObject(pi.hProcess, INFINITE);
 		}
 
 		if (is_cancelled) {
-			::TerminateProcess(pi.hProcess, -2);
+			result.cancelled = true;
+			result.phase = "cancel";
+			TerminateJobObject(job, static_cast<UINT>(-2));
+			// Do not clean task artifacts until the entire job has stopped writing.
+			JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+			while (QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), nullptr) &&
+				accounting.ActiveProcesses > 0)
+			{
+				drainStderrPipe(stderrRead, result.stderrTail);
+				Sleep(10);
+			}
+			WaitForSingleObject(pi.hProcess, INFINITE);
 		}
+		else if (wait_failed)
+		{
+			TerminateJobObject(job, static_cast<UINT>(-3));
+			WaitForSingleObject(pi.hProcess, INFINITE);
+		}
+		else WaitForSingleObject(pi.hProcess, INFINITE);
+
+		if (!GetExitCodeProcess(pi.hProcess, &result.exitCode)) result.win32Error = GetLastError();
+		drainStderrPipe(stderrRead, result.stderrTail);
 
 		::CloseHandle(pi.hThread);
 		::CloseHandle(pi.hProcess);
-		if (hd)
+		::CloseHandle(job);
+		CloseHandle(stderrRead);
+		if (result.cancelled) { if (output) *output = result; return false; }
+		if (result.win32Error != ERROR_SUCCESS || result.exitCode != 0)
 		{
-			::CloseHandle(hd);
+			fprintf(stderr, "%s: process failed (exit=%lu, win32=%lu).\n\n", errorMsgPrefix.c_str(), result.exitCode, result.win32Error);
+			if (output) *output = result;
+			return false;
 		}
-		return !is_cancelled;
+		const std::string completedMessage = "External solver " + jobPrefix + " completed.";
+		if (cb && !cb(100, completedMessage.c_str()))
+		{
+			result.cancelled = true;
+			result.phase = "cancel";
+			if (output) *output = result;
+			return false;
+		}
+		if (output) *output = result;
+		return true;
+	}
+
+	bool runExternalProcessUtf8(const std::string& executableFolder, const wchar_t* executableName,
+		const std::string& argument, const std::string& jobPrefix, const std::string& errorMsgPrefix,
+		UnwrapProgressCallback cb, ExternalToolResult* output = nullptr)
+	{
+		std::wstring folder;
+		std::wstring wideArgument;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(executableFolder, folder, &error) ||
+			!PathResolver::utf8ToWide(argument, wideArgument, &error))
+		{
+			fprintf(stderr, "%s: %s.\n\n", errorMsgPrefix.c_str(), PathResolver::errorMessage(error));
+			if (output) { output->tool = jobPrefix; output->phase = "path conversion"; output->validationFailure = PathResolver::errorMessage(error); }
+			return false;
+		}
+		if (!folder.empty() && folder.back() != L'\\' && folder.back() != L'/') folder.push_back(L'\\');
+		return runExternalProcess(folder + executableName, { wideArgument }, jobPrefix, errorMsgPrefix, cb, output);
+	}
+
+	bool runExternalProcessUtf8(const std::string& executableFolder, const wchar_t* executableName,
+		const std::vector<std::wstring>& arguments, const std::string& jobPrefix, const std::string& errorMsgPrefix,
+		UnwrapProgressCallback cb, ExternalToolResult* output = nullptr)
+	{
+		std::wstring folder;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(executableFolder, folder, &error))
+		{
+			fprintf(stderr, "%s: %s.\n\n", errorMsgPrefix.c_str(), PathResolver::errorMessage(error));
+			if (output) { output->tool = jobPrefix; output->phase = "path conversion"; output->validationFailure = PathResolver::errorMessage(error); }
+			return false;
+		}
+		if (!folder.empty() && folder.back() != L'\\' && folder.back() != L'/') folder.push_back(L'\\');
+		return runExternalProcess(folder + executableName, arguments, jobPrefix, errorMsgPrefix, cb, output);
+	}
+
+	class ScopedArtifactDirectory
+	{
+	public:
+		explicit ScopedArtifactDirectory(const std::wstring& directory, ExternalToolResult* result = nullptr) : directory_(directory), result_(result) {}
+		~ScopedArtifactDirectory()
+		{
+			for (const Artifact& artifact : files_)
+			{
+				if (!artifact.owned || GetFileAttributesW(artifact.path.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+				if (!DeleteFileW(artifact.path.c_str()))
+				{
+					const DWORD error = GetLastError();
+					if (result_) result_->cleanupResiduals.emplace_back(artifact.path, error);
+					fprintf(stderr, "External tool cleanup left artifact (win32=%lu).\n", error);
+				}
+			}
+			if (!directory_.empty() && !RemoveDirectoryW(directory_.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND)
+			{
+				const DWORD error = GetLastError();
+				if (result_) result_->cleanupResiduals.emplace_back(directory_, error);
+				fprintf(stderr, "External tool cleanup left task directory (win32=%lu).\n", error);
+			}
+		}
+
+		bool registerCandidate(const std::wstring& file)
+		{
+			if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES) return false;
+			files_.push_back({ file, false });
+			return true;
+		}
+
+		bool markOwned(const std::wstring& file)
+		{
+			for (Artifact& artifact : files_)
+			{
+				if (artifact.path != file) continue;
+				if (GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+				artifact.owned = true;
+				if (result_ && std::find(result_->managedArtifacts.begin(), result_->managedArtifacts.end(), file) == result_->managedArtifacts.end())
+					result_->managedArtifacts.push_back(file);
+				return true;
+			}
+			return false;
+		}
+
+		bool clearOwned(const std::wstring& file)
+		{
+			for (Artifact& artifact : files_)
+			{
+				if (artifact.path != file) continue;
+				if (!artifact.owned) return GetFileAttributesW(file.c_str()) == INVALID_FILE_ATTRIBUTES;
+				if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES && !DeleteFileW(file.c_str()))
+				{
+					const DWORD error = GetLastError();
+					if (result_) result_->cleanupResiduals.emplace_back(file, error);
+					return false;
+				}
+				artifact.owned = false;
+				return true;
+			}
+			return false;
+		}
+
+	private:
+		struct Artifact { std::wstring path; bool owned; };
+		std::wstring directory_;
+		std::vector<Artifact> files_;
+		ExternalToolResult* result_;
+	};
+
+	bool runMcfProcess(const char* executableFolder, const char* networkFile, const std::string& errorMessage,
+		UnwrapProgressCallback cb, ScopedArtifactDirectory* artifacts = nullptr, ExternalToolResult* output = nullptr)
+	{
+		ExternalToolResult result = output ? *output : ExternalToolResult{};
+		if (!executableFolder || !networkFile)
+		{
+			result.tool = "MCF";
+			result.phase = "input";
+			result.validationFailure = "missing executable or network path";
+			if (output) *output = result;
+			return false;
+		}
+		const std::string solution = std::string(networkFile) + ".sol";
+		std::wstring wideSolution;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(solution, wideSolution, &error) ||
+			GetFileAttributesW(wideSolution.c_str()) != INVALID_FILE_ATTRIBUTES)
+		{
+			result.tool = "MCF";
+			result.phase = "prepare solution";
+			result.validationFailure = "pre-existing or invalid solution artifact";
+			fprintf(stderr, "%s: refusing a pre-existing or invalid solution artifact.\n", errorMessage.c_str());
+			if (output) *output = result;
+			return false;
+		}
+		if (!runExternalProcessUtf8(executableFolder, L"mcf.exe", networkFile, "MCF", errorMessage, cb, &result))
+		{
+			if (artifacts && GetFileAttributesW(wideSolution.c_str()) != INVALID_FILE_ATTRIBUTES)
+			{
+				artifacts->markOwned(wideSolution);
+				if (std::find(result.managedArtifacts.begin(), result.managedArtifacts.end(), wideSolution) == result.managedArtifacts.end())
+					result.managedArtifacts.push_back(wideSolution);
+			}
+			if (output) *output = result;
+			return false;
+		}
+		if (artifacts && !artifacts->markOwned(wideSolution))
+		{
+			result.phase = "record solution";
+			result.validationFailure = "solution was not created in this task";
+			if (output) *output = result;
+			return false;
+		}
+		if (std::find(result.managedArtifacts.begin(), result.managedArtifacts.end(), wideSolution) == result.managedArtifacts.end())
+			result.managedArtifacts.push_back(wideSolution);
+		std::string validationFailure;
+		if (!validateMcfSolution(networkFile, solution, validationFailure))
+		{
+			result.phase = "validate solution";
+			result.validationFailure = validationFailure;
+			fprintf(stderr, "%s: invalid mcf solution (%s).\n\n", errorMessage.c_str(), validationFailure.c_str());
+			if (output) *output = result;
+			return false;
+		}
+		if (output) *output = result;
+		return true;
+	}
+
+	bool createTaskDirectory(const std::string& parentUtf8, std::string& outputUtf8, std::wstring& outputWide)
+	{
+		PathResolver::Error error = PathResolver::Error::None;
+		std::wstring parent;
+		if (!PathResolver::utf8ToWide(parentUtf8, parent, &error) || parent.empty()) return false;
+		static std::atomic<unsigned long> sequence{ 0 };
+		for (unsigned int attempt = 0; attempt != 128; ++attempt)
+		{
+			std::wostringstream name;
+			name << parent;
+			if (parent.back() != L'\\' && parent.back() != L'/') name << L'\\';
+			name << L"insar-snaphu-" << GetCurrentProcessId() << L"-" << GetTickCount64() << L"-" << ++sequence;
+			outputWide = name.str();
+			if (CreateDirectoryW(outputWide.c_str(), nullptr))
+				return PathResolver::wideToUtf8(outputWide, outputUtf8, &error);
+			if (GetLastError() != ERROR_ALREADY_EXISTS) return false;
+		}
+		return false;
+	}
+
+	bool createMcfTaskDirectory(const char* requestedNetworkPath, std::string& outputUtf8, std::wstring& outputWide)
+	{
+		if (!requestedNetworkPath || !*requestedNetworkPath) return false;
+		std::wstring requested;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(requestedNetworkPath, requested, &error)) return false;
+		const size_t separator = requested.find_last_of(L"\\/");
+		std::string parent;
+		const std::wstring parentWide = separator == std::wstring::npos ? L"." : requested.substr(0, separator);
+		if (!PathResolver::wideToUtf8(parentWide, parent, &error)) return false;
+		return createTaskDirectory(parent, outputUtf8, outputWide);
+	}
+
+	bool writeBytes(const std::wstring& path, const void* bytes, size_t byteCount, ScopedArtifactDirectory* artifacts = nullptr)
+	{
+		HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (file == INVALID_HANDLE_VALUE) return false;
+		if (artifacts && !artifacts->markOwned(path)) { CloseHandle(file); return false; }
+		const unsigned char* cursor = static_cast<const unsigned char*>(bytes);
+		size_t remaining = byteCount;
+		bool ok = true;
+		while (remaining != 0)
+		{
+			const DWORD chunk = static_cast<DWORD>(std::min<size_t>(remaining, 0x7ffff000));
+			DWORD written = 0;
+			if (!WriteFile(file, cursor, chunk, &written, nullptr) || written != chunk) { ok = false; break; }
+			cursor += written;
+			remaining -= written;
+		}
+		if (!CloseHandle(file)) ok = false;
+		return ok;
+	}
+
+	bool writeFloatRaster(const std::wstring& path, const Mat& input, ScopedArtifactDirectory* artifacts = nullptr)
+	{
+		if (input.empty() || input.type() != CV_32F) return false;
+		const Mat contiguous = input.isContinuous() ? input : input.clone();
+		return writeBytes(path, contiguous.data, contiguous.total() * sizeof(float), artifacts);
+	}
+
+	std::string correlationDimensions(const Mat& correlation)
+	{
+		std::ostringstream text;
+		text << correlation.rows << "x" << correlation.cols;
+		return text.str();
+	}
+
+	bool validateCorrelation(const Mat& correlation, int expectedRows, int expectedColumns, std::string& reason)
+	{
+		if (correlation.empty())
+		{
+			reason = "empty";
+			return false;
+		}
+		if (correlation.dims != 2)
+		{
+			reason = "rank_mismatch";
+			return false;
+		}
+		if (correlation.channels() != 1)
+		{
+			reason = "channel_mismatch";
+			return false;
+		}
+		if (correlation.rows != expectedRows || correlation.cols != expectedColumns)
+		{
+			std::ostringstream text;
+			text << "dimension_mismatch(" << correlationDimensions(correlation) << ", expected="
+				<< expectedRows << "x" << expectedColumns << ")";
+			reason = text.str();
+			return false;
+		}
+		if (correlation.type() != CV_32FC1 && correlation.type() != CV_64FC1)
+		{
+			std::ostringstream text;
+			text << "type_mismatch(expected=CV_32FC1|CV_64FC1, actual=" << correlation.type() << ")";
+			reason = text.str();
+			return false;
+		}
+
+		for (int row = 0; row < correlation.rows; ++row)
+		{
+			for (int column = 0; column < correlation.cols; ++column)
+			{
+				const double value = correlation.type() == CV_32FC1 ?
+					static_cast<double>(correlation.ptr<float>(row)[column]) : correlation.ptr<double>(row)[column];
+				if (!std::isfinite(value))
+				{
+					std::ostringstream text;
+					text << "non_finite(row=" << row << ", col=" << column << ")";
+					reason = text.str();
+					return false;
+				}
+				if (value < 0.0 || value > 1.0)
+				{
+					std::ostringstream text;
+					text << "out_of_range(row=" << row << ", col=" << column << ")";
+					reason = text.str();
+					return false;
+				}
+			}
+		}
+		reason.clear();
+		return true;
+	}
+
+	bool readValidatedFloatRaster(const std::wstring& path, int rows, int columns, Mat& output, std::string* reason = nullptr)
+	{
+		if (rows <= 0 || columns <= 0 || static_cast<unsigned long long>(rows) * columns >
+			std::numeric_limits<size_t>::max() / sizeof(float)) { if (reason) *reason = "invalid output dimensions"; return false; }
+		HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (file == INVALID_HANDLE_VALUE) { if (reason) *reason = "output file was not created"; return false; }
+		LARGE_INTEGER size = {};
+		const unsigned long long expected = static_cast<unsigned long long>(rows) * columns * sizeof(float);
+		bool ok = GetFileSizeEx(file, &size) && static_cast<unsigned long long>(size.QuadPart) == expected;
+		output.create(rows, columns, CV_32F);
+		unsigned char* cursor = output.data;
+		size_t remaining = static_cast<size_t>(expected);
+		while (ok && remaining != 0)
+		{
+			const DWORD chunk = static_cast<DWORD>(std::min<size_t>(remaining, 0x7ffff000));
+			DWORD read = 0;
+			if (!ReadFile(file, cursor, chunk, &read, nullptr) || read != chunk) { ok = false; break; }
+			cursor += read;
+			remaining -= read;
+		}
+		CloseHandle(file);
+		if (!ok) { output.release(); if (reason) *reason = "output length or read does not match raster dimensions"; return false; }
+		for (int row = 0; row < rows; ++row)
+			for (int column = 0; column < columns; ++column)
+				if (!std::isfinite(output.at<float>(row, column))) { output.release(); if (reason) *reason = "output contains NaN or Inf"; return false; }
+		return true;
 	}
 
 	// 质量引导解缠专用：包含 4 邻域的梯度与相位更新控制参数
@@ -147,7 +895,7 @@ Unwrap::~Unwrap()
 {
 }
 
-int Unwrap::MCF(
+int Unwrap::MCFInternal(
 	Mat& wrapped_phase,
 	Mat& unwrapped_phase,
 	Mat& coherence,
@@ -214,18 +962,29 @@ int Unwrap::MCF(
 		unwrapped_phase = unwrapped_phase + wrapped_phase.at<double>(0, 0);
 		return 0;
 	}
-	ret = util.write_DIMACS(MCF_problem_file, residue, coherence, 0.5);
+	string taskFolder;
+	std::wstring taskFolderWide;
+	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
+	const string taskNetwork = taskFolder + "\\mcf.net";
+	const string taskSolution = taskNetwork + ".sol";
+	std::wstring taskNetworkWide;
+	std::wstring taskSolutionWide;
+	PathResolver::Error artifactError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(taskNetwork, taskNetworkWide, &artifactError) ||
+		!PathResolver::utf8ToWide(taskSolution, taskSolutionWide, &artifactError) ||
+		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
+	ret = util.write_DIMACS(taskNetwork.c_str(), residue, coherence, 0.5);
+	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "MCF(): create mcf.exe process failed!", cb))
+	if (!runMcfProcess(MCF_EXE_PATH, taskNetwork.c_str(), "MCF(): mcf.exe failed!", cb, &artifacts, &toolResult))
 	{
 		return -2;
 	}
 	Mat k1, k2;
-	string solution(MCF_problem_file);
-	solution.append(".sol");
-	ret = util.read_DIMACS(solution.c_str(), k1, k2, wrapped_phase.rows, wrapped_phase.cols);
+	ret = util.read_DIMACS(taskSolution.c_str(), k1, k2, wrapped_phase.rows, wrapped_phase.cols);
 	if (return_check(ret, "read_DIMACS(*, *, *)", error_head)) return -1;
 	Mat diff_1, diff_2;
 	ret = util.diff(wrapped_phase, diff_1, diff_2, false);
@@ -255,7 +1014,7 @@ int Unwrap::MCF(
 	return 0;
 }
 
-int Unwrap::MCF_improved(
+int Unwrap::MCFImprovedInternal(
 	Mat& wrapped_phase, 
 	Mat& unwrapped_phase,
 	const char* MCF_problem_file,
@@ -285,21 +1044,32 @@ int Unwrap::MCF_improved(
 	if (return_check(ret, "gen_mask_pdv()", error_head)) return -1;
 	cost = phase_derivatives_variance + 0.001;
 	cost = 1 / cost;
-	ret = util.write_DIMACS(MCF_problem_file, residue, mask, cost);
+	string taskFolder;
+	std::wstring taskFolderWide;
+	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
+	const string taskNetwork = taskFolder + "\\mcf.net";
+	const string taskSolution = taskNetwork + ".sol";
+	std::wstring taskNetworkWide;
+	std::wstring taskSolutionWide;
+	PathResolver::Error artifactError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(taskNetwork, taskNetworkWide, &artifactError) ||
+		!PathResolver::utf8ToWide(taskSolution, taskSolutionWide, &artifactError) ||
+		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
+	ret = util.write_DIMACS(taskNetwork.c_str(), residue, mask, cost);
+	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
 	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
 	Mat m; mask.convertTo(m, CV_64F);
 	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
 	// util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	std::wstring cmdLine = A2W(MCF_exe_path) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "MCF_improved(): create mcf.exe process failed!", cb))
+	if (!runMcfProcess(MCF_exe_path, taskNetwork.c_str(), "MCF_improved(): mcf.exe failed!", cb, &artifacts, &toolResult))
 	{
 		return -2;
 	}
 	Mat k1, k2;
-	string solution(MCF_problem_file);
-	solution.append(".sol");
-	ret = util.read_DIMACS(solution.c_str(), k1, k2, wrapped_phase.rows, wrapped_phase.cols);
+	ret = util.read_DIMACS(taskSolution.c_str(), k1, k2, wrapped_phase.rows, wrapped_phase.cols);
 	if (return_check(ret, "read_DIMACS(*, *, *)", error_head)) return -1;
 	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
 	// util.cvmat2bin("E:\\zgb1\\functions\\k1.bin", k1);
@@ -1694,7 +2464,7 @@ int Unwrap::MCF_second(Mat& unwrapped_phase, vector<tri_node>& nodes, tri_edge* 
 	return 0;
 }
 
-int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb)
+int Unwrap::McfDelaunayInternal(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb)
 {
 	if (MCF_problem_file == NULL ||
 		MCF_EXE_PATH == NULL
@@ -1703,13 +2473,41 @@ int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH,
 		fprintf(stderr, "mcf_delaunay(): input check failed!\n\n");
 		return -1;
 	}
-	USES_CONVERSION;
-	Utils util;
-	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
-	std::wstring cmdLine = A2W(MCF_EXE_PATH) + std::wstring(L"\\mcf.exe ") + A2W(MCF_problem_file);
-	if (!runExternalProcess(cmdLine, "MCF", "mcf_delaunay(): create mcf.exe process failed!", cb))
+	std::wstring requestedNetwork;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(MCF_problem_file, requestedNetwork, &pathError)) return -1;
+	const std::wstring requestedSolution = requestedNetwork + L".sol";
+	if (GetFileAttributesW(requestedSolution.c_str()) != INVALID_FILE_ATTRIBUTES) return -1;
+
+	string taskFolder;
+	std::wstring taskFolderWide;
+	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
+	const string taskNetwork = taskFolder + "\\mcf_delaunay.net";
+	const string taskSolution = taskNetwork + ".sol";
+	std::wstring taskNetworkWide;
+	std::wstring taskSolutionWide;
+	PathResolver::Error artifactError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(taskNetwork, taskNetworkWide, &artifactError) ||
+		!PathResolver::utf8ToWide(taskSolution, taskSolutionWide, &artifactError) ||
+		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
+	if (!CopyFileW(requestedNetwork.c_str(), taskNetworkWide.c_str(), TRUE) || !artifacts.markOwned(taskNetworkWide))
+	{
+		toolResult.phase = "prepare input";
+		toolResult.win32Error = GetLastError();
+		return -1;
+	}
+	if (!runMcfProcess(MCF_EXE_PATH, taskNetwork.c_str(), "mcf_delaunay(): mcf.exe failed!", cb, &artifacts, &toolResult))
 	{
 		return -2;
+	}
+	// The task artifacts are cleaned on scope exit. Publish only the validated result.
+	if (!CopyFileW(taskSolutionWide.c_str(), requestedSolution.c_str(), TRUE))
+	{
+		toolResult.phase = "publish solution";
+		toolResult.win32Error = GetLastError();
+		return -1;
 	}
 	return 0;
 }
@@ -2118,7 +2916,7 @@ int Unwrap::_QualityGuided_MCF_2(
 	return 0;
 }
 
-int Unwrap::QualityGuided_MCF(
+int Unwrap::QualityGuidedMCFInternal(
 	const Mat& wrapped_phase,
 	Mat& unwrapped_phase, 
 	double coherence_thresh,
@@ -2159,25 +2957,53 @@ int Unwrap::QualityGuided_MCF(
 		if (return_check(ret, "residue()", error_head)) return -1;
 		string mcf_problem_file(tmp_path);
 		mcf_problem_file.append("\\mcf_problem.net");
-		ret = MCF(phase, unwrapped_phase, coherence, residue, mcf_problem_file.c_str(), EXE_path, cb);
+		ret = MCFInternal(phase, unwrapped_phase, coherence, residue, mcf_problem_file.c_str(), EXE_path, cb);
 		if (ret == -2) return -2;
 		if (return_check(ret, "MCF()", error_head)) return -1;
 		return 0;
 	}
 
-	string folder(tmp_path);
+	string folder;
+	std::wstring taskFolderWide;
+	if (!createTaskDirectory(tmp_path, folder, taskFolderWide)) return -1;
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
 	string node_file = folder + "\\triangle.node";
+	string generated_node_file = folder + "\\triangle.1.node";
 	string edge_file = folder + "\\triangle.1.edge";
 	string ele_file = folder + "\\triangle.1.ele";
 	string neigh_file = folder + "\\triangle.1.neigh";
 	string mcf_problem = folder + "\\mcf_delaunay.net";
 	string mcf_solution = folder + "\\mcf_delaunay.net.sol";
+	std::wstring nodeFileWide, generatedNodeFileWide, edgeFileWide, eleFileWide, neighFileWide, mcfProblemWide, mcfSolutionWide;
+	PathResolver::Error artifactError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(node_file, nodeFileWide, &artifactError) ||
+		!PathResolver::utf8ToWide(generated_node_file, generatedNodeFileWide, &artifactError) ||
+		!PathResolver::utf8ToWide(edge_file, edgeFileWide, &artifactError) ||
+		!PathResolver::utf8ToWide(ele_file, eleFileWide, &artifactError) ||
+		!PathResolver::utf8ToWide(neigh_file, neighFileWide, &artifactError) ||
+		!PathResolver::utf8ToWide(mcf_problem, mcfProblemWide, &artifactError) ||
+		!PathResolver::utf8ToWide(mcf_solution, mcfSolutionWide, &artifactError) ||
+		!artifacts.registerCandidate(nodeFileWide) || !artifacts.registerCandidate(generatedNodeFileWide) ||
+		!artifacts.registerCandidate(edgeFileWide) || !artifacts.registerCandidate(eleFileWide) ||
+		!artifacts.registerCandidate(neighFileWide) || !artifacts.registerCandidate(mcfProblemWide) ||
+		!artifacts.registerCandidate(mcfSolutionWide)) return -1;
+	auto clearDelaunayOutputs = [&]() {
+		return artifacts.clearOwned(generatedNodeFileWide) && artifacts.clearOwned(edgeFileWide) &&
+			artifacts.clearOwned(eleFileWide) && artifacts.clearOwned(neighFileWide);
+	};
 	vector<tri_node> nodes, nodes_sub; vector<tri_edge> edges, edges_sub; vector<triangle> tri, tri_sub;
 	vector<int> node_neighbour, node_neighbour_sub;
 	long num_nodes = count;
 	ret = util.write_node_file(node_file.c_str(), mask);
+	if (GetFileAttributesW(nodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(nodeFileWide);
 	if (return_check(ret, "write_node_file()", error_head)) return -1;
+	if (!clearDelaunayOutputs()) return -1;
 	ret = util.gen_delaunay(node_file.c_str(), EXE_path);
+	if (GetFileAttributesW(generatedNodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(generatedNodeFileWide);
+	if (GetFileAttributesW(edgeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(edgeFileWide);
+	if (GetFileAttributesW(eleFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(eleFileWide);
+	if (GetFileAttributesW(neighFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(neighFileWide);
 	if (return_check(ret, "gen_delaunay()", error_head)) return -1;
 	ret = util.read_edges(edge_file.c_str(), edges, node_neighbour, num_nodes);
 	if (return_check(ret, "read_edges()", error_head)) return -1;
@@ -2255,8 +3081,14 @@ int Unwrap::QualityGuided_MCF(
 	queue<int> wrapped_que, unwrapped_neighbour_que, low_quality_que;
 	num_nodes = cv::countNonZero(mask_2);
 	ret = util.write_node_file(node_file.c_str(), mask_2);
+	if (GetFileAttributesW(nodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(nodeFileWide);
 	if (return_check(ret, "write_node_file()", error_head)) return -1;
+	if (!clearDelaunayOutputs()) return -1;
 	ret = util.gen_delaunay(node_file.c_str(), EXE_path);
+	if (GetFileAttributesW(generatedNodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(generatedNodeFileWide);
+	if (GetFileAttributesW(edgeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(edgeFileWide);
+	if (GetFileAttributesW(eleFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(eleFileWide);
+	if (GetFileAttributesW(neighFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(neighFileWide);
 	if(return_check(ret, "gen_delaunay()", error_head)) return -1;
 	ret = util.read_edges(edge_file.c_str(), edges, node_neighbour, num_nodes);
 	if (return_check(ret, "read_edges()", error_head)) return -1;
@@ -2327,10 +3159,21 @@ int Unwrap::QualityGuided_MCF(
 		ambiguity = Mat::zeros(1, static_cast<int>(unwrapped_neighbour_que.size()), CV_32S);
 		num_nodes = cv::countNonZero(new_mask);
 		ret = util.write_node_file(node_file.c_str(), new_mask);
+		if (GetFileAttributesW(nodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(nodeFileWide);
+		if (return_check(ret, "write_node_file()", error_head)) return -1;
+		if (!clearDelaunayOutputs()) return -1;
 		ret = util.gen_delaunay(node_file.c_str(), EXE_path);
+		if (GetFileAttributesW(generatedNodeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(generatedNodeFileWide);
+		if (GetFileAttributesW(edgeFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(edgeFileWide);
+		if (GetFileAttributesW(eleFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(eleFileWide);
+		if (GetFileAttributesW(neighFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(neighFileWide);
+		if (return_check(ret, "gen_delaunay()", error_head)) return -1;
 		ret = util.read_edges(edge_file.c_str(), edges_sub, node_neighbour_sub, num_nodes);
+		if (return_check(ret, "read_edges()", error_head)) return -1;
 		ret = util.init_tri_node(nodes_sub, wrapped_phase, new_mask, edges_sub, node_neighbour_sub, num_nodes);
+		if (return_check(ret, "init_tri_node()", error_head)) return -1;
 		ret = util.read_triangle(ele_file.c_str(), neigh_file.c_str(), tri_sub, nodes_sub, edges_sub);
+		if (return_check(ret, "read_triangle()", error_head)) return -1;
 		ret = util.residue(tri_sub, nodes_sub, edges_sub, 1000.0);
 		if (return_check(ret, "residue()", error_head)) return -1;
 		/*
@@ -2358,8 +3201,10 @@ int Unwrap::QualityGuided_MCF(
 		else
 		{
 			ret = util.write_DIMACS(mcf_problem.c_str(), tri_sub, nodes_sub, edges_sub, coherence);
+			if (GetFileAttributesW(mcfProblemWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(mcfProblemWide);
 			if (return_check(ret, "write_DIMACS()", error_head)) return -1;
-			ret = mcf_delaunay(mcf_problem.c_str(), EXE_path, cb);
+			if (!runMcfProcess(EXE_path, mcf_problem.c_str(), "mcf_delaunay(): mcf.exe failed!", cb, &artifacts, &toolResult)) ret = -2;
+			else ret = 0;
 			if (ret == -2) return -2;
 			if (return_check(ret, "mcf_delaunay()", error_head)) return -1;
 			ret = util.read_DIMACS(mcf_solution.c_str(), edges_sub, nodes_sub, tri_sub);
@@ -2401,7 +3246,7 @@ int Unwrap::QualityGuided_MCF(
 	return 0;
 }
 
-int Unwrap::snaphu(
+int Unwrap::SnaphuFileInternal(
 	const char* wrapped_phase_file,
 	Mat& unwrapped_phase,
 	const char* project_path,
@@ -2426,35 +3271,82 @@ int Unwrap::snaphu(
 	Mat wrapped_phase, coherence, amplitude1, amplitude2, lon_coef, lat_coef, state_vec1, state_vec2, prf1, prf2,
 		carrier_frequency, offset_row, offset_col;
 	ComplexMat master, slave;
-	FILE* fp = NULL;
 	string EXE_path(exe_path);
 	std::replace(EXE_path.begin(), EXE_path.end(), '/', '\\');
-	string project(project_path);
-	std::replace(project.begin(), project.end(), '/', '\\');
 	string source_1, source_2;
-	string folder(tmp_folder);
-	std::replace(folder.begin(), folder.end(), '/', '\\');
+	string folder;
+	std::wstring taskFolderWide;
+	if (!createTaskDirectory(tmp_folder, folder, taskFolderWide))
+	{
+		fprintf(stderr, "snaphu(): cannot create a unique task directory.\n");
+		return -1;
+	}
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
 	string config_file = folder + "\\snaphu.config";
 	string ampfile1 = folder + "\\ampfile1.dat";
 	string ampfile2 = folder + "\\ampfile2.dat";
 	string coherence_file = folder + "\\coherence.dat";
 	string IN_file = folder + "\\wrapped_phase.dat";
 	string OUT_file = folder + "\\unwrapped_phase.dat";
+	std::wstring configFileWide, ampfile1Wide, ampfile2Wide, coherenceFileWide, inFileWide, outFileWide;
+	PathResolver::Error artifactPathError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(config_file, configFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(ampfile1, ampfile1Wide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(ampfile2, ampfile2Wide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(coherence_file, coherenceFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(IN_file, inFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(OUT_file, outFileWide, &artifactPathError) ||
+		!artifacts.registerCandidate(configFileWide) || !artifacts.registerCandidate(ampfile1Wide) ||
+		!artifacts.registerCandidate(ampfile2Wide) || !artifacts.registerCandidate(coherenceFileWide) ||
+		!artifacts.registerCandidate(inFileWide) || !artifacts.registerCandidate(outFileWide))
+	{
+		fprintf(stderr, "snaphu(): unable to register task artifacts (%s).\n", PathResolver::errorMessage(artifactPathError));
+		return -1;
+	}
 
 	ret = conversion.read_array_from_h5(wrapped_phase_file, "phase", wrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
+	enum class CorrelationSource { InputH5, PhaseDerived, Disabled };
+	enum class AmplitudeStatus { Used, Unavailable, OmittedDimensionMismatch };
+	CorrelationSource correlationSource = CorrelationSource::Disabled;
+	AmplitudeStatus amplitudeStatus = AmplitudeStatus::Unavailable;
+	std::string correlationReason;
 	//估计基线
 	bool b_baseline = true;
 	bool b_source = true;
-	bool b_amp = true;
-	bool b_coh = true;
-	if (0 > conversion.read_str_from_h5(wrapped_phase_file, "source_1", source_1)) b_source = false;
-	else source_1 = project + source_1;
-	if (0 > conversion.read_str_from_h5(wrapped_phase_file, "source_2", source_2)) b_source = false;
-	else source_2 = project + source_2;
+	bool amplitudeAvailable = false;
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(wrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
+	{
+		fprintf(stderr, "snaphu(): %s (%s)\n", PathResolver::errorMessage(pathError), pathDetail.c_str());
+		return -1;
+	}
+	source_1 = sourcePaths.source1.utf8;
+	source_2 = sourcePaths.source2.utf8;
 
-	if (0 > conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence)) b_coh = false;
+	const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
+	if (inputCoherenceReadStatus == 0)
+	{
+		if (validateCorrelation(coherence, nr, nc, correlationReason))
+		{
+			coherence.convertTo(coherence, CV_32F);
+			if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
+			correlationSource = CorrelationSource::InputH5;
+		}
+		else
+		{
+			fprintf(stderr, "snaphu(): input_coherence_rejected=%s\n", correlationReason.c_str());
+		}
+	}
+	else
+	{
+		correlationReason = "input_missing_or_unreadable";
+		fprintf(stderr, "snaphu(): input_coherence_unavailable=%s\n", correlationReason.c_str());
+	}
 	if (b_source)
 	{
 		if (0 > conversion.read_array_from_h5(source_1.c_str(), "lon_coefficient", lon_coef)) b_baseline = false;
@@ -2467,8 +3359,13 @@ int Unwrap::snaphu(
 		if (0 > conversion.read_array_from_h5(source_2.c_str(), "prf", prf2)) b_baseline = false;
 		if (0 > conversion.read_array_from_h5(source_2.c_str(), "state_vec", state_vec2)) b_baseline = false;
 
-		if (0 > conversion.read_slc_from_h5(source_1.c_str(), master)) b_amp = false;
-		if (0 > conversion.read_slc_from_h5(source_2.c_str(), slave)) b_amp = false;
+		const bool masterRead = conversion.read_slc_from_h5(source_1.c_str(), master) >= 0;
+		const bool slaveRead = conversion.read_slc_from_h5(source_2.c_str(), slave) >= 0;
+		amplitudeAvailable = masterRead && slaveRead;
+		if (!amplitudeAvailable)
+		{
+			fprintf(stderr, "snaphu(): source amplitude unavailable; omitting amplitude files.\n");
+		}
 	}
 	if (b_source && b_baseline)
 	{
@@ -2478,154 +3375,157 @@ int Unwrap::snaphu(
 	}
 	Mat phase;
 	wrapped_phase.convertTo(phase, CV_32F);
-	fopen_s(&fp, IN_file.c_str(), "wb");
-	if (!fp)
-	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", IN_file.c_str());
-		return -1;
-	}
-	fwrite(phase.data, sizeof(float), nr * nc, fp);
-	fclose(fp);
-	fp = NULL;
-	if (b_source && b_amp)//有幅度信息
+	if (!writeFloatRaster(inFileWide, phase, &artifacts)) return -1;
+	if (b_source && amplitudeAvailable)//有幅度信息
 	{
 		if (master.type() != CV_64F) master.convertTo(master, CV_64F);
 		amplitude1 = master.GetMod();
 		amplitude1.convertTo(amplitude1, CV_32F);
-		fopen_s(&fp, ampfile1.c_str(), "wb");
-		if (!fp)
-		{
-			fprintf(stderr, "snaphu(): can't open %s!\n", ampfile1.c_str());
-			return -1;
-		}
-		fwrite(amplitude1.data, sizeof(float), nr * nc, fp);
-		fclose(fp);
-		fp = NULL;
 
 		if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
-		amplitude1 = slave.GetMod();
-		amplitude1.convertTo(amplitude1, CV_32F);
-		fopen_s(&fp, ampfile2.c_str(), "wb");
-		if (!fp)
+		amplitude2 = slave.GetMod();
+		amplitude2.convertTo(amplitude2, CV_32F);
+
+		if (amplitude1.rows != nr || amplitude1.cols != nc || amplitude2.rows != nr || amplitude2.cols != nc)
 		{
-			fprintf(stderr, "snaphu(): can't open %s!\n", ampfile2.c_str());
-			return -1;
+			fprintf(stderr, "snaphu(): source amplitude dimensions (%d x %d, %d x %d) do not match wrapped phase (%d x %d); omitting amplitude files.\n",
+				amplitude1.rows, amplitude1.cols, amplitude2.rows, amplitude2.cols, nr, nc);
+			amplitudeStatus = AmplitudeStatus::OmittedDimensionMismatch;
 		}
-		fwrite(amplitude1.data, sizeof(float), nr * nc, fp);
-		fclose(fp);
-		fp = NULL;
-	}
-	if (b_coh)//相关系数信息
-	{
-		coherence.convertTo(coherence, CV_32F);
-		fopen_s(&fp, coherence_file.c_str(), "wb");
-		if (!fp)
-		{
-			fprintf(stderr, "snaphu(): can't open %s!\n", coherence_file.c_str());
-			return -1;
-		}
-		fwrite(coherence.data, sizeof(float), nr * nc, fp);
-		fclose(fp);
-		fp = NULL;
-		b_coh = true;
-	}
-	else
-	{
-		ret = util.phase_coherence(wrapped_phase, coherence);
-		if (ret < 0) b_coh = false;
 		else
 		{
-			coherence.convertTo(coherence, CV_32F);
-			fopen_s(&fp, coherence_file.c_str(), "wb");
-			if (!fp)
+			if (!writeFloatRaster(ampfile1Wide, amplitude1, &artifacts)) return -1;
+			if (!writeFloatRaster(ampfile2Wide, amplitude2, &artifacts)) return -1;
+			amplitudeStatus = AmplitudeStatus::Used;
+		}
+	}
+	if (correlationSource != CorrelationSource::InputH5)
+	{
+		Mat phaseDerivedCoherence;
+		ret = util.phase_coherence(wrapped_phase, phaseDerivedCoherence);
+		if (ret < 0)
+		{
+			correlationReason = "phase_derived_failed";
+			fprintf(stderr, "snaphu(): phase-derived coherence unavailable.\n");
+		}
+		else
+		{
+			std::string phaseDerivedReason;
+			if (!validateCorrelation(phaseDerivedCoherence, nr, nc, phaseDerivedReason))
 			{
-				fprintf(stderr, "snaphu(): can't open %s!\n", coherence_file.c_str());
-				return -1;
+				correlationReason = "phase_derived_validation_failed(" + phaseDerivedReason + ")";
+				fprintf(stderr, "snaphu(): phase_derived_coherence_rejected=%s\n", phaseDerivedReason.c_str());
 			}
-			fwrite(coherence.data, sizeof(float), nr * nc, fp);
-			fclose(fp);
-			fp = NULL;
-			b_coh = true;
+			else
+			{
+				phaseDerivedCoherence.convertTo(coherence, CV_32F);
+				if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
+				correlationSource = CorrelationSource::PhaseDerived;
+			}
 		}
 	}
 
 
 
-	//写入配置参数
-	fopen_s(&fp, config_file.c_str(), "wt");
-	if (!fp)
+	// SNAPHU consumes this configuration as UTF-8; every pathname is UTF-8.
+	std::string configInFile, configOutFile, configCoherenceFile, configAmpfile1, configAmpfile2;
+	if (!quoteSnaphuConfigPath(IN_file, configInFile) || !quoteSnaphuConfigPath(OUT_file, configOutFile) ||
+		!quoteSnaphuConfigPath(coherence_file, configCoherenceFile) || !quoteSnaphuConfigPath(ampfile1, configAmpfile1) ||
+		!quoteSnaphuConfigPath(ampfile2, configAmpfile2)) return -1;
+	std::ostringstream config;
+	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
+	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\n";
+	if (correlationSource != CorrelationSource::Disabled) config << "CORRFILE " << configCoherenceFile << "\n";
+	if (amplitudeStatus == AmplitudeStatus::Used)
 	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", coherence_file.c_str());
-		return -1;
-	}
-	fprintf(fp, "INFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "OUTFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "CORRFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "AMPFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "LINELENGTH %d\n", nc);
-	fprintf(fp, "INFILE %s\n", IN_file.c_str());
-	fprintf(fp, "OUTFILE %s\n", OUT_file.c_str());
-	if (b_coh) fprintf(fp, "CORRFILE %s\n", coherence_file.c_str());
-	if (b_source && b_amp)
-	{
-		fprintf(fp, "AMPFILE1 %s\n", ampfile1.c_str());
-		fprintf(fp, "AMPFILE2 %s\n", ampfile2.c_str());
+		config << "AMPFILE1 " << configAmpfile1 << "\nAMPFILE2 " << configAmpfile2 << "\n";
 	}
 	if (b_source && b_baseline)
 	{
 		B_parallel = sqrt(B_effect * B_effect + B_parallel * B_parallel);
-		fprintf(fp, "BASELINE %lf\n", B_parallel);
-		fprintf(fp, "BPERP %lf\n", B_effect);
-		fprintf(fp, "LAMBDA %lf\n", 3e8 / carrier_frequency.at<double>(0, 0));
+		config << "BASELINE " << B_parallel << "\nBPERP " << B_effect << "\nLAMBDA " << 3e8 / carrier_frequency.at<double>(0, 0) << "\n";
 	}
 	if (b_source)
 	{
 		Mat DR, DA;
 		if (0 == conversion.read_array_from_h5(source_1.c_str(), "range_spacing", DR))
 		{
-			fprintf(fp, "DR %lf\n", DR.at<double>(0, 0));
+			config << "DR " << DR.at<double>(0, 0) << "\n";
 		}
 		if (0 == conversion.read_array_from_h5(source_1.c_str(), "azimuth_spacing", DA))
 		{
-			fprintf(fp, "DA %lf\n", DA.at<double>(0, 0));
+			config << "DA " << DA.at<double>(0, 0) << "\n";
 		}
 		if (0 == conversion.read_array_from_h5(source_1.c_str(), "range_resolution", DR))
 		{
-			fprintf(fp, "RANGERES %lf\n", DR.at<double>(0, 0));
+			config << "RANGERES " << DR.at<double>(0, 0) << "\n";
 		}
 		if (0 == conversion.read_array_from_h5(source_1.c_str(), "azimuth_resolution", DA))
 		{
-			fprintf(fp, "AZRES %lf\n", DA.at<double>(0, 0));
+			config << "AZRES " << DA.at<double>(0, 0) << "\n";
 		}
 	}
 
-	fclose(fp);
-	fp = NULL;
+	const std::string configText = config.str();
+	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
 
-	USES_CONVERSION;
 	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
-	std::wstring cmdLine = A2W(EXE_path.c_str()) + std::wstring(L"\\snaphu.exe -f ") + A2W(config_file.c_str());
-	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!", cb))
+	if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
+		"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
 	{
+		if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
 		return -2;
 	}
 
-	//读取结果
-	unwrapped_phase.create(nr, nc, CV_32F);
-	fopen_s(&fp, OUT_file.c_str(), "rb");
-	if (!fp)
+	// A zero exit code is insufficient: reject stale, truncated, NaN and Inf output.
+	if (!artifacts.markOwned(outFileWide)) return -1;
+	std::string outputFailure;
+	if (!readValidatedFloatRaster(outFileWide, nr, nc, unwrapped_phase, &outputFailure))
 	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", OUT_file.c_str());
+		toolResult.phase = "validate output";
+		toolResult.validationFailure = outputFailure;
+		fprintf(stderr, "snaphu(): invalid output (%s).\n", outputFailure.c_str());
 		return -1;
 	}
-	fread(unwrapped_phase.data, sizeof(float), nr * nc, fp);
-	fclose(fp);
-	fp = NULL;
 	unwrapped_phase.convertTo(unwrapped_phase, CV_64F);
+	if (g_activeDiagnostic)
+	{
+		std::ostringstream summary;
+		summary << "completed; corr=";
+		if (correlationSource == CorrelationSource::InputH5)
+		{
+			summary << "input_h5(" << nr << "x" << nc << ")";
+		}
+		else if (correlationSource == CorrelationSource::PhaseDerived)
+		{
+			summary << "phase_derived(" << nr << "x" << nc << "; reason=" << correlationReason << ")";
+		}
+		else
+		{
+			summary << "disabled(reason=" << correlationReason << ")";
+		}
+		summary << "; amp=";
+		if (amplitudeStatus == AmplitudeStatus::Used)
+		{
+			summary << "used(" << nr << "x" << nc << ")";
+		}
+		else if (amplitudeStatus == AmplitudeStatus::OmittedDimensionMismatch)
+		{
+			summary << "omitted_dimension_mismatch(" << amplitude1.rows << "x" << amplitude1.cols << ","
+				<< amplitude2.rows << "x" << amplitude2.cols << "; expected=" << nr << "x" << nc << ")";
+		}
+		else
+		{
+			summary << "unavailable";
+		}
+		copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary), summary.str());
+		g_activeDiagnostic->stage = UNWRAP_DIAGNOSTIC_STAGE_COMPLETED;
+		g_activeDiagnostic->operationStatus = 0;
+	}
 	return 0;
 }
 
-int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder, UnwrapProgressCallback cb)
+int Unwrap::SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder, UnwrapProgressCallback cb)
 {
 	if (wrapped_phase.type() != CV_64F ||
 		wrapped_phase.empty() ||
@@ -2635,14 +3535,24 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 		fprintf(stderr, "snaphu(): input check failed!\n");
 		return -1;
 	}
-	FILE* fp = NULL;
-	string folder(tmp_folder);
-	std::replace(folder.begin(), folder.end(), '/', '\\');
+	string folder;
+	std::wstring taskFolderWide;
+	if (!createTaskDirectory(tmp_folder, folder, taskFolderWide)) return -1;
+	ExternalToolResult toolResult;
+	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
 	string config_file, coh_file, in_file, out_file;
 	config_file = folder + "\\config.txt";
 	coh_file = folder + "\\coherence.dat";
 	in_file = folder + "\\wrapped_phase_snaphu.dat";
 	out_file = folder + "\\unwrapped_phase_snaphu.dat";
+	std::wstring configFileWide, coherenceFileWide, inFileWide, outFileWide;
+	PathResolver::Error artifactPathError = PathResolver::Error::None;
+	if (!PathResolver::utf8ToWide(config_file, configFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(coh_file, coherenceFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(in_file, inFileWide, &artifactPathError) ||
+		!PathResolver::utf8ToWide(out_file, outFileWide, &artifactPathError) ||
+		!artifacts.registerCandidate(configFileWide) || !artifacts.registerCandidate(coherenceFileWide) ||
+		!artifacts.registerCandidate(inFileWide) || !artifacts.registerCandidate(outFileWide)) return -1;
 	Utils util;
 	Mat coherence, phase;
 	int ret, nr, nc;
@@ -2650,75 +3560,49 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 	nc = wrapped_phase.cols;
 	ret = util.phase_coherence(wrapped_phase, coherence);
 	if (return_check(ret, "phase_coherence()", error_head)) return -1;
-	//写入缠绕相位文件
-	fopen_s(&fp, in_file.c_str(), "wb");
-	if (!fp)
-	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", in_file.c_str());
-		return -1;
-	}
 	wrapped_phase.convertTo(phase, CV_32F);
-	fwrite(phase.data, sizeof(float), nr * nc, fp);
-	fclose(fp);
-	fp = NULL;
-	//写入相关系数文件
-	fopen_s(&fp, coh_file.c_str(), "wb");
-	if (!fp)
-	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", coh_file.c_str());
-		return -1;
-	}
+	if (!writeFloatRaster(inFileWide, phase, &artifacts)) return -1;
 	coherence.convertTo(coherence, CV_32F);
-	fwrite(coherence.data, sizeof(float), nr * nc, fp);
-	fclose(fp);
-	fp = NULL;
+	if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
+	std::string configInFile, configOutFile, configCoherenceFile;
+	if (!quoteSnaphuConfigPath(in_file, configInFile) || !quoteSnaphuConfigPath(out_file, configOutFile) ||
+		!quoteSnaphuConfigPath(coh_file, configCoherenceFile)) return -1;
+	std::ostringstream config;
+	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
+	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\nCORRFILE " << configCoherenceFile << "\n";
+	const std::string configText = config.str();
+	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
 
 
-	//写入配置参数
-	
-	fp = fopen(config_file.c_str(), "wt");
-	if (!fp)
+	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
+	std::vector<wchar_t> modulePath(32768, L'\0');
+	const DWORD moduleLength = GetModuleFileNameW(nullptr, modulePath.data(), static_cast<DWORD>(modulePath.size()));
+	if (moduleLength == 0 || moduleLength >= modulePath.size())
 	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", coh_file.c_str());
+		fprintf(stderr, "snaphu(): unable to resolve executable path.\n");
 		return -1;
 	}
-	fprintf(fp, "INFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "OUTFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "CORRFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "AMPFILEFORMAT FLOAT_DATA\n");
-	fprintf(fp, "LINELENGTH %d\n", nc);
-	fprintf(fp, "INFILE %s\n", in_file.c_str());
-	fprintf(fp, "OUTFILE %s\n", out_file.c_str());
-	fprintf(fp, "CORRFILE %s\n", coh_file.c_str());
-	fclose(fp);
-
-
-	USES_CONVERSION;
-	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
-	char szFilePath[MAX_PATH + 1] = { 0 };
-	GetModuleFileNameA(NULL, szFilePath, MAX_PATH);
-	string str(szFilePath);
-	str = str.substr(0, str.rfind("\\"));
-	string commandline = str + string("\\snaphu.exe -f ") + config_file;
-
-	std::wstring cmdLine = A2W(commandline.c_str());
-	if (!runExternalProcess(cmdLine, "SNAPHU", "snaphu(): create snaphu.exe process failed!", cb))
+	std::wstring executable(modulePath.data(), moduleLength);
+	const size_t separator = executable.find_last_of(L"\\/");
+	if (separator == std::wstring::npos) return -1;
+	executable.resize(separator + 1);
+	executable += L"snaphu.exe";
+	if (!runExternalProcess(executable, { L"-f", configFileWide },
+		"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
 	{
+		if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
 		return -2;
 	}
 
-	//读取结果
-	fp = NULL;
-	unwrapped_phase.create(nr, nc, CV_32F);
-	fopen_s(&fp, out_file.c_str(), "rb");
-	if (!fp)
+	if (!artifacts.markOwned(outFileWide)) return -1;
+	std::string outputFailure;
+	if (!readValidatedFloatRaster(outFileWide, nr, nc, unwrapped_phase, &outputFailure))
 	{
-		fprintf(stderr, "snaphu(): can't open %s!\n", out_file.c_str());
+		toolResult.phase = "validate output";
+		toolResult.validationFailure = outputFailure;
+		fprintf(stderr, "snaphu(): invalid output (%s).\n", outputFailure.c_str());
 		return -1;
 	}
-	fread(unwrapped_phase.data, sizeof(float), nr * nc, fp);
-	fclose(fp);
-	fp = NULL;
 	unwrapped_phase.convertTo(unwrapped_phase, CV_64F);
 
 	return 0;
@@ -2977,4 +3861,96 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase, UnwrapPr
 	}
 	tmp.copyTo(unwrapped_phase);
 	return 0;
+}
+
+int Unwrap::MCFEx(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& coherence, Mat& residue,
+	const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb,
+	UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_MCF);
+	const int status = MCFInternal(wrapped_phase, unwrapped_phase, coherence, residue, MCF_problem_file, MCF_EXE_PATH, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::MCFImprovedEx(Mat& wrapped_phase, Mat& unwrapped_phase, const char* MCF_problem_file,
+	const char* MCF_exe_path, double coh_thresh, UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_MCF_IMPROVED);
+	const int status = MCFImprovedInternal(wrapped_phase, unwrapped_phase, MCF_problem_file, MCF_exe_path, coh_thresh, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::McfDelaunayEx(const char* MCF_problem_file, const char* MCF_EXE_PATH,
+	UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_MCF_DELAUNAY);
+	const int status = McfDelaunayInternal(MCF_problem_file, MCF_EXE_PATH, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::QualityGuidedMCFEx(const Mat& wrapped_phase, Mat& unwrapped_phase,
+	double coherence_thresh, double distance_thresh, const char* tmp_path, const char* EXE_path,
+	UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_QUALITY_GUIDED_MCF);
+	const int status = QualityGuidedMCFInternal(wrapped_phase, unwrapped_phase, coherence_thresh, distance_thresh,
+		tmp_path, EXE_path, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::SnaphuFileEx(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
+	const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
+	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::SnaphuMatrixEx(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
+	UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_MATRIX);
+	const int status = SnaphuMatrixInternal(wrapped_phase, unwrapped_phase, tmp_folder, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::MCF(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& coherence, Mat& residue,
+	const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb)
+{
+	return MCFEx(wrapped_phase, unwrapped_phase, coherence, residue, MCF_problem_file, MCF_EXE_PATH, cb, nullptr);
+}
+
+int Unwrap::MCF_improved(Mat& wrapped_phase, Mat& unwrapped_phase, const char* MCF_problem_file,
+	const char* MCF_exe_path, double coh_thresh, UnwrapProgressCallback cb)
+{
+	return MCFImprovedEx(wrapped_phase, unwrapped_phase, MCF_problem_file, MCF_exe_path, coh_thresh, cb, nullptr);
+}
+
+int Unwrap::mcf_delaunay(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb)
+{
+	return McfDelaunayEx(MCF_problem_file, MCF_EXE_PATH, cb, nullptr);
+}
+
+int Unwrap::QualityGuided_MCF(const Mat& wrapped_phase, Mat& unwrapped_phase, double coherence_thresh,
+	double distance_thresh, const char* tmp_path, const char* EXE_path, UnwrapProgressCallback cb)
+{
+	return QualityGuidedMCFEx(wrapped_phase, unwrapped_phase, coherence_thresh, distance_thresh,
+		tmp_path, EXE_path, cb, nullptr);
+}
+
+int Unwrap::snaphu(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
+	const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb)
+{
+	return SnaphuFileEx(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, cb, nullptr);
+}
+
+int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder, UnwrapProgressCallback cb)
+{
+	return SnaphuMatrixEx(wrapped_phase, unwrapped_phase, tmp_folder, cb, nullptr);
 }

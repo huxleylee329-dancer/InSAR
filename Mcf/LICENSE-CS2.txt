@@ -1,0 +1,12 @@
+This tool embeds a CS2-derived minimum-cost-flow implementation.
+
+COPYRIGHT C 1995 IG Systems, Inc. Permission to use for evaluation
+purposes is granted provided that proper acknowledgments are given. For a
+commercial licence, contact igsys@eclipse.net.
+
+This software comes with NO WARRANTY, expressed or implied. By way of
+example, but not limitation, no representations are made concerning
+merchantability, fitness for a particular purpose, or non-infringement.
+
+The included C++ port retains the original CS2 notice. See README.txt for
+its provenance.

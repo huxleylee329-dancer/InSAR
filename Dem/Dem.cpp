@@ -584,7 +584,6 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 	Utils util;
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2;
-	string source_1_raw, source_2_raw;
 	std::string project = normalizeAbsolutePath(project_path);
 	while (project.size() > 3 && (project.back() == '\\' || project.back() == '/')) project.pop_back();
 	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "entry", "Starting DEM Newton iteration.",
@@ -616,21 +615,19 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 			unwrapped_phase_file, "flat_phase_coefficient", 0, flat_phase_coefficient.rows, flat_phase_coefficient.cols, flat_phase_coefficient.type());
 		return DEM_ERROR_INVALID_SHAPE;
 	}
-	ret = readDemString(diagnosticContext, unwrapped_phase_file, "source_1", "input.source_1", source_1_raw);
-	if (ret != 0) return hdfReadFailure(ret, "read_str_from_h5()");
-	ret = readDemString(diagnosticContext, unwrapped_phase_file, "source_2", "input.source_2", source_2_raw);
-	if (ret != 0) return hdfReadFailure(ret, "read_str_from_h5()");
-	const SourcePathResolution source1 = resolveSourcePath(source_1_raw, project);
-	const SourcePathResolution source2 = resolveSourcePath(source_2_raw, project);
-	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_1", "Resolved source_1 path.", sourcePathDetail(source1, project));
-	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_2", "Resolved source_2 path.", sourcePathDetail(source2, project));
-	if (!legacyConsoleLogging && ((source1.projectRelative && !source1.insideProject) || (source2.projectRelative && !source2.insideProject)))
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(unwrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
 	{
-		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_SOURCE_PATH, "input.source_path", "A project-relative source path resolves outside the project root.");
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_SOURCE_PATH, "input.source_path",
+			PathResolver::errorMessage(pathError), pathDetail);
 		return DEM_ERROR_SOURCE_PATH;
 	}
-	const string source_1 = legacyConsoleLogging ? string(project_path) + source_1_raw : source1.normalized;
-	const string source_2 = legacyConsoleLogging ? string(project_path) + source_2_raw : source2.normalized;
+	const string source_1 = sourcePaths.source1.utf8;
+	const string source_2 = sourcePaths.source2.utf8;
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_1", "Resolved source_1 path.", source_1);
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "input.source_2", "Resolved source_2 path.", source_2);
 	auto invalidShape = [&](const char* stage, const char* file, const char* dataset, const Mat& value,
 		const char* expectation) {
 		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, stage, "HDF5 dataset shape or type is invalid.",
@@ -923,8 +920,7 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2, acquisitionStartTime1, acquisitionStartTime2, acquisitionStopTime1,
 		acquisitionStopTime2, wavelength, nearRange;
-	string source_1, source_2, tmp, start_time, end_time;
-	string project(project_path);
+	string source_1, source_2, start_time, end_time;
 	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
@@ -937,13 +933,16 @@ int Dem::dem_newton_iter_test(const char* unwrapped_phase_file, Mat& dem, const 
 	}
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_1", source_1);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_2", source_2);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	tmp = project;
-	source_1 = tmp + source_1;
-	source_2 = tmp + source_2;
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(unwrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
+	{
+		fprintf(stderr, "dem_newton_iter_test(): %s (%s)\n", PathResolver::errorMessage(pathError), pathDetail.c_str());
+		return -1;
+	}
+	source_1 = sourcePaths.source1.utf8;
+	source_2 = sourcePaths.source2.utf8;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "GCP", gcps);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_row", temp);
@@ -1263,8 +1262,7 @@ int Dem::dem_newton_iter_14(
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2, acquisitionStartTime1, acquisitionStartTime2, acquisitionStopTime1,
 		acquisitionStopTime2, wavelength, nearRange;
-	string source_1, source_2, tmp, start_time, end_time;
-	string project(project_path);
+	string source_1, source_2, start_time, end_time;
 	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
@@ -1277,13 +1275,16 @@ int Dem::dem_newton_iter_14(
 	}
 	//ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
 	//if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_1", source_1);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_2", source_2);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	tmp = project;
-	source_1 = tmp + source_1;
-	source_2 = tmp + source_2;
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(unwrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
+	{
+		fprintf(stderr, "dem_newton_iter_14(): %s (%s)\n", PathResolver::errorMessage(pathError), pathDetail.c_str());
+		return -1;
+	}
+	source_1 = sourcePaths.source1.utf8;
+	source_2 = sourcePaths.source2.utf8;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "gcps", gcps);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_row", temp);
@@ -1608,20 +1609,22 @@ int Dem::dem_newton_iter_14_dualfreqpingpong(
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2, acquisitionStartTime1, acquisitionStartTime2, acquisitionStopTime1,
 		acquisitionStopTime2, wavelength, nearRange;
-	string source_1, source_2, tmp, start_time, end_time;
-	string project(project_path);
+	string source_1, source_2, start_time, end_time;
 	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = unwrapped_phase.rows; nc = unwrapped_phase.cols;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_1", source_1);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	ret = conversion.read_str_from_h5(unwrapped_phase_file, "source_2", source_2);
-	if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
-	tmp = project;
-	source_1 = tmp + source_1;
-	source_2 = tmp + source_2;
+	PathResolver::SourcePathPair sourcePaths;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	string pathDetail;
+	if (!PathResolver::readSourcePathPair(unwrapped_phase_file, project_path, sourcePaths, &pathError, &pathDetail))
+	{
+		fprintf(stderr, "dem_newton_iter_14_dualfreqpingpong(): %s (%s)\n", PathResolver::errorMessage(pathError), pathDetail.c_str());
+		return -1;
+	}
+	source_1 = sourcePaths.source1.utf8;
+	source_2 = sourcePaths.source2.utf8;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "gcps", gcps);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(source_1.c_str(), "offset_row", temp);

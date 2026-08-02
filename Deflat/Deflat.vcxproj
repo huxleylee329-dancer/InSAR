@@ -200,6 +200,12 @@
       <Project>{72E5449A-CF52-4C0B-BC12-3B65D8852C78}</Project>
     </ProjectReference>
   </ItemGroup>
+<ItemDefinitionGroup Condition="'$(Platform)'=='x64' And ('$(Configuration)'=='Debug' Or '$(Configuration)'=='Release')">
+  <PostBuildEvent>
+    <Command>copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "..\..\insar_ui\bin\" 2>nul || exit 0</Command>
+    <Message>Copying DLL to insar_ui/bin...</Message>
+  </PostBuildEvent>
+</ItemDefinitionGroup>
 <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
