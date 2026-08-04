@@ -16,6 +16,7 @@
 #include <omp.h>  /*多线程计算库*/
 #include <cstring>
 #include "RegistrationSubpixelRegression.h"
+#include "RobustCoregistrationRegression.h"
 #include "..\Dem\ProgressReporter.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
@@ -1166,6 +1167,10 @@ int main(int argc, char* argv[])
 	if (argc == 2 && std::strcmp(argv[1], "--registration-subpixel-regression") == 0)
 	{
 		return RunRegistrationSubpixelRegression();
+	}
+	if (argc == 2 && std::strcmp(argv[1], "--robust-coregistration-regression") == 0)
+	{
+		return RunRobustCoregistrationRegression();
 	}
 	if (argc == 2 && std::strcmp(argv[1], "--dem-progress-regression") == 0)
 	{

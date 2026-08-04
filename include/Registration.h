@@ -3,6 +3,7 @@
 #include "..\include\ComplexMat.h"
 #include "..\include\Utils.h"
 #include "..\include\InSARDiagnostics.h"
+#include "..\include\RobustCoregistration.h"
 
 #if defined(REGISTRATION_EXPORTS)
 #define REGISTRATION_API __declspec(dllexport)
