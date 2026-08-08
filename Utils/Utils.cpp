@@ -3440,8 +3440,8 @@ int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az
 int Utils::multilook_SAR(const Mat& amplitude, Mat& outAmplitude, int multilook_rg, int multilook_az, NewtonProgressCallback cb)
 {
 	if (amplitude.empty() ||
-		amplitude.rows < multilook_rg ||
-		amplitude.cols < multilook_az ||
+		amplitude.rows < multilook_az ||
+		amplitude.cols < multilook_rg ||
 		multilook_rg < 1 || multilook_az < 1||
 		(amplitude.type() != CV_64F && amplitude.type() != CV_32F)
 		)

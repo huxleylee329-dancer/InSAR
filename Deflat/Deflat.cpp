@@ -1072,6 +1072,7 @@ int Deflat::demMapping(
 	//投影DEM插值
 	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
+	if (cb && !cb(100, "Mapping DEM completed.")) return -2;
 	return 0;
 }
 
@@ -1227,6 +1228,7 @@ int Deflat::demMapping(
 	cv::GaussianBlur(mappedLat, mappedLat, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(mappedLon, mappedLon, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
+	if (cb && !cb(100, "Mapping DEM completed.")) return -2;
 	return 0;
 }
 

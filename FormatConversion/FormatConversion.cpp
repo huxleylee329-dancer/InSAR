@@ -9973,6 +9973,25 @@ int Sentinel1Utils::init()
 	ret = conversion.read_int_from_h5(h5File.c_str(), "azimuth_len", &this->numberOfLines);
 	if (return_check(ret, "read_int_from_h5()", error_head)) return -1;
 
+	const int swathReadStatus = conversion.read_str_from_h5(h5File.c_str(), "swath", this->swath);
+	const int polarizationReadStatus = conversion.read_str_from_h5(h5File.c_str(), "polarization", this->polarization);
+	std::ostringstream identityDetail;
+	identityDetail << "swath_rc=" << swathReadStatus << ", swath=" << this->swath
+		<< ", polarization_rc=" << polarizationReadStatus << ", polarization=" << this->polarization;
+	const std::string identityDetailText = identityDetail.str();
+	// Sentinel-1 identity is required by the new-engine contract; fail closed on missing values.
+	if (swathReadStatus != 0 || polarizationReadStatus != 0 || this->swath.empty() || this->polarization.empty())
+	{
+		const int identityStatus = swathReadStatus != 0 ? swathReadStatus :
+			(polarizationReadStatus != 0 ? polarizationReadStatus : -1);
+		const char* identityDataset = swathReadStatus != 0 || this->swath.empty() ? "swath" : "polarization";
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "h5_identity", "load", "Sentinel-1 H5 identity is missing or unreadable.",
+			identityDetailText.c_str(), h5File.c_str(), identityDataset, identityStatus);
+		return -1;
+	}
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "h5_identity", "load", "Sentinel-1 H5 identity loaded.",
+		identityDetailText.c_str(), h5File.c_str(), "swath/polarization");
+
 	ret = conversion.read_array_from_h5(h5File.c_str(), "azimuthFmRateList", this->AzimuthFmRateList);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	ret = conversion.read_array_from_h5(h5File.c_str(), "burstAzimuthTime", this->burstAzimuthTime);

@@ -3308,6 +3308,39 @@ int Unwrap::SnaphuFileInternal(
 	ret = conversion.read_array_from_h5(wrapped_phase_file, "phase", wrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
+	int multilookRg = 1;
+	int multilookAz = 1;
+	auto readMultilookFactor = [&](const char* dataset, int& factor) -> int
+	{
+		Mat value;
+		if (conversion.read_array_from_h5(wrapped_phase_file, dataset, value) < 0) return 0;
+		if (value.total() != 1 || value.channels() != 1)
+		{
+			fprintf(stderr, "snaphu(): invalid %s metadata shape.\n", dataset);
+			return -1;
+		}
+		Mat numeric;
+		value.convertTo(numeric, CV_64F);
+		const double rawValue = numeric.at<double>(0, 0);
+		if (!std::isfinite(rawValue) || rawValue < 1.0 ||
+			rawValue > static_cast<double>(std::numeric_limits<int>::max()) ||
+			std::floor(rawValue) != rawValue)
+		{
+			fprintf(stderr, "snaphu(): invalid %s metadata value.\n", dataset);
+			return -1;
+		}
+		factor = static_cast<int>(rawValue);
+		return 1;
+	};
+	const int multilookRgStatus = readMultilookFactor("multilook_rg", multilookRg);
+	const int multilookAzStatus = readMultilookFactor("multilook_az", multilookAz);
+	if (multilookRgStatus < 0 || multilookAzStatus < 0) return -1;
+	if (multilookRgStatus == 0 || multilookAzStatus == 0)
+	{
+		multilookRg = 1;
+		multilookAz = 1;
+		fprintf(stderr, "snaphu(): multilook metadata unavailable; source amplitudes will not be resampled.\n");
+	}
 	enum class CorrelationSource { InputH5, PhaseDerived, Disabled };
 	enum class AmplitudeStatus { Used, Unavailable, OmittedDimensionMismatch };
 	CorrelationSource correlationSource = CorrelationSource::Disabled;
@@ -3385,6 +3418,16 @@ int Unwrap::SnaphuFileInternal(
 		if (slave.type() != CV_64F) slave.convertTo(slave, CV_64F);
 		amplitude2 = slave.GetMod();
 		amplitude2.convertTo(amplitude2, CV_32F);
+		if (multilookRg > 1 || multilookAz > 1)
+		{
+			Mat multilookedAmplitude1, multilookedAmplitude2;
+			ret = util.multilook_SAR(amplitude1, multilookedAmplitude1, multilookRg, multilookAz, cb);
+			if (ret != 0) return ret;
+			ret = util.multilook_SAR(amplitude2, multilookedAmplitude2, multilookRg, multilookAz, cb);
+			if (ret != 0) return ret;
+			amplitude1 = multilookedAmplitude1;
+			amplitude2 = multilookedAmplitude2;
+		}
 
 		if (amplitude1.rows != nr || amplitude1.cols != nc || amplitude2.rows != nr || amplitude2.cols != nc)
 		{
