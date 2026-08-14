@@ -11,6 +11,76 @@
 // 定义 Unwrap 专用的进度回调函数指针类型
 typedef bool (__stdcall *UnwrapProgressCallback)(int progress, const char* message);
 
+// C++ source-level v1 contract for SNAPHU process control. This is not a
+// stable C ABI: callers must be rebuilt with this header and Unwrap.dll.
+enum SnaphuRunEventType : uint32_t
+{
+	SNAPHU_RUN_EVENT_STARTED = 1,
+	SNAPHU_RUN_EVENT_HEARTBEAT = 2,
+	SNAPHU_RUN_EVENT_LOG = 3,
+	SNAPHU_RUN_EVENT_COMPLETED = 4,
+	SNAPHU_RUN_EVENT_CANCELLED = 5,
+	SNAPHU_RUN_EVENT_TIMED_OUT = 6,
+	SNAPHU_RUN_EVENT_WARNING = 7,
+	SNAPHU_RUN_EVENT_PREPARED = 8
+};
+
+enum SnaphuRunOptionFlags : uint32_t
+{
+	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0
+};
+
+enum SnaphuRunMetricAvailability : uint32_t
+{
+	SNAPHU_RUN_METRIC_CPU_TIME = 1u << 0,
+	SNAPHU_RUN_METRIC_PEAK_JOB_MEMORY = 1u << 1,
+	SNAPHU_RUN_METRIC_READ_BYTES = 1u << 2,
+	SNAPHU_RUN_METRIC_WRITE_BYTES = 1u << 3
+};
+
+enum { SNAPHU_RUN_PATH_CAPACITY = 1024 };
+
+struct SnaphuRunOptionsV1
+{
+	uint32_t structSize;
+	uint32_t version;
+	uint32_t tileRows;
+	uint32_t tileCols;
+	uint32_t rowOverlap;
+	uint32_t colOverlap;
+	uint32_t requestedProcessCount;
+	uint32_t flags;
+	uint64_t wallTimeoutMilliseconds;
+	uint32_t heartbeatMilliseconds;
+	uint32_t reserved0;
+	uint64_t reserved[4];
+};
+
+struct SnaphuRunEventV1
+{
+	uint32_t structSize;
+	uint32_t version;
+	uint32_t type;
+	uint32_t effectiveProcessCount;
+	uint32_t metricAvailability;
+	uint32_t reserved0;
+	uint64_t elapsedMilliseconds;
+	uint64_t totalCpuMilliseconds;
+	uint64_t peakJobMemoryBytes;
+	uint64_t readBytes;
+	uint64_t writeBytes;
+	// PREPARED provides absolute UTF-8 paths here; other events leave them empty.
+	char taskDirectory[SNAPHU_RUN_PATH_CAPACITY];
+	char configPath[SNAPHU_RUN_PATH_CAPACITY];
+	char message[512];
+};
+
+// Invoked synchronously on the thread that calls Snaphu*Ex2. event is borrowed
+// for the duration of the callback only. The callback must not touch UI objects
+// directly and must not throw; false requests cancellation of the process job.
+// For COMPLETED, the return value is ignored because the process has exited.
+typedef bool (__stdcall *SnaphuRunEventCallbackV1)(const SnaphuRunEventV1* event, void* userData);
+
 enum UnwrapDiagnosticAlgorithm : uint32_t
 {
 	UNWRAP_DIAGNOSTIC_ALGORITHM_UNKNOWN = 0,
@@ -321,6 +391,17 @@ public:
 		UnwrapProgressCallback cb,
 		UnwrapDiagnostic* diagnostic
 	);
+	int SnaphuFileEx2(
+		const char* wrapped_phase_file,
+		Mat& unwrapped_phase,
+		const char* project_path,
+		const char* tmp_folder,
+		const char* exe_path,
+		const SnaphuRunOptionsV1* options,
+		SnaphuRunEventCallbackV1 eventCallback,
+		void* eventUserData,
+		UnwrapDiagnostic* diagnostic
+	);
 
 	/*@brief 统计费用流法解缠（SNAPHU）
 	* @param wrapped_phase                               待解缠相位
@@ -339,6 +420,15 @@ public:
 		Mat& unwrapped_phase,
 		const char* tmp_folder,
 		UnwrapProgressCallback cb,
+		UnwrapDiagnostic* diagnostic
+	);
+	int SnaphuMatrixEx2(
+		Mat& wrapped_phase,
+		Mat& unwrapped_phase,
+		const char* tmp_folder,
+		const SnaphuRunOptionsV1* options,
+		SnaphuRunEventCallbackV1 eventCallback,
+		void* eventUserData,
 		UnwrapDiagnostic* diagnostic
 	);
 

@@ -10,6 +10,26 @@ using namespace cv;
 using namespace std;
 
 extern int utc_to_gps(const char* utc_time, double* gps_time);
+
+static int readBaselineOrbit(const char* h5Path, Mat& orbit, bool& usedPrecise)
+{
+	usedPrecise = false;
+
+	Mat fineOrbit;
+	const int fineRet = Hdf5IO::readArray(h5Path, "fine_state_vec", fineOrbit);
+	if (fineRet == 0 &&
+		fineOrbit.type() == CV_64F &&
+		fineOrbit.cols == 7 &&
+		fineOrbit.rows >= 7)
+	{
+		orbit = fineOrbit;
+		usedPrecise = true;
+		return 0;
+	}
+
+	return Hdf5IO::readArray(h5Path, "state_vec", orbit);
+}
+
 int Utils::baseline_estimation(
 	const Mat& stateVec1,
 	const Mat& stateVec2,
@@ -620,8 +640,10 @@ int Utils::spatialTemporalBaselineEstimation(
 	temporal.at<double>(0, reference - 1) = 0; spatial.at<double>(0, reference - 1) = 0;
 	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "lon_coefficient", lon_coef);
 	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "lat_coefficient", lat_coef);
-	ret = Hdf5IO::readArray(SLCH5Files[reference - 1].c_str(), "state_vec", statevec1);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	bool masterUsesPrecise = false;
+	ret = readBaselineOrbit(SLCH5Files[reference - 1].c_str(), statevec1, masterUsesPrecise);
+	if (return_check(ret, "read baseline orbit from h5", error_head)) return -1;
+	fprintf(stdout, "baseline orbit: %s (%s)\n", masterUsesPrecise ? "fine_state_vec" : "state_vec fallback", SLCH5Files[reference - 1].c_str());
 	ret = Hdf5IO::readDouble(SLCH5Files[reference - 1].c_str(), "prf", &prf1);
 	if (return_check(ret, "read_double_from_h5()", error_head)) return -1;
 	ret = Hdf5IO::readString(SLCH5Files[reference - 1].c_str(), "acquisition_start_time", start);
@@ -671,8 +693,10 @@ int Utils::spatialTemporalBaselineEstimation(
 	for (int i = 0; i < num_images; i++)
 	{
 		if (i == reference - 1) continue;
-		ret = Hdf5IO::readArray(SLCH5Files[i].c_str(), "state_vec", statevec2);
-		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		bool slaveUsesPrecise = false;
+		ret = readBaselineOrbit(SLCH5Files[i].c_str(), statevec2, slaveUsesPrecise);
+		if (return_check(ret, "read baseline orbit from h5", error_head)) return -1;
+		fprintf(stdout, "baseline orbit: %s (%s)\n", slaveUsesPrecise ? "fine_state_vec" : "state_vec fallback", SLCH5Files[i].c_str());
 		ret = Hdf5IO::readString(SLCH5Files[i].c_str(), "acquisition_start_time", start);
 		if (return_check(ret, "read_str_from_h5()", error_head)) return -1;
 		ret = utc_to_gps(start.c_str(), &acquisitionTime2);

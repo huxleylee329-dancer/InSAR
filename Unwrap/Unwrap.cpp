@@ -32,8 +32,63 @@ using namespace cv;
 #include <ctime>
 #include <string>
 
-namespace {
+	namespace {
 	thread_local UnwrapDiagnostic* g_activeDiagnostic = nullptr;
+
+	struct SnaphuRunContext
+	{
+		SnaphuRunOptionsV1 options = {};
+		SnaphuRunEventCallbackV1 callback = nullptr;
+		void* userData = nullptr;
+	};
+
+	thread_local SnaphuRunContext* g_activeSnaphuRun = nullptr;
+
+	bool normalizeSnaphuOptions(const SnaphuRunOptionsV1* supplied, SnaphuRunOptionsV1& normalized)
+	{
+		memset(&normalized, 0, sizeof(normalized));
+		normalized.structSize = sizeof(normalized);
+		normalized.version = 1;
+		normalized.tileRows = 1;
+		normalized.tileCols = 1;
+		normalized.requestedProcessCount = 1;
+		normalized.heartbeatMilliseconds = 1000;
+		if (!supplied) return true;
+		if (supplied->version != 1 || supplied->structSize < sizeof(SnaphuRunOptionsV1)) return false;
+		normalized = *supplied;
+		if ((normalized.flags & ~SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0 || normalized.reserved0 != 0) return false;
+		for (size_t i = 0; i < sizeof(normalized.reserved) / sizeof(normalized.reserved[0]); ++i)
+			if (normalized.reserved[i] != 0) return false;
+		if (normalized.tileRows == 0 || normalized.tileRows > 256 || normalized.tileCols == 0 ||
+			normalized.tileCols > 256 || normalized.requestedProcessCount == 0 || normalized.requestedProcessCount > 256) return false;
+		if ((normalized.tileRows == 1 && normalized.tileCols == 1) &&
+			(normalized.rowOverlap != 0 || normalized.colOverlap != 0)) return false;
+		if ((normalized.tileRows > 1 || normalized.tileCols > 1) &&
+			(normalized.rowOverlap < 400 || normalized.colOverlap < 400)) return false;
+		if (normalized.heartbeatMilliseconds == 0) normalized.heartbeatMilliseconds = 1000;
+		if (normalized.heartbeatMilliseconds < 100 || normalized.heartbeatMilliseconds > 60000) return false;
+		const uint64_t maximumTimeout = 30ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
+		if (normalized.wallTimeoutMilliseconds != 0 &&
+			(normalized.wallTimeoutMilliseconds < 1000 || normalized.wallTimeoutMilliseconds > maximumTimeout)) return false;
+		return true;
+	}
+
+	class ScopedSnaphuRunContext
+	{
+	public:
+		ScopedSnaphuRunContext(const SnaphuRunOptionsV1& options, SnaphuRunEventCallbackV1 callback, void* userData)
+			: previous_(g_activeSnaphuRun)
+		{
+			context_.options = options;
+			context_.callback = callback;
+			context_.userData = userData;
+			g_activeSnaphuRun = &context_;
+		}
+		~ScopedSnaphuRunContext() { g_activeSnaphuRun = previous_; }
+	private:
+		SnaphuRunContext context_;
+		SnaphuRunContext* previous_;
+	};
 
 	void copyDiagnosticText(char* destination, size_t capacity, const std::string& text)
 	{
@@ -123,7 +178,7 @@ namespace {
 		target.append(data, length);
 	}
 
-	void drainStderrPipe(HANDLE pipe, std::string& tail)
+	void drainPipe(HANDLE pipe, std::string& tail, std::string* captured = nullptr)
 	{
 		if (!pipe || pipe == INVALID_HANDLE_VALUE) return;
 		while (true)
@@ -135,7 +190,13 @@ namespace {
 			const DWORD requested = std::min<DWORD>(available, sizeof(buffer));
 			if (!ReadFile(pipe, buffer, requested, &read, nullptr) || read == 0) return;
 			appendBounded(tail, buffer, read, 2048);
+			if (captured) appendBounded(*captured, buffer, read, 480);
 		}
+	}
+
+	void drainStderrPipe(HANDLE pipe, std::string& tail)
+	{
+		drainPipe(pipe, tail);
 	}
 
 	struct ExternalToolResult
@@ -145,6 +206,8 @@ namespace {
 		DWORD win32Error = ERROR_SUCCESS;
 		DWORD exitCode = STILL_ACTIVE;
 		bool cancelled = false;
+		bool timedOut = false;
+		bool terminationUncertain = false;
 		std::string validationFailure;
 		std::string stderrTail;
 		std::vector<std::wstring> managedArtifacts;
@@ -152,7 +215,7 @@ namespace {
 
 		~ExternalToolResult()
 		{
-			if (!g_activeDiagnostic || (!cancelled && win32Error == ERROR_SUCCESS &&
+			if (!g_activeDiagnostic || (!cancelled && !timedOut && !terminationUncertain && win32Error == ERROR_SUCCESS &&
 				(exitCode == STILL_ACTIVE || exitCode == 0) && validationFailure.empty() && cleanupResiduals.empty())) return;
 			UnwrapDiagnostic& diagnostic = *g_activeDiagnostic;
 			if (tool == "MCF") copyDiagnosticText(diagnostic.tool, sizeof(diagnostic.tool), "MCF");
@@ -161,7 +224,7 @@ namespace {
 			if (phase == "path conversion") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PATH;
 			else if (phase == "prepare solution") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PREPARE;
 			else if (phase == "create job" || phase == "configure job" || phase == "bind job" || phase == "resume process") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_JOB;
-			else if (phase == "cancel") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_CANCEL;
+			else if (phase == "cancel" || phase == "timeout") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_CANCEL;
 			else if (phase == "process exit") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_PROCESS_EXIT;
 			else if (phase == "validate solution" || phase == "validate output" || phase == "record solution" || phase == "publish solution") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_OUTPUT;
 			else if (phase == "launch") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_LAUNCH;
@@ -170,12 +233,106 @@ namespace {
 			diagnostic.exitCode = exitCode;
 			diagnostic.cancelled = cancelled ? 1 : 0;
 			if (!validationFailure.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), validationFailure);
+			else if (terminationUncertain) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool termination could not be confirmed");
+			else if (timedOut) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool timed out");
 			else if (cancelled) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cancelled");
 			else if (!cleanupResiduals.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cleanup left managed artifacts");
 			else copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool process failed");
 			copyDiagnosticText(diagnostic.stderrTail, sizeof(diagnostic.stderrTail), redactExternalText(stderrTail));
 		}
 	};
+
+	bool emitSnaphuRunEvent(uint32_t type, const std::string& message, ULONGLONG startedAt, HANDLE job)
+	{
+		if (!g_activeSnaphuRun || !g_activeSnaphuRun->callback) return true;
+		SnaphuRunEventV1 event = {};
+		event.structSize = sizeof(event);
+		event.version = 1;
+		event.type = type;
+		// Windows SNAPHU currently forces tile workers to one process.
+		event.effectiveProcessCount = 1;
+		event.elapsedMilliseconds = GetTickCount64() - startedAt;
+		if (job)
+		{
+			JOBOBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION accounting = {};
+			if (QueryInformationJobObject(job, JobObjectBasicAndIoAccountingInformation,
+				&accounting, sizeof(accounting), nullptr))
+			{
+				event.totalCpuMilliseconds = static_cast<uint64_t>((accounting.BasicInfo.TotalUserTime.QuadPart +
+					accounting.BasicInfo.TotalKernelTime.QuadPart) / 10000);
+				event.readBytes = accounting.IoInfo.ReadTransferCount;
+				event.writeBytes = accounting.IoInfo.WriteTransferCount;
+				event.metricAvailability |= SNAPHU_RUN_METRIC_CPU_TIME | SNAPHU_RUN_METRIC_READ_BYTES |
+					SNAPHU_RUN_METRIC_WRITE_BYTES;
+			}
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+			if (QueryInformationJobObject(job, JobObjectExtendedLimitInformation,
+				&limits, sizeof(limits), nullptr))
+			{
+				event.peakJobMemoryBytes = static_cast<uint64_t>(limits.PeakJobMemoryUsed);
+				event.metricAvailability |= SNAPHU_RUN_METRIC_PEAK_JOB_MEMORY;
+			}
+		}
+		copyDiagnosticText(event.message, sizeof(event.message), message);
+		try
+		{
+			return g_activeSnaphuRun->callback(&event, g_activeSnaphuRun->userData);
+		}
+		catch (...)
+		{
+			return false;
+		}
+	}
+
+	bool drainSnaphuPipe(HANDLE pipe, std::string& tail, const char* source, ULONGLONG startedAt, HANDLE job)
+	{
+		std::string captured;
+		drainPipe(pipe, tail, &captured);
+		if (captured.empty()) return true;
+		return emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + captured, startedAt, job);
+	}
+
+	bool absolutePath(const std::wstring& path, std::wstring& absolute)
+	{
+		const DWORD required = GetFullPathNameW(path.c_str(), 0, nullptr, nullptr);
+		if (required == 0) return false;
+		std::vector<wchar_t> buffer(static_cast<size_t>(required) + 1, L'\0');
+		const DWORD length = GetFullPathNameW(path.c_str(), static_cast<DWORD>(buffer.size()), buffer.data(), nullptr);
+		if (length == 0 || length >= buffer.size()) return false;
+		absolute.assign(buffer.data(), length);
+		return true;
+	}
+
+	bool emitSnaphuPreparedEvent(const std::wstring& taskDirectory, const std::wstring& configPath)
+	{
+		if (!g_activeSnaphuRun || !g_activeSnaphuRun->callback) return true;
+		std::wstring absoluteTask;
+		std::wstring absoluteConfig;
+		PathResolver::Error error = PathResolver::Error::None;
+		std::string taskUtf8;
+		std::string configUtf8;
+		if (!absolutePath(taskDirectory, absoluteTask) || !absolutePath(configPath, absoluteConfig) ||
+			!PathResolver::wideToUtf8(absoluteTask, taskUtf8, &error) ||
+			!PathResolver::wideToUtf8(absoluteConfig, configUtf8, &error) ||
+			taskUtf8.size() >= SNAPHU_RUN_PATH_CAPACITY ||
+			configUtf8.size() >= SNAPHU_RUN_PATH_CAPACITY) return false;
+		SnaphuRunEventV1 event = {};
+		event.structSize = sizeof(event);
+		event.version = 1;
+		event.type = SNAPHU_RUN_EVENT_PREPARED;
+		event.effectiveProcessCount = 1;
+		copyDiagnosticText(event.taskDirectory, sizeof(event.taskDirectory), taskUtf8);
+		copyDiagnosticText(event.configPath, sizeof(event.configPath), configUtf8);
+		copyDiagnosticText(event.message, sizeof(event.message), "SNAPHU staging and config are ready.");
+		try
+		{
+			return g_activeSnaphuRun->callback(&event, g_activeSnaphuRun->userData);
+		}
+		catch (...)
+		{
+			return false;
+		}
+	}
 
 	std::wstring quoteCommandArgument(const std::wstring& argument)
 	{
@@ -361,24 +518,27 @@ namespace {
 		inheritable.bInheritHandle = TRUE;
 		HANDLE nullInput = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
 			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-		HANDLE nullOutput = CreateFileW(L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
-			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		HANDLE stdoutRead = INVALID_HANDLE_VALUE;
+		HANDLE stdoutWrite = INVALID_HANDLE_VALUE;
 		HANDLE stderrRead = INVALID_HANDLE_VALUE;
 		HANDLE stderrWrite = INVALID_HANDLE_VALUE;
-		if (nullInput == INVALID_HANDLE_VALUE || nullOutput == INVALID_HANDLE_VALUE ||
+		if (nullInput == INVALID_HANDLE_VALUE ||
+			!CreatePipe(&stdoutRead, &stdoutWrite, &inheritable, 0) ||
+			!SetHandleInformation(stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
 			!CreatePipe(&stderrRead, &stderrWrite, &inheritable, 0) ||
 			!SetHandleInformation(stderrRead, HANDLE_FLAG_INHERIT, 0))
 		{
 			result.win32Error = GetLastError();
+			if (stdoutRead != INVALID_HANDLE_VALUE) CloseHandle(stdoutRead);
+			if (stdoutWrite != INVALID_HANDLE_VALUE) CloseHandle(stdoutWrite);
 			if (stderrRead != INVALID_HANDLE_VALUE) CloseHandle(stderrRead);
 			if (stderrWrite != INVALID_HANDLE_VALUE) CloseHandle(stderrWrite);
 			if (nullInput != INVALID_HANDLE_VALUE) CloseHandle(nullInput);
-			if (nullOutput != INVALID_HANDLE_VALUE) CloseHandle(nullOutput);
 			if (output) *output = result;
 			return false;
 		}
 		si.hStdInput = nullInput;
-		si.hStdOutput = nullOutput;
+		si.hStdOutput = stdoutWrite;
 		si.hStdError = stderrWrite;
 
 		std::wstring commandLine = quoteCommandArgument(executable);
@@ -390,10 +550,11 @@ namespace {
 		if (!job)
 		{
 			result.win32Error = GetLastError();
+			CloseHandle(stdoutRead);
+			CloseHandle(stdoutWrite);
 			CloseHandle(stderrRead);
 			CloseHandle(stderrWrite);
 			CloseHandle(nullInput);
-			CloseHandle(nullOutput);
 			if (output) *output = result;
 			return false;
 		}
@@ -405,10 +566,11 @@ namespace {
 			{
 				result.win32Error = GetLastError();
 				CloseHandle(job);
+				CloseHandle(stdoutRead);
+				CloseHandle(stdoutWrite);
 				CloseHandle(stderrRead);
 				CloseHandle(stderrWrite);
 				CloseHandle(nullInput);
-				CloseHandle(nullOutput);
 				if (output) *output = result;
 				return false;
 			}
@@ -432,26 +594,30 @@ namespace {
 			result.win32Error = GetLastError();
 			fprintf(stderr, "%s: CreateProcessW failed (%lu).\n\n", errorMsgPrefix.c_str(), result.win32Error);
 			CloseHandle(job);
+			CloseHandle(stdoutRead);
+			CloseHandle(stdoutWrite);
 			CloseHandle(stderrRead);
 			CloseHandle(stderrWrite);
 			CloseHandle(nullInput);
-			CloseHandle(nullOutput);
 			if (output) *output = result;
 			return false;
 		}
+		CloseHandle(stdoutWrite);
+		stdoutWrite = INVALID_HANDLE_VALUE;
 		CloseHandle(stderrWrite);
 		stderrWrite = INVALID_HANDLE_VALUE;
 		CloseHandle(nullInput);
-		CloseHandle(nullOutput);
 		result.phase = "bind job";
 		if (!AssignProcessToJobObject(job, pi.hProcess))
 		{
 			result.win32Error = GetLastError();
 			TerminateProcess(pi.hProcess, static_cast<UINT>(-3));
-			WaitForSingleObject(pi.hProcess, INFINITE);
+			if (WaitForSingleObject(pi.hProcess, 5000) != WAIT_OBJECT_0) result.terminationUncertain = true;
 			CloseHandle(pi.hThread);
 			CloseHandle(pi.hProcess);
 			CloseHandle(job);
+			drainPipe(stdoutRead, result.stderrTail);
+			CloseHandle(stdoutRead);
 			drainStderrPipe(stderrRead, result.stderrTail);
 			CloseHandle(stderrRead);
 			if (output) *output = result;
@@ -462,10 +628,12 @@ namespace {
 			result.win32Error = GetLastError();
 			result.phase = "resume process";
 			TerminateJobObject(job, static_cast<UINT>(-3));
-			WaitForSingleObject(pi.hProcess, INFINITE);
+			if (WaitForSingleObject(pi.hProcess, 5000) != WAIT_OBJECT_0) result.terminationUncertain = true;
 			CloseHandle(pi.hThread);
 			CloseHandle(pi.hProcess);
 			CloseHandle(job);
+			drainPipe(stdoutRead, result.stderrTail);
+			CloseHandle(stdoutRead);
 			drainStderrPipe(stderrRead, result.stderrTail);
 			CloseHandle(stderrRead);
 			if (output) *output = result;
@@ -474,14 +642,36 @@ namespace {
 
 		bool is_cancelled = false;
 		bool wait_failed = false;
+		const ULONGLONG startedAt = GetTickCount64();
+		ULONGLONG lastHeartbeatAt = startedAt;
 		result.phase = "process exit";
 		const std::string runningMessage = "Running external solver " + jobPrefix + " (progress unavailable)...";
 		if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
-		while (true)
+		if (!is_cancelled && !emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job)) is_cancelled = true;
+		if (g_activeSnaphuRun && g_activeSnaphuRun->options.requestedProcessCount != 1)
 		{
-			if (is_cancelled) break;
+			if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING,
+				"Windows SNAPHU runs with NPROC=1; the requested process count was downgraded.", startedAt, job)) is_cancelled = true;
+		}
+		while (!is_cancelled && !result.timedOut)
+		{
 			const DWORD waitResult = WaitForSingleObject(pi.hProcess, 100);
-			drainStderrPipe(stderrRead, result.stderrTail);
+			if (!drainSnaphuPipe(stdoutRead, result.stderrTail, "stdout", startedAt, job)) is_cancelled = true;
+			if (!drainSnaphuPipe(stderrRead, result.stderrTail, "stderr", startedAt, job)) is_cancelled = true;
+			const ULONGLONG now = GetTickCount64();
+			if (g_activeSnaphuRun && now - lastHeartbeatAt >= g_activeSnaphuRun->options.heartbeatMilliseconds)
+			{
+				if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_HEARTBEAT, runningMessage, startedAt, job)) is_cancelled = true;
+				lastHeartbeatAt = now;
+			}
+			if (g_activeSnaphuRun && g_activeSnaphuRun->options.wallTimeoutMilliseconds != 0 &&
+				now - startedAt >= g_activeSnaphuRun->options.wallTimeoutMilliseconds)
+			{
+				result.timedOut = true;
+				result.phase = "timeout";
+				emitSnaphuRunEvent(SNAPHU_RUN_EVENT_TIMED_OUT, "SNAPHU wall-clock timeout reached.", startedAt, job);
+				break;
+			}
 			if (waitResult == WAIT_OBJECT_0) break;
 			if (waitResult != WAIT_TIMEOUT)
 			{
@@ -491,35 +681,70 @@ namespace {
 			}
 		}
 
-		if (is_cancelled) {
-			result.cancelled = true;
-			result.phase = "cancel";
-			TerminateJobObject(job, static_cast<UINT>(-2));
-			// Do not clean task artifacts until the entire job has stopped writing.
-			JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
-			while (QueryInformationJobObject(job, JobObjectBasicAccountingInformation, &accounting, sizeof(accounting), nullptr) &&
-				accounting.ActiveProcesses > 0)
-			{
-				drainStderrPipe(stderrRead, result.stderrTail);
-				Sleep(10);
-			}
-			WaitForSingleObject(pi.hProcess, INFINITE);
-		}
-		else if (wait_failed)
+		if (is_cancelled || result.timedOut || wait_failed)
 		{
-			TerminateJobObject(job, static_cast<UINT>(-3));
-			WaitForSingleObject(pi.hProcess, INFINITE);
+			result.cancelled = is_cancelled;
+			if (is_cancelled) result.phase = "cancel";
+			if (!TerminateJobObject(job, static_cast<UINT>(is_cancelled ? -2 : -3))) result.win32Error = GetLastError();
+			// A hard stop must not make the caller wait forever or clean an active task directory.
+			const ULONGLONG terminationDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				const bool jobKnown = QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr) != FALSE;
+				const DWORD processState = WaitForSingleObject(pi.hProcess, 0);
+				if (jobKnown && accounting.ActiveProcesses == 0 && processState == WAIT_OBJECT_0) break;
+				if (!jobKnown || processState == WAIT_FAILED || GetTickCount64() >= terminationDeadline)
+				{
+					result.terminationUncertain = true;
+					if ((!jobKnown || processState == WAIT_FAILED) && result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				drainPipe(stdoutRead, result.stderrTail);
+				drainStderrPipe(stderrRead, result.stderrTail);
+				Sleep(25);
+			}
 		}
-		else WaitForSingleObject(pi.hProcess, INFINITE);
+		else
+		{
+			// The root process has exited, but Job accounting can lag briefly.  Wait a
+			// bounded interval before treating a remaining descendant as uncertain.
+			const ULONGLONG completionDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr))
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				if (accounting.ActiveProcesses == 0) break;
+				if (GetTickCount64() >= completionDeadline)
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = ERROR_BUSY;
+					break;
+				}
+				drainPipe(stdoutRead, result.stderrTail);
+				drainStderrPipe(stderrRead, result.stderrTail);
+				Sleep(25);
+			}
+		}
 
-		if (!GetExitCodeProcess(pi.hProcess, &result.exitCode)) result.win32Error = GetLastError();
+		if (!result.terminationUncertain && !GetExitCodeProcess(pi.hProcess, &result.exitCode)) result.win32Error = GetLastError();
+		drainPipe(stdoutRead, result.stderrTail);
 		drainStderrPipe(stderrRead, result.stderrTail);
+		if (result.cancelled) emitSnaphuRunEvent(SNAPHU_RUN_EVENT_CANCELLED, "SNAPHU cancellation completed.", startedAt, job);
 
 		::CloseHandle(pi.hThread);
 		::CloseHandle(pi.hProcess);
 		::CloseHandle(job);
+		CloseHandle(stdoutRead);
 		CloseHandle(stderrRead);
-		if (result.cancelled) { if (output) *output = result; return false; }
+		if (result.cancelled || result.timedOut || result.terminationUncertain) { if (output) *output = result; return false; }
 		if (result.win32Error != ERROR_SUCCESS || result.exitCode != 0)
 		{
 			fprintf(stderr, "%s: process failed (exit=%lu, win32=%lu).\n\n", errorMsgPrefix.c_str(), result.exitCode, result.win32Error);
@@ -527,6 +752,7 @@ namespace {
 			return false;
 		}
 		const std::string completedMessage = "External solver " + jobPrefix + " completed.";
+		emitSnaphuRunEvent(SNAPHU_RUN_EVENT_COMPLETED, completedMessage, startedAt, nullptr);
 		if (cb && !cb(100, completedMessage.c_str()))
 		{
 			result.cancelled = true;
@@ -572,28 +798,77 @@ namespace {
 		return runExternalProcess(folder + executableName, arguments, jobPrefix, errorMsgPrefix, cb, output);
 	}
 
+	bool removeOwnedTaskTree(const std::wstring& directory, ExternalToolResult* result)
+	{
+		const DWORD attributes = GetFileAttributesW(directory.c_str());
+		if (attributes == INVALID_FILE_ATTRIBUTES) return GetLastError() == ERROR_FILE_NOT_FOUND;
+		if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 || (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+		{
+			if (result) result->cleanupResiduals.emplace_back(directory, ERROR_CANT_ACCESS_FILE);
+			return false;
+		}
+		const std::wstring pattern = directory + L"\\*";
+		WIN32_FIND_DATAW found = {};
+		HANDLE search = FindFirstFileW(pattern.c_str(), &found);
+		if (search == INVALID_HANDLE_VALUE)
+		{
+			if (result) result->cleanupResiduals.emplace_back(directory, GetLastError());
+			return false;
+		}
+		bool success = true;
+		do
+		{
+			if (wcscmp(found.cFileName, L".") == 0 || wcscmp(found.cFileName, L"..") == 0) continue;
+			const std::wstring child = directory + L"\\" + found.cFileName;
+			if ((found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+			{
+				if (result) result->cleanupResiduals.emplace_back(child, ERROR_CANT_ACCESS_FILE);
+				success = false;
+				continue;
+			}
+			const bool childOk = (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0
+				? removeOwnedTaskTree(child, result)
+				: DeleteFileW(child.c_str()) != FALSE;
+			if (!childOk)
+			{
+				if ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 && result)
+					result->cleanupResiduals.emplace_back(child, GetLastError());
+				success = false;
+			}
+		} while (FindNextFileW(search, &found));
+		const DWORD enumerateError = GetLastError();
+		FindClose(search);
+		if (enumerateError != ERROR_NO_MORE_FILES)
+		{
+			if (result) result->cleanupResiduals.emplace_back(directory, enumerateError);
+			success = false;
+		}
+		if (!success || !RemoveDirectoryW(directory.c_str()))
+		{
+			if (result && !success) result->cleanupResiduals.emplace_back(directory, ERROR_DIR_NOT_EMPTY);
+			else if (result) result->cleanupResiduals.emplace_back(directory, GetLastError());
+			return false;
+		}
+		return true;
+	}
+
 	class ScopedArtifactDirectory
 	{
 	public:
-		explicit ScopedArtifactDirectory(const std::wstring& directory, ExternalToolResult* result = nullptr) : directory_(directory), result_(result) {}
+		explicit ScopedArtifactDirectory(const std::wstring& directory, ExternalToolResult* result = nullptr)
+			: directory_(directory), result_(result), preserve_(false), completed_(false) {}
 		~ScopedArtifactDirectory()
 		{
-			for (const Artifact& artifact : files_)
-			{
-				if (!artifact.owned || GetFileAttributesW(artifact.path.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
-				if (!DeleteFileW(artifact.path.c_str()))
-				{
-					const DWORD error = GetLastError();
-					if (result_) result_->cleanupResiduals.emplace_back(artifact.path, error);
-					fprintf(stderr, "External tool cleanup left artifact (win32=%lu).\n", error);
-				}
-			}
-			if (!directory_.empty() && !RemoveDirectoryW(directory_.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND)
-			{
-				const DWORD error = GetLastError();
-				if (result_) result_->cleanupResiduals.emplace_back(directory_, error);
-				fprintf(stderr, "External tool cleanup left task directory (win32=%lu).\n", error);
-			}
+			const bool failed = result_ && (result_->cancelled || result_->timedOut || result_->terminationUncertain ||
+				result_->win32Error != ERROR_SUCCESS || result_->exitCode != STILL_ACTIVE && result_->exitCode != 0 ||
+				!result_->validationFailure.empty());
+			const bool keepOnSuccess = g_activeSnaphuRun &&
+				(g_activeSnaphuRun->options.flags & SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0;
+			// Ex2 keeps every incomplete task. Only code after output validation may
+			// explicitly opt into deletion, and the process wrapper proved job exit.
+			if (preserve_ || failed || keepOnSuccess || (g_activeSnaphuRun && !completed_)) return;
+			if (!directory_.empty() && !removeOwnedTaskTree(directory_, result_))
+				fprintf(stderr, "External tool cleanup left task directory.\n");
 		}
 
 		bool registerCandidate(const std::wstring& file)
@@ -635,11 +910,16 @@ namespace {
 			return false;
 		}
 
+		void preserve() { preserve_ = true; }
+		void markCompleted() { completed_ = true; }
+
 	private:
 		struct Artifact { std::wstring path; bool owned; };
 		std::wstring directory_;
 		std::vector<Artifact> files_;
 		ExternalToolResult* result_;
+		bool preserve_;
+		bool completed_;
 	};
 
 	bool runMcfProcess(const char* executableFolder, const char* networkFile, const std::string& errorMessage,
@@ -731,6 +1011,54 @@ namespace {
 		const std::wstring parentWide = separator == std::wstring::npos ? L"." : requested.substr(0, separator);
 		if (!PathResolver::wideToUtf8(parentWide, parent, &error)) return false;
 		return createTaskDirectory(parent, outputUtf8, outputWide);
+	}
+
+	bool appendSnaphuTilingConfig(std::ostringstream& config, const std::wstring& taskFolderWide,
+		int rows, int cols, ExternalToolResult& result)
+	{
+		if (!g_activeSnaphuRun) return true;
+		const SnaphuRunOptionsV1& options = g_activeSnaphuRun->options;
+		const bool tiled = options.tileRows > 1 || options.tileCols > 1;
+		if (!tiled)
+		{
+			config << "NPROC 1\n";
+			return true;
+		}
+		if (options.tileRows > static_cast<uint32_t>(rows) || options.tileCols > static_cast<uint32_t>(cols) ||
+			options.rowOverlap >= static_cast<uint32_t>(rows) / options.tileRows ||
+			options.colOverlap >= static_cast<uint32_t>(cols) / options.tileCols)
+		{
+			result.phase = "input";
+			result.validationFailure = "SNAPHU tile count or overlap is incompatible with input dimensions";
+			return false;
+		}
+		const std::wstring tileDirectoryWide = taskFolderWide + L"\\tiles";
+		if (!CreateDirectoryW(tileDirectoryWide.c_str(), nullptr))
+		{
+			result.phase = "prepare solution";
+			result.win32Error = GetLastError();
+			result.validationFailure = "cannot create SNAPHU tile directory";
+			return false;
+		}
+		std::string tileDirectory;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::wideToUtf8(tileDirectoryWide, tileDirectory, &error))
+		{
+			result.phase = "path conversion";
+			result.validationFailure = PathResolver::errorMessage(error);
+			return false;
+		}
+		std::string quotedTileDirectory;
+		if (!quoteSnaphuConfigPath(tileDirectory, quotedTileDirectory))
+		{
+			result.phase = "path conversion";
+			result.validationFailure = "SNAPHU tile directory cannot be represented in config";
+			return false;
+		}
+		config << "NTILEROW " << options.tileRows << "\nNTILECOL " << options.tileCols << "\n";
+		config << "NPROC 1\nROWOVRLP " << options.rowOverlap << "\nCOLOVRLP " << options.colOverlap << "\n";
+		config << "TILEDIR " << quotedTileDirectory << "\nRMTMPTILE FALSE\n";
+		return true;
 	}
 
 	bool writeBytes(const std::wstring& path, const void* bytes, size_t byteCount, ScopedArtifactDirectory* artifacts = nullptr)
@@ -3508,9 +3836,17 @@ int Unwrap::SnaphuFileInternal(
 			config << "AZRES " << DA.at<double>(0, 0) << "\n";
 		}
 	}
+	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
 
 	const std::string configText = config.str();
 	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
+	if (!emitSnaphuPreparedEvent(taskFolderWide, configFileWide))
+	{
+		toolResult.cancelled = true;
+		toolResult.phase = "cancel";
+		toolResult.validationFailure = "SNAPHU prepared callback cancelled or staging path is too long";
+		return -2;
+	}
 
 	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
 	if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
@@ -3565,6 +3901,7 @@ int Unwrap::SnaphuFileInternal(
 		g_activeDiagnostic->stage = UNWRAP_DIAGNOSTIC_STAGE_COMPLETED;
 		g_activeDiagnostic->operationStatus = 0;
 	}
+	artifacts.markCompleted();
 	return 0;
 }
 
@@ -3613,8 +3950,16 @@ int Unwrap::SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const
 	std::ostringstream config;
 	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
 	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\nCORRFILE " << configCoherenceFile << "\n";
+	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
 	const std::string configText = config.str();
 	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
+	if (!emitSnaphuPreparedEvent(taskFolderWide, configFileWide))
+	{
+		toolResult.cancelled = true;
+		toolResult.phase = "cancel";
+		toolResult.validationFailure = "SNAPHU prepared callback cancelled or staging path is too long";
+		return -2;
+	}
 
 
 	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
@@ -3648,6 +3993,7 @@ int Unwrap::SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const
 	}
 	unwrapped_phase.convertTo(unwrapped_phase, CV_64F);
 
+	artifacts.markCompleted();
 	return 0;
 }
 
@@ -3954,11 +4300,49 @@ int Unwrap::SnaphuFileEx(const char* wrapped_phase_file, Mat& unwrapped_phase, c
 	return status;
 }
 
+int Unwrap::SnaphuFileEx2(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
+	const char* tmp_folder, const char* exe_path, const SnaphuRunOptionsV1* options,
+	SnaphuRunEventCallbackV1 eventCallback, void* eventUserData, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
+	SnaphuRunOptionsV1 normalized;
+	if (!normalizeSnaphuOptions(options, normalized))
+	{
+		if (g_activeDiagnostic) copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary),
+			"invalid SnaphuRunOptionsV1");
+		scope.finish(-1);
+		return -1;
+	}
+	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
+	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, nullptr);
+	scope.finish(status);
+	return status;
+}
+
 int Unwrap::SnaphuMatrixEx(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
 	UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
 {
 	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_MATRIX);
 	const int status = SnaphuMatrixInternal(wrapped_phase, unwrapped_phase, tmp_folder, cb);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::SnaphuMatrixEx2(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
+	const SnaphuRunOptionsV1* options, SnaphuRunEventCallbackV1 eventCallback, void* eventUserData,
+	UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_MATRIX);
+	SnaphuRunOptionsV1 normalized;
+	if (!normalizeSnaphuOptions(options, normalized))
+	{
+		if (g_activeDiagnostic) copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary),
+			"invalid SnaphuRunOptionsV1");
+		scope.finish(-1);
+		return -1;
+	}
+	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
+	const int status = SnaphuMatrixInternal(wrapped_phase, unwrapped_phase, tmp_folder, nullptr);
 	scope.finish(status);
 	return status;
 }
