@@ -245,6 +245,161 @@ int SARProcessor::DenoiseGray(const cv::Mat& imgGray, double sigma8, cv::Mat& ou
     return 0;
 }
 
+// Lee、Frost、GammaMAP、Kuan 空域斑点噪声滤波。
+cv::Mat SARProcessor::DespeckleGray(const cv::Mat& imgGray,
+                                    SpeckleFilterMethod method,
+                                    int radius,
+                                    double numberOfLooks,
+                                    double frostDeramp)
+{
+    if (imgGray.empty()) {
+        return cv::Mat();
+    }
+
+    cv::Mat inputGray;
+    if (imgGray.channels() == 3) {
+        cv::cvtColor(imgGray, inputGray, cv::COLOR_BGR2GRAY);
+    } else if (imgGray.channels() == 4) {
+        cv::cvtColor(imgGray, inputGray, cv::COLOR_BGRA2GRAY);
+    } else if (imgGray.channels() == 1) {
+        imgGray.convertTo(inputGray, CV_8U);
+    } else {
+        return cv::Mat();
+    }
+
+    radius = std::max(1, radius);
+    numberOfLooks = std::max(numberOfLooks, 1.0e-6);
+    frostDeramp = std::max(frostDeramp, 0.0);
+
+    cv::Mat source;
+    inputGray.convertTo(source, CV_64F);
+
+    const int windowSize = radius * 2 + 1;
+    const int sampleCount = windowSize * windowSize;
+    const cv::Size kernelSize(windowSize, windowSize);
+
+    cv::Mat localMean;
+    cv::Mat localSquareMean;
+    cv::boxFilter(source, localMean, CV_64F, kernelSize,
+                  cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
+    cv::boxFilter(source.mul(source), localSquareMean, CV_64F, kernelSize,
+                  cv::Point(-1, -1), true, cv::BORDER_REPLICATE);
+
+    cv::Mat localVariance = localSquareMean - localMean.mul(localMean);
+    cv::max(localVariance, 0.0, localVariance);
+    if (sampleCount > 1) {
+        localVariance *= static_cast<double>(sampleCount) /
+                         static_cast<double>(sampleCount - 1);
+    }
+
+    cv::Mat output(source.size(), CV_64F, cv::Scalar(0));
+    const double cu2 = 1.0 / numberOfLooks;
+    const double cu = std::sqrt(cu2);
+    const double cmax = std::sqrt(2.0) * cu;
+    const double epsilon = 1.0e-12;
+
+    if (method == SpeckleFilterMethod::Frost) {
+        cv::Mat padded;
+        cv::copyMakeBorder(source, padded, radius, radius, radius, radius,
+                           cv::BORDER_REPLICATE);
+
+#pragma omp parallel for
+        for (int row = 0; row < source.rows; ++row) {
+            double* outputRow = output.ptr<double>(row);
+            const double* meanRow = localMean.ptr<double>(row);
+            const double* varianceRow = localVariance.ptr<double>(row);
+
+            for (int col = 0; col < source.cols; ++col) {
+                const double mean = meanRow[col];
+                if (std::abs(mean) <= epsilon) {
+                    outputRow[col] = 0.0;
+                    continue;
+                }
+
+                const double cs2 = varianceRow[col] / (mean * mean);
+                const double alpha = frostDeramp * cs2;
+                if (alpha <= epsilon) {
+                    outputRow[col] = mean;
+                    continue;
+                }
+
+                double weightedSum = 0.0;
+                double weightSum = 0.0;
+                for (int dy = -radius; dy <= radius; ++dy) {
+                    const double* paddedRow = padded.ptr<double>(row + radius + dy);
+                    for (int dx = -radius; dx <= radius; ++dx) {
+                        const double distance = std::sqrt(static_cast<double>(dx * dx + dy * dy));
+                        const double weight = std::exp(-alpha * distance);
+                        weightedSum += weight * paddedRow[col + radius + dx];
+                        weightSum += weight;
+                    }
+                }
+                outputRow[col] = weightSum > epsilon ? weightedSum / weightSum : mean;
+            }
+        }
+    } else {
+#pragma omp parallel for
+        for (int row = 0; row < source.rows; ++row) {
+            const double* sourceRow = source.ptr<double>(row);
+            const double* meanRow = localMean.ptr<double>(row);
+            const double* varianceRow = localVariance.ptr<double>(row);
+            double* outputRow = output.ptr<double>(row);
+
+            for (int col = 0; col < source.cols; ++col) {
+                const double value = sourceRow[col];
+                const double mean = meanRow[col];
+                const double variance = varianceRow[col];
+
+                if (std::abs(mean) <= epsilon) {
+                    outputRow[col] = 0.0;
+                    continue;
+                }
+                if (variance <= epsilon) {
+                    outputRow[col] = mean;
+                    continue;
+                }
+
+                const double ci2 = variance / (mean * mean);
+                if (ci2 <= cu2) {
+                    outputRow[col] = mean;
+                    continue;
+                }
+
+                if (method == SpeckleFilterMethod::GammaMAP) {
+                    const double ci = std::sqrt(ci2);
+                    if (ci >= cmax) {
+                        outputRow[col] = value;
+                        continue;
+                    }
+
+                    const double alpha = (1.0 + cu2) / (ci2 - cu2);
+                    const double b = alpha - numberOfLooks - 1.0;
+                    const double discriminant = std::max(
+                        0.0,
+                        mean * mean * b * b +
+                        4.0 * alpha * numberOfLooks * mean * value);
+                    outputRow[col] = (b * mean + std::sqrt(discriminant)) /
+                                     (2.0 * alpha);
+                    continue;
+                }
+
+                double weight = 1.0 - cu2 / ci2;
+                if (method == SpeckleFilterMethod::Kuan) {
+                    weight /= 1.0 + cu2;
+                }
+                weight = std::clamp(weight, 0.0, 1.0);
+                outputRow[col] = mean + weight * (value - mean);
+            }
+        }
+    }
+
+    cv::min(output, 255.0, output);
+    cv::max(output, 0.0, output);
+    cv::Mat output8U;
+    output.convertTo(output8U, CV_8U);
+    return output8U;
+}
+
 // 特征提取：GLCM + FFT
 BasicFeatures SARProcessor::ExtractBasicFeatures(const cv::Mat& imgGray)
 {

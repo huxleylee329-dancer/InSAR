@@ -14,6 +14,13 @@ struct BasicFeatures {
 
 class InSAR_API SARProcessor {
 public:
+    enum class SpeckleFilterMethod {
+        Lee,
+        Frost,
+        GammaMAP,
+        Kuan
+    };
+
     // ============ BM3D 降噪 ============
 
     // 对单通道灰度图执行 BM3D 降噪（含前后处理：log变换、噪声估计）
@@ -25,6 +32,15 @@ public:
                            void* cancel_context = nullptr,
                            InSARProgressCallback progress = nullptr,
                            void* progress_context = nullptr);
+
+    // 按 OTB 同类滤波器公式执行空域斑点噪声抑制。
+    // radius 为方形邻域半径；numberOfLooks 用于 Lee、GammaMAP、Kuan；
+    // frostDeramp 仅用于 Frost 滤波器。
+    static cv::Mat DespeckleGray(const cv::Mat& imgGray,
+                                 SpeckleFilterMethod method,
+                                 int radius,
+                                 double numberOfLooks = 1.0,
+                                 double frostDeramp = 0.1);
 
     // ============ 特征提取 ============
 
