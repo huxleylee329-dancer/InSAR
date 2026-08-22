@@ -650,25 +650,175 @@ public:
 		Mat& coherence,
 		NewtonProgressCallback cb = nullptr
 	);
-	/** @brief 根据干涉相位求相关系数
-	@param phase                          输入相位
-	@param coherence                      相关系数（返回值）
-	@return 成功返回0，否则返回-1
+	/** @brief 根据干涉相位求二倍角局部相位集中度 R2（固定 3x3 窗口）
+
+	注意：本函数返回值 **不是** 主辅 SLC 的归一化复相干系数 gamma。
+	内部构造 master = exp(i*phi)、slave = exp(-i*phi)，经 complex_coherence
+	归一化后实际得到：
+
+	    R2 = | mean( exp(i * 2*phi) ) |
+
+	这是以 pi 为周期的“轴向”集中度：相位 phi 与 phi+pi 对该指标贡献相同。
+	例如窗口内一半为 +pi/2、一半为 -pi/2 时，R2 = 1，而常规圆统计集中度
+	R1 = |mean(exp(i*phi))| = 0。
+
+	仅在“残余相位近似服从包裹高斯分布”时，才有 R2 = R1^4 的换算关系；
+	该关系不是恒等式，不可用于一般情形下的量纲转换。
+
+	若需要常规圆统计集中度 R1，请使用 phase_circular_concentration()。
+	若需要真正的复相干系数 gamma，请使用 complex_coherence_demodulated()。
+
+	@param phase                          输入相位（CV_64F，单通道）
+	@param coherence                      二倍角局部相位集中度 R2（返回值，CV_64F）
+	@return 成功返回0，用户取消返回-2，否则返回-1
 	*/
 	int phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb = nullptr);
-	/** @brief 根据干涉相位求相关系数（带估计窗口尺寸接口）
+	/** @brief 根据干涉相位求二倍角局部相位集中度 R2（带估计窗口尺寸接口）
 
-	@param phase                          输入相位
+	语义与上述固定窗口重载完全一致，返回 R2 = |mean(exp(i*2*phi))|，
+	**不是** 复相干系数 gamma。详见上述重载的说明。
+
+	@param phase                          输入相位（CV_64F，单通道）
 	@param est_wndsize_rg                 估计窗口距离向尺寸（奇数）
 	@param est_wndsize_az                 估计窗口方位向尺寸（奇数）
-	@param coherence                      相关系数（返回值）
-	@return 成功返回0，否则返回-1
+	@param coherence                      二倍角局部相位集中度 R2（返回值，CV_64F）
+	@return 成功返回0，用户取消返回-2，否则返回-1
 	*/
 	int phase_coherence(
 		const Mat& phase,
 		int est_wndsize_rg,
 		int est_wndsize_az,
 		Mat& coherence,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 显式命名的二倍角轴向集中度 R2 估计器
+
+	与 phase_coherence() 完全相同，提供语义明确的 API 供新代码使用。
+	phase_coherence() 保留用于兼容旧调用点。
+	*/
+	int phase_axial_concentration(
+		const Mat& phase,
+		int est_wndsize_rg,
+		int est_wndsize_az,
+		Mat& concentration,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 根据干涉相位求常规圆统计局部相位集中度 R1
+
+	    R1 = | mean( exp(i * phi) ) |
+
+	与 phase_coherence() 的区别：本函数以 2*pi 为周期（相位 phi 与 phi+pi
+	贡献不同），是通常意义上的“相位一致性/集中度”。实现上等价于将
+	complex_coherence() 的辅图像置为常量 1+0i。
+
+	适用场景：仅持有干涉相位、需要衡量相位平滑程度的质量代理量。
+	注意本函数返回值仍 **不是** 复相干系数 gamma：它不含幅度信息，
+	不满足 gamma 的统计分布假设，不可直接代入 gamma 的 CRB 或 PDF 公式。
+
+	@param phase                          输入相位（CV_64F，单通道）
+	@param est_wndsize_rg                 估计窗口距离向尺寸（奇数，>=3）
+	@param est_wndsize_az                 估计窗口方位向尺寸（奇数，>=3）
+	@param concentration                  局部相位集中度 R1（返回值，CV_64F）
+	@return 成功返回0，用户取消返回-2，否则返回-1
+	*/
+	int phase_circular_concentration(
+		const Mat& phase,
+		int est_wndsize_rg,
+		int est_wndsize_az,
+		Mat& concentration,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 根据干涉相位求常规圆统计局部相位集中度 R1（固定 3x3 窗口）
+
+	语义与上述带窗口重载一致，等价于 est_wndsize_rg = est_wndsize_az = 3。
+
+	@param phase                          输入相位（CV_64F，单通道）
+	@param concentration                  局部相位集中度 R1（返回值，CV_64F）
+	@return 成功返回0，用户取消返回-2，否则返回-1
+	*/
+	int phase_circular_concentration(
+		const Mat& phase,
+		Mat& concentration,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 显式命名的固定 3x3 二倍角轴向集中度 R2 估计器 */
+	int phase_axial_concentration(
+		Mat& phase,
+		Mat& concentration,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 去参考相位后的归一化复相干系数 gamma（真相干估算器）
+
+	    gamma = | sum( M * conj(S) * exp(-i*phi_ref) ) |
+	            / sqrt( sum(|M|^2) * sum(|S|^2) )
+
+	**相位符号约定**：本函数内部干涉量取 M*conj(S)，与 Utils::Multilook()
+	和 Utils::generate_phase() 写入 H5 的 phase 定义一致，即
+	phi = arg(M*conj(S))（实部 Mr*Sr+Mi*Si，虚部 Sr*Mi-Mr*Si）。
+	因此 reference_phase 必须使用同一约定（与 phase 同号），补偿因子为
+	exp(-i*phi_ref)。若调用方持有的参考相位为相反约定，须先取负。
+
+	与直接对原始 SLC 做窗口平均的区别：平地/地形相位在窗口内形成斜坡，
+	会造成人为去相干。本函数先按 reference_phase 解调，再做多视聚合与
+	局部相干估计，因此必须传入与 SLC 网格对齐的参考相位场。
+
+	**输出网格**：先按 multilook_rg/multilook_az 对已解调的复干涉量做
+	带幅度聚合，再在多视网格上做局部相干估计。输出尺寸为
+	(rows/multilook_az) x (cols/multilook_rg)，与 Multilook() 输出的
+	phase 尺寸一致。不可先在原始网格估计 gamma 再下采样，二者不等价。
+
+	@param master_image                   主图像（复，CV_64F 或 CV_32F）
+	@param slave_image                    辅图像（复，与主图像同类型同尺寸）
+	@param reference_phase                参考相位场（平地+地形，CV_64F，与 SLC 同尺寸）；
+	                                      不允许为空。无参考基线请使用
+	                                      complex_coherence_multilooked()
+	@param input_valid_mask               输入像元对有效掩膜（CV_8U，与 SLC 同尺寸）；
+	                                      非零表示主辅样本对有效，不允许为空
+	@param multilook_rg                   距离向多视数（>=1）
+	@param multilook_az                   方位向多视数（>=1）
+	@param est_wndsize_rg                 相干估计窗口距离向尺寸（奇数，>=3）
+	@param est_wndsize_az                 相干估计窗口方位向尺寸（奇数，>=3）
+	@param coherence                      复相干系数 gamma（返回值，CV_64F）
+	@param valid_mask                     有效掩膜（返回值，CV_8U；零能量窗口为 0）。
+	                                      gamma 中的数值 0 不区分“真实低相干”与
+	                                      “无效像元”，必须结合本掩膜使用
+	@param valid_sample_count             窗内实际参与估计的原始主辅样本对数量
+	                                      （返回值，CV_32S；不是独立视数或 ENL）
+	@return 成功返回0，用户取消返回-2，否则返回-1
+	*/
+	int complex_coherence_demodulated(
+		const ComplexMat& master_image,
+		const ComplexMat& slave_image,
+		const Mat& reference_phase,
+		const Mat& input_valid_mask,
+		int multilook_rg,
+		int multilook_az,
+		int est_wndsize_rg,
+		int est_wndsize_az,
+		Mat& coherence,
+		Mat& valid_mask,
+		Mat& valid_sample_count,
+		NewtonProgressCallback cb = nullptr
+	);
+	/** @brief 未去参考相位的多视网格归一化复相干系数
+
+	该接口用于显式构造“无参考相位补偿”的对比基线。平地或地形相位斜坡会
+	降低输出，不应把本接口的结果误作已解调产品。输出网格、输入有效掩膜和
+	支持数语义与 complex_coherence_demodulated() 相同。
+
+	@return 成功返回0，用户取消返回-2，否则返回-1
+	*/
+	int complex_coherence_multilooked(
+		const ComplexMat& master_image,
+		const ComplexMat& slave_image,
+		const Mat& input_valid_mask,
+		int multilook_rg,
+		int multilook_az,
+		int est_wndsize_rg,
+		int est_wndsize_az,
+		Mat& coherence,
+		Mat& valid_mask,
+		Mat& valid_sample_count,
 		NewtonProgressCallback cb = nullptr
 	);
 	/*求解相位导数方差

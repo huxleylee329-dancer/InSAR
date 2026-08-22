@@ -10,6 +10,7 @@
 #include <cstring>
 #include <climits>
 #include <cmath>
+#include <ctime>
 #include <fstream>
 #include <iterator>
 #include <sstream>
@@ -26,6 +27,103 @@
 #include<urlmon.h>
 #pragma comment(lib,"URlmon")
 #include <windows.h>
+
+#ifdef _WIN32
+#define timegm _mkgmtime
+#endif
+
+namespace
+{
+const double kGpsEpochUnixSeconds = 315964800.0;
+
+int gpsUtcOffsetSeconds(time_t utcSeconds)
+{
+    // GPS-UTC offsets take effect at 00:00:00 UTC on these dates.
+    if (utcSeconds >= 1483228800) return 18; // 2017-01-01
+    if (utcSeconds >= 1435708800) return 17; // 2015-07-01
+    if (utcSeconds >= 1341100800) return 16; // 2012-07-01
+    if (utcSeconds >= 1230768000) return 15; // 2009-01-01
+    if (utcSeconds >= 1136073600) return 14; // 2006-01-01
+    if (utcSeconds >= 915148800) return 13;  // 1999-01-01
+    if (utcSeconds >= 867715200) return 12;  // 1997-07-01
+    if (utcSeconds >= 820454400) return 11;  // 1996-01-01
+    if (utcSeconds >= 773020800) return 10;  // 1994-07-01
+    if (utcSeconds >= 741484800) return 9;   // 1993-07-01
+    if (utcSeconds >= 709948800) return 8;   // 1992-07-01
+    if (utcSeconds >= 662688000) return 7;   // 1991-01-01
+    if (utcSeconds >= 631152000) return 6;   // 1990-01-01
+    if (utcSeconds >= 567993600) return 5;   // 1988-01-01
+    if (utcSeconds >= 489024000) return 4;   // 1985-07-01
+    if (utcSeconds >= 425865600) return 3;   // 1983-07-01
+    if (utcSeconds >= 394329600) return 2;   // 1982-07-01
+    if (utcSeconds >= 362793600) return 1;   // 1981-07-01
+    return 0;
+}
+
+int utcStringToGps(const char* utcTime, double* gpsTime)
+{
+    if (utcTime == nullptr || gpsTime == nullptr)
+    {
+        return -1;
+    }
+
+    int year = 0;
+    int month = 0;
+    int day = 0;
+    int hour = 0;
+    int minute = 0;
+    double secondWithFraction = 0.0;
+    if (sscanf(utcTime, "%d-%d-%dT%d:%d:%lf", &year, &month, &day, &hour, &minute,
+        &secondWithFraction) != 6 || !std::isfinite(secondWithFraction) ||
+        secondWithFraction < 0.0 || secondWithFraction >= 60.0)
+    {
+        return -1;
+    }
+
+    std::tm utc = {};
+    utc.tm_year = year - 1900;
+    utc.tm_mon = month - 1;
+    utc.tm_mday = day;
+    utc.tm_hour = hour;
+    utc.tm_min = minute;
+    utc.tm_sec = static_cast<int>(std::floor(secondWithFraction));
+    utc.tm_isdst = 0;
+    const time_t unixSeconds = timegm(&utc);
+    if (unixSeconds == static_cast<time_t>(-1))
+    {
+        return -1;
+    }
+
+    const double fractionalSecond = secondWithFraction - std::floor(secondWithFraction);
+    *gpsTime = static_cast<double>(unixSeconds) - kGpsEpochUnixSeconds +
+        gpsUtcOffsetSeconds(unixSeconds) + fractionalSecond;
+    return 0;
+}
+
+bool gpsSecondsToUnix(double gpsSeconds, time_t& unixSeconds, double& fractionalSecond)
+{
+    if (!std::isfinite(gpsSeconds))
+    {
+        return false;
+    }
+
+    double utcSeconds = gpsSeconds + kGpsEpochUnixSeconds;
+    time_t candidate = static_cast<time_t>(std::floor(utcSeconds));
+    for (int iteration = 0; iteration < 3; ++iteration)
+    {
+        utcSeconds = gpsSeconds + kGpsEpochUnixSeconds - gpsUtcOffsetSeconds(candidate);
+        const time_t corrected = static_cast<time_t>(std::floor(utcSeconds));
+        if (corrected == candidate)
+        {
+            unixSeconds = corrected;
+            fractionalSecond = utcSeconds - std::floor(utcSeconds);
+            return fractionalSecond >= 0.0 && fractionalSecond < 1.0;
+        }
+        candidate = corrected;
+    }
+    return false;
+}
+}
 
 
 class Hdf5BatchGuard
@@ -481,14 +579,10 @@ static bool collect_zero_doppler_failure(ZeroDopplerFailureAccumulator& accumula
 	return true;
 }
 
-#ifdef _WIN32
-  #define timegm _mkgmtime
-#endif
-
 static std::string gps2utc(double gps_time) {
-	double total_unix_time = gps_time + 315964809.0;
-	time_t unix_time = (time_t)floor(total_unix_time);
-	double subsec = total_unix_time - (double)unix_time;
+	time_t unix_time = 0;
+	double subsec = 0.0;
+	if (!gpsSecondsToUnix(gps_time, unix_time, subsec)) return std::string();
 
 	long long subsec_us = (long long)floor(subsec * 1000000.0 + 0.5);
 	if (subsec_us >= 1000000LL) {
@@ -816,26 +910,11 @@ int UTC2GPS(const char* utc_time, double* gps_time)
 		fprintf(stderr, "UTC2GPS(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second;
-	// removed unused: s (copy-paste remnant, not parsed from UTC format)
-	double sec;
-	ret = sscanf(utc_time, "%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
-	if (ret != 6)
+	if (utcStringToGps(utc_time, gps_time) != 0)
 	{
 		fprintf(stderr, "UTC2GPS(): %s: unknown format!\n", utc_time);
 		return -1;
 	}
-	second = int(floor(sec));
-	sec = sec - (double)second;
-	tm TM;
-	TM.tm_year = year - 1900;
-	TM.tm_mon = month - 1;
-	TM.tm_mday = day;
-	TM.tm_hour = hour;
-	TM.tm_min = minute;
-	TM.tm_sec = second;
-	TM.tm_isdst = 0;
-	*gps_time = double(timegm(&TM) - 315964809) + sec;
 	return 0;
 }
 
@@ -859,26 +938,11 @@ int FormatConversion::utc2gps(const char* utc_time, double* gps_time)
 		fprintf(stderr, "utc2gps(): input check failed!\n");
 		return -1;
 	}
-	int ret, year, month, day, hour, minute, second;
-	// removed unused: s (copy-paste remnant, not parsed from UTC format)
-	double sec;
-	ret = sscanf(utc_time, "%d-%d-%dT%d:%d:%lf\n", &year, &month, &day, &hour, &minute, &sec);
-	if (ret != 6)
+	if (utcStringToGps(utc_time, gps_time) != 0)
 	{
 		fprintf(stderr, "utc2gps(): %s: unknown format!\n", utc_time);
 		return -1;
 	}
-	second = int(floor(sec));
-	sec = sec - (double)second;
-	tm TM;
-	TM.tm_year = year - 1900;
-	TM.tm_mon = month - 1;
-	TM.tm_mday = day;
-	TM.tm_hour = hour;
-	TM.tm_min = minute;
-	TM.tm_sec = second;
-	TM.tm_isdst = 0;
-	*gps_time = double(timegm(&TM) - 315964809) + sec;
 	return 0;
 }
 
@@ -1540,6 +1604,10 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "get_stateVec_from_TSX()", error_head)) return -1;
 	ret = Hdf5IO::writeArray(writeSession.get(), "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	ret = Hdf5IO::createString(writeSession.get(), "state_vec_time_scale", "GPS");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	ret = Hdf5IO::createString(writeSession.get(), "h5_time_reference_version", "2");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 	/*
 	* д�����������Ƶ�ʲ���
@@ -1616,6 +1684,34 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "acquisition_start_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	// TerraSAR-X state vectors use GPS seconds. Preserve that authoritative time
+	// scale for geometric processing while retaining the UTC string for display.
+	double acquisition_start_time_gps = 0.0;
+	ret = xmldoc._find_node(pnode, "timeGPS", pchild);
+	if (return_check(ret, "_find_node()", error_head)) return -1;
+	ret = sscanf(pchild->GetText(), "%lf", &acquisition_start_time_gps);
+	if (ret != 1 || !std::isfinite(acquisition_start_time_gps))
+	{
+		fprintf(stderr, "TSX2h5(): acquisition start GPS time not found in %s!\n", xml_filename);
+		return -1;
+	}
+	double acquisition_start_time_gps_fraction = 0.0;
+	if (xmldoc._find_node(pnode, "timeGPSFraction", pchild) == 0)
+	{
+		ret = sscanf(pchild->GetText(), "%lf", &acquisition_start_time_gps_fraction);
+		if (ret != 1 || !std::isfinite(acquisition_start_time_gps_fraction) ||
+			acquisition_start_time_gps_fraction < 0.0 || acquisition_start_time_gps_fraction >= 1.0)
+		{
+			fprintf(stderr, "TSX2h5(): acquisition start GPS fraction not found in %s!\n", xml_filename);
+			return -1;
+		}
+	}
+	acquisition_start_time_gps += acquisition_start_time_gps_fraction;
+	tmp.at<double>(0, 0) = acquisition_start_time_gps;
+	ret = Hdf5IO::writeArray(writeSession.get(), "acquisition_start_time_gps", tmp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	ret = Hdf5IO::createString(writeSession.get(), "acquisition_time_gps_scale", "GPS");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	//�������ʱ��
 	ret = xmldoc.find_node("stop", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
@@ -1623,6 +1719,35 @@ int FormatConversion::TSX2h5(const char* cosar_filename, const char* xml_filenam
 	if (return_check(ret, "_find_node()", error_head)) return -1;
 	ret = Hdf5IO::createString(writeSession.get(), "acquisition_stop_time", pchild->GetText());
 	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	double acquisition_stop_time_gps = 0.0;
+	ret = xmldoc._find_node(pnode, "timeGPS", pchild);
+	if (return_check(ret, "_find_node()", error_head)) return -1;
+	ret = sscanf(pchild->GetText(), "%lf", &acquisition_stop_time_gps);
+	if (ret != 1 || !std::isfinite(acquisition_stop_time_gps))
+	{
+		fprintf(stderr, "TSX2h5(): acquisition stop GPS time not found in %s!\n", xml_filename);
+		return -1;
+	}
+	double acquisition_stop_time_gps_fraction = 0.0;
+	if (xmldoc._find_node(pnode, "timeGPSFraction", pchild) == 0)
+	{
+		ret = sscanf(pchild->GetText(), "%lf", &acquisition_stop_time_gps_fraction);
+		if (ret != 1 || !std::isfinite(acquisition_stop_time_gps_fraction) ||
+			acquisition_stop_time_gps_fraction < 0.0 || acquisition_stop_time_gps_fraction >= 1.0)
+		{
+			fprintf(stderr, "TSX2h5(): acquisition stop GPS fraction not found in %s!\n", xml_filename);
+			return -1;
+		}
+	}
+	acquisition_stop_time_gps += acquisition_stop_time_gps_fraction;
+	if (!(acquisition_stop_time_gps > acquisition_start_time_gps))
+	{
+		fprintf(stderr, "TSX2h5(): acquisition GPS time range is invalid in %s!\n", xml_filename);
+		return -1;
+	}
+	tmp.at<double>(0, 0) = acquisition_stop_time_gps;
+	ret = Hdf5IO::writeArray(writeSession.get(), "acquisition_stop_time_gps", tmp);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
 	//��Ƶ
 	ret = xmldoc.find_node("instrument", pnode);
 	if (return_check(ret, "find_node()", error_head)) return -1;
@@ -1827,8 +1952,13 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 		if (read_str_from_h5(dst_h5_filename, "acquisition_start_time", start_str) == 0 &&
 			read_str_from_h5(dst_h5_filename, "acquisition_stop_time", stop_str) == 0)
 		{
-			utc2gps(start_str.c_str(), &actual_start);
-			utc2gps(stop_str.c_str(), &actual_stop);
+			if (utc2gps(start_str.c_str(), &actual_start) < 0 ||
+				utc2gps(stop_str.c_str(), &actual_stop) < 0 ||
+				!(actual_stop > actual_start))
+			{
+				fprintf(stderr, "read_POD(): acquisition UTC time is invalid!\n");
+				return -1;
+			}
 		}
 	}
 
@@ -1908,6 +2038,8 @@ int FormatConversion::read_POD(const char* POD_filename, double start_time, doub
 
 	ret = write_array_to_h5(dst_h5_filename, "fine_state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	ret = write_str_to_h5(dst_h5_filename, "fine_state_vec_time_scale", "GPS");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 	return 0;
 }
@@ -2492,6 +2624,10 @@ int FormatConversion::sentinel2h5(const char* tiff_filename, const char* xml_fil
 	if (return_check(ret, "get_stateVec_from_sentinel()", error_head)) return -1;
 	ret = write_array_to_h5(dst_h5_filename, "state_vec", stateVec);
 	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	ret = write_str_to_h5(dst_h5_filename, "state_vec_time_scale", "GPS");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	ret = write_str_to_h5(dst_h5_filename, "h5_time_reference_version", "2");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 
 
@@ -6198,6 +6334,42 @@ int XMLFile::XMLFile_add_interferometric_phase(const char* datanode_name, const 
 	return 0;
 }
 
+int XMLFile::XMLFile_set_coherence_semantics(
+	const char* datanode_name,
+	const char* node_name,
+	const char* semantics)
+{
+	if (!datanode_name || !node_name || !semantics ||
+		(std::strcmp(semantics, "complex_gamma") != 0 &&
+		 std::strcmp(semantics, "phase_circular_r1") != 0 &&
+		 std::strcmp(semantics, "phase_axial_r2") != 0 &&
+		 std::strcmp(semantics, "legacy_unknown") != 0))
+	{
+		fprintf(stderr, "XMLFile_set_coherence_semantics(): input check failed!\n");
+		return -1;
+	}
+	TiXmlElement* DataNode = NULL;
+	if (find_node_with_attribute(impl_->doc.RootElement(), "DataNode", "name", datanode_name, DataNode) < 0 || !DataNode)
+	{
+		fprintf(stderr, "XMLFile_set_coherence_semantics(): data node not found.\n");
+		return -1;
+	}
+	for (TiXmlElement* Data = DataNode->FirstChildElement("Data"); Data; Data = Data->NextSiblingElement("Data"))
+	{
+		TiXmlElement* nameElement = Data->FirstChildElement("Data_Name");
+		const char* value = nameElement ? nameElement->GetText() : NULL;
+		if (!value || std::strcmp(value, node_name) != 0) continue;
+		TiXmlElement* previous = Data->FirstChildElement("coherence_semantics");
+		if (previous) Data->RemoveChild(previous);
+		TiXmlElement* semanticsElement = new TiXmlElement("coherence_semantics");
+		semanticsElement->LinkEndChild(new TiXmlText(semantics));
+		Data->LinkEndChild(semanticsElement);
+		return 0;
+	}
+	fprintf(stderr, "XMLFile_set_coherence_semantics(): data item not found.\n");
+	return -1;
+}
+
 int XMLFile::XMLFile_add_denoise_14(
 	int mode,
 	const char* datanode_name,
@@ -7672,7 +7844,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	}
 	int numstateVec;
 	ret = sscanf(pnode->GetText(), "%d", &numstateVec);
-	if (ret != 1)
+	if (ret != 1 || numstateVec < 4)
 	{
 		fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 		return -1;
@@ -7692,21 +7864,42 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 	double GPS_time, posX, posY, posZ, velX, velY, velZ;
 	for (int i = 0; i < numstateVec; i++)
 	{
-		if (!pnode) break;
-		//GPSʱ��
-		ret = _find_node(pnode, "timeUTC", pchild);
+		if (!pnode)
+		{
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : insufficient state vectors!\n", impl_->m_xmlFileName);
+			return -1;
+		}
+		// TerraSAR-X state vectors provide the authoritative GPS timestamp.
+		ret = _find_node(pnode, "timeGPS", pchild);
 		if (ret < 0)
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
 		}
-		UTC2GPS(pchild->GetText(), &GPS_time);
-		//ret = sscanf(pchild->GetText(), "%lf", &GPS_time);
-		//if (ret != 1)
-		//{
-		//	fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
-		//	return -1;
-		//}
+		ret = sscanf(pchild->GetText(), "%lf", &GPS_time);
+		if (ret != 1 || !std::isfinite(GPS_time))
+		{
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
+			return -1;
+		}
+		double GPS_time_fraction = 0.0;
+		ret = _find_node(pnode, "timeGPSFraction", pchild);
+		if (ret == 0)
+		{
+			ret = sscanf(pchild->GetText(), "%lf", &GPS_time_fraction);
+			if (ret != 1 || !std::isfinite(GPS_time_fraction) ||
+				GPS_time_fraction < 0.0 || GPS_time_fraction >= 1.0)
+			{
+				fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
+				return -1;
+			}
+		}
+		GPS_time += GPS_time_fraction;
+		if (i > 0 && !(GPS_time > x.at<double>(i - 1, 0)))
+		{
+			fprintf(stderr, "get_stateVec_from_TSX(): %s : state vector times are not strictly increasing!\n", impl_->m_xmlFileName);
+			return -1;
+		}
 		//posX
 		ret = _find_node(pnode, "posX", pchild);
 		if (ret < 0)
@@ -7715,7 +7908,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posX);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(posX))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -7728,7 +7921,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posY);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(posY))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -7741,7 +7934,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &posZ);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(posZ))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -7754,7 +7947,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velX);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(velX))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -7767,7 +7960,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velY);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(velY))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -7780,7 +7973,7 @@ int XMLFile::get_stateVec_from_TSX(Mat& stateVec)
 			return -1;
 		}
 		ret = sscanf(pchild->GetText(), "%lf", &velZ);
-		if (ret != 1)
+		if (ret != 1 || !std::isfinite(velZ))
 		{
 			fprintf(stderr, "get_stateVec_from_TSX(): %s : unknown data format!\n", impl_->m_xmlFileName);
 			return -1;
@@ -8221,10 +8414,12 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 	static const char* const stringDatasets[] = {
 		"file_type", "sensor", "polarization", "imaging_mode", "lookside", "orbit_dir", "swath",
 		"acquisition_start_time", "acquisition_stop_time", "source_1", "source_2",
-		"source_path_encoding", "source_path_format_version" };
+		"source_path_encoding", "source_path_format_version", "state_vec_time_scale",
+		"fine_state_vec_time_scale", "acquisition_time_gps_scale", "h5_time_reference_version" };
 	static const char* const arrayDatasets[] = {
 		"orbit_altitude", "carrier_frequency", "heading", "prf", "inc_center", "gcps",
 		"azimuth_resolution", "range_resolution", "azimuth_spacing", "range_spacing", "state_vec",
+		"acquisition_start_time_gps", "acquisition_stop_time_gps",
 		"fine_state_vec", "doppler_centroid", "doppler_coefficient_a", "doppler_coefficient_b",
 		"lon_coefficient", "lat_coefficient", "row_coefficient", "col_coefficient", "inc_coefficient",
 		"inc_coefficient_r", "inc_center", "row_coefficient", "slant_range_first_pixel", "topLeftLon",
@@ -9794,9 +9989,19 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_array_to_h5(h5File, "gcps", gcps);
 	conversion.write_array_to_h5(h5File, "lastValidLine", this->lastValidLine);
 	conversion.write_array_to_h5(h5File, "lastValidSample", this->lastValidSample);
-	conversion.write_array_to_h5(h5File, "state_vec", this->orbitList);
+	ret = conversion.write_array_to_h5(h5File, "state_vec", this->orbitList);
+	if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+	ret = conversion.write_str_to_h5(h5File, "state_vec_time_scale", "GPS");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	ret = conversion.write_str_to_h5(h5File, "h5_time_reference_version", "2");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 	if(!preciseOrbitList.empty())
-		conversion.write_array_to_h5(h5File, "fine_state_vec", this->preciseOrbitList);
+	{
+		ret = conversion.write_array_to_h5(h5File, "fine_state_vec", this->preciseOrbitList);
+		if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+		ret = conversion.write_str_to_h5(h5File, "fine_state_vec_time_scale", "GPS");
+		if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
+	}
 
 	//д��ͼ������
 	if (this->tiffFile.empty())
@@ -12781,7 +12986,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			}
 			cv::Mat multilookedPhase, coherence;
 			util.multilook(overlapPhase, multilookedPhase, 16, 4);
-			util.phase_coherence(multilookedPhase, coherence);
+			util.phase_axial_concentration(multilookedPhase, coherence);
 			int coherentSamples = 0;
 			for (int row = 0; row < coherence.rows; ++row)
 				for (int column = 0; column < coherence.cols; ++column)

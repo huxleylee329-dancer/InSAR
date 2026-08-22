@@ -120,8 +120,37 @@ int DEMSourceManager::read_crop_and_resample_dem(
     char* projection,
     int max_proj_len
 ) {
+    cv::Mat source_valid_mask;
+    const int ret = read_crop_and_resample_dem_ex(
+        file_path, min_lon, max_lon, min_lat, max_lat, target_resolution,
+        cropped_dem, source_valid_mask, new_geo_transform, projection, max_proj_len);
+    if (ret != 0) return ret;
+
+    // Preserve the legacy API's gap-filling behavior. New mask-aware callers
+    // use the _ex overload and retain NoData evidence instead.
+    const float output_nodata = -32767.0f;
+    fillInvalidGaps<float>(cropped_dem, [output_nodata](float val) {
+        return !std::isfinite(val) || std::abs(val - output_nodata) < 1e-3f;
+    });
+    return 0;
+}
+
+int DEMSourceManager::read_crop_and_resample_dem_ex(
+    const char* file_path,
+    double min_lon, double max_lon,
+    double min_lat, double max_lat,
+    double target_resolution,
+    cv::Mat& cropped_dem,
+    cv::Mat& source_valid_mask,
+    double new_geo_transform[6],
+    char* projection,
+    int max_proj_len
+) {
     GDALAllRegister();
     OGRRegisterAll();
+
+    cropped_dem.release();
+    source_valid_mask.release();
 
     GDALDataset* poDataset = (GDALDataset*)GDALOpen(file_path, GA_ReadOnly);
     if (!poDataset) {
@@ -219,18 +248,94 @@ int DEMSourceManager::read_crop_and_resample_dem(
     GDALRasterBand* poSrcBand = poDataset->GetRasterBand(1);
     GDALRasterBand* poDstBand = poDstDS->GetRasterBand(1);
     
-    int has_nodata = 0;
-    double nodata_val = poSrcBand->GetNoDataValue(&has_nodata);
-    if (has_nodata) {
-        poDstBand->SetNoDataValue(nodata_val);
-    } else {
-        poDstBand->SetNoDataValue(-9999.0);
-        nodata_val = -9999.0;
-        has_nodata = 1;
+    const double output_nodata = -32767.0;
+    poDstBand->SetNoDataValue(output_nodata);
+
+    // Materialize the source validity evidence before resampling. GDAL's
+    // convenience reprojection API does not guarantee that a source NoData or
+    // mask band becomes a readable destination mask, especially when source
+    // and destination NoData values differ.
+    const int src_width = poDataset->GetRasterXSize();
+    const int src_height = poDataset->GetRasterYSize();
+    cv::Mat source_mask(src_height, src_width, CV_8UC1);
+    GDALRasterBand* poSrcMaskBand = poSrcBand ? poSrcBand->GetMaskBand() : nullptr;
+    CPLErr err = poSrcMaskBand ? poSrcMaskBand->RasterIO(
+        GF_Read, 0, 0, src_width, src_height,
+        source_mask.data, src_width, src_height,
+        GDT_Byte, 0, 0, NULL) : CE_Failure;
+    if (err != CE_None) {
+        sprintf_s(error_msg, sizeof(error_msg), "Failed to read source DEM validity mask.");
+        GDALClose(poDstDS);
+        GDALClose(poDataset);
+        CPLFree(dst_proj_wkt);
+        return -1;
+    }
+
+    int has_source_nodata = 0;
+    const double source_nodata = poSrcBand->GetNoDataValue(&has_source_nodata);
+    std::vector<float> source_row(static_cast<size_t>(src_width));
+    for (int row = 0; row < src_height; ++row) {
+        err = poSrcBand->RasterIO(GF_Read, 0, row, src_width, 1,
+            source_row.data(), src_width, 1, GDT_Float32, 0, 0, NULL);
+        if (err != CE_None) {
+            sprintf_s(error_msg, sizeof(error_msg), "Failed to inspect source DEM row %d.", row);
+            GDALClose(poDstDS);
+            GDALClose(poDataset);
+            CPLFree(dst_proj_wkt);
+            return -1;
+        }
+        unsigned char* mask_values = source_mask.ptr<unsigned char>(row);
+        for (int column = 0; column < src_width; ++column) {
+            const float elevation = source_row[static_cast<size_t>(column)];
+            const bool matches_nodata = has_source_nodata &&
+                ((std::isnan(source_nodata) && std::isnan(elevation)) ||
+                 (!std::isnan(source_nodata) &&
+                  std::abs(static_cast<double>(elevation) - source_nodata) < 1e-3));
+            mask_values[column] = mask_values[column] != 0 &&
+                std::isfinite(elevation) && !matches_nodata ? 255 : 0;
+        }
+    }
+
+    GDALDataset* poSrcMaskDS = poMemDriver->Create("", src_width, src_height, 1, GDT_Byte, NULL);
+    GDALDataset* poDstSupportDS = poMemDriver->Create("", dst_width, dst_height, 1, GDT_Float32, NULL);
+    if (!poSrcMaskDS || !poDstSupportDS) {
+        sprintf_s(error_msg, sizeof(error_msg), "Failed to create DEM validity warp datasets.");
+        if (poSrcMaskDS) GDALClose(poSrcMaskDS);
+        if (poDstSupportDS) GDALClose(poDstSupportDS);
+        GDALClose(poDstDS);
+        GDALClose(poDataset);
+        CPLFree(dst_proj_wkt);
+        return -1;
+    }
+    const char* effective_src_wkt = src_proj_wkt && strlen(src_proj_wkt) > 0
+        ? src_proj_wkt : dst_proj_wkt;
+    poSrcMaskDS->SetGeoTransform(src_transform);
+    poSrcMaskDS->SetProjection(effective_src_wkt);
+    poDstSupportDS->SetGeoTransform(new_geo_transform);
+    poDstSupportDS->SetProjection(dst_proj_wkt);
+    poDstSupportDS->GetRasterBand(1)->Fill(0.0);
+    err = poSrcMaskDS->GetRasterBand(1)->RasterIO(
+        GF_Write, 0, 0, src_width, src_height,
+        source_mask.data, src_width, src_height,
+        GDT_Byte, 0, 0, NULL);
+    if (err == CE_None) {
+        err = GDALReprojectImage(
+            poSrcMaskDS, effective_src_wkt,
+            poDstSupportDS, dst_proj_wkt,
+            GRA_Average, 0.0, 0.0, NULL, NULL, NULL);
+    }
+    if (err != CE_None) {
+        sprintf_s(error_msg, sizeof(error_msg), "Failed to reproject DEM validity support.");
+        GDALClose(poSrcMaskDS);
+        GDALClose(poDstSupportDS);
+        GDALClose(poDstDS);
+        GDALClose(poDataset);
+        CPLFree(dst_proj_wkt);
+        return -1;
     }
 
     // 调用 GDAL 严密影像重投影 warp 算法（已内置像素几何中心采样 0.5 偏置）
-    CPLErr err = GDALReprojectImage(
+    err = GDALReprojectImage(
         poDataset, src_proj_wkt,
         poDstDS, dst_proj_wkt,
         GRA_Bilinear, 0.0, 0.0, NULL, NULL, NULL
@@ -240,6 +345,8 @@ int DEMSourceManager::read_crop_and_resample_dem(
 
     if (err != CE_None) {
         sprintf_s(error_msg, sizeof(error_msg), "GDALReprojectImage failed with error code %d", err);
+        GDALClose(poSrcMaskDS);
+        GDALClose(poDstSupportDS);
         GDALClose(poDstDS);
         GDALClose(poDataset);
         return -1;
@@ -253,18 +360,59 @@ int DEMSourceManager::read_crop_and_resample_dem(
         GDT_Float32, 0, 0, NULL
     );
 
-    GDALClose(poDstDS);
-    GDALClose(poDataset);
-
     if (err != CE_None) {
         sprintf_s(error_msg, sizeof(error_msg), "Failed to read target band data into OpenCV Mat.");
+        GDALClose(poSrcMaskDS);
+        GDALClose(poDstSupportDS);
+        GDALClose(poDstDS);
+        GDALClose(poDataset);
         return -1;
     }
 
-    // 自动进行无效值线性搜寻填充
-    fillInvalidGaps<float>(cropped_dem, [nodata_val, has_nodata](float val) {
-        return val <= -998.0f || (has_nodata && std::abs(val - (float)nodata_val) < 1e-3f) || std::isnan(val);
-    });
+    cv::Mat resampled_support(dst_height, dst_width, CV_32FC1);
+    err = poDstSupportDS->GetRasterBand(1)->RasterIO(
+        GF_Read, 0, 0, dst_width, dst_height,
+        resampled_support.data, dst_width, dst_height,
+        GDT_Float32, 0, 0, NULL);
+    if (err != CE_None) {
+        sprintf_s(error_msg, sizeof(error_msg), "Failed to read reprojected DEM validity mask.");
+        GDALClose(poSrcMaskDS);
+        GDALClose(poDstSupportDS);
+        GDALClose(poDstDS);
+        GDALClose(poDataset);
+        cropped_dem.release();
+        source_valid_mask.release();
+        return -1;
+    }
+
+    source_valid_mask.create(dst_height, dst_width, CV_8UC1);
+    // Average-resampled support is 255 only when the complete contributing
+    // source footprint is valid. Any partial support fails closed.
+    for (int row = 0; row < dst_height; ++row) {
+        float* elevations = cropped_dem.ptr<float>(row);
+        const float* support = resampled_support.ptr<float>(row);
+        unsigned char* valid = source_valid_mask.ptr<unsigned char>(row);
+        for (int column = 0; column < dst_width; ++column) {
+            const bool is_valid = support[column] >= 254.5f &&
+                std::isfinite(elevations[column]) &&
+                std::abs(static_cast<double>(elevations[column]) - output_nodata) >= 1e-3;
+            valid[column] = is_valid ? 1 : 0;
+            if (!is_valid) elevations[column] = static_cast<float>(output_nodata);
+        }
+    }
+
+    // Bilinear DEM interpolation can otherwise normalize around a NoData
+    // neighbour. Eroding one target pixel conservatively requires complete
+    // local source support at validity boundaries.
+    cv::erode(source_valid_mask, source_valid_mask,
+        cv::Mat::ones(3, 3, CV_8U), cv::Point(-1, -1), 1,
+        cv::BORDER_CONSTANT, cv::Scalar(0));
+    cropped_dem.setTo(static_cast<float>(output_nodata), source_valid_mask == 0);
+
+    GDALClose(poSrcMaskDS);
+    GDALClose(poDstSupportDS);
+    GDALClose(poDstDS);
+    GDALClose(poDataset);
 
     return 0;
 }

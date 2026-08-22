@@ -252,7 +252,7 @@ public:
 		ComplexMat& slc2,
 		ComplexMat& slc3,
 		ComplexMat& slc4,
-		Mat& GCP1, 
+		Mat& GCP1,
 		Mat& GCP2,
 		SimulationProgressCallback cb = nullptr
 	);
@@ -452,7 +452,7 @@ public:
 	* @param azimuthSpacing                 主图方位向采样间隔（m）
 	* @param offset_row                     主图像在原图中的行偏移
 	* @param offset_col                     主图像在原图中的列偏移
-	* @param start1                         主图拍摄起始时间 
+	* @param start1                         主图拍摄起始时间
 	* @param end1                           主图拍摄结束时间
 	* @param start2                         辅图拍摄起始时间
 	* @param end2                           辅图拍摄结束时间
@@ -460,7 +460,8 @@ public:
 	* @param statevec2                      辅星轨道
 	* @param prf                            脉冲重复频率
 	* @param demPath                        SRTM DEM路径
-	* @return 成功返回0，否则返回-1
+	* @return 成功返回0，否则返回-1。旧接口不再从相位集中度伪造 gamma，
+	*         未提供物理相干场时 fail-closed。
 	*/
 	int pingpong_MLE(
 		const Mat& phase_reference,
@@ -485,10 +486,38 @@ public:
 		double prf,
 		const string& demPath
 	);
+	/** @brief 带显式物理复相干系数场的乒乓模式最大似然相位估计
+	* @param physical_coherence             物理复相干系数 gamma（CV_32F/CV_64F，
+	*                                       与输入相位同尺寸）
+	*/
+	int pingpong_MLE(
+		const Mat& phase_reference,
+		Mat& wrapped_phase_low,
+		Mat& wrapped_phase_high,
+		Mat& outphase,
+		Mat& lat_coef,
+		Mat& lon_coef,
+		double wavelength_low,
+		double wavelength_high,
+		double nearRangeTime,
+		double rangeSpacing,
+		double azimuthSpacing,
+		int offset_row,
+		int offset_col,
+		double start1,
+		double end1,
+		double start2,
+		double end2,
+		const Mat& statevec1,
+		const Mat& statevec2,
+		double prf,
+		const string& demPath,
+		const Mat& physical_coherence
+	);
 private:
 	std::string error_head;
 };
 
 
 
-
+

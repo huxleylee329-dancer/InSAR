@@ -131,6 +131,9 @@
 	// Creates or truncates an HDF5 file. Array creation APIs below intentionally
 	// fail when the target dataset already exists, matching the legacy writer.
 	HDF5IO_API int createFile(const char* filename);
+	// Reports whether a dataset link exists. Returns 0 for a completed probe
+	// (with exists set to 0 or 1) and a negative value for file/HDF5 failures.
+	HDF5IO_API int datasetExists(const char* filename, const char* datasetName, int* exists);
 	HDF5IO_API int getDatasetDims(const char* filename, const char* datasetName, int* rows, int* columns);
 	HDF5IO_API int readArray(const char* filename, const char* datasetName, cv::Mat& output);
 	// Performs the same conversion as readArray while preserving the precise

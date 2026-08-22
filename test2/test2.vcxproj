@@ -158,11 +158,15 @@
     <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp" />
     <ClCompile Include="RegistrationSubpixelRegression.cpp" />
 	<ClCompile Include="RobustCoregistrationRegression.cpp" />
+    <ClCompile Include="CoherenceSemanticsRegression.cpp" />
+    <ClCompile Include="DemSourceValidityRegression.cpp" />
     <ClCompile Include="test2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RegistrationSubpixelRegression.h" />
 	<ClInclude Include="RobustCoregistrationRegression.h" />
+    <ClInclude Include="CoherenceSemanticsRegression.h" />
+    <ClInclude Include="DemSourceValidityRegression.h" />
   </ItemGroup>
     <ItemGroup>
     <ProjectReference Include="..\Utils\Utils.vcxproj">
@@ -173,6 +177,9 @@
     </ProjectReference>
     <ProjectReference Include="..\Registration\Registration.vcxproj">
       <Project>{15214729-7277-466D-AB38-0058FA1E31BC}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\Hdf5IO\Hdf5IO.vcxproj">
+      <Project>{D2EF3583-99B5-423E-A7B5-28B6404B951E}</Project>
     </ProjectReference>
     <ProjectReference Include="..\Filter\Filter.vcxproj">
       <Project>{8C9EE325-6D41-46CC-819A-CB94D91B3FAD}</Project>

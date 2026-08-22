@@ -27,9 +27,9 @@
     <ClInclude Include="..\include\Registration.h">
       <Filter>头文件</Filter>
     </ClInclude>
-	<ClInclude Include="..\include\RobustCoregistration.h">
-	  <Filter>头文件</Filter>
-	</ClInclude>
+    <ClInclude Include="..\include\RobustCoregistration.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -38,22 +38,10 @@
     <ClCompile Include="Registration.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-	<ClCompile Include="RobustCoregistration.cpp">
-	  <Filter>源文件</Filter>
-	</ClCompile>
+    <ClCompile Include="RobustCoregistration.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="dllmain.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\FormatConversion\tinystr.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\FormatConversion\tinyxml.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\FormatConversion\tinyxmlerror.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

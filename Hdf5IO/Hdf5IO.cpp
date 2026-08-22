@@ -850,6 +850,23 @@ namespace Hdf5IO
 		return file.create(filename, H5F_ACC_TRUNC, "create-trunc");
 	}
 
+	int datasetExists(const char* filename, const char* datasetName, int* exists)
+	{
+		if (!filename || !datasetName || !exists) return kInvalidArgument;
+		*exists = 0;
+		const std::string path = datasetPath(datasetName);
+		if (path.empty()) return kInvalidArgument;
+		ScopedHdf5Lock lock;
+		if (lock.result() != 0) return lock.result();
+		if (!isRegularFile(filename)) return -1;
+		ScopedAuditedH5File file;
+		if (file.open(filename, H5F_ACC_RDONLY, "read") != 0) return -1;
+		const htri_t result = H5Lexists(file, path.c_str(), H5P_DEFAULT);
+		if (result < 0) return -1;
+		*exists = result > 0 ? 1 : 0;
+		return 0;
+	}
+
 	int getDatasetDims(const char* filename, const char* datasetName, int* rows, int* columns)
 	{
 		if (!filename || !datasetName || !rows || !columns) return -1;

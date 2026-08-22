@@ -3270,8 +3270,8 @@ int Unwrap::QualityGuidedMCFInternal(
 	int ret, nr, nc, count = 0;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
 	wrapped_phase.copyTo(phase);
-	ret = util.phase_coherence(phase, 3, 3, coherence);
-	if (return_check(ret, "phase_coherence()", error_head)) return -1;
+	ret = util.phase_axial_concentration(phase, 3, 3, coherence);
+	if (return_check(ret, "phase_axial_concentration()", error_head)) return -1;
 	quality_index = 1 - coherence;
 	//mask = Mat::zeros(nr, nc, CV_32S);
 
@@ -3669,7 +3669,7 @@ int Unwrap::SnaphuFileInternal(
 		multilookAz = 1;
 		fprintf(stderr, "snaphu(): multilook metadata unavailable; source amplitudes will not be resampled.\n");
 	}
-	enum class CorrelationSource { InputH5, PhaseDerived, Disabled };
+	enum class CorrelationSource { InputH5, Disabled };
 	enum class AmplitudeStatus { Used, Unavailable, OmittedDimensionMismatch };
 	CorrelationSource correlationSource = CorrelationSource::Disabled;
 	AmplitudeStatus amplitudeStatus = AmplitudeStatus::Unavailable;
@@ -3692,7 +3692,15 @@ int Unwrap::SnaphuFileInternal(
 	const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
 	if (inputCoherenceReadStatus == 0)
 	{
-		if (validateCorrelation(coherence, nr, nc, correlationReason))
+		std::string semantics;
+		const int semanticsReadStatus = conversion.read_str_from_h5(
+			wrapped_phase_file, "coherence_semantics", semantics);
+		if (semanticsReadStatus != 0 || semantics != "complex_gamma")
+		{
+			correlationReason = "coherence_semantics_not_complex_gamma";
+			fprintf(stderr, "snaphu(): input coherence rejected: physical complex_gamma is required.\n");
+		}
+		else if (validateCorrelation(coherence, nr, nc, correlationReason))
 		{
 			coherence.convertTo(coherence, CV_32F);
 			if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
@@ -3772,28 +3780,10 @@ int Unwrap::SnaphuFileInternal(
 	}
 	if (correlationSource != CorrelationSource::InputH5)
 	{
-		Mat phaseDerivedCoherence;
-		ret = util.phase_coherence(wrapped_phase, phaseDerivedCoherence);
-		if (ret < 0)
-		{
-			correlationReason = "phase_derived_failed";
-			fprintf(stderr, "snaphu(): phase-derived coherence unavailable.\n");
-		}
-		else
-		{
-			std::string phaseDerivedReason;
-			if (!validateCorrelation(phaseDerivedCoherence, nr, nc, phaseDerivedReason))
-			{
-				correlationReason = "phase_derived_validation_failed(" + phaseDerivedReason + ")";
-				fprintf(stderr, "snaphu(): phase_derived_coherence_rejected=%s\n", phaseDerivedReason.c_str());
-			}
-			else
-			{
-				phaseDerivedCoherence.convertTo(coherence, CV_32F);
-				if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
-				correlationSource = CorrelationSource::PhaseDerived;
-			}
-		}
+		correlationReason = correlationReason.empty()
+			? "physical_gamma_required"
+			: correlationReason;
+		fprintf(stderr, "snaphu(): no correlation file will be generated from phase-only R2.\n");
 	}
 
 
@@ -3875,10 +3865,6 @@ int Unwrap::SnaphuFileInternal(
 		{
 			summary << "input_h5(" << nr << "x" << nc << ")";
 		}
-		else if (correlationSource == CorrelationSource::PhaseDerived)
-		{
-			summary << "phase_derived(" << nr << "x" << nc << "; reason=" << correlationReason << ")";
-		}
 		else
 		{
 			summary << "disabled(reason=" << correlationReason << ")";
@@ -3920,36 +3906,29 @@ int Unwrap::SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const
 	if (!createTaskDirectory(tmp_folder, folder, taskFolderWide)) return -1;
 	ExternalToolResult toolResult;
 	ScopedArtifactDirectory artifacts(taskFolderWide, &toolResult);
-	string config_file, coh_file, in_file, out_file;
+	string config_file, in_file, out_file;
 	config_file = folder + "\\config.txt";
-	coh_file = folder + "\\coherence.dat";
 	in_file = folder + "\\wrapped_phase_snaphu.dat";
 	out_file = folder + "\\unwrapped_phase_snaphu.dat";
-	std::wstring configFileWide, coherenceFileWide, inFileWide, outFileWide;
+	std::wstring configFileWide, inFileWide, outFileWide;
 	PathResolver::Error artifactPathError = PathResolver::Error::None;
 	if (!PathResolver::utf8ToWide(config_file, configFileWide, &artifactPathError) ||
-		!PathResolver::utf8ToWide(coh_file, coherenceFileWide, &artifactPathError) ||
 		!PathResolver::utf8ToWide(in_file, inFileWide, &artifactPathError) ||
 		!PathResolver::utf8ToWide(out_file, outFileWide, &artifactPathError) ||
-		!artifacts.registerCandidate(configFileWide) || !artifacts.registerCandidate(coherenceFileWide) ||
+		!artifacts.registerCandidate(configFileWide) ||
 		!artifacts.registerCandidate(inFileWide) || !artifacts.registerCandidate(outFileWide)) return -1;
-	Utils util;
-	Mat coherence, phase;
-	int ret, nr, nc;
+	Mat phase;
+	int nr, nc;
 	nr = wrapped_phase.rows;
 	nc = wrapped_phase.cols;
-	ret = util.phase_coherence(wrapped_phase, coherence);
-	if (return_check(ret, "phase_coherence()", error_head)) return -1;
 	wrapped_phase.convertTo(phase, CV_32F);
 	if (!writeFloatRaster(inFileWide, phase, &artifacts)) return -1;
-	coherence.convertTo(coherence, CV_32F);
-	if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
-	std::string configInFile, configOutFile, configCoherenceFile;
-	if (!quoteSnaphuConfigPath(in_file, configInFile) || !quoteSnaphuConfigPath(out_file, configOutFile) ||
-		!quoteSnaphuConfigPath(coh_file, configCoherenceFile)) return -1;
+	std::string configInFile, configOutFile;
+	if (!quoteSnaphuConfigPath(in_file, configInFile) || !quoteSnaphuConfigPath(out_file, configOutFile)) return -1;
 	std::ostringstream config;
 	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
-	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\nCORRFILE " << configCoherenceFile << "\n";
+	// 没有物理 gamma 时省略 CORRFILE；绝不把 phase-derived R2 伪装成 gamma。
+	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\n";
 	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
 	const std::string configText = config.str();
 	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
@@ -4081,9 +4060,7 @@ int Unwrap::GetSPD(Mat& wrapped_phase, Mat& SPD)
 	int width = padded.cols;
 	int height = padded.rows;
 	std::atomic<bool> parallel_flag(true);
-	int ret = 0;
-#pragma omp parallel for schedule(guided) \
-	private(ret)
+#pragma omp parallel for schedule(guided)
 	for (int i = armh; i < height - armh; i++)
 	{
 		if (!parallel_flag) continue;

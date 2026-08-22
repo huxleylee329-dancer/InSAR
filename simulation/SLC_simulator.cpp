@@ -3679,6 +3679,37 @@ int SLC_simulator::pingpong_MLE(
 	const Mat& phase_reference,
 	Mat& wrapped_phase_low,
 	Mat& wrapped_phase_high,
+	Mat& outphase,
+	Mat& lat_coef,
+	Mat& lon_coef,
+	double wavelength_low,
+	double wavelength_high,
+	double nearRangeTime,
+	double rangeSpacing,
+	double azimuthSpacing,
+	int offset_row,
+	int offset_col,
+	double start1,
+	double end1,
+	double start2,
+	double end2,
+	const Mat& statevec1,
+	const Mat& statevec2,
+	double prf,
+	const string& demPath
+)
+{
+	return pingpong_MLE(
+		phase_reference, wrapped_phase_low, wrapped_phase_high, outphase,
+		lat_coef, lon_coef, wavelength_low, wavelength_high, nearRangeTime,
+		rangeSpacing, azimuthSpacing, offset_row, offset_col, start1, end1,
+		start2, end2, statevec1, statevec2, prf, demPath, Mat());
+}
+
+int SLC_simulator::pingpong_MLE(
+	const Mat& phase_reference,
+	Mat& wrapped_phase_low,
+	Mat& wrapped_phase_high,
 	Mat& outphase, 
 	Mat& lat_coef,
 	Mat& lon_coef,
@@ -3696,7 +3727,8 @@ int SLC_simulator::pingpong_MLE(
 	const Mat& statevec1,
 	const Mat& statevec2,
 	double prf,
-	const string& demPath
+	const string& demPath,
+	const Mat& physical_coherence
 )
 {
 	if (phase_reference.size() != wrapped_phase_high.size() ||
@@ -3722,6 +3754,31 @@ int SLC_simulator::pingpong_MLE(
 	{
 		fprintf(stderr, "pingpong_MLE(): input check failed!\n");
 		return -1;
+	}
+	if (physical_coherence.empty() ||
+		physical_coherence.rows != wrapped_phase_high.rows ||
+		physical_coherence.cols != wrapped_phase_high.cols ||
+		physical_coherence.channels() != 1 ||
+		(physical_coherence.type() != CV_32F && physical_coherence.type() != CV_64F))
+	{
+		fprintf(stderr,
+			"pingpong_MLE(): physical coherence gamma is required; "
+			"phase-derived R2 cannot be used as the PDF gamma parameter.\n");
+		return -1;
+	}
+	Mat gamma_field;
+	physical_coherence.convertTo(gamma_field, CV_64F);
+	for (int r = 0; r < gamma_field.rows; ++r)
+	{
+		const double* row = gamma_field.ptr<double>(r);
+		for (int c = 0; c < gamma_field.cols; ++c)
+		{
+			if (!std::isfinite(row[c]) || row[c] <= 0.0 || row[c] > 1.0)
+			{
+				fprintf(stderr, "pingpong_MLE(): physical coherence gamma contains an invalid value.\n");
+				return -1;
+			}
+		}
 	}
 	Deflat flat; Utils util;
 	//去参考平面
@@ -3841,14 +3898,12 @@ int SLC_simulator::pingpong_MLE(
 	util.wrap(wrapped_phase_high, wrapped_phase_high);
 	util.wrap(wrapped_phase_low, wrapped_phase_low);
 	wrapped_phase_high.copyTo(outphase);
-	Mat coherence;
-	util.phase_coherence(wrapped_phase_high, 7, 7, coherence);
 #pragma omp parallel for schedule(guided)
 	for (int i = 0; i < sceneHeight; i++)
 	{
 		for (int j = 0; j < sceneWidth; j++)
 		{
-			double gamma = coherence.at<double>(i, j)/*0.98*/;
+			double gamma = gamma_field.at<double>(i, j);
 			double gamma_square = gamma * gamma;
 			double sigma = sqrt(1.0 - gamma * gamma) / (gamma * sqrt(2.0 * 1.0));
 			int n_bin = 10000;

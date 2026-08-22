@@ -5,6 +5,9 @@
 #include"..\include\Filter.h"
 
 namespace {
+constexpr const char* kCoherenceSemanticsDataset = "coherence_semantics";
+constexpr const char* kPhaseAxialR2Semantics = "phase_axial_r2";
+
 bool is_cancelled(IsCancelledCallback callback, void* context) noexcept {
 	return callback != nullptr && callback(context);
 }
@@ -1189,6 +1192,8 @@ int SBAS::generate_high_coherence_mask(
 	FormatConversion conversion; Utils util;
 	int ret;
 	Mat phase, coherence;
+	// 该接口历史上使用 phase_coherence() 的 R2 输出。保留原阈值范围以避免
+	// 静默改变已有 SBAS 掩膜；调用方不得把它解释为 gamma/R1 阈值。
 	coherence_thresh = coherence_thresh < 0.3 ? 0.3 : coherence_thresh;
 	coherence_thresh = coherence_thresh > 0.95 ? 0.95 : coherence_thresh;
 	count_thresh = count_thresh < 0.3 ? 0.3 : count_thresh;
@@ -1206,13 +1211,30 @@ int SBAS::generate_high_coherence_mask(
 		ret = conversion.read_array_from_h5(phaseFiles[i].c_str(), "coherence", coherence);
 		if (ret < 0)
 		{
-			ret = util.phase_coherence(phase, wndsize_rg, wndsize_az, coherence);
-			if (return_check(ret, "phase_coherence()", error_head)) return -1;
+			ret = util.phase_axial_concentration(phase, wndsize_rg, wndsize_az, coherence);
+			if (return_check(ret, "phase_axial_concentration()", error_head)) return -1;
 			cv::Mat coherence_32f;
 			coherence.convertTo(coherence_32f, CV_32F);
 			ret = conversion.write_array_to_h5(phaseFiles[i].c_str(), "coherence", coherence_32f);
 			if (return_check(ret, "write_array_to_h5()", error_head)) return -1;
+			ret = conversion.write_str_to_h5(
+				phaseFiles[i].c_str(), kCoherenceSemanticsDataset, kPhaseAxialR2Semantics);
+			if (return_check(ret, "write_str_to_h5(coherence_semantics)", error_head)) return -1;
 			if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
+		}
+		else
+		{
+			std::string semantics;
+			const int semanticsRet = conversion.read_str_from_h5(
+				phaseFiles[i].c_str(), kCoherenceSemanticsDataset, semantics);
+			if (semanticsRet == 0 && semantics != kPhaseAxialR2Semantics)
+			{
+				fprintf(stderr,
+					"generate_high_coherence_mask(): coherence semantics '%s' "
+					"is not phase_axial_r2; refusing threshold mixing.\n",
+					semantics.c_str());
+				return -1;
+			}
 		}
 		if (coherence.type() != CV_64F)
 		{
@@ -1618,8 +1640,8 @@ int SBAS::generate_interferograms(
 				ret = filter.Goldstein_filter(phase, phase, alpha, 64, 8);
 				if (return_check(ret, "Goldstein_filter()", error_head)) return -1;
 				//计算相关系数
-				ret = util.phase_coherence(phase, coherence);
-				if (return_check(ret, "phase_coherence()", error_head)) return -1;
+				ret = util.phase_axial_concentration(phase, coherence);
+				if (return_check(ret, "phase_axial_concentration()", error_head)) return -1;
 				if (is_cancelled(is_cancelled_callback, cancel_context)) return -2;
 				snprintf(str, sizeof(str), "\\%d_%d.h5", i + 1, j + 1);
 				h5file = path + str;
@@ -1635,6 +1657,10 @@ int SBAS::generate_interferograms(
 				cv::Mat coherence_32f;
 				coherence.convertTo(coherence_32f, CV_32F);
 				ret = conversion.write_array_to_h5(h5file.c_str(), "coherence", coherence_32f);
+				if (return_check(ret, "write_array_to_h5(coherence)", error_head)) return -1;
+				ret = conversion.write_str_to_h5(
+					h5file.c_str(), kCoherenceSemanticsDataset, kPhaseAxialR2Semantics);
+				if (return_check(ret, "write_str_to_h5(coherence_semantics)", error_head)) return -1;
 				ret = conversion.write_int_to_h5(h5file.c_str(), "offset_row", offset_row);
 				if (return_check(ret, "write_int_to_h5()", error_head)) return -1;
 				ret = conversion.write_int_to_h5(h5file.c_str(), "offset_col", offset_col);

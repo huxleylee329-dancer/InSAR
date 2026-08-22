@@ -2508,6 +2508,11 @@ int Utils::complex_coherence(
 
 int Utils::phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb)
 {
+	return phase_axial_concentration(phase, coherence, cb);
+}
+
+int Utils::phase_axial_concentration(Mat& phase, Mat& coherence, NewtonProgressCallback cb)
+{
 	if (phase.rows < 3 ||
 		phase.cols < 3 ||
 		phase.type() != CV_64F ||
@@ -2534,6 +2539,11 @@ int Utils::phase_coherence(Mat& phase, Mat& coherence, NewtonProgressCallback cb
 
 int Utils::phase_coherence(const Mat& phase, int est_wndsize_rg, int est_wndsize_az, Mat& coherence, NewtonProgressCallback cb)
 {
+	return phase_axial_concentration(phase, est_wndsize_rg, est_wndsize_az, coherence, cb);
+}
+
+int Utils::phase_axial_concentration(const Mat& phase, int est_wndsize_rg, int est_wndsize_az, Mat& coherence, NewtonProgressCallback cb)
+{
 	if (phase.rows < 3 ||
 		phase.cols < 3 ||
 		phase.type() != CV_64F ||
@@ -2558,6 +2568,349 @@ int Utils::phase_coherence(const Mat& phase, int est_wndsize_rg, int est_wndsize
 	ret = complex_coherence(master, slave, est_wndsize_rg, est_wndsize_az, coherence, cb);
 	if (ret == -2) return -2;
 	if (return_check(ret, "complex_coherence(*, *, *)", error_head)) return -1;
+	return 0;
+}
+
+int Utils::phase_circular_concentration(const Mat& phase, Mat& concentration, NewtonProgressCallback cb)
+{
+	if (phase.rows < 3 ||
+		phase.cols < 3 ||
+		phase.type() != CV_64F ||
+		phase.channels() != 1)
+	{
+		fprintf(stderr, "phase_circular_concentration(): input check failed!\n\n");
+		return -1;
+	}
+	ComplexMat master, slave;
+	Mat cos, sin;
+	int ret;
+	ret = phase2cos(phase, cos, sin);
+	if (return_check(ret, "phase2cos(*, *, *)", error_head)) return -1;
+	// 主图像取单位复数 exp(i*phi)；辅图像取常量 1+0i。
+	// 此时 complex_coherence() 的分子为 |sum(exp(i*phi))|，分母为 sqrt(N*N)=N，
+	// 故输出恰为一阶圆统计集中度 R1 = |mean(exp(i*phi))|。
+	// 注：SetRe()/SetIm() 形参为非 const 引用，常量场须先落地为具名局部变量。
+	Mat slave_re = Mat::ones(phase.rows, phase.cols, CV_64F);
+	Mat slave_im = Mat::zeros(phase.rows, phase.cols, CV_64F);
+	master.SetRe(cos);
+	master.SetIm(sin);
+	slave.SetRe(slave_re);
+	slave.SetIm(slave_im);
+	ret = complex_coherence(master, slave, concentration, cb);
+	if (ret == -2) return -2;
+	if (return_check(ret, "complex_coherence(*, *, *)", error_head)) return -1;
+	return 0;
+}
+
+int Utils::phase_circular_concentration(
+	const Mat& phase,
+	int est_wndsize_rg,
+	int est_wndsize_az,
+	Mat& concentration,
+	NewtonProgressCallback cb
+)
+{
+	if (phase.rows < 3 ||
+		phase.cols < 3 ||
+		phase.type() != CV_64F ||
+		phase.channels() != 1 ||
+		est_wndsize_rg % 2 == 0 ||
+		est_wndsize_az % 2 == 0
+		)
+	{
+		fprintf(stderr, "phase_circular_concentration(): input check failed!\n\n");
+		return -1;
+	}
+	ComplexMat master, slave;
+	Mat cos, sin;
+	int ret;
+	ret = phase2cos(phase, cos, sin);
+	if (return_check(ret, "phase2cos(*, *, *)", error_head)) return -1;
+	// 构造同上：辅图像为常量 1+0i，输出为一阶圆统计集中度 R1。
+	// 注：SetRe()/SetIm() 形参为非 const 引用，常量场须先落地为具名局部变量。
+	Mat slave_re = Mat::ones(phase.rows, phase.cols, CV_64F);
+	Mat slave_im = Mat::zeros(phase.rows, phase.cols, CV_64F);
+	master.SetRe(cos);
+	master.SetIm(sin);
+	slave.SetRe(slave_re);
+	slave.SetIm(slave_im);
+	ret = complex_coherence(master, slave, est_wndsize_rg, est_wndsize_az, concentration, cb);
+	if (ret == -2) return -2;
+	if (return_check(ret, "complex_coherence(*, *, *)", error_head)) return -1;
+	return 0;
+}
+
+int Utils::complex_coherence_multilooked(
+	const ComplexMat& master_image,
+	const ComplexMat& slave_image,
+	const Mat& input_valid_mask,
+	int multilook_rg,
+	int multilook_az,
+	int est_wndsize_rg,
+	int est_wndsize_az,
+	Mat& coherence,
+	Mat& valid_mask,
+	Mat& valid_sample_count,
+	NewtonProgressCallback cb
+)
+{
+	const int nr = master_image.GetRows();
+	const int nc = master_image.GetCols();
+	if (nr < 1 || nc < 1)
+	{
+		coherence.release();
+		valid_mask.release();
+		valid_sample_count.release();
+		fprintf(stderr, "complex_coherence_multilooked(): input check failed!\n\n");
+		return -1;
+	}
+	Mat zero_reference(nr, nc, CV_64F, Scalar::all(0));
+	return complex_coherence_demodulated(
+		master_image, slave_image, zero_reference, input_valid_mask,
+		multilook_rg, multilook_az, est_wndsize_rg, est_wndsize_az,
+		coherence, valid_mask, valid_sample_count, cb);
+}
+
+int Utils::complex_coherence_demodulated(
+	const ComplexMat& master_image,
+	const ComplexMat& slave_image,
+	const Mat& reference_phase,
+	const Mat& input_valid_mask,
+	int multilook_rg,
+	int multilook_az,
+	int est_wndsize_rg,
+	int est_wndsize_az,
+	Mat& coherence,
+	Mat& valid_mask,
+	Mat& valid_sample_count,
+	NewtonProgressCallback cb
+)
+{
+	coherence.release();
+	valid_mask.release();
+	valid_sample_count.release();
+	const int nr = master_image.GetRows();
+	const int nc = master_image.GetCols();
+	if (nr < 1 || nc < 1 ||
+		master_image.re.rows != nr || master_image.re.cols != nc ||
+		master_image.im.rows != nr || master_image.im.cols != nc ||
+		slave_image.re.rows != nr || slave_image.re.cols != nc ||
+		slave_image.im.rows != nr || slave_image.im.cols != nc ||
+		master_image.re.type() != master_image.im.type() ||
+		slave_image.re.type() != slave_image.im.type() ||
+		slave_image.GetRows() != nr ||
+		slave_image.GetCols() != nc ||
+		master_image.type() != slave_image.type() ||
+		(master_image.type() != CV_64F && master_image.type() != CV_32F) ||
+		multilook_rg < 1 || multilook_az < 1 ||
+		nr < multilook_az || nc < multilook_rg ||
+		est_wndsize_rg < 3 || est_wndsize_az < 3 ||
+		est_wndsize_rg % 2 == 0 || est_wndsize_az % 2 == 0
+		)
+	{
+		fprintf(stderr, "complex_coherence_demodulated(): input check failed!\n\n");
+		return -1;
+	}
+	if (reference_phase.empty() ||
+		reference_phase.rows != nr ||
+		 reference_phase.cols != nc ||
+		 reference_phase.type() != CV_64F ||
+		 reference_phase.channels() != 1 ||
+		input_valid_mask.empty() ||
+		input_valid_mask.rows != nr ||
+		input_valid_mask.cols != nc ||
+		input_valid_mask.type() != CV_8U ||
+		input_valid_mask.channels() != 1)
+	{
+		fprintf(stderr, "complex_coherence_demodulated(): reference phase or valid mask check failed!\n\n");
+		return -1;
+	}
+
+	const int nr_new = nr / multilook_az;
+	const int nc_new = nc / multilook_rg;
+	const bool is64 = (master_image.type() == CV_64F);
+
+	// 第一阶段：在多视网格上按“带幅度”方式聚合已解调复干涉量与主辅功率。
+	// 注意不可先在原始网格估计 gamma 再下采样，二者不等价。
+	Mat sumRe(nr_new, nc_new, CV_64F, Scalar::all(0));
+	Mat sumIm(nr_new, nc_new, CV_64F, Scalar::all(0));
+	Mat powM(nr_new, nc_new, CV_64F, Scalar::all(0));
+	Mat powS(nr_new, nc_new, CV_64F, Scalar::all(0));
+	Mat sampleCount(nr_new, nc_new, CV_32S, Scalar::all(0));
+
+	std::atomic<bool> cancel_flag(false);
+	std::atomic<int> completed_rows(0);
+	std::atomic<int> max_reported_pct(0);
+	const int step_a = std::max(1, nr_new / 100);
+
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < nr_new; i++)
+	{
+		if (cancel_flag) continue;
+		double* pRe = sumRe.ptr<double>(i);
+		double* pIm = sumIm.ptr<double>(i);
+		double* pM = powM.ptr<double>(i);
+		double* pS = powS.ptr<double>(i);
+		int* pCount = sampleCount.ptr<int>(i);
+		const int top = i * multilook_az;
+		const int bottom = std::min(top + multilook_az, nr);
+		for (int r = top; r < bottom; r++)
+		{
+			const double* refRow = reference_phase.ptr<double>(r);
+			const uchar* inputMaskRow = input_valid_mask.ptr<uchar>(r);
+			for (int j = 0; j < nc_new; j++)
+			{
+				const int left = j * multilook_rg;
+				const int right = std::min(left + multilook_rg, nc);
+				double accRe = 0.0, accIm = 0.0, accM = 0.0, accS = 0.0;
+				int accCount = 0;
+				for (int c = left; c < right; c++)
+				{
+					if (inputMaskRow[c] == 0) continue;
+					double mr, mi, sr, si;
+					if (is64)
+					{
+						mr = master_image.re.at<double>(r, c); mi = master_image.im.at<double>(r, c);
+						sr = slave_image.re.at<double>(r, c);  si = slave_image.im.at<double>(r, c);
+					}
+					else
+					{
+						mr = master_image.re.at<float>(r, c); mi = master_image.im.at<float>(r, c);
+						sr = slave_image.re.at<float>(r, c);  si = slave_image.im.at<float>(r, c);
+					}
+					const double ref = refRow[c];
+					if (!std::isfinite(mr) || !std::isfinite(mi) ||
+						!std::isfinite(sr) || !std::isfinite(si) || !std::isfinite(ref))
+					{
+						continue;
+					}
+					// 干涉量取 M*conj(S)：实部 Mr*Sr+Mi*Si，虚部 Sr*Mi-Mr*Si，
+					// 与 Multilook()/generate_phase() 写入 H5 的 phase 定义严格一致
+					double vRe = mr * sr + mi * si;
+					double vIm = sr * mi - mr * si;
+					// 乘以 exp(-i*phi_ref)，phi_ref 须与上述 phase 同约定
+					const double cosRef = std::cos(ref);
+					const double sinRef = std::sin(ref);
+					const double dRe = vRe * cosRef + vIm * sinRef;
+					const double dIm = vIm * cosRef - vRe * sinRef;
+					vRe = dRe; vIm = dIm;
+					accRe += vRe;
+					accIm += vIm;
+					accM += mr * mr + mi * mi;
+					accS += sr * sr + si * si;
+					++accCount;
+				}
+				pRe[j] += accRe; pIm[j] += accIm;
+				pM[j] += accM;   pS[j] += accS;
+				pCount[j] += accCount;
+			}
+		}
+
+		const int current = ++completed_rows;
+		if (cb && current % step_a == 0)
+		{
+			const int current_pct = current * 50 / nr_new;
+			int prev = max_reported_pct.load();
+			while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
+			{
+			}
+			if (current_pct > prev)
+			{
+				#pragma omp critical(coherence_demod_progress_lock)
+				{
+					if (!cb(current_pct, "Aggregating demodulated interferogram..."))
+					{
+						cancel_flag = true;
+					}
+				}
+			}
+		}
+	}
+	if (cancel_flag) return -2;
+
+	// 第二阶段：在多视网格上做局部相干估计。
+	// 边界采用窗口裁剪（部分窗口），不使用 BORDER_REFLECT，避免边缘估计值被重复计入。
+	coherence.create(nr_new, nc_new, CV_64F);
+	valid_mask.create(nr_new, nc_new, CV_8U);
+	valid_sample_count.create(nr_new, nc_new, CV_32S);
+	const int win_a = (est_wndsize_az - 1) / 2;
+	const int win_r = (est_wndsize_rg - 1) / 2;
+	completed_rows = 0;
+	const int step_b = std::max(1, nr_new / 100);
+
+#pragma omp parallel for schedule(guided)
+	for (int i = 0; i < nr_new; i++)
+	{
+		if (cancel_flag) continue;
+		double* cohRow = coherence.ptr<double>(i);
+		uchar* maskRow = valid_mask.ptr<uchar>(i);
+		int* supportRow = valid_sample_count.ptr<int>(i);
+		const int top = std::max(0, i - win_a);
+		const int bottom = std::min(nr_new - 1, i + win_a);
+		for (int j = 0; j < nc_new; j++)
+		{
+			const int left = std::max(0, j - win_r);
+			const int right = std::min(nc_new - 1, j + win_r);
+			double NRe = 0.0, NIm = 0.0, PM = 0.0, PS = 0.0;
+			int support = 0;
+			for (int r = top; r <= bottom; r++)
+			{
+				const double* pRe = sumRe.ptr<double>(r);
+				const double* pIm = sumIm.ptr<double>(r);
+				const double* pM = powM.ptr<double>(r);
+				const double* pS = powS.ptr<double>(r);
+				const int* pCount = sampleCount.ptr<int>(r);
+				for (int c = left; c <= right; c++)
+				{
+					NRe += pRe[c]; NIm += pIm[c];
+					PM += pM[c];   PS += pS[c];
+					support += pCount[c];
+				}
+			}
+			supportRow[j] = support;
+			const double denom = std::sqrt(PM * PS);
+			const double numeratorSquared = NRe * NRe + NIm * NIm;
+			if (support <= 0 || !std::isfinite(denom) || !(denom > 0.0) ||
+				!std::isfinite(numeratorSquared) || numeratorSquared < 0.0)
+			{
+				// 无支持、零能量或非有限窗口均显式置无效。
+				cohRow[j] = 0.0;
+				maskRow[j] = 0;
+				continue;
+			}
+			double g = std::sqrt(numeratorSquared) / denom;
+			if (!std::isfinite(g))
+			{
+				cohRow[j] = 0.0;
+				maskRow[j] = 0;
+				continue;
+			}
+			if (g > 1.0) g = 1.0;  // 浮点误差保护（Cauchy-Schwarz 保证理论上不超过 1）
+			cohRow[j] = g;
+			maskRow[j] = 1;
+		}
+
+		const int current = ++completed_rows;
+		if (cb && current % step_b == 0)
+		{
+			const int current_pct = 50 + current * 50 / nr_new;
+			int prev = max_reported_pct.load();
+			while (current_pct > prev && !max_reported_pct.compare_exchange_weak(prev, current_pct))
+			{
+			}
+			if (current_pct > prev)
+			{
+				#pragma omp critical(coherence_demod_progress_lock)
+				{
+					if (!cb(current_pct, "Estimating demodulated complex coherence..."))
+					{
+						cancel_flag = true;
+					}
+				}
+			}
+		}
+	}
+	if (cancel_flag) return -2;
 	return 0;
 }
 

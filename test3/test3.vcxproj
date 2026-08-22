@@ -152,7 +152,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\HDF5\lib;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libsz.lib;libzlib.lib;libhdf5.lib;libhdf5_cpp.lib;libaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libszaec.lib;zlib-static.lib;libhdf5.lib;libhdf5_cpp.lib;libaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

@@ -339,6 +339,17 @@ public:
 		int win_w, int win_h, int multilook_rg, int multilook_az
 	);
 
+	/** @brief 为 XML 中已有的 coherence 数据条目标注数值语义
+
+	保留 coherence-1.0 产品族字符串以兼容旧项目路由，语义写在对应
+	<Data> 节点的 coherence_semantics 子节点中。旧 XML 可不含该节点。
+	*/
+	int XMLFile_set_coherence_semantics(
+		const char* datanode_name,
+		const char* node_name,
+		const char* semantics
+	);
+
 	/** @brief 添加滤波图像节点
 	@param mode           收发模式�?：单发单收，2：单发双收，3：乒乓模式，4：双频乒乓模式）
 	@param datanode_node  滤波图像节点�?

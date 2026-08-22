@@ -36,6 +36,12 @@
 	<ClCompile Include="RobustCoregistrationRegression.cpp">
 	  <Filter>源文件</Filter>
 	</ClCompile>
+    <ClCompile Include="CoherenceSemanticsRegression.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="DemSourceValidityRegression.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RegistrationSubpixelRegression.h">
@@ -44,5 +50,11 @@
 	<ClInclude Include="RobustCoregistrationRegression.h">
 	  <Filter>头文件</Filter>
 	</ClInclude>
+    <ClInclude Include="CoherenceSemanticsRegression.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DemSourceValidityRegression.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

@@ -61,6 +61,26 @@ public:
     );
 
     /**
+     * @brief 裁剪并重采样 DEM，同时返回源数据有效掩膜。
+     *
+     * 数值为 0 的高程不会被视为无效；有效性仅来自源栅格的 NoData、
+     * GDAL mask band、非有限值以及目标网格覆盖情况。输出掩膜为 CV_8UC1，
+     * 1 表示源高程有效，0 表示缺失。无效 DEM 像元统一写为 -32767，且
+     * 不执行旧接口的填洞逻辑。
+     */
+    int read_crop_and_resample_dem_ex(
+        const char* file_path,
+        double min_lon, double max_lon,
+        double min_lat, double max_lat,
+        double target_resolution,
+        cv::Mat& cropped_dem,
+        cv::Mat& source_valid_mask,
+        double new_geo_transform[6],
+        char* projection,
+        int max_proj_len
+    );
+
+    /**
      * @brief 解析 GeoTIFF 文件元数据与矩阵（不推荐用于超大图）
      */
     int parse_geotiff(

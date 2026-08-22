@@ -321,7 +321,8 @@ public:
 	* @param phaseFiles               差分干涉相位数据堆栈文件
 	* @param wndsize_rg               相关系数估计距离向窗口大小（奇数）
 	* @param wndsize_az               相关系数估计方位向窗口大小（奇数）
-	* @param coherence_thresh         高相干点相关系数阈值（0~1）
+	* @param coherence_thresh         历史 R2（二倍角轴向集中度）阈值（0~1）；
+	*                                仅用于 phase_axial_r2，不能当作物理 gamma
 	* @param count_thresh             掩膜筛选阈值（0~1，若某点相关系数大于阈值的图幅数大于count_thresh×图幅数，则该点为高相干点）
 	* @param mask                     高相干掩膜（返回值，int型）
 	* @return 成功返回0，否则返回-1

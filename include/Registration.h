@@ -56,6 +56,36 @@ struct CropEvalResult {
 	double offsetX;             // 水平向残余偏差 (dx)
 };
 
+// DEM 点投影至单景雷达坐标的诊断结果。调用方必须以零初始化，并设置
+// structSize=sizeof(DemRadarPositionDiagnostics)、version=1。
+struct DemRadarPositionDiagnostics {
+	unsigned int structSize;
+	unsigned int version;
+
+	int totalDemPointCount;
+	int validPointCount;
+	int zeroDopplerFailureCount;
+	int outsideScenePointCount;
+	int azimuthBeforeSceneCount;
+	int azimuthAfterSceneCount;
+	int rangeBeforeSceneCount;
+	int rangeAfterSceneCount;
+};
+
+// 主辅影像在同一 DEM 网格上的共同雷达控制点统计。调用方必须以零初始化，
+// 并设置 structSize=sizeof(DemCoregistrationOverlapDiagnostics)、version=1。
+struct DemCoregistrationOverlapDiagnostics {
+	unsigned int structSize;
+	unsigned int version;
+
+	int totalDemPointCount;
+	int masterValidPointCount;
+	int slaveValidPointCount;
+	int commonAzimuthPointCount;
+	int commonRangePointCount;
+	int commonPointCount;
+};
+
 #pragma pack(pop)
 
 // C 兼容导出 API
@@ -104,6 +134,7 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	double thres_ratio_warn,
 	CropEvalResult* out_result
 );
+// Returns -8 when master/slave s_re/s_im datasets do not share one raster grid.
 
 class REGISTRATION_API Registration
 {
@@ -277,6 +308,33 @@ public:
 		RegistrationProgressCallback cb = nullptr,
 		void* userData = nullptr
 	);
+	/*@brief 根据DEM和轨道计算雷达坐标，并返回零多普勒和场景边界诊断
+	* diagnostics 必须是 version=1 的 DemRadarPositionDiagnostics。
+	* 返回 -3 表示 diagnostics ABI 不兼容。
+	*/
+	int getDEMRgAzPosWithDiagnostics(
+		Mat& DEM,
+		Mat& stateVector,
+		Mat& rangePos,
+		Mat& azimuthPos,
+		double lon_upperleft,
+		double lat_upperleft,
+		int offset_row,
+		int offset_col,
+		int sceneHeight,
+		int sceneWidth,
+		double prf,
+		double rangeSpacing,
+		double wavelength,
+		double nearRangeTime,
+		double acquisitionStartTime,
+		double acquisitionStopTime,
+		double lon_spacing,
+		double lat_spacing,
+		DemRadarPositionDiagnostics* diagnostics,
+		RegistrationProgressCallback cb = nullptr,
+		void* userData = nullptr
+	);
 	/*@brief 拟合辅图像偏移（1阶拟合，offset = a0 + a1 * x + a2 * y）
 	* @param slaveOffset                           偏移量
 	* @param masterRange                           DEM点在主图中的距离向坐标（列数，double型矩阵）
@@ -310,6 +368,19 @@ public:
 		Mat& slaveAzimuth,
 		Mat& slaveAzimuthOffset,
 		Mat& slaveRangeOffset
+	);
+	/*@brief 计算主辅影像DEM偏移，并返回共同有效雷达控制点统计
+	* diagnostics 必须是 version=1 的 DemCoregistrationOverlapDiagnostics。
+	* 返回 -3 表示 diagnostics ABI 不兼容。
+	*/
+	int computeSlaveOffsetWithDiagnostics(
+		Mat& masterRange,
+		Mat& masterAzimuth,
+		Mat& slaveRange,
+		Mat& slaveAzimuth,
+		Mat& slaveAzimuthOffset,
+		Mat& slaveRangeOffset,
+		DemCoregistrationOverlapDiagnostics* diagnostics
 	);
 	/*@brief 复图像双线性插值重采样（inplace，原地操作）
 	* @param slc                                   待重采样图像（原地操作）

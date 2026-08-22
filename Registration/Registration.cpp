@@ -5,6 +5,8 @@
 #include "stdafx.h"
 #include<math.h>
 #include <atomic>
+#include <algorithm>
+#include <vector>
 #include"..\include\Registration.h"
 #include"..\include\Hdf5IO.h"
 #ifdef _DEBUG
@@ -230,11 +232,113 @@ namespace
 		return upper + (lower - upper) * (row - mm);
 	}
 
+	constexpr int kCropCoherenceWindowSize = 5;
+	constexpr int kCropCoherenceBorder = kCropCoherenceWindowSize / 2;
+
+	struct CropCoherenceStatistics
+	{
+		double mean = 0.0;
+		double median = 0.0;
+		double maximum = 0.0;
+		double highValueRatio = 0.0;
+		long long validSampleCount = 0;
+	};
+
+	bool ComputeCropCoherenceStatistics(
+		const cv::Mat& coherence,
+		const cv::Mat& validSampleCount,
+		int requiredSampleCount,
+		CropCoherenceStatistics& statistics)
+	{
+		statistics = {};
+		if (coherence.empty() || coherence.type() != CV_32F ||
+			validSampleCount.empty() || validSampleCount.type() != CV_16U ||
+			validSampleCount.size() != coherence.size() || requiredSampleCount <= 0)
+		{
+			return false;
+		}
+
+		const int border = coherence.rows > 2 * kCropCoherenceBorder &&
+			coherence.cols > 2 * kCropCoherenceBorder ? kCropCoherenceBorder : 0;
+		int histogram[10000] = { 0 };
+		double sum = 0.0;
+		double maximum = 0.0;
+		long long validCount = 0;
+		long long highCount = 0;
+
+#pragma omp parallel
+		{
+			int localHistogram[10000] = { 0 };
+			double localSum = 0.0;
+			double localMaximum = 0.0;
+			long long localValidCount = 0;
+			long long localHighCount = 0;
+#pragma omp for nowait
+			for (int row = border; row < coherence.rows - border; ++row)
+			{
+				const float* values = coherence.ptr<float>(row);
+				const unsigned short* supportValues = validSampleCount.ptr<unsigned short>(row);
+				for (int column = border; column < coherence.cols - border; ++column)
+				{
+					const float value = values[column];
+					if (supportValues[column] != requiredSampleCount ||
+						!std::isfinite(value) || value < 0.0f || value > 1.0f)
+					{
+						continue;
+					}
+					const int bin = std::min(9999, static_cast<int>(value * 9999.0f));
+					++localHistogram[bin];
+					localSum += value;
+					localMaximum = std::max(localMaximum, static_cast<double>(value));
+					++localValidCount;
+					if (value > 0.5f) ++localHighCount;
+				}
+			}
+#pragma omp critical(crop_coherence_statistics_lock)
+			{
+				for (int i = 0; i < 10000; ++i)
+				{
+					histogram[i] += localHistogram[i];
+				}
+				sum += localSum;
+				maximum = std::max(maximum, localMaximum);
+				validCount += localValidCount;
+				highCount += localHighCount;
+			}
+		}
+
+		if (validCount <= 0)
+		{
+			return false;
+		}
+
+		const long long medianTarget = (validCount + 1) / 2;
+		long long accumulated = 0;
+		int medianBin = 0;
+		for (int i = 0; i < 10000; ++i)
+		{
+			accumulated += histogram[i];
+			if (accumulated >= medianTarget)
+			{
+				medianBin = i;
+				break;
+			}
+		}
+
+		statistics.mean = sum / static_cast<double>(validCount);
+		statistics.median = medianBin / 9999.0;
+		statistics.maximum = maximum;
+		statistics.highValueRatio = static_cast<double>(highCount) / static_cast<double>(validCount);
+		statistics.validSampleCount = validCount;
+		return true;
+	}
+
 	bool ComputeSubBlockCoherence(
 		const cv::Mat& M_re, const cv::Mat& M_im,
 		const cv::Mat& S_re, const cv::Mat& S_im,
 		cv::Mat& out_coherence,
-		double& out_mean_coh
+		double& out_mean_coh,
+		CropCoherenceStatistics* out_statistics = nullptr
 	) {
 		if (M_re.empty() || M_im.empty() || S_re.empty() || S_im.empty()) return false;
 
@@ -262,13 +366,32 @@ namespace
 		cv::multiply(S_im, S_im, tmp);
 		den_S = den_S + tmp;
 
+		// A zero-energy or non-finite SLC pair is not a valid observation. Keep
+		// the support count separate from coherence so empty padding cannot be
+		// reported as genuine low coherence and sparse windows cannot look
+		// artificially reliable.
+		cv::Mat inputValid(M_re.size(), CV_8U, cv::Scalar(0));
+#pragma omp parallel for schedule(static)
+		for (int row = 0; row < M_re.rows; ++row)
+		{
+			const float* masterPower = den_M.ptr<float>(row);
+			const float* slavePower = den_S.ptr<float>(row);
+			uchar* valid = inputValid.ptr<uchar>(row);
+			for (int column = 0; column < M_re.cols; ++column)
+			{
+				valid[column] = std::isfinite(masterPower[column]) && masterPower[column] > 0.0f &&
+					std::isfinite(slavePower[column]) && slavePower[column] > 0.0f ? 1 : 0;
+			}
+		}
+
 		// 2. Box filtering over a 5x5 window (normalize = false means sum)
-		cv::Size ksize(5, 5);
-		cv::Mat sum_num_re, sum_num_im, sum_den_M, sum_den_S;
+		cv::Size ksize(kCropCoherenceWindowSize, kCropCoherenceWindowSize);
+		cv::Mat sum_num_re, sum_num_im, sum_den_M, sum_den_S, validSampleCount;
 		cv::boxFilter(num_re, sum_num_re, CV_32F, ksize, cv::Point(-1, -1), false);
 		cv::boxFilter(num_im, sum_num_im, CV_32F, ksize, cv::Point(-1, -1), false);
 		cv::boxFilter(den_M, sum_den_M, CV_32F, ksize, cv::Point(-1, -1), false);
 		cv::boxFilter(den_S, sum_den_S, CV_32F, ksize, cv::Point(-1, -1), false);
+		cv::boxFilter(inputValid, validSampleCount, CV_16U, ksize, cv::Point(-1, -1), false);
 
 		// 3. Magnitude and Denominator square root
 		cv::Mat num_mag;
@@ -286,16 +409,15 @@ namespace
 		cv::threshold(out_coherence, out_coherence, 1.0, 1.0, cv::THRESH_TRUNC);
 		cv::threshold(out_coherence, out_coherence, 0.0, 0.0, cv::THRESH_TOZERO);
 
-		// 6. Compute mean on the valid inner region to avoid border artifacts
-		// boxFilter with 5x5 size has 2 pixels border artifacts
-		int border = 2;
-		if (out_coherence.rows > 2 * border && out_coherence.cols > 2 * border) {
-			cv::Rect inner_rect(border, border, out_coherence.cols - 2 * border, out_coherence.rows - 2 * border);
-			cv::Mat inner_coh = out_coherence(inner_rect);
-			out_mean_coh = cv::mean(inner_coh)[0];
-		} else {
-			out_mean_coh = cv::mean(out_coherence)[0];
-		}
+		// All reported statistics use the same finite-valued inner region. This
+		// excludes boxFilter's reflected boundary from mean, median, maximum and
+		// threshold ratios instead of applying four different sampling domains.
+		CropCoherenceStatistics statistics;
+		const int requiredSampleCount = kCropCoherenceWindowSize * kCropCoherenceWindowSize;
+		if (!ComputeCropCoherenceStatistics(
+			out_coherence, validSampleCount, requiredSampleCount, statistics)) return false;
+		out_mean_coh = statistics.mean;
+		if (out_statistics != nullptr) *out_statistics = statistics;
 
 		return true;
 	}
@@ -2049,7 +2171,9 @@ int Registration::gcps_sift(int rows, int cols, int move_rows, int move_cols, Ma
 	return 0;
 }
 
-int Registration::getDEMRgAzPos(
+namespace
+{
+int solveDemRadarPositions(
 	Mat& DEM,
 	Mat& stateVector,
 	Mat& rangePos,
@@ -2069,9 +2193,22 @@ int Registration::getDEMRgAzPos(
 	double lon_spacing,
 	double lat_spacing,
 	RegistrationProgressCallback cb,
-	void* userData
+	void* userData,
+	DemRadarPositionDiagnostics* diagnostics
 )
 {
+	if (diagnostics)
+	{
+		if (diagnostics->structSize < sizeof(DemRadarPositionDiagnostics) ||
+			diagnostics->version != 1)
+		{
+			return -3;
+		}
+		const unsigned int structSize = diagnostics->structSize;
+		*diagnostics = DemRadarPositionDiagnostics{};
+		diagnostics->structSize = structSize;
+		diagnostics->version = 1;
+	}
 	if (DEM.empty() ||
 		DEM.type() != CV_16S ||
 		sceneHeight < 10 ||
@@ -2096,7 +2233,11 @@ int Registration::getDEMRgAzPos(
 	}
 	//初始化轨道类
 	orbitStateVectors stateVectors(stateVector, acquisitionStartTime, acquisitionStopTime);
-	stateVectors.applyOrbit();
+	const int orbitUpdateRet = stateVectors.applyOrbit();
+	if (orbitUpdateRet < 0)
+	{
+		return orbitUpdateRet;
+	}
 	// removed unused: ret (no fallible call in this function)
 	double time_interval = 1.0 / prf;
 
@@ -2106,6 +2247,13 @@ int Registration::getDEMRgAzPos(
 	double dopplerFrequency = 0.0;
 	std::atomic<bool> cancel_flag(false);
 	std::atomic<int> completed_rows(0);
+	std::atomic<int> valid_points(0);
+	std::atomic<int> zero_doppler_failures(0);
+	std::atomic<int> outside_scene_points(0);
+	std::atomic<int> azimuth_before_scene(0);
+	std::atomic<int> azimuth_after_scene(0);
+	std::atomic<int> range_before_scene(0);
+	std::atomic<int> range_after_scene(0);
 	int step = std::max(1, DEM_rows / 100);
 
 	//采用迭代计算每个DEM点在SAR图像中的坐标，以减小计算量
@@ -2126,6 +2274,7 @@ int Registration::getDEMRgAzPos(
 			Utils::ell2xyz(lon, lat, height, groundPosition);
 			double zeroDopplerTime, distance;
 			if (!Utils::findZeroDopplerTime(stateVectors, groundPosition, wavelength, time_interval, dopplerFrequency, zeroDopplerTime, distance, 0.01)) {
+				if (diagnostics) ++zero_doppler_failures;
 				rangePos.at<double>(i, j) = -1.0;
 				azimuthPos.at<double>(i, j) = -1.0;
 				continue;
@@ -2136,11 +2285,20 @@ int Registration::getDEMRgAzPos(
 			rangeIndex = rangeIndex - offset_col;
 			if (azimuthIndex < 0 || azimuthIndex > sceneHeight - 1 || rangeIndex < 0 || rangeIndex > sceneWidth - 1)
 			{
+				if (diagnostics)
+				{
+					++outside_scene_points;
+					if (azimuthIndex < 0) ++azimuth_before_scene;
+					if (azimuthIndex > sceneHeight - 1) ++azimuth_after_scene;
+					if (rangeIndex < 0) ++range_before_scene;
+					if (rangeIndex > sceneWidth - 1) ++range_after_scene;
+				}
 				rangePos.at<double>(i, j) = -1.0;
 				azimuthPos.at<double>(i, j) = -1.0;
 			}
 			else
 			{
+				if (diagnostics) ++valid_points;
 				rangePos.at<double>(i, j) = rangeIndex;
 				azimuthPos.at<double>(i, j) = azimuthIndex;
 			}
@@ -2156,11 +2314,82 @@ int Registration::getDEMRgAzPos(
 			}
 		}
 	}
+	if (diagnostics)
+	{
+		diagnostics->totalDemPointCount = DEM_rows * DEM_cols;
+		diagnostics->validPointCount = valid_points.load();
+		diagnostics->zeroDopplerFailureCount = zero_doppler_failures.load();
+		diagnostics->outsideScenePointCount = outside_scene_points.load();
+		diagnostics->azimuthBeforeSceneCount = azimuth_before_scene.load();
+		diagnostics->azimuthAfterSceneCount = azimuth_after_scene.load();
+		diagnostics->rangeBeforeSceneCount = range_before_scene.load();
+		diagnostics->rangeAfterSceneCount = range_after_scene.load();
+	}
 	if (cancel_flag)
 	{
 		return -2;
 	}
 	return 0;
+}
+}
+
+int Registration::getDEMRgAzPos(
+	Mat& DEM,
+	Mat& stateVector,
+	Mat& rangePos,
+	Mat& azimuthPos,
+	double lon_upperleft,
+	double lat_upperleft,
+	int offset_row,
+	int offset_col,
+	int sceneHeight,
+	int sceneWidth,
+	double prf,
+	double rangeSpacing,
+	double wavelength,
+	double nearRangeTime,
+	double acquisitionStartTime,
+	double acquisitionStopTime,
+	double lon_spacing,
+	double lat_spacing,
+	RegistrationProgressCallback cb,
+	void* userData
+)
+{
+	return solveDemRadarPositions(DEM, stateVector, rangePos, azimuthPos,
+		lon_upperleft, lat_upperleft, offset_row, offset_col, sceneHeight, sceneWidth,
+		prf, rangeSpacing, wavelength, nearRangeTime, acquisitionStartTime, acquisitionStopTime,
+		lon_spacing, lat_spacing, cb, userData, nullptr);
+}
+
+int Registration::getDEMRgAzPosWithDiagnostics(
+	Mat& DEM,
+	Mat& stateVector,
+	Mat& rangePos,
+	Mat& azimuthPos,
+	double lon_upperleft,
+	double lat_upperleft,
+	int offset_row,
+	int offset_col,
+	int sceneHeight,
+	int sceneWidth,
+	double prf,
+	double rangeSpacing,
+	double wavelength,
+	double nearRangeTime,
+	double acquisitionStartTime,
+	double acquisitionStopTime,
+	double lon_spacing,
+	double lat_spacing,
+	DemRadarPositionDiagnostics* diagnostics,
+	RegistrationProgressCallback cb,
+	void* userData
+)
+{
+	return solveDemRadarPositions(DEM, stateVector, rangePos, azimuthPos,
+		lon_upperleft, lat_upperleft, offset_row, offset_col, sceneHeight, sceneWidth,
+		prf, rangeSpacing, wavelength, nearRangeTime, acquisitionStartTime, acquisitionStopTime,
+		lon_spacing, lat_spacing, cb, userData, diagnostics);
 }
 
 int Registration::fitSlaveOffset(Mat& slaveOffset, Mat& masterRange,
@@ -2273,6 +2502,59 @@ int Registration::computeSlaveOffset(
 			{
 				slaveRangeOffset.at<double>(i, j) = slaveRange.at<double>(i, j) - masterRange.at<double>(i, j);
 			}
+		}
+	}
+	return 0;
+}
+
+int Registration::computeSlaveOffsetWithDiagnostics(
+	Mat& masterRange,
+	Mat& masterAzimuth,
+	Mat& slaveRange,
+	Mat& slaveAzimuth,
+	Mat& slaveAzimuthOffset,
+	Mat& slaveRangeOffset,
+	DemCoregistrationOverlapDiagnostics* diagnostics
+)
+{
+	if (!diagnostics || diagnostics->structSize < sizeof(DemCoregistrationOverlapDiagnostics) ||
+		diagnostics->version != 1)
+	{
+		return -3;
+	}
+	const unsigned int structSize = diagnostics->structSize;
+	*diagnostics = DemCoregistrationOverlapDiagnostics{};
+	diagnostics->structSize = structSize;
+	diagnostics->version = 1;
+
+	const int ret = computeSlaveOffset(masterRange, masterAzimuth, slaveRange, slaveAzimuth,
+		slaveAzimuthOffset, slaveRangeOffset);
+	if (ret < 0)
+	{
+		return ret;
+	}
+
+	for (int row = 0; row < masterRange.rows; ++row)
+	{
+		for (int column = 0; column < masterRange.cols; ++column)
+		{
+			const double masterRangeValue = masterRange.at<double>(row, column);
+			const double masterAzimuthValue = masterAzimuth.at<double>(row, column);
+			const double slaveRangeValue = slaveRange.at<double>(row, column);
+			const double slaveAzimuthValue = slaveAzimuth.at<double>(row, column);
+			const bool masterRangeValid = std::isfinite(masterRangeValue) && masterRangeValue >= -0.5;
+			const bool masterAzimuthValid = std::isfinite(masterAzimuthValue) && masterAzimuthValue >= -0.5;
+			const bool slaveRangeValid = std::isfinite(slaveRangeValue) && slaveRangeValue >= -0.5;
+			const bool slaveAzimuthValid = std::isfinite(slaveAzimuthValue) && slaveAzimuthValue >= -0.5;
+			const bool masterValid = masterRangeValid && masterAzimuthValid;
+			const bool slaveValid = slaveRangeValid && slaveAzimuthValid;
+
+			++diagnostics->totalDemPointCount;
+			if (masterValid) ++diagnostics->masterValidPointCount;
+			if (slaveValid) ++diagnostics->slaveValidPointCount;
+			if (masterAzimuthValid && slaveAzimuthValid) ++diagnostics->commonAzimuthPointCount;
+			if (masterRangeValid && slaveRangeValid) ++diagnostics->commonRangePointCount;
+			if (masterValid && slaveValid) ++diagnostics->commonPointCount;
 		}
 	}
 	return 0;
@@ -2903,6 +3185,169 @@ extern "C" REGISTRATION_API void FreeAlignmentResults(
 	}
 }
 
+namespace
+{
+    struct CropResidualCandidate
+    {
+        double offsetY;
+        double offsetX;
+        double snr;
+        int row;
+        int column;
+    };
+
+    double cropResidualMedian(std::vector<double> values)
+    {
+        if (values.empty())
+        {
+            return 0.0;
+        }
+
+        std::sort(values.begin(), values.end());
+        const size_t middle = values.size() / 2;
+        if (values.size() % 2 != 0)
+        {
+            return values[middle];
+        }
+        return 0.5 * (values[middle - 1] + values[middle]);
+    }
+
+    bool estimateDistributedCropResidual(
+        const cv::Mat& masterRe,
+        const cv::Mat& masterIm,
+        const cv::Mat& slaveRe,
+        const cv::Mat& slaveIm,
+        double* offsetY,
+        double* offsetX,
+        double* snr)
+    {
+        if (offsetY == nullptr || offsetX == nullptr || snr == nullptr ||
+            masterRe.empty() || masterIm.empty() || slaveRe.empty() || slaveIm.empty() ||
+            masterRe.size() != masterIm.size() || masterRe.size() != slaveRe.size() ||
+            masterRe.size() != slaveIm.size())
+        {
+            return false;
+        }
+
+        const int windowRows = std::min(masterRe.rows, 200);
+        const int windowColumns = std::min(masterRe.cols, 200);
+        if (windowRows < 32 || windowColumns < 32)
+        {
+            return false;
+        }
+
+        // A single center ROI is vulnerable to water, shadows, and other low-texture areas.
+        // Use a 3x3 grid and accept only reliable peaks that agree spatially.
+        const double fractions[] = { 0.20, 0.50, 0.80 };
+        const double minimumCandidateSnr = 5.0;
+        const double consensusTolerancePixels = 1.0;
+        const int minimumConsensusCount = 3;
+
+        std::vector<cv::Point> origins;
+        for (double rowFraction : fractions)
+        {
+            for (double columnFraction : fractions)
+            {
+                const int row = cvRound((masterRe.rows - windowRows) * rowFraction);
+                const int column = cvRound((masterRe.cols - windowColumns) * columnFraction);
+                bool duplicate = false;
+                for (const cv::Point& existing : origins)
+                {
+                    if (existing.y == row && existing.x == column)
+                    {
+                        duplicate = true;
+                        break;
+                    }
+                }
+                if (!duplicate)
+                {
+                    origins.push_back(cv::Point(column, row));
+                }
+            }
+        }
+
+        std::vector<CropResidualCandidate> candidates;
+        for (const cv::Point& origin : origins)
+        {
+            const cv::Rect roi(origin.x, origin.y, windowColumns, windowRows);
+            cv::Mat masterReRoi = masterRe(roi);
+            cv::Mat masterImRoi = masterIm(roi);
+            cv::Mat slaveReRoi = slaveRe(roi);
+            cv::Mat slaveImRoi = slaveIm(roi);
+            ComplexMat master(masterReRoi, masterImRoi);
+            ComplexMat slave(slaveReRoi, slaveImRoi);
+            Registration registration;
+            CropResidualCandidate candidate = {};
+            candidate.row = origin.y;
+            candidate.column = origin.x;
+
+            const int ret = registration.real_coherent(master, slave,
+                &candidate.offsetY, &candidate.offsetX, &candidate.snr);
+            if (ret == 0 && std::isfinite(candidate.offsetY) && std::isfinite(candidate.offsetX) &&
+                std::isfinite(candidate.snr) && candidate.snr >= minimumCandidateSnr)
+            {
+                candidates.push_back(candidate);
+            }
+        }
+
+        if (static_cast<int>(candidates.size()) < minimumConsensusCount)
+        {
+            fprintf(stderr, "AnalyzeCropRegistration residual estimate inconclusive: %d/%d ROI peaks meet SNR %.1f.\n",
+                static_cast<int>(candidates.size()), static_cast<int>(origins.size()), minimumCandidateSnr);
+            return false;
+        }
+
+        std::vector<double> candidateY;
+        std::vector<double> candidateX;
+        candidateY.reserve(candidates.size());
+        candidateX.reserve(candidates.size());
+        for (const CropResidualCandidate& candidate : candidates)
+        {
+            candidateY.push_back(candidate.offsetY);
+            candidateX.push_back(candidate.offsetX);
+        }
+        const double medianY = cropResidualMedian(candidateY);
+        const double medianX = cropResidualMedian(candidateX);
+
+        std::vector<CropResidualCandidate> inliers;
+        for (const CropResidualCandidate& candidate : candidates)
+        {
+            if (std::abs(candidate.offsetY - medianY) <= consensusTolerancePixels &&
+                std::abs(candidate.offsetX - medianX) <= consensusTolerancePixels)
+            {
+                inliers.push_back(candidate);
+            }
+        }
+
+        if (static_cast<int>(inliers.size()) < minimumConsensusCount)
+        {
+            fprintf(stderr, "AnalyzeCropRegistration residual estimate inconclusive: %d/%d SNR-qualified ROI peaks agree within %.1f px.\n",
+                static_cast<int>(inliers.size()), static_cast<int>(candidates.size()), consensusTolerancePixels);
+            return false;
+        }
+
+        std::vector<double> inlierY;
+        std::vector<double> inlierX;
+        std::vector<double> inlierSnr;
+        inlierY.reserve(inliers.size());
+        inlierX.reserve(inliers.size());
+        inlierSnr.reserve(inliers.size());
+        for (const CropResidualCandidate& candidate : inliers)
+        {
+            inlierY.push_back(candidate.offsetY);
+            inlierX.push_back(candidate.offsetX);
+            inlierSnr.push_back(candidate.snr);
+        }
+
+        *offsetY = cropResidualMedian(inlierY);
+        *offsetX = cropResidualMedian(inlierX);
+        *snr = cropResidualMedian(inlierSnr);
+        fprintf(stderr, "AnalyzeCropRegistration residual estimate: %d/%d ROI peaks agree, offsetY=%.4f, offsetX=%.4f, medianSNR=%.2f.\n",
+            static_cast<int>(inliers.size()), static_cast<int>(origins.size()), *offsetY, *offsetX, *snr);
+        return true;
+    }
+}
+
 extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	const char* master_h5_path,
 	const char* slave_h5_path,
@@ -2959,6 +3404,19 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 		return -4;
 	}
 
+	// Pixel-wise interferometric metrics require all complex components to share
+	// one raster grid. Reject mismatched Crop outputs before OpenMP dereferences
+	// an out-of-range slave row.
+	const bool sameRasterGrid =
+		!M_re.empty() && !M_im.empty() && !S_re.empty() && !S_im.empty() &&
+		M_re.rows == rows && M_re.cols == cols &&
+		M_im.rows == rows && M_im.cols == cols &&
+		S_re.rows == rows && S_re.cols == cols &&
+		S_im.rows == rows && S_im.cols == cols;
+	if (!sameRasterGrid)
+	{
+		return -8;
+	}
 
 	// 3. 精度强制转换为 CV_32F，保障指针操作安全，规避 mismatch
 	if (M_re.type() != CV_32F) M_re.convertTo(M_re, CV_32F);
@@ -2989,64 +3447,16 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	// 5. 并行相干性矩阵计算 (复用 ComputeSubBlockCoherence)
 	cv::Mat coh_mat;
 	double coh_mean = 0.0;
-	if (!ComputeSubBlockCoherence(M_re, M_im, S_re, S_im, coh_mat, coh_mean))
+	CropCoherenceStatistics coherenceStatistics;
+	if (!ComputeSubBlockCoherence(M_re, M_im, S_re, S_im, coh_mat, coh_mean, &coherenceStatistics))
 	{
 		return -5;
 	}
 
-	// 6. 直方图统计法估算中位数与高相干像素占比 (O(N) 复杂度)
-	int hist[10000] = { 0 };
-#pragma omp parallel
-	{
-		int local_hist[10000] = { 0 };
-#pragma omp for nowait
-		for (int r = 0; r < rows; ++r)
-		{
-			const float* ptr = coh_mat.ptr<float>(r);
-			for (int c = 0; c < cols; ++c)
-			{
-				float val = ptr[c];
-				int idx = static_cast<int>(val * 9999.0f);
-				if (idx < 0) idx = 0;
-				if (idx > 9999) idx = 9999;
-				local_hist[idx]++;
-			}
-		}
-#pragma omp critical
-		{
-			for (int i = 0; i < 10000; ++i)
-			{
-				hist[i] += local_hist[i];
-			}
-		}
-	}
-
-	long long total_pixels = static_cast<long long>(rows) * cols;
-	long long target_half = total_pixels / 2;
-	long long accum = 0;
-	int median_bin = 0;
-	for (int i = 0; i < 10000; ++i)
-	{
-		accum += hist[i];
-		if (accum >= target_half)
-		{
-			median_bin = i;
-			break;
-		}
-	}
-	double coh_median = median_bin / 9999.0;
-
-	// 高相干阈值 (>0.5，对应直方图索引 >= 5000)
-	long long high_coh_pixels = 0;
-	for (int i = 5000; i < 10000; ++i)
-	{
-		high_coh_pixels += hist[i];
-	}
-	double high_coh_pct = static_cast<double>(high_coh_pixels) / total_pixels;
-
-	// 获取最大相干性
-	double max_coh = 0.0;
-	cv::minMaxLoc(coh_mat, nullptr, &max_coh);
+	// 6. 均值、中位数、最大值和高值占比已在同一有效内区上统计。
+	const double coh_median = coherenceStatistics.median;
+	const double high_coh_pct = coherenceStatistics.highValueRatio;
+	const double max_coh = coherenceStatistics.maximum;
 
 	// 7. 评估状态计算
 	int status = 2; // FAILED
@@ -3063,89 +3473,16 @@ extern "C" REGISTRATION_API int AnalyzeCropRegistration(
 	out_result->medianCoherence = coh_median;
 	out_result->maxCoherence = max_coh;
 	out_result->highCoherencePct = high_coh_pct;
-	// --- 新增：中心区域残余偏移量评估 ---
-	double residual_dx = -9999.0;
-	double residual_dy = -9999.0;
-	double snr = 0.0;
-	double coherent_dx = -9999.0;
-	double coherent_dy = -9999.0;
-	double coherent_snr = 0.0;
-	int coherent_status = -1;
-	int win_r = std::min(rows, 200);
-	int win_c = std::min(cols, 200);
-	int tmpl_r = std::max(16, win_r - 32);
-	int tmpl_c = std::max(16, win_c - 32);
-
-	if (tmpl_r < win_r && tmpl_c < win_c) {
-		int sr = (rows - win_r) / 2;
-		int sc = (cols - win_c) / 2;
-
-		cv::Mat Amp_M, Amp_S;
-		cv::magnitude(M_re(cv::Rect(sc, sr, win_c, win_r)), M_im(cv::Rect(sc, sr, win_c, win_r)), Amp_M);
-		cv::magnitude(S_re(cv::Rect(sc, sr, win_c, win_r)), S_im(cv::Rect(sc, sr, win_c, win_r)), Amp_S);
-
-		cv::Mat Amp_M_smooth, Amp_S_smooth;
-		cv::blur(Amp_M, Amp_M_smooth, cv::Size(5, 5));
-		cv::blur(Amp_S, Amp_S_smooth, cv::Size(5, 5));
-
-		int tmpl_offset_r = (win_r - tmpl_r) / 2;
-		int tmpl_offset_c = (win_c - tmpl_c) / 2;
-		cv::Mat Tmpl_M = Amp_M_smooth(cv::Rect(tmpl_offset_c, tmpl_offset_r, tmpl_c, tmpl_r));
-
-		cv::Mat match_res;
-		cv::matchTemplate(Amp_S_smooth, Tmpl_M, match_res, cv::TM_CCOEFF_NORMED);
-
-		double maxVal = 0.0;
-		cv::Point maxLoc;
-		cv::minMaxLoc(match_res, nullptr, &maxVal, nullptr, &maxLoc);
-
-		double sub_dx = 0.0;
-		double sub_dy = 0.0;
-		if (maxLoc.x > 0 && maxLoc.x < match_res.cols - 1 && maxLoc.y > 0 && maxLoc.y < match_res.rows - 1) {
-			double c1_x = match_res.at<float>(maxLoc.y, maxLoc.x - 1);
-			double c2_x = match_res.at<float>(maxLoc.y, maxLoc.x);
-			double c3_x = match_res.at<float>(maxLoc.y, maxLoc.x + 1);
-			double denom_x = 2.0 * (c1_x - 2.0 * c2_x + c3_x);
-			if (std::abs(denom_x) > 1e-6) sub_dx = (c1_x - c3_x) / denom_x;
-
-			double c1_y = match_res.at<float>(maxLoc.y - 1, maxLoc.x);
-			double c2_y = match_res.at<float>(maxLoc.y, maxLoc.x);
-			double c3_y = match_res.at<float>(maxLoc.y + 1, maxLoc.x);
-			double denom_y = 2.0 * (c1_y - 2.0 * c2_y + c3_y);
-			if (std::abs(denom_y) > 1e-6) sub_dy = (c1_y - c3_y) / denom_y;
-		}
-
-		cv::Scalar mean_sc, stddev_sc;
-		cv::meanStdDev(match_res, mean_sc, stddev_sc);
-		if (stddev_sc[0] > 1e-6) {
-			snr = (maxVal - mean_sc[0]) / stddev_sc[0];
-		}
-
-		residual_dy = (maxLoc.y - tmpl_offset_r) + sub_dy;
-		residual_dx = (maxLoc.x - tmpl_offset_c) + sub_dx;
-
-		cv::Mat M_re_center = M_re(cv::Rect(sc, sr, win_c, win_r));
-		cv::Mat M_im_center = M_im(cv::Rect(sc, sr, win_c, win_r));
-		cv::Mat S_re_center = S_re(cv::Rect(sc, sr, win_c, win_r));
-		cv::Mat S_im_center = S_im(cv::Rect(sc, sr, win_c, win_r));
-		ComplexMat master_center(M_re_center, M_im_center);
-		ComplexMat slave_center(S_re_center, S_im_center);
-		Registration coherent_registration;
-		coherent_status = coherent_registration.real_coherent(
-			master_center, slave_center, &coherent_dy, &coherent_dx, &coherent_snr);
-	} else {
-		status = 2; // FAILED: dimensions too small
-	}
-
-
-	const bool use_coherent_result = coherent_status == 0 &&
-		std::isfinite(coherent_dy) && std::isfinite(coherent_dx) && std::isfinite(coherent_snr);
-	const double final_offset_y = use_coherent_result ? coherent_dy : residual_dy;
-	const double final_offset_x = use_coherent_result ? coherent_dx : residual_dx;
-	const double final_snr = use_coherent_result ? coherent_snr : snr;
-	out_result->snr = final_snr;
-	out_result->offsetY = final_offset_y;
-	out_result->offsetX = final_offset_x;
+	// Residual offsets must represent the product rather than a single central
+	// patch, which may be water or another low-texture region after cropping.
+	double residualY = 0.0;
+	double residualX = 0.0;
+	double residualSnr = 0.0;
+	const bool residualReliable = estimateDistributedCropResidual(
+		M_re, M_im, S_re, S_im, &residualY, &residualX, &residualSnr);
+	out_result->snr = residualReliable ? residualSnr : 0.0;
+	out_result->offsetY = residualReliable ? residualY : 0.0;
+	out_result->offsetX = residualReliable ? residualX : 0.0;
 	out_result->assessmentStatus = status;
 
 	// 8. 图像直接落盘保存 (JPG 质量 95，静默覆盖)

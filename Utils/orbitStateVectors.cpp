@@ -2,11 +2,42 @@
 #include "../include/Utils.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace cv;
 
 // orbitStateVectors implementations
 // ====================================================
+
+namespace
+{
+bool hasValidOrbitStateVectors(const Mat& vectors, int minimumRows)
+{
+    if (vectors.type() != CV_64F || vectors.cols != 7 || vectors.rows < minimumRows)
+    {
+        return false;
+    }
+
+    double previousTime = 0.0;
+    for (int row = 0; row < vectors.rows; ++row)
+    {
+        const double time = vectors.at<double>(row, 0);
+        if (!std::isfinite(time) || (row > 0 && !(time > previousTime)))
+        {
+            return false;
+        }
+        for (int column = 1; column < vectors.cols; ++column)
+        {
+            if (!std::isfinite(vectors.at<double>(row, column)))
+            {
+                return false;
+            }
+        }
+        previousTime = time;
+    }
+    return true;
+}
+}
 
 orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime)
 {
@@ -15,11 +46,15 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 	this->isOrbitUpdated = false;
 	stateVectors.copyTo(this->stateVectors);
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
-	double delta_time = stateVectors.at<double>(1, 0) - stateVectors.at<double>(0, 0);
-	if (fabs(delta_time) <= 1.0)
+	double delta_time = 0.0;
+	if (hasValidOrbitStateVectors(this->stateVectors, 2))
 	{
-		this->isOrbitUpdated = true;
-		this->stateVectors.copyTo(this->newStateVectors);
+		delta_time = this->stateVectors.at<double>(1, 0) - this->stateVectors.at<double>(0, 0);
+		if (delta_time <= 1.0)
+		{
+			this->isOrbitUpdated = true;
+			this->stateVectors.copyTo(this->newStateVectors);
+		}
 	}
 	this->dt = delta_time;
 	setSceneStartStopTime(startTime, stopTime);
@@ -32,7 +67,8 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 	this->isOrbitUpdated = false;
 	stateVectors.copyTo(this->stateVectors);
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
-	if (fabs(delta_time) <= 1.0)
+	if (hasValidOrbitStateVectors(this->stateVectors, 2) && std::isfinite(delta_time) &&
+		delta_time > 0.0 && delta_time <= 1.0)
 	{
 		this->isOrbitUpdated = true;
 		this->stateVectors.copyTo(this->newStateVectors);
@@ -143,7 +179,8 @@ int orbitStateVectors::getVelocity(double azimuthTime, Velocity& velocity)
 
 int orbitStateVectors::getOrbitData(double time, OSV* osv)
 {
-	if (!osv || time < 0 || stateVectors.empty()|| isOrbitUpdated)
+	if (!osv || !std::isfinite(time) || time < 0 || isOrbitUpdated ||
+		!hasValidOrbitStateVectors(stateVectors, polyDegree + 1))
 	{
 		fprintf(stderr, "getOrbitData(): input check failed!\n");
 		return -1;
@@ -227,13 +264,36 @@ int orbitStateVectors::getOrbitData(double time, OSV* osv)
 int orbitStateVectors::applyOrbit(ProgressCallback progressCallback, void* userData)
 {
 	if (progressCallback && !progressCallback(0, "Updating orbit state vectors...", userData)) return -2;
-	if (isOrbitUpdated) return 0;
+	if (!std::isfinite(startTime) || !std::isfinite(stopTime) || !(stopTime > startTime))
+	{
+		fprintf(stderr, "applyOrbit(): scene time range is invalid!\n");
+		return -1;
+	}
+	if (isOrbitUpdated)
+	{
+		if (!hasValidOrbitStateVectors(newStateVectors, 2))
+		{
+			fprintf(stderr, "applyOrbit(): updated orbit state vectors are invalid!\n");
+			return -1;
+		}
+		return 0;
+	}
+	if (!hasValidOrbitStateVectors(stateVectors, polyDegree + 1))
+	{
+		fprintf(stderr, "applyOrbit(): source orbit state vectors are insufficient!\n");
+		return -1;
+	}
 	double delta_t = 1.0;//1.0s
 	this->dt = delta_t;
 	double extra = 10.0;//10.0s
 	double start = startTime - extra;
 	double stop = stopTime + extra;
 	int numVectors = (int)((stop - start) / delta_t);
+	if (numVectors < 2)
+	{
+		fprintf(stderr, "applyOrbit(): generated orbit state vectors are insufficient!\n");
+		return -1;
+	}
 	OSV osv;
 	Mat newStateVectors = Mat::zeros(numVectors, 7, CV_64F);
 	int ret;
@@ -269,6 +329,15 @@ bool orbitStateVectors::findZeroDopplerTime(
 	double& distance,
 	double dopplerThreshold)
 {
+	if (!hasValidOrbitStateVectors(stateVectors.newStateVectors, 2) ||
+		!std::isfinite(groundPosition.x) || !std::isfinite(groundPosition.y) ||
+		!std::isfinite(groundPosition.z) ||
+		!std::isfinite(wavelength) || wavelength <= 0.0 ||
+		!std::isfinite(time_interval) || time_interval <= 0.0 ||
+		!std::isfinite(dopplerFrequency) || !std::isfinite(dopplerThreshold) || dopplerThreshold <= 0.0)
+	{
+		return false;
+	}
 	int numOrbitVec = stateVectors.newStateVectors.rows;
 	double firstVecTime = 0.0;
 	double secondVecTime = 0.0;
@@ -285,7 +354,15 @@ bool orbitStateVectors::findZeroDopplerTime(
 		ydiff = groundPosition.y - orb_pos.y;
 		zdiff = groundPosition.z - orb_pos.z;
 		double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+		if (!std::isfinite(dist) || dist <= 0.0)
+		{
+			return false;
+		}
 		currentFreq = 2.0 * (xdiff * orb_vel.vx + ydiff * orb_vel.vy + zdiff * orb_vel.vz) / (wavelength * dist);
+		if (!std::isfinite(currentFreq))
+		{
+			return false;
+		}
 		if (ii == 0 || (firstVecFreq - dopplerFrequency) * (currentFreq - dopplerFrequency) > 0) {
 			firstVecTime = stateVectors.newStateVectors.at<double>(ii, 0);
 			firstVecFreq = currentFreq;
@@ -314,13 +391,23 @@ bool orbitStateVectors::findZeroDopplerTime(
 	Position pos; Velocity vel;
 	while (diffTime > absLineTimeInterval * 0.01 && numIterations <= totalIterations) {
 		midTime = (upperBoundTime + lowerBoundTime) / 2.0;
-		stateVectors.getPosition(midTime, pos);
-		stateVectors.getVelocity(midTime, vel);
+		if (stateVectors.getPosition(midTime, pos) < 0 || stateVectors.getVelocity(midTime, vel) < 0)
+		{
+			return false;
+		}
 		xdiff = groundPosition.x - pos.x;
 		ydiff = groundPosition.y - pos.y;
 		zdiff = groundPosition.z - pos.z;
 		double dist = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
+		if (!std::isfinite(dist) || dist <= 0.0)
+		{
+			return false;
+		}
 		midFreq = 2.0 * (xdiff * vel.vx + ydiff * vel.vy + zdiff * vel.vz) / (wavelength * dist);
+		if (!std::isfinite(midFreq))
+		{
+			return false;
+		}
 		if ((midFreq - dopplerFrequency) * (lowerBoundFreq - dopplerFrequency) > 0.0) {
 			lowerBoundTime = midTime;
 			lowerBoundFreq = midFreq;
@@ -337,13 +424,21 @@ bool orbitStateVectors::findZeroDopplerTime(
 		numIterations++;
 	}
 
-	zeroDopplerTime = lowerBoundTime + (dopplerFrequency - lowerBoundFreq) * (upperBoundTime - lowerBoundTime) / (upperBoundFreq - lowerBoundFreq);
-	stateVectors.getPosition(zeroDopplerTime, pos);
+	const double frequencySpan = upperBoundFreq - lowerBoundFreq;
+	if (!std::isfinite(frequencySpan) || frequencySpan == 0.0)
+	{
+		return false;
+	}
+	zeroDopplerTime = lowerBoundTime + (dopplerFrequency - lowerBoundFreq) * (upperBoundTime - lowerBoundTime) / frequencySpan;
+	if (!std::isfinite(zeroDopplerTime) || stateVectors.getPosition(zeroDopplerTime, pos) < 0)
+	{
+		return false;
+	}
 	xdiff = groundPosition.x - pos.x;
 	ydiff = groundPosition.y - pos.y;
 	zdiff = groundPosition.z - pos.z;
 	distance = sqrt(xdiff * xdiff + ydiff * ydiff + zdiff * zdiff);
-	return true;
+	return std::isfinite(distance) && distance > 0.0;
 }
 
 
