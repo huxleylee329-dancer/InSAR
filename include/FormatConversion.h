@@ -2372,6 +2372,12 @@ public:
 constexpr uint32_t SENTINEL_REFINEMENT_OPTIONS_VERSION = 2;
 constexpr uint32_t SENTINEL_REFINEMENT_RESULT_VERSION = 2;
 constexpr uint32_t SENTINEL_REFINEMENT_TRANSACTION_STATUS_VERSION = 1;
+// Returned when the full-burst output contract cannot represent the computed
+// master/slave burst mapping. This is a return-code contract, not a struct field.
+constexpr int SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR = -1303;
+// Returned when burst alignment falls back to zero instead of being estimated.
+// A fallback offset is not a valid full-burst alignment result.
+constexpr int SENTINEL_BACK_GEOCODING_BURST_OFFSET_FALLBACK_ERROR = -1304;
 
 enum SentinelRefinementQualityCode
 {
@@ -2677,7 +2683,9 @@ private:
 	* @return 成功返回0，否则返�?1
 	*/
 	int deBurstConfig();
-	int materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile);
+	int materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile, int imageIndex);
+	int prepareCommonBurstCoveragePlan();
+	int writeCommonBurstCoverageProvenance(const char* outputFile, int imageIndex) const;
 
 public:
 	/** @brief 后向地理编码配准
@@ -2785,6 +2793,12 @@ private:
 	double invalidOffset = -9999.0;
 	bool burstOffsetComputed;
 	bool deferFinalDeburstOutput;
+	bool commonBurstCoveragePrepared;
+	bool commonBurstCoveragePartial;
+	int commonMasterFirstBurst;
+	int commonMasterLastBurst;
+	vector<int> retainedMasterBurstIndices;
+	string commonBurstCoverageSignature;
 	char error_head[256];
 
 private:

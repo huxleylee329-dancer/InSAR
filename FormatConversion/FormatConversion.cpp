@@ -126,6 +126,71 @@ bool gpsSecondsToUnix(double gpsSeconds, time_t& unixSeconds, double& fractional
 }
 
 
+namespace
+{
+struct BurstMappingPreflightResult
+{
+	long long commonFirstMasterBurst = 0;
+	long long commonLastMasterBurst = 0;
+	int firstInvalidSlaveImage = 0;
+	long long firstInvalidMasterBurst = 0;
+	long long firstInvalidSlaveBurst = 0;
+	int firstInvalidOffset = 0;
+	long long firstInvalidSlaveBurstCount = 0;
+};
+
+int validateBurstMappingCoverage(const std::vector<Sentinel1Utils*>& images,
+	int masterIndex, BurstMappingPreflightResult& result)
+{
+	result = {};
+	if (masterIndex < 1 || masterIndex > static_cast<int>(images.size()) || images.size() < 2)
+		return -1;
+
+	const Sentinel1Utils* master = images[masterIndex - 1];
+	if (!master || master->burstCount < 1)
+		return -1;
+
+	const long long masterBurstCount = master->burstCount;
+	result.commonFirstMasterBurst = 1;
+	result.commonLastMasterBurst = masterBurstCount;
+	for (size_t imageIndex = 0; imageIndex < images.size(); ++imageIndex)
+	{
+		if (static_cast<int>(imageIndex) == masterIndex - 1)
+			continue;
+		const Sentinel1Utils* slave = images[imageIndex];
+		if (!slave)
+			return -1;
+
+		const long long slaveBurstCount = slave->burstCount;
+		const long long offset = slave->burstOffset;
+		const long long validFirstMasterBurst = std::max(1LL, 1LL - offset);
+		const long long validLastMasterBurst = std::min(masterBurstCount, slaveBurstCount - offset);
+		result.commonFirstMasterBurst = std::max(result.commonFirstMasterBurst, validFirstMasterBurst);
+		result.commonLastMasterBurst = std::min(result.commonLastMasterBurst, validLastMasterBurst);
+
+		if (validFirstMasterBurst > 1 || validLastMasterBurst < masterBurstCount)
+		{
+			if (result.firstInvalidSlaveImage == 0)
+			{
+				const long long firstInvalidMasterBurst = validFirstMasterBurst > 1
+					? 1
+					: std::max(1LL, validLastMasterBurst + 1);
+				result.firstInvalidSlaveImage = static_cast<int>(imageIndex) + 1;
+				result.firstInvalidMasterBurst = firstInvalidMasterBurst;
+				result.firstInvalidSlaveBurst = firstInvalidMasterBurst + offset;
+				result.firstInvalidOffset = slave->burstOffset;
+				result.firstInvalidSlaveBurstCount = slaveBurstCount;
+			}
+		}
+	}
+
+	return result.commonFirstMasterBurst <= result.commonLastMasterBurst
+		? 0
+		: SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR;
+}
+}
+
+
 class Hdf5BatchGuard
 {
 public:
@@ -276,6 +341,21 @@ struct SentinelBackGeocodingDiagnosticState
 	SentinelBackGeocodingDiagnosticState() : hasZeroDopplerDiagnostic(false), zeroOffsetFallback(false) {}
 };
 static std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState> g_sentinel_diagnostic_state;
+
+static void reset_sentinel_back_geocoding_diagnostic_state(const Sentinel1BackGeocoding* instance)
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	g_sentinel_diagnostic_state[instance] = SentinelBackGeocodingDiagnosticState();
+}
+
+static bool has_sentinel_zero_offset_fallback(const Sentinel1BackGeocoding* instance)
+{
+	std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+	const std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::const_iterator it =
+		g_sentinel_diagnostic_state.find(instance);
+	return it != g_sentinel_diagnostic_state.end() && it->second.zeroOffsetFallback;
+}
+
 static thread_local int g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
 static thread_local SentinelZeroDopplerDiagnostic g_thread_zero_doppler_diagnostic;
 static thread_local bool g_has_thread_zero_doppler_diagnostic = false;
@@ -8415,7 +8495,8 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 		"file_type", "sensor", "polarization", "imaging_mode", "lookside", "orbit_dir", "swath",
 		"acquisition_start_time", "acquisition_stop_time", "source_1", "source_2",
 		"source_path_encoding", "source_path_format_version", "state_vec_time_scale",
-		"fine_state_vec_time_scale", "acquisition_time_gps_scale", "h5_time_reference_version" };
+		"fine_state_vec_time_scale", "acquisition_time_gps_scale", "h5_time_reference_version",
+		"sentinel_geometry_coefficient_contract" };
 	static const char* const arrayDatasets[] = {
 		"orbit_altitude", "carrier_frequency", "heading", "prf", "inc_center", "gcps",
 		"azimuth_resolution", "range_resolution", "azimuth_spacing", "range_spacing", "state_vec",
@@ -9297,6 +9378,9 @@ int Sentinel1Reader::updateGeolocationGridPoint()
 
 int Sentinel1Reader::fitCoordinateConversionCoefficient()
 {
+	if (numberOfLines <= 0 || numberOfSamples <= 0 || geolocationGridPoint.empty())
+		return -1;
+
 	double mean_lon, mean_lat, mean_inc, max_lon, max_lat, max_inc, min_lon, min_lat, min_inc;
 	Mat lon, lat, inc, row, col, gcps;
 	geolocationGridPoint(cv::Range(0, geolocationGridPoint.rows), cv::Range(0, 6)).copyTo(gcps);
@@ -9314,8 +9398,16 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	lon = (lon - mean_lon) / (max_lon - min_lon + 1e-10);
 	lat = (lat - mean_lat) / (max_lat - min_lat + 1e-10);
 	inc = (inc - mean_inc) / (max_inc - min_inc + 1e-10);
-	row = (row + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);//sentinel�������Ϊ0��+1ͳһΪ1.
-	col = (col + 1 - double(numberOfSamples) * 0.5) / (double(numberOfSamples) + 1e-10);
+	// Sentinel row and column coordinates have different dimensions.  The
+	// previous implementation used numberOfSamples for both axes, which made
+	// the latitude/longitude polynomial extrapolate outside the scene whenever
+	// azimuth lines and range samples differed.
+	const double rowCenter = double(numberOfLines) * 0.5;
+	const double rowScale = double(numberOfLines) + 1e-10;
+	const double colCenter = double(numberOfSamples) * 0.5;
+	const double colScale = double(numberOfSamples) + 1e-10;
+	row = (row + 1 - rowCenter) / rowScale;//sentinel�������Ϊ0��+1ͳһΪ1.
+	col = (col + 1 - colCenter) / colScale;
 
 	// ����5�׷����ɾ���
 	Mat A, temp, coefficient;
@@ -9327,10 +9419,10 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lon;
 	temp.at<double>(0, 1) = max_lon - min_lon + 1e-10;
-	temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
-	temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
-	temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
-	temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 2) = rowCenter;
+	temp.at<double>(0, 3) = rowScale;
+	temp.at<double>(0, 4) = colCenter;
+	temp.at<double>(0, 5) = colScale;
 	temp.at<double>(0, 31) = rms;
 	cv::transpose(coefficient, coefficient);
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
@@ -9341,10 +9433,10 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	temp.create(1, 32, CV_64F);
 	temp.at<double>(0, 0) = mean_lat;
 	temp.at<double>(0, 1) = max_lat - min_lat + 1e-10;
-	temp.at<double>(0, 2) = double(numberOfSamples) * 0.5;
-	temp.at<double>(0, 3) = double(numberOfSamples) + 1e-10;
-	temp.at<double>(0, 4) = double(numberOfSamples) * 0.5;
-	temp.at<double>(0, 5) = double(numberOfSamples) + 1e-10;
+	temp.at<double>(0, 2) = rowCenter;
+	temp.at<double>(0, 3) = rowScale;
+	temp.at<double>(0, 4) = colCenter;
+	temp.at<double>(0, 5) = colScale;
 	temp.at<double>(0, 31) = rms;
 	cv::transpose(coefficient, coefficient);
 	coefficient.copyTo(temp(cv::Range(0, 1), cv::Range(6, 31)));
@@ -9468,8 +9560,8 @@ int Sentinel1Reader::fitCoordinateConversionCoefficient()
 	if (cv::solve(A, B, coefficient, cv::DECOMP_NORMAL))
 	{
 		temp.create(1, 32, CV_64F);
-		temp.at<double>(0, 0) = double(numberOfSamples) * 0.5;
-		temp.at<double>(0, 1) = double(numberOfSamples) + 1e-10;
+		temp.at<double>(0, 0) = rowCenter;
+		temp.at<double>(0, 1) = rowScale;
 		temp.at<double>(0, 2) = mean_lon;
 		temp.at<double>(0, 3) = max_lon - min_lon + 1e-10;
 		temp.at<double>(0, 4) = mean_lat;
@@ -9768,7 +9860,8 @@ int Sentinel1Reader::prepareData(const char* PODFile)
 	//���¿��Ƶ�
 	updateGeolocationGridPoint();
 	//�������ת��ϵ��
-	fitCoordinateConversionCoefficient();
+	ret = fitCoordinateConversionCoefficient();
+	if (return_check(ret, "fitCoordinateConversionCoefficient()", error_head)) return -1;
 	isDataAvailable = true;
 	return 0;
 }
@@ -9870,11 +9963,13 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 			this->geolocationGridPoint.at<double>(i, 3) -= start_line; // Shift row coordinate to subset system
 		}
 
-		this->fitCoordinateConversionCoefficient(); // Re-fit polynomials with the shifted coordinates
-
-		// 4. Update overall dimensions
+		// 4. Update overall dimensions before fitting.  The fit stores the row
+		// normalization in the coefficient header, so it must describe the
+		// selected burst subset rather than the original full-scene dimensions.
 		this->burstCount = num_selected_bursts;
 		this->numberOfLines = num_selected_bursts * original_linesPerBurst;
+		ret = this->fitCoordinateConversionCoefficient(); // Re-fit polynomials with the shifted coordinates
+		if (return_check(ret, "fitCoordinateConversionCoefficient()", error_head)) return -1;
 	}
 
 	FormatConversion conversion;
@@ -9930,40 +10025,41 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_int_to_h5(h5File, "offset_row", 0);
 	conversion.write_int_to_h5(h5File, "offset_col", 0);
 
-	// ��GCP��������ĽǾ�γ��
-	if (!geolocationGridPoint.empty() && geolocationGridPoint.rows >= 4) {
-		double rows = (double)this->numberOfLines - 1.0;
-		double cols = (double)this->numberOfSamples - 1.0;
-		double tl_dist = DBL_MAX, tr_dist = DBL_MAX, bl_dist = DBL_MAX, br_dist = DBL_MAX;
-		double tl_lon = 0, tl_lat = 0, tr_lon = 0, tr_lat = 0;
-		double bl_lon = 0, bl_lat = 0, br_lon = 0, br_lat = 0;
-		for (int i = 0; i < geolocationGridPoint.rows; i++) {
-			double r = geolocationGridPoint.at<double>(i, 3);
-			double c = geolocationGridPoint.at<double>(i, 4);
-			double lon = geolocationGridPoint.at<double>(i, 0);
-			double lat = geolocationGridPoint.at<double>(i, 1);
-			double dr, dc, d;
-			// TL: (0, 0)
-			dr = r; dc = c; d = dr * dr + dc * dc;
-			if (d < tl_dist) { tl_dist = d; tl_lon = lon; tl_lat = lat; }
-			// TR: (0, cols)
-			dr = r; dc = c - cols; d = dr * dr + dc * dc;
-			if (d < tr_dist) { tr_dist = d; tr_lon = lon; tr_lat = lat; }
-			// BL: (rows, 0)
-			dr = r - rows; dc = c; d = dr * dr + dc * dc;
-			if (d < bl_dist) { bl_dist = d; bl_lon = lon; bl_lat = lat; }
-			// BR: (rows, cols)
-			dr = r - rows; dc = c - cols; d = dr * dr + dc * dc;
-			if (d < br_dist) { br_dist = d; br_lon = lon; br_lat = lat; }
+	// Persist corners from the fitted geometry, not from the nearest GCP.  The
+	// Sentinel geolocation grid is sparse and may stop well before the last
+	// image row; nearest-point selection silently under-reported the footprint
+	// and made downstream DEM coverage disagree with the coefficient contract.
+	if (numberOfLines > 0 && numberOfSamples > 0 &&
+		!lon_coefficient.empty() && !lat_coefficient.empty()) {
+		Mat cornerRows(4, 1, CV_64F);
+		Mat cornerCols(4, 1, CV_64F);
+		// Match Utils::computeImageGeoBoundry(), whose scene dimensions denote
+		// the exclusive lower/right boundary used for coverage checks.
+		const double lastRow = static_cast<double>(numberOfLines);
+		const double lastCol = static_cast<double>(numberOfSamples);
+		cornerRows.at<double>(0, 0) = 0.0;
+		cornerRows.at<double>(1, 0) = 0.0;
+		cornerRows.at<double>(2, 0) = lastRow;
+		cornerRows.at<double>(3, 0) = lastRow;
+		cornerCols.at<double>(0, 0) = 0.0;
+		cornerCols.at<double>(1, 0) = lastCol;
+		cornerCols.at<double>(2, 0) = 0.0;
+		cornerCols.at<double>(3, 0) = lastCol;
+		Mat cornerLon;
+		Mat cornerLat;
+		Utils geometryUtils;
+		if (geometryUtils.coord_conversion(lon_coefficient, cornerRows, cornerCols, cornerLon) == 0 &&
+			geometryUtils.coord_conversion(lat_coefficient, cornerRows, cornerCols, cornerLat) == 0 &&
+			cornerLon.rows == 4 && cornerLat.rows == 4) {
+			conversion.write_double_to_h5(h5File, "topLeftLon", cornerLon.at<double>(0, 0));
+			conversion.write_double_to_h5(h5File, "topLeftLat", cornerLat.at<double>(0, 0));
+			conversion.write_double_to_h5(h5File, "topRightLon", cornerLon.at<double>(1, 0));
+			conversion.write_double_to_h5(h5File, "topRightLat", cornerLat.at<double>(1, 0));
+			conversion.write_double_to_h5(h5File, "bottomLeftLon", cornerLon.at<double>(2, 0));
+			conversion.write_double_to_h5(h5File, "bottomLeftLat", cornerLat.at<double>(2, 0));
+			conversion.write_double_to_h5(h5File, "bottomRightLon", cornerLon.at<double>(3, 0));
+			conversion.write_double_to_h5(h5File, "bottomRightLat", cornerLat.at<double>(3, 0));
 		}
-		conversion.write_double_to_h5(h5File, "topLeftLon", tl_lon);
-		conversion.write_double_to_h5(h5File, "topLeftLat", tl_lat);
-		conversion.write_double_to_h5(h5File, "topRightLon", tr_lon);
-		conversion.write_double_to_h5(h5File, "topRightLat", tr_lat);
-		conversion.write_double_to_h5(h5File, "bottomLeftLon", bl_lon);
-		conversion.write_double_to_h5(h5File, "bottomLeftLat", bl_lat);
-		conversion.write_double_to_h5(h5File, "bottomRightLon", br_lon);
-		conversion.write_double_to_h5(h5File, "bottomRightLat", br_lat);
 	}
 
 	conversion.write_array_to_h5(h5File, "antennaPattern_elevationAngle", this->antennaPattern_elevationAngle);
@@ -9981,6 +10077,9 @@ int Sentinel1Reader::writeToh5(const char* h5File, int start_burst, int end_burs
 	conversion.write_array_to_h5(h5File, "row_coefficient", this->row_coefficient);
 	conversion.write_array_to_h5(h5File, "col_coefficient", this->col_coefficient);
 	conversion.write_array_to_h5(h5File, "inc_coefficient", this->inc_coefficient);
+	ret = conversion.write_str_to_h5(h5File, "sentinel_geometry_coefficient_contract",
+		"row_col_scene_dimensions_v2");
+	if (return_check(ret, "write_str_to_h5()", error_head)) return -1;
 
 
 	Mat gcps;
@@ -11276,6 +11375,10 @@ Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 	this->isMasterRgAzComputed = false;
 	this->isdeBurstConfig = false;
 	this->deferFinalDeburstOutput = false;
+	this->commonBurstCoveragePrepared = false;
+	this->commonBurstCoveragePartial = false;
+	this->commonMasterFirstBurst = 0;
+	this->commonMasterLastBurst = 0;
 	this->masterIndex = 1;
 	this->numOfImages = 0;
 	{
@@ -11339,6 +11442,36 @@ int Sentinel1BackGeocoding::init(
 		setDiagnosticCallback(callback, userData);
 	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
 	clearCancelRequest();
+	burstOffsetComputed = false;
+	isdeBurstConfig = false;
+	deburstLines = 0;
+	commonBurstCoveragePrepared = false;
+	commonBurstCoveragePartial = false;
+	commonMasterFirstBurst = 0;
+	commonMasterLastBurst = 0;
+	retainedMasterBurstIndices.clear();
+	commonBurstCoverageSignature.clear();
+	start.release();
+	end.release();
+	masterAzimuth.release();
+	masterRange.release();
+	slaveAzimuth.release();
+	slaveRange.release();
+	fullBurstFiles.clear();
+	this->outFiles.clear();
+	this->DEMPath.clear();
+	this->masterIndex = 1;
+	numOfImages = 0;
+	isMasterRgAzComputed = false;
+	deferFinalDeburstOutput = false;
+	if (dem)
+	{
+		delete dem;
+		dem = nullptr;
+	}
+	for (Sentinel1Utils* image : su)
+		if (image) image->burstOffset = -9999;
+	reset_sentinel_back_geocoding_diagnostic_state(this);
 	char initMessage[512] = {};
 	sprintf_s(initMessage, "Initializing Sentinel-1 back-geocoding: images=%zu, master=%d.", h5Files.size(), masterIndex);
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize", initMessage,
@@ -11360,14 +11493,6 @@ int Sentinel1BackGeocoding::init(
 			return -1;
 		}
 	}
-	{
-		std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
-		SentinelBackGeocodingDiagnosticState& diagnosticState = g_sentinel_diagnostic_state[this];
-		diagnosticState.burstStatus.clear();
-		diagnosticState.zeroDopplerFailureStatistics.clear();
-		diagnosticState.hasZeroDopplerDiagnostic = false;
-		diagnosticState.zeroOffsetFallback = false;
-	}
 	int ret;
 	ret = loadData(h5Files);
 	if (return_check(ret, "loadData()", error_head)) return -1;
@@ -11387,13 +11512,9 @@ int Sentinel1BackGeocoding::init(
 	if (return_check(ret, "loadOutFiles()", error_head)) return -1;
 	ret = setMasterIndex(masterIndex);
 	if (return_check(ret, "setMasterIndex()", error_head)) return -1;
-	ret = deBurstConfig();
-	if (return_check(ret, "deBurstConfig()", error_head)) return -1;
-	ret = prepareOutFiles();
-	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "initialize.complete", "Back-geocoding initialization completed.",
-		"Input metadata and output dataset preparation succeeded.", DEMPath);
-	emit_progress(15, "Input metadata and working output are prepared.");
+		"Input metadata validation succeeded. Working output is prepared after burst alignment establishes the common coverage plan.", DEMPath);
+	emit_progress(15, "Input metadata is prepared; burst coverage will be planned after DEM loading.");
 
 	return 0;
 }
@@ -11401,6 +11522,40 @@ int Sentinel1BackGeocoding::init(
 int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 {
 	ScopedDiagnosticContext diagnosticScope(diagnosticCallback, diagnosticUserData);
+	burstOffsetComputed = false;
+	isdeBurstConfig = false;
+	deburstLines = 0;
+	commonBurstCoveragePrepared = false;
+	commonBurstCoveragePartial = false;
+	commonMasterFirstBurst = 0;
+	commonMasterLastBurst = 0;
+	retainedMasterBurstIndices.clear();
+	commonBurstCoverageSignature.clear();
+	start.release();
+	end.release();
+	masterAzimuth.release();
+	masterRange.release();
+	slaveAzimuth.release();
+	slaveRange.release();
+	fullBurstFiles.clear();
+	isMasterRgAzComputed = false;
+	deferFinalDeburstOutput = false;
+	this->numOfImages = 0;
+	for (int i = 0; i < su.size(); i++)
+	{
+		if (su[i])
+		{
+			su[i]->burstOffset = -9999;
+			delete su[i]; su[i] = NULL;
+		}
+	}
+	su.clear();
+	if (dem)
+	{
+		delete dem;
+		dem = nullptr;
+	}
+	reset_sentinel_back_geocoding_diagnostic_state(this);
 	if (h5Files.size() < 2)
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "load_data.validate_input", "Insufficient Sentinel-1 input files.",
@@ -11409,15 +11564,6 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 	}
 	int ret;
 	this->numOfImages = static_cast<int>(h5Files.size());
-	//�����������
-	for (int i = 0; i < su.size(); i++)
-	{
-		if (su[i])
-		{
-			delete su[i]; su[i] = NULL;
-		}
-	}
-	su.clear();
 	for (int i = 0; i < numOfImages; i++)
 	{
 		ScopedDiagnosticContext imageDiagnosticScope(diagnosticCallback, diagnosticUserData, i + 1);
@@ -11530,6 +11676,10 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 			if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_slc_to_h5(this->fullBurstFiles[i].c_str(), fullBurst);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
+		if (!commonBurstCoveragePrepared || commonBurstCoverageSignature.empty() ||
+			Hdf5IO::writeString(this->fullBurstFiles[i].c_str(), "s1_tops_coverage_signature",
+				commonBurstCoverageSignature.c_str()) != 0)
+			return -1;
 		char message[384] = {};
 		sprintf_s(message, "Prepared full-burst working HDF5: dimensions=%dx%d, datasets=s_re,s_im.", fullBurst.GetRows(), fullBurst.GetCols());
 		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "hdf5", "prepare_output.complete", message,
@@ -11545,9 +11695,65 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 	return 0;
 }
 
-int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile)
+int Sentinel1BackGeocoding::writeCommonBurstCoverageProvenance(const char* outputFile, int imageIndex) const
+{
+	if (!outputFile || !commonBurstCoveragePrepared || imageIndex < 1 || imageIndex > numOfImages ||
+		retainedMasterBurstIndices.empty()) return -1;
+	const int masterImage = masterIndex - 1;
+	const int sourceOffset = imageIndex - 1 == masterImage ? 0 : su[imageIndex - 1]->burstOffset;
+	const int sourceFirstBurst = commonMasterFirstBurst + sourceOffset;
+	const int sourceLastBurst = commonMasterLastBurst + sourceOffset;
+	const int firstSourceRow = start.at<int>(0, 0);
+	cv::Mat retainedIndices(1, static_cast<int>(retainedMasterBurstIndices.size()), CV_32S);
+	cv::Mat sourceRowRanges(static_cast<int>(retainedMasterBurstIndices.size()), 2, CV_32S);
+	int outputRowCount = 0;
+	for (int index = 0; index < static_cast<int>(retainedMasterBurstIndices.size()); ++index)
+	{
+		retainedIndices.at<int>(0, index) = retainedMasterBurstIndices[index];
+		sourceRowRanges.at<int>(index, 0) = start.at<int>(index, 0);
+		sourceRowRanges.at<int>(index, 1) = end.at<int>(index, 0);
+		outputRowCount += end.at<int>(index, 0) - start.at<int>(index, 0);
+	}
+	if (outputRowCount != deburstLines) return -1;
+	// A continuous deburst product omits overlap rows between source bursts.
+	// Keep the exact source-frame row for every output row; a single offset is
+	// insufficient once more than one retained span is materialized.
+	cv::Mat outputSourceRowMap(deburstLines, 1, CV_32S);
+	int outputRow = 0;
+	for (int index = 0; index < start.rows; ++index)
+	{
+		for (int sourceRow = start.at<int>(index, 0); sourceRow < end.at<int>(index, 0); ++sourceRow)
+			outputSourceRowMap.at<int>(outputRow++, 0) = sourceRow;
+	}
+	if (outputRow != deburstLines) return -1;
+	if (Hdf5IO::writeString(outputFile, "s1_tops_product_contract", "continuous_deburst_common_coverage_v1") != 0 ||
+		Hdf5IO::writeString(outputFile, "s1_tops_coverage_signature", commonBurstCoverageSignature.c_str()) != 0 ||
+		Hdf5IO::writeString(outputFile, "s1_tops_source_frame_mapping",
+			"continuous_deburst_output_on_master_full_burst_grid; use s1_tops_output_source_row_map with the declared geometry reference; acquisition and image metadata retain their input-image semantics; not a native Sentinel TOPS burst product") != 0 ||
+		Hdf5IO::writeString(outputFile, "s1_tops_output_source_row_map_semantics",
+			"full_deburst_source_row_v1") != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_common_master_first_burst", commonMasterFirstBurst) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_common_master_last_burst", commonMasterLastBurst) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_common_master_burst_count", static_cast<int>(retainedMasterBurstIndices.size())) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_partial_burst_coverage", commonBurstCoveragePartial ? 1 : 0) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_source_burst_first", sourceFirstBurst) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_source_burst_last", sourceLastBurst) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_source_burst_offset", sourceOffset) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_source_full_burst_row_count",
+			su[masterIndex - 1]->burstCount * su[masterIndex - 1]->linesPerBurst) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_output_source_row_origin", firstSourceRow) != 0 ||
+		Hdf5IO::writeInt(outputFile, "s1_tops_output_source_row_map_multilook_azimuth_factor", 1) != 0 ||
+		Hdf5IO::writeArrayReplace(outputFile, "s1_tops_output_source_row_map", outputSourceRowMap) != 0 ||
+		Hdf5IO::writeArrayReplace(outputFile, "s1_tops_retained_master_burst_indices", retainedIndices) != 0 ||
+		Hdf5IO::writeArrayReplace(outputFile, "s1_tops_retained_source_row_ranges", sourceRowRanges) != 0)
+		return -1;
+	return 0;
+}
+
+int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile, int imageIndex)
 {
 	if (!fullBurstFile || !deburstFile || start.empty() || end.empty() || start.rows != end.rows ||
+		static_cast<int>(retainedMasterBurstIndices.size()) != start.rows ||
 		masterIndex < 1 || masterIndex > static_cast<int>(su.size()) || !su[masterIndex - 1])
 		return -1;
 	const ULONGLONG materializeStartTick = GetTickCount64();
@@ -11568,7 +11774,8 @@ int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, 
 	{
 		const int firstRow = start.at<int>(burst, 0);
 		const int lastRow = end.at<int>(burst, 0);
-		const int burstFirstRow = burst * linesPerBurst;
+		const int sourceBurst = retainedMasterBurstIndices[burst] - 1;
+		const int burstFirstRow = sourceBurst * linesPerBurst;
 		const int burstLastRow = burstFirstRow + linesPerBurst;
 		// deBurstConfig stores full-burst coordinates.  Keep every retained span
 		// inside its source burst so a malformed configuration cannot mix bursts.
@@ -11608,7 +11815,8 @@ int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, 
 	char message[384] = {};
 	if (Hdf5IO::writeInt(deburstFile, "deburst_first_source_row", firstRetainedRow) != 0 ||
 		Hdf5IO::writeInt(deburstFile, "deburst_first_source_column", 0) != 0 ||
-		Hdf5IO::writeInt(deburstFile, "deburst_index_base", 0) != 0)
+		Hdf5IO::writeInt(deburstFile, "deburst_index_base", 0) != 0 ||
+		writeCommonBurstCoverageProvenance(deburstFile, imageIndex) != 0)
 		return -1;
 
 	sprintf_s(message, "Materialized final deburst HDF5 from full-burst dimensions=%dx%d to dimensions=%dx%d; first output sample maps to full-burst row=%d, column=0.",
@@ -12391,10 +12599,74 @@ int Sentinel1BackGeocoding::getBurstQualityStatus(vector<SentinelBurstQualitySta
 	return 0;
 }
 
+int Sentinel1BackGeocoding::prepareCommonBurstCoveragePlan()
+{
+	if (commonBurstCoveragePrepared) return 0;
+	BurstMappingPreflightResult coverage;
+	const int result = validateBurstMappingCoverage(su, masterIndex, coverage);
+	if (result != 0 || coverage.commonFirstMasterBurst > coverage.commonLastMasterBurst)
+	{
+		char message[640] = {};
+		sprintf_s(message,
+			"Burst mapping preflight failed: masterBurstCount=%d, commonMasterRange=none; no burst is valid for every slave image.",
+			su[masterIndex - 1]->burstCount);
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "burst_mapping.preflight", message,
+			"No common master burst range exists across all slave images. No partial output is published.",
+			nullptr, nullptr, SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR);
+		return SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR;
+	}
+
+	commonMasterFirstBurst = static_cast<int>(coverage.commonFirstMasterBurst);
+	commonMasterLastBurst = static_cast<int>(coverage.commonLastMasterBurst);
+	retainedMasterBurstIndices.clear();
+	for (int burst = commonMasterFirstBurst; burst <= commonMasterLastBurst; ++burst)
+		retainedMasterBurstIndices.push_back(burst);
+	commonBurstCoveragePartial = commonMasterFirstBurst != 1 ||
+		commonMasterLastBurst != su[masterIndex - 1]->burstCount;
+
+	std::ostringstream signature;
+	signature << "s1_tops_common_coverage_v1|master=" << commonMasterFirstBurst << '-' << commonMasterLastBurst
+		<< "|masterCount=" << su[masterIndex - 1]->burstCount;
+	for (int image = 0; image < numOfImages; ++image)
+	{
+		if (image == masterIndex - 1) continue;
+		signature << "|slave" << image + 1 << "=" << commonMasterFirstBurst + su[image]->burstOffset
+			<< '-' << commonMasterLastBurst + su[image]->burstOffset << "@" << su[image]->burstOffset;
+	}
+	commonBurstCoverageSignature = signature.str();
+	commonBurstCoveragePrepared = true;
+
+	if (commonBurstCoveragePartial)
+	{
+		std::ostringstream detail;
+		detail << "Common master burst coverage is [" << commonMasterFirstBurst << ',' << commonMasterLastBurst
+			<< "] of 1-" << su[masterIndex - 1]->burstCount << "; skipped master bursts=";
+		bool firstSkipped = true;
+		for (int burst = 1; burst <= su[masterIndex - 1]->burstCount; ++burst)
+		{
+			if (burst >= commonMasterFirstBurst && burst <= commonMasterLastBurst) continue;
+			if (!firstSkipped) detail << ',';
+			detail << burst;
+			firstSkipped = false;
+		}
+		for (int image = 0; image < numOfImages; ++image)
+		{
+			if (image == masterIndex - 1) continue;
+			detail << "; slaveImage=" << image + 1 << " sourceBurstRange=["
+				<< commonMasterFirstBurst + su[image]->burstOffset << ','
+				<< commonMasterLastBurst + su[image]->burstOffset << "] offset=" << su[image]->burstOffset;
+		}
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "coregistration", "burst_mapping.partial_coverage",
+			"Sentinel-1 back-geocoding will process only the common burst coverage.", detail.str().c_str());
+	}
+	return 0;
+}
+
 int Sentinel1BackGeocoding::deBurstConfig()
 {
 	const ULONGLONG configurationStartTick = GetTickCount64();
 	if (isdeBurstConfig) return 0;
+	if (!commonBurstCoveragePrepared || retainedMasterBurstIndices.empty()) return -1;
 	if (masterIndex < 1 || masterIndex > static_cast<int>(su.size()) || !su[masterIndex - 1] ||
 		su[masterIndex - 1]->burstCount <= 0 || su[masterIndex - 1]->linesPerBurst <= 0 ||
 		!std::isfinite(su[masterIndex - 1]->azimuthTimeInterval) || su[masterIndex - 1]->azimuthTimeInterval <= 0.0 ||
@@ -12432,8 +12704,17 @@ int Sentinel1BackGeocoding::deBurstConfig()
 	end.at<int>(su[masterIndex - 1]->burstCount - 1, 0) = su[masterIndex - 1]->linesPerBurst * su[masterIndex - 1]->burstCount;
 	start -= 1;
 	//end -= 1;
-	start.copyTo(this->start);
-	end.copyTo(this->end);
+	Mat selectedStart(static_cast<int>(retainedMasterBurstIndices.size()), 1, CV_32S);
+	Mat selectedEnd(static_cast<int>(retainedMasterBurstIndices.size()), 1, CV_32S);
+	for (int retained = 0; retained < static_cast<int>(retainedMasterBurstIndices.size()); ++retained)
+	{
+		const int sourceBurst = retainedMasterBurstIndices[retained] - 1;
+		if (sourceBurst < 0 || sourceBurst >= start.rows) return -1;
+		selectedStart.at<int>(retained, 0) = start.at<int>(sourceBurst, 0);
+		selectedEnd.at<int>(retained, 0) = end.at<int>(sourceBurst, 0);
+	}
+	selectedStart.copyTo(this->start);
+	selectedEnd.copyTo(this->end);
 	//for (int i = 0; i < su[masterIndex - 1]->burstCount; i++)
 	//{
 	//	deburstLines += end.at<int>(i, 0) - start.at<int>(i, 0);
@@ -12441,22 +12722,24 @@ int Sentinel1BackGeocoding::deBurstConfig()
 	//this->deburstLines = deburstLines;
 	isdeBurstConfig = true;
 	int retainedLines = 0;
-	for (int i = 0; i < start.rows; ++i)
-		retainedLines += end.at<int>(i, 0) - start.at<int>(i, 0);
-	for (int burst = 0; burst < start.rows; ++burst)
+	for (int i = 0; i < this->start.rows; ++i)
+		retainedLines += this->end.at<int>(i, 0) - this->start.at<int>(i, 0);
+	for (int burst = 0; burst < this->start.rows; ++burst)
 	{
+		const int sourceBurst = retainedMasterBurstIndices[burst] - 1;
 		char spanMessage[384] = {};
 		sprintf_s(spanMessage, "Deburst span: masterBurst=%d, start=%d, endExclusive=%d, retainedRows=%d, firstValidLine=%d, lastValidLine=%d.",
-			burst + 1, start.at<int>(burst, 0), end.at<int>(burst, 0), end.at<int>(burst, 0) - start.at<int>(burst, 0),
-			su[masterIndex - 1]->firstValidLine.at<int>(burst, 0), su[masterIndex - 1]->lastValidLine.at<int>(burst, 0));
+			sourceBurst + 1, this->start.at<int>(burst, 0), this->end.at<int>(burst, 0), this->end.at<int>(burst, 0) - this->start.at<int>(burst, 0),
+			su[masterIndex - 1]->firstValidLine.at<int>(sourceBurst, 0), su[masterIndex - 1]->lastValidLine.at<int>(sourceBurst, 0));
 		emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "deburst", "configuration.span", spanMessage,
 			"start/end are 0-based full-burst rows with end exclusive; firstValidLine/lastValidLine retain Sentinel metadata's 1-based convention.",
-			nullptr, nullptr, 0, end.at<int>(burst, 0) - start.at<int>(burst, 0), su[masterIndex - 1]->samplesPerBurst, CV_32S);
+			nullptr, nullptr, 0, this->end.at<int>(burst, 0) - this->start.at<int>(burst, 0), su[masterIndex - 1]->samplesPerBurst, CV_32S);
 	}
 
 	char message[384] = {};
-	sprintf_s(message, "Deburst configuration: bursts=%d, sourceLinesPerBurst=%d, retainedLines=%d, samples=%d.",
-		su[masterIndex - 1]->burstCount, su[masterIndex - 1]->linesPerBurst, retainedLines,
+	sprintf_s(message, "Deburst configuration: retainedMasterBursts=%d, commonMasterRange=[%d,%d], sourceLinesPerBurst=%d, retainedLines=%d, samples=%d.",
+		static_cast<int>(retainedMasterBurstIndices.size()), commonMasterFirstBurst, commonMasterLastBurst,
+		su[masterIndex - 1]->linesPerBurst, retainedLines,
 		su[masterIndex - 1]->samplesPerBurst);
 	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "deburst", "configuration.complete", message,
 		"Overlap trimming is derived from burst azimuth timing and valid-line metadata.",
@@ -12480,14 +12763,8 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 		"DEM projection, burst alignment, resampling, and output writing will be performed.");
 	emit_progress(20, "Loading DEM and preparing geometric projection.");
 	int ret;
-	if (!isdeBurstConfig)
-	{
-		ret = deBurstConfig();
-		if (return_check(ret, "deBurstConfig()", error_head)) return -1;
-	}
 	FormatConversion conversion;
 	ComplexMat slaveSLC, tmp;
-	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return -1;
 	int linesPerBurst;
 	int samplesPerBurst = su[masterIndex - 1]->samplesPerBurst;
 	int lines = 0;
@@ -12496,26 +12773,108 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 	if (return_check(ret, "computeImageGeoBoundry()", error_head)) return -1;
 	ret = loadDEM(this->DEMPath.c_str(), lonMin, lonMax, latMin, latMax);
 	if (return_check(ret, "loadDEM()", error_head)) return -1;
-	for (int i = 0; i < su[masterIndex - 1]->burstCount; i++)
+	if (!burstOffsetComputed)
 	{
+		ret = computeBurstOffset();
+		if (return_check(ret, "computeBurstOffset()", error_head)) return -1;
+	}
+	if (has_sentinel_zero_offset_fallback(this))
+	{
+		int firstSlaveImage = 0;
+		for (int imageIndex = 0; imageIndex < numOfImages; ++imageIndex)
+		{
+			if (imageIndex != masterIndex - 1)
+			{
+				firstSlaveImage = imageIndex + 1;
+				break;
+			}
+		}
+		if (firstSlaveImage > 0 && firstSlaveImage <= static_cast<int>(su.size()) &&
+			su[firstSlaveImage - 1])
+		{
+			char fallbackMessage[640] = {};
+			sprintf_s(fallbackMessage,
+				"Burst alignment preflight failed: masterBurstCount=%d, slaveImage=%d, slaveBurstCount=%d, offset=unknown (zero-offset fallback), commonMasterRange=unknown; burst alignment was not estimated and full-burst processing is rejected.",
+				su[masterIndex - 1]->burstCount,
+				firstSlaveImage,
+				su[firstSlaveImage - 1]->burstCount);
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "burst_alignment.preflight",
+				fallbackMessage,
+				"Zero-offset fallback values are not a successfully estimated alignment. No DEM projection or partial output is permitted.",
+				su[firstSlaveImage - 1]->h5File.c_str(), nullptr,
+				SENTINEL_BACK_GEOCODING_BURST_OFFSET_FALLBACK_ERROR);
+		}
+		return SENTINEL_BACK_GEOCODING_BURST_OFFSET_FALLBACK_ERROR;
+	}
+	BurstMappingPreflightResult burstMappingPreflight;
+	ret = validateBurstMappingCoverage(su, masterIndex, burstMappingPreflight);
+	if (ret == SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR)
+	{
+		char mappingMessage[640] = {};
+		const bool hasCommonRange = burstMappingPreflight.commonFirstMasterBurst <=
+			burstMappingPreflight.commonLastMasterBurst;
+		if (burstMappingPreflight.firstInvalidSlaveImage > 0 &&
+			burstMappingPreflight.firstInvalidSlaveImage <= static_cast<int>(su.size()) &&
+			su[burstMappingPreflight.firstInvalidSlaveImage - 1])
+		{
+			if (hasCommonRange)
+			{
+				sprintf_s(mappingMessage,
+					"Burst mapping preflight failed: masterBurstCount=%d, slaveImage=%d, slaveBurstCount=%lld, offset=%d, commonMasterRange=[%lld,%lld], firstInvalidMapping=masterBurst=%lld->slaveBurst=%lld.",
+					su[masterIndex - 1]->burstCount,
+					burstMappingPreflight.firstInvalidSlaveImage,
+					burstMappingPreflight.firstInvalidSlaveBurstCount,
+					burstMappingPreflight.firstInvalidOffset,
+					burstMappingPreflight.commonFirstMasterBurst,
+					burstMappingPreflight.commonLastMasterBurst,
+					burstMappingPreflight.firstInvalidMasterBurst,
+					burstMappingPreflight.firstInvalidSlaveBurst);
+			}
+			else
+			{
+				sprintf_s(mappingMessage,
+					"Burst mapping preflight failed: masterBurstCount=%d, slaveImage=%d, slaveBurstCount=%lld, offset=%d, commonMasterRange=none, firstInvalidMapping=masterBurst=%lld->slaveBurst=%lld.",
+					su[masterIndex - 1]->burstCount,
+					burstMappingPreflight.firstInvalidSlaveImage,
+					burstMappingPreflight.firstInvalidSlaveBurstCount,
+					burstMappingPreflight.firstInvalidOffset,
+					burstMappingPreflight.firstInvalidMasterBurst,
+					burstMappingPreflight.firstInvalidSlaveBurst);
+			}
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "coregistration", "burst_mapping.preflight",
+				mappingMessage,
+				"Every master burst is required by the full-burst output contract. Partial or empty burst overlap is rejected before DEM projection, so no partial output is published.",
+				su[burstMappingPreflight.firstInvalidSlaveImage - 1]->h5File.c_str(), nullptr,
+				SENTINEL_BACK_GEOCODING_BURST_MAPPING_ERROR);
+		}
+		return ret;
+	}
+	if (ret != 0)
+		return -1;
+	ret = prepareCommonBurstCoveragePlan();
+	if (ret != 0) return ret;
+	ret = deBurstConfig();
+	if (return_check(ret, "deBurstConfig()", error_head)) return -1;
+	ret = prepareOutFiles();
+	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
+	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return -1;
+	for (int retainedIndex = 0; retainedIndex < static_cast<int>(retainedMasterBurstIndices.size()); retainedIndex++)
+	{
+		const int masterBurst = retainedMasterBurstIndices[retainedIndex];
 		const ULONGLONG burstStartTick = GetTickCount64();
-		ScopedDiagnosticContext burstDiagnosticScope(diagnosticCallback, diagnosticUserData, -1, i + 1);
+		ScopedDiagnosticContext burstDiagnosticScope(diagnosticCallback, diagnosticUserData, -1, masterBurst);
 		char burstMessage[256] = {};
-		sprintf_s(burstMessage, "Processing master burst %d of %d.", i + 1, su[masterIndex - 1]->burstCount);
+		sprintf_s(burstMessage, "Processing common master burst %d (%d of %d retained).", masterBurst,
+			retainedIndex + 1, static_cast<int>(retainedMasterBurstIndices.size()));
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "burst.start", burstMessage);
 		if (isCancelRequested()) return -2;
-		if (!burstOffsetComputed)
-		{
-			int ret = computeBurstOffset();
-			if (return_check(ret, "computeBurstOffset()", error_head)) return -1;
-		}
-		lines = i * su[masterIndex - 1]->linesPerBurst;
+		lines = (masterBurst - 1) * su[masterIndex - 1]->linesPerBurst;
 		linesPerBurst = su[masterIndex - 1]->linesPerBurst;
 		for (int j = 0; j < numOfImages; j++)
 		{
 			if (isCancelRequested()) return -2;
 			if (j == masterIndex - 1) continue;
-			ret = slaveSincInterpolation(i + 1, j + 1, slaveSLC);
+			ret = slaveSincInterpolation(masterBurst, j + 1, slaveSLC);
 			if (ret == -2) return -2;
 			if (return_check(ret, "slaveSincInterpolation()", error_head)) return -1;
 			if (slaveSLC.GetRows() != linesPerBurst || slaveSLC.GetCols() != samplesPerBurst ||
@@ -12530,7 +12889,8 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 			if (return_check(ret, "write_subarray_to_h5()", error_head)) return -1;
 		}
 		isMasterRgAzComputed = false;
-		sprintf_s(burstMessage, "Completed master burst %d of %d.", i + 1, su[masterIndex - 1]->burstCount);
+		sprintf_s(burstMessage, "Completed common master burst %d (%d of %d retained).", masterBurst,
+			retainedIndex + 1, static_cast<int>(retainedMasterBurstIndices.size()));
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "burst.complete", burstMessage,
 			nullptr, nullptr, nullptr, 0, -1, -1, -1,
 			static_cast<long long>(GetTickCount64() - burstStartTick));
@@ -12538,7 +12898,7 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 	if (!deferFinalDeburstOutput)
 	{
 		for (int image = 0; image < numOfImages; ++image)
-			if (materializeDeburstOutput(fullBurstFiles[image].c_str(), outFiles[image].c_str()) != 0)
+			if (materializeDeburstOutput(fullBurstFiles[image].c_str(), outFiles[image].c_str(), image + 1) != 0)
 				return -1;
 	}
 	emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "coregistration", "process.complete", "Sentinel-1 back-geocoding completed.",
@@ -12827,6 +13187,14 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 		return contractResult;
 	}
 	if (isCancelRequested()) return -2;
+	if (!commonBurstCoveragePrepared || retainedMasterBurstIndices.empty() || commonBurstCoverageSignature.empty() ||
+		commonMasterFirstBurst < 1 || commonMasterLastBurst < commonMasterFirstBurst)
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.coverage_plan",
+			"Post-registration refinement requires a prepared common burst coverage plan.",
+			"Run the core back-geocoding phase on this instance before refinement; no transaction was created.", nullptr, nullptr, kRefinementContractError);
+		return kRefinementContractError;
+	}
 	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return kRefinementContractError;
 	const Sentinel1Utils* fullBurstMaster = su[masterIndex - 1];
 	if (!fullBurstMaster) return kRefinementContractError;
@@ -12834,10 +13202,56 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	for (int image = 0; image < numOfImages; ++image)
 	{
 		int rows = 0, columns = 0;
+		std::string fullBurstSignature;
 		if (fullBurstFiles[image].empty() || Hdf5IO::getDatasetDims(fullBurstFiles[image].c_str(), "s_re", &rows, &columns) != 0 ||
 			rows != expectedFullBurstRows || columns != fullBurstMaster->samplesPerBurst)
 			return kRefinementContractError;
+		if (Hdf5IO::readString(fullBurstFiles[image].c_str(), "s1_tops_coverage_signature", fullBurstSignature) != 0 ||
+			fullBurstSignature != commonBurstCoverageSignature)
+		{
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.coverage_plan",
+				"Full-burst working H5 coverage signature is missing or inconsistent.",
+				"Refinement requires all working files to carry the same common-coverage plan.", fullBurstFiles[image].c_str(), nullptr, kRefinementContractError);
+			return kRefinementContractError;
+		}
 	}
+
+	auto rejectZeroOffsetFallback = [&]() -> int {
+		if (!has_sentinel_zero_offset_fallback(this)) return 0;
+		int firstSlaveImage = 0;
+		const Sentinel1Utils* firstSlave = nullptr;
+		for (int imageIndex = 0; imageIndex < static_cast<int>(su.size()); ++imageIndex)
+		{
+			if (imageIndex == masterIndex - 1 || !su[imageIndex]) continue;
+			firstSlaveImage = imageIndex + 1;
+			firstSlave = su[imageIndex];
+			break;
+		}
+		char fallbackMessage[640] = {};
+		sprintf_s(fallbackMessage,
+			"Post-registration refinement preflight failed: masterBurstCount=%d, slaveImage=%d, slaveBurstCount=%d, offset=unknown (zero-offset fallback); refinement transaction creation is rejected.",
+			fullBurstMaster->burstCount, firstSlaveImage, firstSlave ? firstSlave->burstCount : 0);
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.burst_offset_fallback",
+			fallbackMessage,
+			"Zero-offset fallback is not a successfully estimated alignment. No refinement transaction was created or committed.",
+			firstSlave ? firstSlave->h5File.c_str() : nullptr, nullptr,
+			SENTINEL_BACK_GEOCODING_BURST_OFFSET_FALLBACK_ERROR);
+		return SENTINEL_BACK_GEOCODING_BURST_OFFSET_FALLBACK_ERROR;
+	};
+	int fallbackResult = rejectZeroOffsetFallback();
+	if (fallbackResult != 0) return fallbackResult;
+	if (!burstOffsetComputed)
+	{
+		if (computeBurstOffset() != 0)
+		{
+			emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "refinement", "refinement.burst_offset",
+				"Failed to compute Sentinel burst offsets for compensation.",
+				"Refinement transaction was not created.", nullptr, nullptr, kRefinementTransactionError);
+			return kRefinementTransactionError;
+		}
+	}
+	fallbackResult = rejectZeroOffsetFallback();
+	if (fallbackResult != 0) return fallbackResult;
 
 	const std::string transactionDirectory = options.transactionDirectory && *options.transactionDirectory ?
 		options.transactionDirectory : refinement_directory(outFiles[masterIndex - 1]);
@@ -12883,7 +13297,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	const Sentinel1Utils* master = su[masterIndex - 1];
 	if (!master) return fail(kRefinementContractError, "refinement.validate", "Master Sentinel metadata is unavailable.");
 	std::vector<int> overlapLines;
-	if (options.enableEsd != 0 && !compute_esd_overlap_lines(master, overlapLines))
+	if (options.enableEsd != 0 && retainedMasterBurstIndices.size() > 1 && !compute_esd_overlap_lines(master, overlapLines))
 		return fail(kRefinementContractError, "esd.overlap", "Unable to construct valid ESD burst overlap geometry.");
 
 	result.imageCount = 0;
@@ -12901,7 +13315,18 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 		if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_NONE) imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_RANGE_NOT_REQUESTED;
 		else if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_PROVIDED && fabs(imageResult.rangeOffset) < 1.0e-12)
 			imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_RANGE_EXPLICIT_ZERO;
+		if (options.enableEsd != 0 && retainedMasterBurstIndices.size() == 1)
+		{
+			imageResult.esdQualityCode = SENTINEL_REFINEMENT_QUALITY_UNAVAILABLE;
+			imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_ESD_LOW_COHERENCE;
+		}
 	}
+	const bool skipPartialRangeEstimate = commonBurstCoveragePartial &&
+		options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_ESTIMATE;
+	if (skipPartialRangeEstimate)
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "range_refinement", "range.partial_coverage_skipped",
+			"Automatic range offset estimation is disabled for partial common burst coverage.",
+			"The estimator samples full-burst working files. Explicit offsets remain supported; zero offset is retained for this partial-coverage product.");
 	if (options.rangeOffsetMode != SENTINEL_RANGE_OFFSET_NONE)
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "range_refinement", "range.started", "Starting range amplitude refinement.",
@@ -12912,7 +13337,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			SentinelRefinementImageResult& imageResult = result.images[resultIndex];
 			const int slaveIndex = imageResult.imageIndex - 1;
 			ScopedDiagnosticContext imageScope(diagnosticCallback, diagnosticUserData, imageResult.imageIndex);
-			if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_ESTIMATE)
+			if (options.rangeOffsetMode == SENTINEL_RANGE_OFFSET_ESTIMATE && !skipPartialRangeEstimate)
 			{
 				if (estimate_range_offset(transactionFiles[masterIndex - 1].fullBurstTemporaryPath.c_str(),
 					transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), imageResult.imageIndex, diagnosticCallback, diagnosticUserData,
@@ -12932,6 +13357,12 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 						imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_RANGE_EXPLICIT_ZERO;
 				}
 			}
+			else if (skipPartialRangeEstimate)
+			{
+				imageResult.rangeOffset = 0.0;
+				imageResult.rangeQualityCode = SENTINEL_REFINEMENT_QUALITY_UNAVAILABLE;
+				imageResult.warningFlags |= SENTINEL_REFINEMENT_WARNING_RANGE_NOT_REQUESTED;
+			}
 			if (Hdf5IO::writeDouble(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "offset_r", imageResult.rangeOffset) != 0)
 				return fail(kRefinementTransactionError, "range.write_offset", "Failed to write range refinement offset.");
 			char message[256] = {};
@@ -12943,14 +13374,25 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 	}
 
 	Utils util;
-	if (options.enableEsd != 0)
+	const bool skipEsdForSingleBurst = options.enableEsd != 0 && retainedMasterBurstIndices.size() == 1;
+	if (skipEsdForSingleBurst)
+		emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "esd", "esd.partial_coverage_skipped",
+			"ESD was skipped because the common coverage contains only one master burst.",
+			"ESD requires an adjacent retained master-burst pair. Registration continues without ESD correction.");
+	if (options.enableEsd != 0 && !skipEsdForSingleBurst)
 	{
 		emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "esd", "esd.started", "Starting Enhanced Spectral Diversity correction.",
 			"Frozen parameters: multilook=16x4, coherence=0.4, histogramBin=0.1, conversion=486/(2*pi*4500).");
 		emit_progress(80, "Estimating Enhanced Spectral Diversity correction.");
 		const int sampleCount = master->samplesPerBurst;
 		int totalOverlapLines = 0;
-		for (int overlap : overlapLines) totalOverlapLines += overlap;
+		for (size_t retained = 1; retained < retainedMasterBurstIndices.size(); ++retained)
+		{
+			const int lowerBurst = retainedMasterBurstIndices[retained];
+			const int upperBurst = retainedMasterBurstIndices[retained - 1];
+			if (lowerBurst != upperBurst + 1) return fail(kRefinementContractError, "esd.coverage_plan", "Common burst plan is not contiguous.");
+			totalOverlapLines += overlapLines[lowerBurst - 2];
+		}
 		for (int resultIndex = 0; resultIndex < result.imageCount; ++resultIndex)
 		{
 			if (isCancelRequested()) return fail(-2, "esd.cancelled", "ESD correction was cancelled.");
@@ -12960,11 +13402,12 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			cv::Mat overlapPhase(totalOverlapLines, sampleCount, CV_64F);
 			ComplexMat masterUp, masterDown, slaveUp, slaveDown;
 			int destinationRow = 0;
-			for (int burst = 1; burst < master->burstCount; ++burst)
+			for (size_t retained = 1; retained < retainedMasterBurstIndices.size(); ++retained)
 			{
-				const int overlap = overlapLines[burst - 1];
-				const int upperRow = (burst - 1) * master->linesPerBurst + master->lastValidLine.at<int>(burst - 1, 0) - overlap;
-				const int lowerRow = burst * master->linesPerBurst + master->firstValidLine.at<int>(burst, 0) - 1;
+				const int lowerBurst = retainedMasterBurstIndices[retained];
+				const int overlap = overlapLines[lowerBurst - 2];
+				const int upperRow = (lowerBurst - 2) * master->linesPerBurst + master->lastValidLine.at<int>(lowerBurst - 2, 0) - overlap;
+				const int lowerRow = (lowerBurst - 1) * master->linesPerBurst + master->firstValidLine.at<int>(lowerBurst - 1, 0) - 1;
 				const char* masterPath = transactionFiles[masterIndex - 1].fullBurstTemporaryPath.c_str();
 				const char* slavePath = transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str();
 				if (Hdf5IO::readSubarray(masterPath, "s_re", upperRow, 0, overlap, sampleCount, masterUp.re) != 0 ||
@@ -13025,23 +13468,23 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 		}
 	}
 
-	if (!burstOffsetComputed && computeBurstOffset() != 0)
-		return fail(kRefinementTransactionError, "refinement.burst_offset", "Failed to compute Sentinel burst offsets for compensation.");
 	ComplexMat slaveSlc, reramp;
-	for (int burst = 0; burst < master->burstCount; ++burst)
+	for (int retainedIndex = 0; retainedIndex < static_cast<int>(retainedMasterBurstIndices.size()); ++retainedIndex)
 	{
+		const int masterBurst = retainedMasterBurstIndices[retainedIndex];
 		if (isCancelRequested()) return fail(-2, "refinement.cancelled", "Post-registration refinement was cancelled.");
 		for (int resultIndex = 0; resultIndex < result.imageCount; ++resultIndex)
 		{
 			SentinelRefinementImageResult& imageResult = result.images[resultIndex];
 			const int slaveIndex = imageResult.imageIndex - 1;
 			if (fabs(imageResult.esdAzimuthOffset) < 0.0001 && fabs(imageResult.rangeOffset) < 0.01) continue;
-			const int slaveBurst = burst + 1 + su[slaveIndex]->burstOffset;
-			if (slaveBurst < 1 || slaveBurst > su[slaveIndex]->burstCount) continue;
+			const int slaveBurst = masterBurst + su[slaveIndex]->burstOffset;
+			if (slaveBurst < 1 || slaveBurst > su[slaveIndex]->burstCount)
+				return fail(kRefinementContractError, "refinement.coverage_plan", "Retained common burst maps outside a slave burst range.");
 			if (su[slaveIndex]->getBurst(slaveBurst, slaveSlc) != 0) return fail(kRefinementTransactionError, "refinement.read_burst", "Failed to read slave burst for compensation.");
 			char burstMappingMessage[320] = {};
 			sprintf_s(burstMappingMessage, "Refinement mapping: masterBurst=%d, slaveBurst=%d, burstOffset=%d, coefficientDataset=burst_%d_coef.",
-				burst + 1, slaveBurst, su[slaveIndex]->burstOffset, burst + 1);
+				masterBurst, slaveBurst, su[slaveIndex]->burstOffset, masterBurst);
 			emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "refinement", "burst_mapping", burstMappingMessage,
 				"Coefficient datasets are indexed by master burst, while source reads use the burst-offset-adjusted slave burst.");
 
@@ -13050,7 +13493,7 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			if (su[slaveIndex]->computeDerampDemodPhase(slaveBurst, derampPhase) != 0 || performDerampDemod(derampPhase, slaveSlc) != 0)
 				return fail(kRefinementTransactionError, "refinement.deramp", "Failed to deramp slave burst for compensation.");
 			cv::Mat coefficients;
-			const std::string coefficientName = "burst_" + std::to_string(burst + 1) + "_coef";
+			const std::string coefficientName = "burst_" + std::to_string(masterBurst) + "_coef";
 			const int coefficientResult = Hdf5IO::readArray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), coefficientName.c_str(), coefficients);
 			if (coefficientResult != 0 || coefficients.rows != 1 || coefficients.cols != 6)
 				return fail(kRefinementTransactionError, "refinement.read_coefficients", "Missing or invalid initial geometric coefficient vector.");
@@ -13083,24 +13526,25 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			util.phase2cos(derampPhase, reramp.re, reramp.im);
 			slaveSlc.Mul(reramp, slaveSlc, true);
 			slaveSlc.convertTo(slaveSlc, CV_32F);
-			const int outputRow = burst * master->linesPerBurst;
+			const int outputRow = (masterBurst - 1) * master->linesPerBurst;
 			if (Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_re", slaveSlc.re, outputRow, 0) != 0 ||
 				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_im", slaveSlc.im, outputRow, 0) != 0)
 				return fail(kRefinementTransactionError, "refinement.write_slc", "Failed to write compensated SLC data.");
 		}
-		emit_progress(84 + 12 * (burst + 1) / master->burstCount, "Applying ESD and range corrections.");
+		emit_progress(84 + 12 * (retainedIndex + 1) / static_cast<int>(retainedMasterBurstIndices.size()), "Applying ESD and range corrections.");
 	}
 
 	emit_progress(96, "Materializing final deburst outputs.");
-	for (const RefinementTransactionFile& file : transactionFiles)
+	for (size_t image = 0; image < transactionFiles.size(); ++image)
 	{
+		const RefinementTransactionFile& file = transactionFiles[image];
 		int reRows = 0, reColumns = 0, imRows = 0, imColumns = 0;
 		if (Hdf5IO::getDatasetDims(file.fullBurstTemporaryPath.c_str(), "s_re", &reRows, &reColumns) != 0 ||
 			Hdf5IO::getDatasetDims(file.fullBurstTemporaryPath.c_str(), "s_im", &imRows, &imColumns) != 0 ||
 			reRows != expectedFullBurstRows || imRows != expectedFullBurstRows ||
 			reColumns != fullBurstMaster->samplesPerBurst || imColumns != fullBurstMaster->samplesPerBurst)
 			return fail(kRefinementTransactionError, "refinement.verify_full_burst", "Refinement full-burst temporary output validation failed.");
-		if (materializeDeburstOutput(file.fullBurstTemporaryPath.c_str(), file.temporaryPath.c_str()) != 0)
+		if (materializeDeburstOutput(file.fullBurstTemporaryPath.c_str(), file.temporaryPath.c_str(), static_cast<int>(image) + 1) != 0)
 			return fail(kRefinementTransactionError, "refinement.deburst", "Failed to materialize the final deburst output.");
 		if (Hdf5IO::getDatasetDims(file.temporaryPath.c_str(), "s_re", &reRows, &reColumns) != 0 ||
 			Hdf5IO::getDatasetDims(file.temporaryPath.c_str(), "s_im", &imRows, &imColumns) != 0 ||
@@ -13213,9 +13657,8 @@ int Sentinel1BackGeocoding::verifyOutputsAgainstReference(
 
 	result.imageCount = 0;
 	result.passed = 1;
-	const int expectedBurstCount = masterIndex >= 1 && masterIndex <= static_cast<int>(su.size()) && su[masterIndex - 1] ?
-		su[masterIndex - 1]->burstCount : 0;
-	if (expectedBurstCount <= 0) return -1;
+	if (!commonBurstCoveragePrepared || retainedMasterBurstIndices.empty() || commonBurstCoverageSignature.empty()) return -1;
+	const int expectedBurstCount = static_cast<int>(retainedMasterBurstIndices.size());
 
 	for (int image = 0; image < static_cast<int>(outFiles.size()); ++image)
 	{
@@ -13335,7 +13778,7 @@ int Sentinel1BackGeocoding::verifyOutputsAgainstReference(
 			}
 
 			double maxCoefficientError = 0.0;
-			for (int burst = 1; burst <= expectedBurstCount; ++burst)
+			for (int burst : retainedMasterBurstIndices)
 			{
 				const std::string coefficientName = "burst_" + std::to_string(burst) + "_coef";
 				cv::Mat outputCoefficients, referenceCoefficients;
