@@ -2040,6 +2040,31 @@ enum SentinelZeroDopplerCallPath
 	SENTINEL_ZERO_DOPPLER_CALL_SLAVE_RG_AZ = 2
 };
 
+enum SentinelRgAzProjectionFailureReason
+{
+	SENTINEL_RGAZ_PROJECTION_NONE = 0,
+	SENTINEL_RGAZ_PROJECTION_INVALID_INPUT = 1,
+	SENTINEL_RGAZ_PROJECTION_SLANT_RANGE = 2,
+	SENTINEL_RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS = 3,
+	SENTINEL_RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS = 4
+};
+
+struct SentinelSceneProjection
+{
+	double zeroDopplerTime;
+	double slantRange;
+	double rangeIndex;
+	int projectionFailureReason;
+	int zeroDopplerFailureReason;
+
+	SentinelSceneProjection()
+		: zeroDopplerTime(0.0), slantRange(0.0), rangeIndex(0.0),
+		projectionFailureReason(SENTINEL_RGAZ_PROJECTION_NONE),
+		zeroDopplerFailureReason(SENTINEL_ZERO_DOPPLER_NONE)
+	{
+	}
+};
+
 enum SentinelBurstQualityCode
 {
 	SENTINEL_BURST_NOT_PROCESSED = 0,
@@ -2193,6 +2218,11 @@ public:
 		Position groundPosition,
 		double* zeroDopplerTime,
 		double dopplerFrequency = 0.0
+	);
+	/** Compute burst-independent zero-Doppler time, slant range, and range index once. */
+	int projectGroundPoint(
+		Position groundPosition,
+		SentinelSceneProjection& projection
 	);
 	/** @brief 计算地面点投影到SAR图像坐标系下的距离向和方位向坐标
 	* @param burstIndex                           burst序号
@@ -2685,6 +2715,9 @@ private:
 	int deBurstConfig();
 	int materializeDeburstOutput(const char* fullBurstFile, const char* deburstFile, int imageIndex);
 	int prepareCommonBurstCoveragePlan();
+	int prepareBatchedGeometryPlan();
+	int verifyBatchedGeometryShadow();
+	int getPreparedGeometryCoefficients(int slaveImageIndex, int masterBurstIndex, double* coefficients) const;
 	int writeCommonBurstCoverageProvenance(const char* outputFile, int imageIndex) const;
 
 public:
@@ -2799,6 +2832,10 @@ private:
 	int commonMasterLastBurst;
 	vector<int> retainedMasterBurstIndices;
 	string commonBurstCoverageSignature;
+	bool batchedGeometryPrepared;
+	vector<Mat> batchedGeometryCoefficients;
+	vector<vector<unsigned long long>> batchedGeometryFitCounts;
+	vector<vector<unsigned long long>> batchedGeometryFitHashes;
 	char error_head[256];
 
 private:

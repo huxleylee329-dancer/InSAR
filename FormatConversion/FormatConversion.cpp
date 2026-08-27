@@ -6,6 +6,7 @@
 #include <memory>
 #include <limits>
 #include <algorithm>
+#include <exception>
 #include <cstdarg>
 #include <cstring>
 #include <climits>
@@ -10646,6 +10647,54 @@ int Sentinel1Utils::getZeroDopplerTime(Position groundPosition, double* zeroDopp
 	return 0;
 }
 
+int Sentinel1Utils::projectGroundPoint(Position groundPosition, SentinelSceneProjection& projection)
+{
+	projection = SentinelSceneProjection();
+	g_zero_doppler_failure_reason = SENTINEL_ZERO_DOPPLER_NONE;
+	g_has_thread_zero_doppler_diagnostic = false;
+	g_rgaz_projection_failure_reason = RGAZ_PROJECTION_NONE;
+	if (!bInitialized || !stateVectors || !std::isfinite(radarFrequency) || radarFrequency <= 0.0 ||
+		!std::isfinite(azimuthTimeInterval) || azimuthTimeInterval <= 0.0)
+	{
+		projection.projectionFailureReason = SENTINEL_RGAZ_PROJECTION_INVALID_INPUT;
+		projection.zeroDopplerFailureReason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_INVALID_INPUT;
+		g_zero_doppler_failure_reason = projection.zeroDopplerFailureReason;
+		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
+		return -1;
+	}
+
+	const double wavelength = VEL_C / radarFrequency;
+	if (!orbitStateVectors::findZeroDopplerTime(*stateVectors, groundPosition, wavelength,
+		azimuthTimeInterval, 0.0, projection.zeroDopplerTime, projection.slantRange, 0.01))
+	{
+		projection.zeroDopplerTime = std::numeric_limits<double>::quiet_NaN();
+		projection.slantRange = std::numeric_limits<double>::quiet_NaN();
+		projection.zeroDopplerFailureReason = SENTINEL_ZERO_DOPPLER_NO_BRACKET;
+		g_zero_doppler_failure_reason = projection.zeroDopplerFailureReason;
+		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
+		return -1;
+	}
+	if (!std::isfinite(projection.zeroDopplerTime) || !std::isfinite(projection.slantRange))
+	{
+		projection.zeroDopplerTime = std::numeric_limits<double>::quiet_NaN();
+		projection.slantRange = std::numeric_limits<double>::quiet_NaN();
+		projection.zeroDopplerFailureReason = SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT;
+		g_zero_doppler_failure_reason = projection.zeroDopplerFailureReason;
+		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
+		return -1;
+	}
+
+	projection.rangeIndex = (projection.slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
+	if (projection.rangeIndex < 0.0 || projection.rangeIndex >= samplesPerBurst)
+	{
+		projection.projectionFailureReason = SENTINEL_RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
+		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
+		return -1;
+	}
+	return 0;
+}
+
 int Sentinel1Utils::getRgAzPosition(
 	int burstIndex,
 	Position groundPosition,
@@ -10664,44 +10713,11 @@ int Sentinel1Utils::getRgAzPosition(
 		record_zero_doppler_diagnostic(this, groundPosition, 0.0, g_zero_doppler_failure_reason);
 		return -1;
 	}
-	double zeroDopplerTime, slantRange;
-	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
+	SentinelSceneProjection projection;
+	ret = projectGroundPoint(groundPosition, projection);
 	if (return_failed(ret)) return -1;
-	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
-	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
-	if (return_check(ret, "getSlantRange()", error_head))
-	{
-		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_SLANT_RANGE;
-		return -1;
-	}
-	*rangeIndex = (slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
-
-	if (*rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst)
-	{
-		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
-		return -1;
-	}
-	if (*azimuthIndex < 0.0 || *azimuthIndex >= linesPerBurst)
-	{
-		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS;
-		return -1;
-	}
-	int x = static_cast<int>(*rangeIndex - 1); x = x < 0 ? 0 : x;
-	ret = getZeroDopplerTime(groundPosition, &zeroDopplerTime, 0.0);
-	if (return_failed(ret)) return -1;
-	*azimuthIndex = (zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
-	ret = getSlantRange(zeroDopplerTime, groundPosition, &slantRange);
-	if (return_check(ret, "getSlantRange()", error_head))
-	{
-		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_SLANT_RANGE;
-		return -1;
-	}
-	*rangeIndex = (slantRange - slantRangeTime * VEL_C * 0.5) / rangePixelSpacing;
-	if (*rangeIndex < 0.0 || *rangeIndex >= samplesPerBurst)
-	{
-		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS;
-		return -1;
-	}
+	*rangeIndex = projection.rangeIndex;
+	*azimuthIndex = (projection.zeroDopplerTime - burstAzimuthTime.at<double>(burstIndex - 1)) / azimuthTimeInterval;
 	if (*azimuthIndex < 0.0 || *azimuthIndex >= linesPerBurst)
 	{
 		g_rgaz_projection_failure_reason = RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS;
@@ -11371,6 +11387,7 @@ Sentinel1BackGeocoding::Sentinel1BackGeocoding()
 	memset(this->error_head, 0, 256);
 	strcpy(this->error_head, "FORMATCONVERSION_DLL_ERROR: error happens when using ");
 	this->dem = NULL;
+	this->batchedGeometryPrepared = false;
 	this->burstOffsetComputed = false;
 	this->isMasterRgAzComputed = false;
 	this->isdeBurstConfig = false;
@@ -11451,6 +11468,10 @@ int Sentinel1BackGeocoding::init(
 	commonMasterLastBurst = 0;
 	retainedMasterBurstIndices.clear();
 	commonBurstCoverageSignature.clear();
+	batchedGeometryPrepared = false;
+	batchedGeometryCoefficients.clear();
+	batchedGeometryFitCounts.clear();
+	batchedGeometryFitHashes.clear();
 	start.release();
 	end.release();
 	masterAzimuth.release();
@@ -11531,6 +11552,10 @@ int Sentinel1BackGeocoding::loadData(vector<string>& h5Files)
 	commonMasterLastBurst = 0;
 	retainedMasterBurstIndices.clear();
 	commonBurstCoverageSignature.clear();
+	batchedGeometryPrepared = false;
+	batchedGeometryCoefficients.clear();
+	batchedGeometryFitCounts.clear();
+	batchedGeometryFitHashes.clear();
 	start.release();
 	end.release();
 	masterAzimuth.release();
@@ -12186,6 +12211,996 @@ int Sentinel1BackGeocoding::computeSlavePosition(int slaveImagesIndex, int mBurs
 	return 0;
 }
 
+namespace
+{
+struct SentinelOnlinePlaneFit
+{
+    unsigned long long count;
+    double meanRange;
+    double meanAzimuth;
+    double meanRangeOffset;
+    double meanAzimuthOffset;
+    double covarianceRangeRange;
+    double covarianceRangeAzimuth;
+    double covarianceAzimuthAzimuth;
+    double covarianceRangeRangeOffset;
+    double covarianceAzimuthRangeOffset;
+    double covarianceRangeAzimuthOffset;
+    double covarianceAzimuthAzimuthOffset;
+    double varianceRangeOffset;
+    double varianceAzimuthOffset;
+    unsigned long long validPointHash;
+
+    SentinelOnlinePlaneFit()
+        : count(0), meanRange(0.0), meanAzimuth(0.0), meanRangeOffset(0.0),
+        meanAzimuthOffset(0.0), covarianceRangeRange(0.0),
+        covarianceRangeAzimuth(0.0), covarianceAzimuthAzimuth(0.0),
+        covarianceRangeRangeOffset(0.0), covarianceAzimuthRangeOffset(0.0),
+        covarianceRangeAzimuthOffset(0.0), covarianceAzimuthAzimuthOffset(0.0),
+        varianceRangeOffset(0.0), varianceAzimuthOffset(0.0), validPointHash(0)
+    {
+    }
+
+    static unsigned long long hashPoint(unsigned long long value)
+    {
+        value += 0x9e3779b97f4a7c15ULL;
+        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        value = (value ^ (value >> 27)) * 0x94d049bb133111ebULL;
+        return value ^ (value >> 31);
+    }
+
+    void add(double range, double azimuth, double rangeOffset, double azimuthOffset,
+        unsigned long long linearIndex)
+    {
+        const double nextCount = static_cast<double>(count + 1ULL);
+        const double deltaRange = range - meanRange;
+        const double deltaAzimuth = azimuth - meanAzimuth;
+        const double deltaRangeOffset = rangeOffset - meanRangeOffset;
+        const double deltaAzimuthOffset = azimuthOffset - meanAzimuthOffset;
+        ++count;
+        meanRange += deltaRange / nextCount;
+        meanAzimuth += deltaAzimuth / nextCount;
+        meanRangeOffset += deltaRangeOffset / nextCount;
+        meanAzimuthOffset += deltaAzimuthOffset / nextCount;
+        covarianceRangeRange += deltaRange * (range - meanRange);
+        covarianceRangeAzimuth += deltaRange * (azimuth - meanAzimuth);
+        covarianceAzimuthAzimuth += deltaAzimuth * (azimuth - meanAzimuth);
+        covarianceRangeRangeOffset += deltaRange * (rangeOffset - meanRangeOffset);
+        covarianceAzimuthRangeOffset += deltaAzimuth * (rangeOffset - meanRangeOffset);
+        covarianceRangeAzimuthOffset += deltaRange * (azimuthOffset - meanAzimuthOffset);
+        covarianceAzimuthAzimuthOffset += deltaAzimuth * (azimuthOffset - meanAzimuthOffset);
+        varianceRangeOffset += deltaRangeOffset * (rangeOffset - meanRangeOffset);
+        varianceAzimuthOffset += deltaAzimuthOffset * (azimuthOffset - meanAzimuthOffset);
+        validPointHash ^= hashPoint(linearIndex);
+    }
+
+    void merge(const SentinelOnlinePlaneFit& other)
+    {
+        if (other.count == 0) return;
+        if (count == 0)
+        {
+            *this = other;
+            return;
+        }
+        const double firstCount = static_cast<double>(count);
+        const double secondCount = static_cast<double>(other.count);
+        const double mergedCount = firstCount + secondCount;
+        const double weight = firstCount * secondCount / mergedCount;
+        const double deltaRange = other.meanRange - meanRange;
+        const double deltaAzimuth = other.meanAzimuth - meanAzimuth;
+        const double deltaRangeOffset = other.meanRangeOffset - meanRangeOffset;
+        const double deltaAzimuthOffset = other.meanAzimuthOffset - meanAzimuthOffset;
+
+        covarianceRangeRange += other.covarianceRangeRange + deltaRange * deltaRange * weight;
+        covarianceRangeAzimuth += other.covarianceRangeAzimuth + deltaRange * deltaAzimuth * weight;
+        covarianceAzimuthAzimuth += other.covarianceAzimuthAzimuth + deltaAzimuth * deltaAzimuth * weight;
+        covarianceRangeRangeOffset += other.covarianceRangeRangeOffset + deltaRange * deltaRangeOffset * weight;
+        covarianceAzimuthRangeOffset += other.covarianceAzimuthRangeOffset + deltaAzimuth * deltaRangeOffset * weight;
+        covarianceRangeAzimuthOffset += other.covarianceRangeAzimuthOffset + deltaRange * deltaAzimuthOffset * weight;
+        covarianceAzimuthAzimuthOffset += other.covarianceAzimuthAzimuthOffset + deltaAzimuth * deltaAzimuthOffset * weight;
+        varianceRangeOffset += other.varianceRangeOffset + deltaRangeOffset * deltaRangeOffset * weight;
+        varianceAzimuthOffset += other.varianceAzimuthOffset + deltaAzimuthOffset * deltaAzimuthOffset * weight;
+        meanRange += deltaRange * secondCount / mergedCount;
+        meanAzimuth += deltaAzimuth * secondCount / mergedCount;
+        meanRangeOffset += deltaRangeOffset * secondCount / mergedCount;
+        meanAzimuthOffset += deltaAzimuthOffset * secondCount / mergedCount;
+        count += other.count;
+        validPointHash ^= other.validPointHash;
+    }
+
+    bool solve(double* rangeCoefficients, double* azimuthCoefficients,
+        double& rangeRms, double& azimuthRms) const
+    {
+        if (!rangeCoefficients || !azimuthCoefficients || count < 4ULL) return false;
+        if (!std::isfinite(meanRange) || !std::isfinite(meanAzimuth) ||
+            !std::isfinite(meanRangeOffset) || !std::isfinite(meanAzimuthOffset) ||
+            !std::isfinite(covarianceRangeRange) || !std::isfinite(covarianceRangeAzimuth) ||
+            !std::isfinite(covarianceAzimuthAzimuth) ||
+            !std::isfinite(covarianceRangeRangeOffset) ||
+            !std::isfinite(covarianceAzimuthRangeOffset) ||
+            !std::isfinite(covarianceRangeAzimuthOffset) ||
+            !std::isfinite(covarianceAzimuthAzimuthOffset) ||
+            !std::isfinite(varianceRangeOffset) || !std::isfinite(varianceAzimuthOffset))
+            return false;
+        cv::Mat normal(2, 2, CV_64F);
+        normal.at<double>(0, 0) = covarianceRangeRange;
+        normal.at<double>(0, 1) = covarianceRangeAzimuth;
+        normal.at<double>(1, 0) = covarianceRangeAzimuth;
+        normal.at<double>(1, 1) = covarianceAzimuthAzimuth;
+        cv::Mat rightHandSide(2, 2, CV_64F);
+        rightHandSide.at<double>(0, 0) = covarianceRangeRangeOffset;
+        rightHandSide.at<double>(1, 0) = covarianceAzimuthRangeOffset;
+        rightHandSide.at<double>(0, 1) = covarianceRangeAzimuthOffset;
+        rightHandSide.at<double>(1, 1) = covarianceAzimuthAzimuthOffset;
+        cv::Mat singularValues;
+        cv::SVD::compute(normal, singularValues, cv::SVD::NO_UV);
+        if (singularValues.rows < 2 || singularValues.cols < 1 ||
+            !cv::checkRange(singularValues))
+            return false;
+        const double largestSingularValue = singularValues.at<double>(0, 0);
+        const double smallestSingularValue = singularValues.at<double>(1, 0);
+        const double minimumSingularValueRatio = 1.0e-8;
+        if (!std::isfinite(largestSingularValue) || !std::isfinite(smallestSingularValue) ||
+            largestSingularValue <= 0.0 || smallestSingularValue <= 0.0 ||
+            smallestSingularValue < largestSingularValue * minimumSingularValueRatio)
+            return false;
+
+        cv::Mat slopes;
+        if (!cv::solve(normal, rightHandSide, slopes, cv::DECOMP_LU) ||
+            slopes.rows != 2 || slopes.cols != 2 || !cv::checkRange(slopes))
+            return false;
+
+        rangeCoefficients[1] = slopes.at<double>(0, 0);
+        rangeCoefficients[2] = slopes.at<double>(1, 0);
+        rangeCoefficients[0] = meanRangeOffset - rangeCoefficients[1] * meanRange -
+            rangeCoefficients[2] * meanAzimuth;
+        azimuthCoefficients[1] = slopes.at<double>(0, 1);
+        azimuthCoefficients[2] = slopes.at<double>(1, 1);
+        azimuthCoefficients[0] = meanAzimuthOffset - azimuthCoefficients[1] * meanRange -
+            azimuthCoefficients[2] * meanAzimuth;
+
+        double rangeResidual = varianceRangeOffset -
+            rangeCoefficients[1] * covarianceRangeRangeOffset -
+            rangeCoefficients[2] * covarianceAzimuthRangeOffset;
+        double azimuthResidual = varianceAzimuthOffset -
+            azimuthCoefficients[1] * covarianceRangeAzimuthOffset -
+            azimuthCoefficients[2] * covarianceAzimuthAzimuthOffset;
+        const double rangeTolerance = 1.0e-10 * std::max(1.0, varianceRangeOffset);
+        const double azimuthTolerance = 1.0e-10 * std::max(1.0, varianceAzimuthOffset);
+        if (rangeResidual < -rangeTolerance || azimuthResidual < -azimuthTolerance)
+            return false;
+        rangeResidual = std::max(0.0, rangeResidual);
+        azimuthResidual = std::max(0.0, azimuthResidual);
+        rangeRms = std::sqrt(rangeResidual / static_cast<double>(count));
+        azimuthRms = std::sqrt(azimuthResidual / static_cast<double>(count));
+        return std::isfinite(rangeCoefficients[0]) && std::isfinite(rangeCoefficients[1]) &&
+            std::isfinite(rangeCoefficients[2]) && std::isfinite(azimuthCoefficients[0]) &&
+            std::isfinite(azimuthCoefficients[1]) && std::isfinite(azimuthCoefficients[2]) &&
+            std::isfinite(rangeRms) && std::isfinite(azimuthRms);
+    }
+};
+
+struct SentinelBatchedMasterAccumulator
+{
+    int validPoints;
+    int zeroDopplerFailures;
+    int rangeOrBurstFailures;
+    ZeroDopplerFailureAccumulator failures;
+
+    SentinelBatchedMasterAccumulator()
+        : validPoints(0), zeroDopplerFailures(0), rangeOrBurstFailures(0)
+    {
+    }
+
+    void merge(const SentinelBatchedMasterAccumulator& other)
+    {
+        validPoints += other.validPoints;
+        zeroDopplerFailures += other.zeroDopplerFailures;
+        rangeOrBurstFailures += other.rangeOrBurstFailures;
+        failures.merge(other.failures);
+    }
+};
+
+struct SentinelBatchedPairAccumulator
+{
+    SentinelOnlinePlaneFit fit;
+    int validPoints;
+    int zeroDopplerFailures;
+    int rangeOrBurstFailures;
+    int rangeOutOfBoundsFailures;
+    int burstOutOfBoundsFailures;
+    int slantRangeFailures;
+    int invalidInputFailures;
+    int validRowMin;
+    int validRowMax;
+    int validColumnMin;
+    int validColumnMax;
+    ZeroDopplerFailureAccumulator failures;
+
+    SentinelBatchedPairAccumulator()
+        : validPoints(0), zeroDopplerFailures(0), rangeOrBurstFailures(0),
+        rangeOutOfBoundsFailures(0), burstOutOfBoundsFailures(0),
+        slantRangeFailures(0), invalidInputFailures(0), validRowMin(INT_MAX),
+        validRowMax(-1), validColumnMin(INT_MAX), validColumnMax(-1)
+    {
+    }
+
+    void merge(const SentinelBatchedPairAccumulator& other)
+    {
+        fit.merge(other.fit);
+        validPoints += other.validPoints;
+        zeroDopplerFailures += other.zeroDopplerFailures;
+        rangeOrBurstFailures += other.rangeOrBurstFailures;
+        rangeOutOfBoundsFailures += other.rangeOutOfBoundsFailures;
+        burstOutOfBoundsFailures += other.burstOutOfBoundsFailures;
+        slantRangeFailures += other.slantRangeFailures;
+        invalidInputFailures += other.invalidInputFailures;
+        validRowMin = std::min(validRowMin, other.validRowMin);
+        validRowMax = std::max(validRowMax, other.validRowMax);
+        validColumnMin = std::min(validColumnMin, other.validColumnMin);
+        validColumnMax = std::max(validColumnMax, other.validColumnMax);
+        failures.merge(other.failures);
+    }
+};
+
+struct SentinelBatchedRowAccumulator
+{
+    std::vector<SentinelBatchedMasterAccumulator> master;
+    std::vector<SentinelBatchedPairAccumulator> pairs;
+    unsigned long long masterProjectionCalls;
+    unsigned long long slaveProjectionCalls;
+
+    SentinelBatchedRowAccumulator(size_t burstCount, size_t pairCount)
+        : master(burstCount), pairs(pairCount), masterProjectionCalls(0), slaveProjectionCalls(0)
+    {
+    }
+};
+
+bool sentinelCheckedMultiply(size_t first, size_t second, size_t& result)
+{
+    if (first != 0 && second > std::numeric_limits<size_t>::max() / first) return false;
+    result = first * second;
+    return true;
+}
+
+bool sentinelCheckedAdd(size_t first, size_t second, size_t& result)
+{
+    if (second > std::numeric_limits<size_t>::max() - first) return false;
+    result = first + second;
+    return true;
+}
+
+void sentinelAccumulateProjectionFailure(SentinelBatchedPairAccumulator& accumulator,
+    const SentinelSceneProjection& projection)
+{
+    ++accumulator.rangeOrBurstFailures;
+    switch (projection.projectionFailureReason)
+    {
+    case SENTINEL_RGAZ_PROJECTION_RANGE_OUT_OF_BOUNDS:
+        ++accumulator.rangeOutOfBoundsFailures;
+        break;
+    case SENTINEL_RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS:
+        ++accumulator.burstOutOfBoundsFailures;
+        break;
+    case SENTINEL_RGAZ_PROJECTION_SLANT_RANGE:
+        ++accumulator.slantRangeFailures;
+        break;
+    case SENTINEL_RGAZ_PROJECTION_INVALID_INPUT:
+        ++accumulator.invalidInputFailures;
+        break;
+    default:
+        break;
+    }
+}
+}
+
+int Sentinel1BackGeocoding::prepareBatchedGeometryPlan()
+{
+    if (batchedGeometryPrepared) return 0;
+    if (!dem || dem->rows < 1 || dem->cols < 1 || !commonBurstCoveragePrepared ||
+        retainedMasterBurstIndices.empty() || masterIndex < 1 || masterIndex > numOfImages)
+        return -1;
+
+    const auto clearBatchedPlan = [this]()
+    {
+        batchedGeometryPrepared = false;
+        batchedGeometryCoefficients.clear();
+        batchedGeometryFitCounts.clear();
+        batchedGeometryFitHashes.clear();
+    };
+    clearBatchedPlan();
+
+    const size_t burstCount = retainedMasterBurstIndices.size();
+    std::vector<int> slaveImages;
+    for (int image = 0; image < numOfImages; ++image)
+        if (image != masterIndex - 1) slaveImages.push_back(image + 1);
+    if (slaveImages.empty()) return -1;
+    size_t pairCount = 0;
+    if (!sentinelCheckedMultiply(slaveImages.size(), burstCount, pairCount) || pairCount == 0)
+        return -1;
+
+    size_t totalPoints = 0;
+    if (!sentinelCheckedMultiply(static_cast<size_t>(dem->rows), static_cast<size_t>(dem->cols), totalPoints) ||
+        totalPoints > static_cast<size_t>(INT_MAX))
+    {
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.validate",
+            "The loaded DEM is too large for the current quality-count contract.",
+            "No output file has been prepared; geometry planning failed closed.");
+        return -1;
+    }
+
+    const size_t tileRowCount = 32;
+    size_t rowBytes = 0;
+    size_t pairBytes = 0;
+    size_t masterBytes = 0;
+    size_t tileBytes = 0;
+    size_t persistentBytes = 0;
+    size_t coefficientElements = 0;
+    size_t coefficientBytes = 0;
+    size_t fitMetadataBytes = 0;
+    size_t matrixHeaderBytes = 0;
+    size_t countVectorHeaderBytes = 0;
+    size_t hashVectorHeaderBytes = 0;
+    const size_t memoryBudget = 512ULL * 1024ULL * 1024ULL;
+    const size_t allocatorReserveBytes = 64ULL * 1024ULL * 1024ULL;
+    const size_t trackedMemoryBudget = memoryBudget - allocatorReserveBytes;
+    if (!sentinelCheckedMultiply(pairCount, sizeof(SentinelBatchedPairAccumulator), pairBytes) ||
+        !sentinelCheckedMultiply(burstCount, sizeof(SentinelBatchedMasterAccumulator), masterBytes) ||
+        pairBytes > std::numeric_limits<size_t>::max() - masterBytes)
+        return -1;
+    rowBytes = pairBytes + masterBytes;
+    if (!sentinelCheckedMultiply(rowBytes, tileRowCount, tileBytes) ||
+        !sentinelCheckedMultiply(slaveImages.size(), burstCount, coefficientElements) ||
+        !sentinelCheckedMultiply(coefficientElements, 6U, coefficientElements) ||
+        !sentinelCheckedMultiply(coefficientElements, sizeof(double), coefficientBytes) ||
+        !sentinelCheckedMultiply(slaveImages.size(), burstCount, fitMetadataBytes) ||
+        !sentinelCheckedMultiply(fitMetadataBytes, 2U * sizeof(unsigned long long), fitMetadataBytes) ||
+        !sentinelCheckedMultiply(static_cast<size_t>(numOfImages), sizeof(cv::Mat), matrixHeaderBytes) ||
+        !sentinelCheckedMultiply(static_cast<size_t>(numOfImages),
+            sizeof(std::vector<unsigned long long>), countVectorHeaderBytes) ||
+        !sentinelCheckedMultiply(static_cast<size_t>(numOfImages),
+            sizeof(std::vector<unsigned long long>), hashVectorHeaderBytes) ||
+        !sentinelCheckedAdd(pairBytes, masterBytes, persistentBytes) ||
+        !sentinelCheckedAdd(persistentBytes, coefficientBytes, persistentBytes) ||
+        !sentinelCheckedAdd(persistentBytes, fitMetadataBytes, persistentBytes) ||
+        !sentinelCheckedAdd(persistentBytes, matrixHeaderBytes, persistentBytes) ||
+        !sentinelCheckedAdd(persistentBytes, countVectorHeaderBytes, persistentBytes) ||
+        !sentinelCheckedAdd(persistentBytes, hashVectorHeaderBytes, persistentBytes) ||
+        persistentBytes > trackedMemoryBudget || tileBytes > trackedMemoryBudget - persistentBytes)
+    {
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.memory",
+            "The batched exact geometry plan exceeds the 512 MiB memory budget after reserving 64 MiB for allocator, container, and worker-local overhead; tracked persistent accumulators, coefficients, quality metadata, and the deterministic tile require the remainder.",
+            "Reduce the number of slave images or bursts; no output file has been prepared.");
+        return -1;
+    }
+
+    std::vector<SentinelBatchedMasterAccumulator> masterTotals;
+    std::vector<SentinelBatchedPairAccumulator> pairTotals;
+    try
+    {
+        masterTotals.resize(burstCount);
+        pairTotals.resize(pairCount);
+        batchedGeometryCoefficients.assign(static_cast<size_t>(numOfImages), cv::Mat());
+        batchedGeometryFitCounts.assign(static_cast<size_t>(numOfImages),
+            std::vector<unsigned long long>(burstCount, 0ULL));
+        batchedGeometryFitHashes.assign(static_cast<size_t>(numOfImages),
+            std::vector<unsigned long long>(burstCount, 0ULL));
+        for (size_t slaveSlot = 0; slaveSlot < slaveImages.size(); ++slaveSlot)
+            batchedGeometryCoefficients[slaveImages[slaveSlot] - 1] =
+                cv::Mat(static_cast<int>(burstCount), 6, CV_64F, cv::Scalar(0.0));
+    }
+    catch (const cv::Exception& exception)
+    {
+        batchedGeometryCoefficients.clear();
+        batchedGeometryFitCounts.clear();
+        batchedGeometryFitHashes.clear();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.exception",
+            "OpenCV threw while initializing the batched exact geometry plan.",
+            exception.what(), nullptr);
+        return -1;
+    }
+    catch (const std::bad_alloc&)
+    {
+        batchedGeometryCoefficients.clear();
+        batchedGeometryFitCounts.clear();
+        batchedGeometryFitHashes.clear();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.memory",
+            "Memory allocation failed while initializing the batched exact geometry plan.",
+            "No output file has been prepared; the operation failed closed.");
+        return -1;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+        g_sentinel_diagnostic_state[this].hasZeroDopplerDiagnostic = false;
+    }
+    for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+    {
+        clear_zero_doppler_failure_statistics(this, masterIndex,
+            retainedMasterBurstIndices[burstSlot]);
+        for (size_t slaveSlot = 0; slaveSlot < slaveImages.size(); ++slaveSlot)
+        {
+            const int slaveImage = slaveImages[slaveSlot];
+            const int slaveBurst = retainedMasterBurstIndices[burstSlot] +
+                su[slaveImage - 1]->burstOffset;
+            clear_zero_doppler_failure_statistics(this, slaveImage, slaveBurst);
+        }
+    }
+
+    const ActiveDiagnosticContext progressContext = g_active_diagnostic_context;
+    const ULONGLONG startTick = GetTickCount64();
+    unsigned long long masterProjectionCalls = 0;
+    unsigned long long slaveProjectionCalls = 0;
+    try
+    {
+        for (int tileStart = 0; tileStart < dem->rows; tileStart += static_cast<int>(tileRowCount))
+        {
+            if (isCancelRequested())
+            {
+                clearBatchedPlan();
+                return -2;
+            }
+            const int rowsInTile = std::min(static_cast<int>(tileRowCount), dem->rows - tileStart);
+            std::vector<SentinelBatchedRowAccumulator> rows;
+            rows.reserve(static_cast<size_t>(rowsInTile));
+            for (int row = 0; row < rowsInTile; ++row)
+                rows.emplace_back(burstCount, pairCount);
+
+#pragma omp parallel for schedule(static)
+            for (int tileRow = 0; tileRow < rowsInTile; ++tileRow)
+            {
+                SentinelBatchedRowAccumulator& rowAccumulator = rows[tileRow];
+                const int demRow = tileStart + tileRow;
+                FormatConversion conversion;
+                std::vector<double> masterAzimuth(burstCount, 0.0);
+                std::vector<unsigned char> masterValid(burstCount, 0);
+                for (int column = 0; column < dem->cols; ++column)
+                {
+                    if ((column & 255) == 0 && isCancelRequested()) break;
+                    double longitude = dem->lonUpperLeft + column * dem->lonSpacing;
+                    if (longitude > 180.0) longitude -= 360.0;
+                    const double latitude = dem->latUpperLeft - demRow * dem->latSpacing;
+                    const double elevation = dem->rawDEM.at<short>(demRow, column);
+                    Position earthPoint;
+                    conversion.ell2xyz(longitude, latitude, elevation, earthPoint);
+
+                    SentinelSceneProjection masterProjection;
+                    const int masterResult = su[masterIndex - 1]->projectGroundPoint(
+                        earthPoint, masterProjection);
+                    ++rowAccumulator.masterProjectionCalls;
+                    for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+                    {
+                        SentinelBatchedMasterAccumulator& accumulator = rowAccumulator.master[burstSlot];
+                        masterValid[burstSlot] = 0;
+                        if (masterResult != 0)
+                        {
+                            if (masterProjection.zeroDopplerFailureReason != SENTINEL_ZERO_DOPPLER_NONE)
+                            {
+                                ++accumulator.zeroDopplerFailures;
+                                collect_zero_doppler_failure(accumulator.failures, masterIndex,
+                                    retainedMasterBurstIndices[burstSlot], demRow, column,
+                                    SENTINEL_ZERO_DOPPLER_CALL_MASTER_RG_AZ, earthPoint);
+                            }
+                            else
+                            {
+                                ++accumulator.rangeOrBurstFailures;
+                            }
+                            continue;
+                        }
+                        const int masterBurst = retainedMasterBurstIndices[burstSlot];
+                        const double azimuth = (masterProjection.zeroDopplerTime -
+                            su[masterIndex - 1]->burstAzimuthTime.at<double>(masterBurst - 1)) /
+                            su[masterIndex - 1]->azimuthTimeInterval;
+                        if (azimuth < 0.0 || azimuth >= su[masterIndex - 1]->linesPerBurst)
+                        {
+                            ++accumulator.rangeOrBurstFailures;
+                            continue;
+                        }
+                        masterAzimuth[burstSlot] = azimuth;
+                        masterValid[burstSlot] = 1;
+                        ++accumulator.validPoints;
+                    }
+
+                    for (size_t slaveSlot = 0; slaveSlot < slaveImages.size(); ++slaveSlot)
+                    {
+                        const int slaveImage = slaveImages[slaveSlot];
+                        SentinelSceneProjection slaveProjection;
+                        const int slaveResult = su[slaveImage - 1]->projectGroundPoint(
+                            earthPoint, slaveProjection);
+                        ++rowAccumulator.slaveProjectionCalls;
+                        for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+                        {
+                            SentinelBatchedPairAccumulator& accumulator =
+                                rowAccumulator.pairs[slaveSlot * burstCount + burstSlot];
+                            const int masterBurst = retainedMasterBurstIndices[burstSlot];
+                            const int slaveBurst = masterBurst + su[slaveImage - 1]->burstOffset;
+                            if (slaveResult != 0)
+                            {
+                                if (slaveProjection.zeroDopplerFailureReason != SENTINEL_ZERO_DOPPLER_NONE)
+                                {
+                                    ++accumulator.zeroDopplerFailures;
+                                    collect_zero_doppler_failure(accumulator.failures, slaveImage,
+                                        slaveBurst, demRow, column,
+                                        SENTINEL_ZERO_DOPPLER_CALL_SLAVE_RG_AZ, earthPoint);
+                                }
+                                else
+                                {
+                                    sentinelAccumulateProjectionFailure(accumulator, slaveProjection);
+                                }
+                                continue;
+                            }
+                            const double slaveAzimuth = (slaveProjection.zeroDopplerTime -
+                                su[slaveImage - 1]->burstAzimuthTime.at<double>(slaveBurst - 1)) /
+                                su[slaveImage - 1]->azimuthTimeInterval;
+                            if (slaveAzimuth < 0.0 || slaveAzimuth >= su[slaveImage - 1]->linesPerBurst)
+                            {
+                                SentinelSceneProjection burstFailure = slaveProjection;
+                                burstFailure.projectionFailureReason =
+                                    SENTINEL_RGAZ_PROJECTION_BURST_OUT_OF_BOUNDS;
+                                sentinelAccumulateProjectionFailure(accumulator, burstFailure);
+                                continue;
+                            }
+                            ++accumulator.validPoints;
+                            accumulator.validRowMin = std::min(accumulator.validRowMin, demRow);
+                            accumulator.validRowMax = std::max(accumulator.validRowMax, demRow);
+                            accumulator.validColumnMin = std::min(accumulator.validColumnMin, column);
+                            accumulator.validColumnMax = std::max(accumulator.validColumnMax, column);
+                            if (masterValid[burstSlot] == 0) continue;
+                            const unsigned long long linearIndex =
+                                static_cast<unsigned long long>(demRow) *
+                                static_cast<unsigned long long>(dem->cols) +
+                                static_cast<unsigned long long>(column);
+                            accumulator.fit.add(masterProjection.rangeIndex,
+                                masterAzimuth[burstSlot],
+                                slaveProjection.rangeIndex - masterProjection.rangeIndex,
+                                slaveAzimuth - masterAzimuth[burstSlot], linearIndex);
+                        }
+                    }
+                }
+            }
+            if (isCancelRequested())
+            {
+                clearBatchedPlan();
+                return -2;
+            }
+            for (int tileRow = 0; tileRow < rowsInTile; ++tileRow)
+            {
+                SentinelBatchedRowAccumulator& rowAccumulator = rows[tileRow];
+                for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+                    masterTotals[burstSlot].merge(rowAccumulator.master[burstSlot]);
+                for (size_t pair = 0; pair < pairCount; ++pair)
+                    pairTotals[pair].merge(rowAccumulator.pairs[pair]);
+                masterProjectionCalls += rowAccumulator.masterProjectionCalls;
+                slaveProjectionCalls += rowAccumulator.slaveProjectionCalls;
+            }
+            const int completedRows = tileStart + rowsInTile;
+            const int progress = 20 + 50 * completedRows / dem->rows;
+            char progressMessage[160] = {};
+            sprintf_s(progressMessage, "Batched exact projection: %d%% of DEM rows processed.",
+                completedRows * 100 / dem->rows);
+            emit_progress_for_context(progressContext, progress, progressMessage);
+        }
+    }
+    catch (const cv::Exception& exception)
+    {
+        clearBatchedPlan();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.exception",
+            "OpenCV threw while preparing the batched exact geometry plan.",
+            exception.what(), nullptr);
+        return -1;
+    }
+    catch (const std::bad_alloc&)
+    {
+        clearBatchedPlan();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.memory",
+            "Memory allocation failed while preparing the batched exact geometry plan.",
+            "No output file has been prepared; the operation failed closed.");
+        return -1;
+    }
+
+    try
+    {
+    for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+    {
+        for (int reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+            reason <= SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT; ++reason)
+        {
+            if (masterTotals[burstSlot].failures.counts[reason] > 0)
+                record_zero_doppler_failure(this,
+                    masterTotals[burstSlot].failures.diagnostics[reason],
+                    masterTotals[burstSlot].failures.counts[reason]);
+        }
+    }
+
+    const int attemptedPoints = static_cast<int>(totalPoints);
+    for (size_t slaveSlot = 0; slaveSlot < slaveImages.size(); ++slaveSlot)
+    {
+        const int slaveImage = slaveImages[slaveSlot];
+        for (size_t burstSlot = 0; burstSlot < burstCount; ++burstSlot)
+        {
+            const int masterBurst = retainedMasterBurstIndices[burstSlot];
+            const int slaveBurst = masterBurst + su[slaveImage - 1]->burstOffset;
+            SentinelBatchedPairAccumulator& pair = pairTotals[slaveSlot * burstCount + burstSlot];
+            for (int reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+                reason <= SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT; ++reason)
+            {
+                if (pair.failures.counts[reason] > 0)
+                    record_zero_doppler_failure(this, pair.failures.diagnostics[reason],
+                        pair.failures.counts[reason]);
+            }
+
+            double rangeCoefficients[3] = {};
+            double azimuthCoefficients[3] = {};
+            double rangeRms = 0.0;
+            double azimuthRms = 0.0;
+            if (!pair.fit.solve(rangeCoefficients, azimuthCoefficients, rangeRms, azimuthRms))
+            {
+                ScopedDiagnosticContext failureScope(diagnosticCallback, diagnosticUserData,
+                    slaveImage, masterBurst);
+                char failureMessage[384] = {};
+                sprintf_s(failureMessage,
+                    "Batched exact offset fit failed: masterBurst=%d, slaveBurst=%d, fitted=%llu, validHash=%016llx, requiredConditionNumber<=1e8.",
+                    masterBurst, slaveBurst, pair.fit.count, pair.fit.validPointHash);
+                emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "offset_fit.batched",
+                    failureMessage,
+                    "At least four finite joint-valid DEM points and a full-rank centered fit with condition number at most 1e8 are required. No output file has been prepared.",
+                    su[slaveImage - 1]->h5File.c_str());
+                clearBatchedPlan();
+                return -1;
+            }
+
+            cv::Mat& coefficientMatrix = batchedGeometryCoefficients[slaveImage - 1];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 0) = rangeCoefficients[0];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 1) = rangeCoefficients[1];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 2) = rangeCoefficients[2];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 3) = azimuthCoefficients[0];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 4) = azimuthCoefficients[1];
+            coefficientMatrix.at<double>(static_cast<int>(burstSlot), 5) = azimuthCoefficients[2];
+            batchedGeometryFitCounts[slaveImage - 1][burstSlot] = pair.fit.count;
+            batchedGeometryFitHashes[slaveImage - 1][burstSlot] = pair.fit.validPointHash;
+
+            const SentinelBatchedMasterAccumulator& master = masterTotals[burstSlot];
+            SentinelBurstQualityStatus status;
+            status.imageIndex = slaveImage;
+            status.burstIndex = masterBurst;
+            status.attemptedPoints = attemptedPoints;
+            status.validPoints = pair.validPoints;
+            status.invalidPoints = attemptedPoints - pair.validPoints;
+            status.zeroDopplerFailures = master.zeroDopplerFailures + pair.zeroDopplerFailures;
+            status.rangeOrBurstFailures = master.rangeOrBurstFailures + pair.rangeOrBurstFailures;
+            status.slantRangeFailures = pair.slantRangeFailures;
+            status.invalidInputFailures = pair.invalidInputFailures;
+            status.fitPointCount = static_cast<int>(pair.fit.count);
+            status.fitRms = std::max(rangeRms, azimuthRms);
+            const bool hasGeometricFailure = status.zeroDopplerFailures > 0 ||
+                status.slantRangeFailures > 0 || status.invalidInputFailures > 0;
+            status.qualityCode = hasGeometricFailure ?
+                SENTINEL_BURST_WARNING_PARTIAL_INVALID : SENTINEL_BURST_NOMINAL;
+            record_burst_quality(this, status);
+
+            ScopedDiagnosticContext pairScope(diagnosticCallback, diagnosticUserData,
+                slaveImage, masterBurst);
+            char fitMessage[640] = {};
+            sprintf_s(fitMessage,
+                "Batched exact offset fit accepted: masterBurst=%d, slaveBurst=%d, candidates=%d, fitted=%llu, rejected=%llu, validHash=%016llx, range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}, rms={%.8f, %.8f}.",
+                masterBurst, slaveBurst, attemptedPoints, pair.fit.count,
+                static_cast<unsigned long long>(totalPoints - pair.fit.count),
+                pair.fit.validPointHash, rangeCoefficients[0], rangeCoefficients[1],
+                rangeCoefficients[2], azimuthCoefficients[0], azimuthCoefficients[1],
+                azimuthCoefficients[2], rangeRms, azimuthRms);
+            emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "offset_fit.batched",
+                fitMessage,
+                "The centered Chan/Welford fit uses every joint-valid point in deterministic DEM row order.");
+
+            const double masterRatio = attemptedPoints > 0 ?
+                100.0 * master.validPoints / attemptedPoints : 0.0;
+            const double slaveRatio = attemptedPoints > 0 ?
+                100.0 * pair.validPoints / attemptedPoints : 0.0;
+            char extent[384] = {};
+            if (pair.validRowMax >= pair.validRowMin &&
+                pair.validColumnMax >= pair.validColumnMin)
+            {
+                const double west = dem->lonUpperLeft + pair.validColumnMin * dem->lonSpacing;
+                const double east = dem->lonUpperLeft + pair.validColumnMax * dem->lonSpacing;
+                const double north = dem->latUpperLeft - pair.validRowMin * dem->latSpacing;
+                const double south = dem->latUpperLeft - pair.validRowMax * dem->latSpacing;
+                sprintf_s(extent,
+                    "slaveValidExtentRows=[%d,%d], cols=[%d,%d], lon=[%.8f,%.8f], lat=[%.8f,%.8f]",
+                    pair.validRowMin, pair.validRowMax, pair.validColumnMin,
+                    pair.validColumnMax, west, east, south, north);
+            }
+            else
+            {
+                strcpy_s(extent, "slaveValidExtent=empty");
+            }
+            char summary[1024] = {};
+            sprintf_s(summary,
+                "Projection summary: DEM=%dx%d, masterValid=%d/%d (%.1f%%), slaveValid=%d/%d (%.1f%%), masterZeroDopplerFailures=%d, masterRangeOrBurstFailures=%d, slaveZeroDopplerFailures=%d, slaveRangeOrBurstFailures=%d, slaveRangeOutOfBounds=%d, slaveBurstOutOfBounds=%d, slaveSlantRangeFailures=%d, slaveInvalidInputFailures=%d.",
+                dem->rows, dem->cols, master.validPoints, attemptedPoints, masterRatio,
+                pair.validPoints, attemptedPoints, slaveRatio, master.zeroDopplerFailures,
+                master.rangeOrBurstFailures, pair.zeroDopplerFailures,
+                pair.rangeOrBurstFailures, pair.rangeOutOfBoundsFailures,
+                pair.burstOutOfBoundsFailures, pair.slantRangeFailures,
+                pair.invalidInputFailures);
+            emit_diagnostic(status.qualityCode == SENTINEL_BURST_WARNING_PARTIAL_INVALID ?
+                INSAR_DIAGNOSTIC_WARNING : INSAR_DIAGNOSTIC_DEBUG,
+                "geometry", "projection.summary", summary, extent,
+                su[slaveImage - 1]->h5File.c_str(), nullptr, status.qualityCode,
+                dem->rows, dem->cols);
+
+            const SentinelZeroDopplerDiagnostic* representative = nullptr;
+            for (int reason = SENTINEL_ZERO_DOPPLER_INVALID_INPUT;
+                reason <= SENTINEL_ZERO_DOPPLER_NONFINITE_RESULT && !representative; ++reason)
+            {
+                if (pair.failures.hasDiagnostic[reason])
+                    representative = &pair.failures.diagnostics[reason];
+                else if (master.failures.hasDiagnostic[reason])
+                    representative = &master.failures.diagnostics[reason];
+            }
+            if (representative)
+            {
+                char diagnosticMessage[1024] = {};
+                sprintf_s(diagnosticMessage,
+                    "Zero-Doppler failure: scene=%s, swath=%s, polarization=%s, line=%d, sample=%d, reason=%d, path=%d, return=%d, ground=(%.3f,%.3f,%.3f), targetDoppler=%.6f, orbitRange=[%.6f,%.6f], nearestOrbitTime=%.6f, stateVectors=%d.",
+                    representative->scene, representative->swath, representative->polarization,
+                    representative->line, representative->sample, representative->reason,
+                    representative->callPath, representative->returnCode,
+                    representative->groundPosition.x, representative->groundPosition.y,
+                    representative->groundPosition.z, representative->targetDoppler,
+                    representative->orbitStartTime, representative->orbitStopTime,
+                    representative->nearestOrbitTime, representative->stateVectorCount);
+                emit_diagnostic(INSAR_DIAGNOSTIC_WARNING, "geometry", "zero_doppler.summary",
+                    diagnosticMessage,
+                    "The first deterministic representative failure for this burst pair is reported; aggregate counts are included in the projection summary.",
+                    representative->scene, nullptr, representative->returnCode);
+            }
+        }
+    }
+
+    }
+    catch (const cv::Exception& exception)
+    {
+        clearBatchedPlan();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.exception",
+            "OpenCV threw while solving or committing the batched exact geometry plan.",
+            exception.what(), nullptr);
+        return -1;
+    }
+    catch (const std::bad_alloc&)
+    {
+        clearBatchedPlan();
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.memory",
+            "Memory allocation failed while solving or committing the batched exact geometry plan.",
+            "No output file has been prepared; the operation failed closed.");
+        return -1;
+    }
+    batchedGeometryPrepared = true;
+    char shadowSetting[16] = {};
+    size_t shadowSettingLength = 0;
+    if (getenv_s(&shadowSettingLength, shadowSetting, sizeof(shadowSetting),
+        "INSAR_SENTINEL_GEOMETRY_SHADOW") == 0 && shadowSettingLength > 0 &&
+        strcmp(shadowSetting, "1") == 0)
+    {
+        const int shadowResult = verifyBatchedGeometryShadow();
+        if (shadowResult != 0)
+        {
+            clearBatchedPlan();
+            return shadowResult;
+        }
+    }
+    char completion[768] = {};
+    sprintf_s(completion,
+        "Full-loaded-DEM batched exact geometry completed: DEM=%dx%d, retainedBursts=%zu, slaves=%zu, masterSceneProjectionCalls=%llu, slaveSceneProjectionCalls=%llu, totalSceneProjectionCalls=%llu, tileRows=%zu, persistentMemoryBytes=%zu, tileMemoryBytes=%zu, allocatorReserveBytes=%zu, budgetedPeakMemoryBytes=%zu (does not include external DEM/HDF5 resident memory).",
+        dem->rows, dem->cols, burstCount, slaveImages.size(), masterProjectionCalls,
+        slaveProjectionCalls, masterProjectionCalls + slaveProjectionCalls,
+        tileRowCount, persistentBytes, tileBytes, allocatorReserveBytes,
+        persistentBytes + tileBytes + allocatorReserveBytes);
+    emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "geometry", "projection.batched.complete",
+        completion,
+        "Each DEM point is projected once into the master scene and once into each slave scene; burst membership remains independent and half-open.",
+        nullptr, nullptr, 0, dem->rows, dem->cols, -1,
+        static_cast<long long>(GetTickCount64() - startTick));
+    return 0;
+}
+
+int Sentinel1BackGeocoding::verifyBatchedGeometryShadow()
+{
+    if (!batchedGeometryPrepared || retainedMasterBurstIndices.empty()) return -1;
+    SentinelBackGeocodingDiagnosticState shadowState;
+    {
+        std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+        std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::iterator it =
+            g_sentinel_diagnostic_state.find(this);
+        if (it == g_sentinel_diagnostic_state.end()) return -1;
+        std::swap(it->second, shadowState);
+    }
+    const auto finishShadow = [this, &shadowState](int shadowResult) -> int
+    {
+        masterAzimuth.release();
+        masterRange.release();
+        slaveAzimuth.release();
+        slaveRange.release();
+        isMasterRgAzComputed = false;
+        std::lock_guard<std::mutex> lock(g_sentinel_diagnostic_mutex);
+        std::map<const Sentinel1BackGeocoding*, SentinelBackGeocodingDiagnosticState>::iterator it =
+            g_sentinel_diagnostic_state.find(this);
+        if (it != g_sentinel_diagnostic_state.end()) std::swap(it->second, shadowState);
+        return shadowResult;
+    };
+    const ULONGLONG startTick = GetTickCount64();
+    const double shadowMinimumGiB = static_cast<double>(dem->rows) *
+        static_cast<double>(dem->cols) * 6.0 * static_cast<double>(CV_ELEM_SIZE(CV_64F)) /
+        (1024.0 * 1024.0 * 1024.0);
+    char shadowStartMessage[384] = {};
+    sprintf_s(shadowStartMessage,
+        "Starting explicit legacy geometry shadow verification; it requires at least %.2f GiB for four scene-position and two offset matrices, excluding legacy fit temporaries.",
+        shadowMinimumGiB);
+    emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "geometry", "projection.batched.shadow.start",
+        shadowStartMessage,
+        "This QA-only path is enabled by INSAR_SENTINEL_GEOMETRY_SHADOW=1 and is never an automatic production fallback.");
+    try
+    {
+    const double predictionTolerance = 1.0e-6;
+    for (size_t burstSlot = 0; burstSlot < retainedMasterBurstIndices.size(); ++burstSlot)
+    {
+        const int masterBurst = retainedMasterBurstIndices[burstSlot];
+        isMasterRgAzComputed = false;
+        for (int slaveImage = 1; slaveImage <= numOfImages; ++slaveImage)
+        {
+            if (slaveImage == masterIndex) continue;
+            if (isCancelRequested()) return finishShadow(-2);
+            int result = computeSlavePosition(slaveImage, masterBurst);
+            if (result != 0) return finishShadow(result);
+            cv::Mat azimuthOffset;
+            cv::Mat rangeOffset;
+            result = computeSlaveOffset(azimuthOffset, rangeOffset);
+            if (result != 0) return finishShadow(result);
+
+            unsigned long long legacyCount = 0;
+            unsigned long long legacyHash = 0;
+            for (int row = 0; row < rangeOffset.rows; ++row)
+            {
+                for (int column = 0; column < rangeOffset.cols; ++column)
+                {
+                    if ((column & 255) == 0 && isCancelRequested()) return finishShadow(-2);
+                    const bool validRange = std::fabs(rangeOffset.at<double>(row, column) -
+                        invalidOffset) > 0.0001;
+                    const bool validAzimuth = std::fabs(azimuthOffset.at<double>(row, column) -
+                        invalidOffset) > 0.0001;
+                    if (validRange != validAzimuth) return finishShadow(-1);
+                    if (!validRange) continue;
+                    ++legacyCount;
+                    const unsigned long long linearIndex =
+                        static_cast<unsigned long long>(row) *
+                        static_cast<unsigned long long>(rangeOffset.cols) +
+                        static_cast<unsigned long long>(column);
+                    legacyHash ^= SentinelOnlinePlaneFit::hashPoint(linearIndex);
+                }
+            }
+
+            double legacyAzimuth[3] = {};
+            double legacyRange[3] = {};
+            result = fitSlaveOffset(azimuthOffset, &legacyAzimuth[0],
+                &legacyAzimuth[1], &legacyAzimuth[2]);
+            if (result != 0) return finishShadow(result);
+            result = fitSlaveOffset(rangeOffset, &legacyRange[0],
+                &legacyRange[1], &legacyRange[2]);
+            if (result != 0) return finishShadow(result);
+
+            double batched[6] = {};
+            if (getPreparedGeometryCoefficients(slaveImage, masterBurst, batched) != 0)
+                return finishShadow(-1);
+            if (static_cast<size_t>(slaveImage - 1) >= batchedGeometryFitCounts.size() ||
+                burstSlot >= batchedGeometryFitCounts[slaveImage - 1].size() ||
+                legacyCount != batchedGeometryFitCounts[slaveImage - 1][burstSlot] ||
+                legacyHash != batchedGeometryFitHashes[slaveImage - 1][burstSlot])
+            {
+                emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry",
+                    "projection.batched.shadow.mask_mismatch",
+                    "Batched and legacy geometry produced different joint-valid DEM masks.",
+                    "The batched plan is rejected; no output file has been prepared.");
+                return finishShadow(-1);
+            }
+
+            double maximumPredictionDelta = 0.0;
+            const double ranges[2] = { 0.0,
+                static_cast<double>(su[masterIndex - 1]->samplesPerBurst - 1) };
+            const double azimuths[2] = { 0.0,
+                static_cast<double>(su[masterIndex - 1]->linesPerBurst - 1) };
+            for (int rangeCorner = 0; rangeCorner < 2; ++rangeCorner)
+            {
+                for (int azimuthCorner = 0; azimuthCorner < 2; ++azimuthCorner)
+                {
+                    const double range = ranges[rangeCorner];
+                    const double azimuth = azimuths[azimuthCorner];
+                    const double legacyRangePrediction = legacyRange[0] +
+                        legacyRange[1] * range + legacyRange[2] * azimuth;
+                    const double batchedRangePrediction = batched[0] +
+                        batched[1] * range + batched[2] * azimuth;
+                    const double legacyAzimuthPrediction = legacyAzimuth[0] +
+                        legacyAzimuth[1] * range + legacyAzimuth[2] * azimuth;
+                    const double batchedAzimuthPrediction = batched[3] +
+                        batched[4] * range + batched[5] * azimuth;
+                    maximumPredictionDelta = std::max(maximumPredictionDelta,
+                        std::fabs(legacyRangePrediction - batchedRangePrediction));
+                    maximumPredictionDelta = std::max(maximumPredictionDelta,
+                        std::fabs(legacyAzimuthPrediction - batchedAzimuthPrediction));
+                }
+            }
+            if (!std::isfinite(maximumPredictionDelta) ||
+                maximumPredictionDelta > predictionTolerance)
+            {
+                char message[384] = {};
+                sprintf_s(message,
+                    "Batched geometry shadow mismatch: masterBurst=%d, slaveImage=%d, maximumPredictionDelta=%.12g, tolerance=%.12g.",
+                    masterBurst, slaveImage, maximumPredictionDelta, predictionTolerance);
+                emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry",
+                    "projection.batched.shadow.mismatch", message,
+                    "The batched plan is rejected; no output file has been prepared.");
+                return finishShadow(-1);
+            }
+        }
+    }
+    }
+    catch (const cv::Exception& exception)
+    {
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.shadow.exception",
+            "OpenCV threw during explicit legacy geometry shadow verification.", exception.what(), nullptr);
+        return finishShadow(-1);
+    }
+    catch (const std::bad_alloc&)
+    {
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.shadow.memory",
+            "Memory allocation failed during explicit legacy geometry shadow verification.",
+            "The QA-only batched plan is rejected; no output file has been prepared.");
+        return finishShadow(-1);
+    }
+    catch (const std::exception& exception)
+    {
+        emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.shadow.exception",
+            "A standard exception occurred during explicit legacy geometry shadow verification.",
+            exception.what(), nullptr);
+        return finishShadow(-1);
+    }
+
+    emit_diagnostic(INSAR_DIAGNOSTIC_INFO, "geometry",
+        "projection.batched.shadow.complete",
+        "Legacy geometry shadow verification completed without coefficient prediction mismatches.",
+        "The QA-only shadow used the same full DEM and joint-valid offset masks.",
+        nullptr, nullptr, 0, -1, -1, -1,
+        static_cast<long long>(GetTickCount64() - startTick));
+    return finishShadow(0);
+}
+
+int Sentinel1BackGeocoding::getPreparedGeometryCoefficients(int slaveImageIndex,
+    int masterBurstIndex, double* coefficients) const
+{
+    if (!batchedGeometryPrepared || !coefficients || slaveImageIndex < 1 ||
+        slaveImageIndex > numOfImages || slaveImageIndex == masterIndex ||
+        static_cast<size_t>(slaveImageIndex - 1) >= batchedGeometryCoefficients.size())
+        return -1;
+    size_t burstSlot = retainedMasterBurstIndices.size();
+    for (size_t index = 0; index < retainedMasterBurstIndices.size(); ++index)
+    {
+        if (retainedMasterBurstIndices[index] == masterBurstIndex)
+        {
+            burstSlot = index;
+            break;
+        }
+    }
+    const cv::Mat& matrix = batchedGeometryCoefficients[slaveImageIndex - 1];
+    if (burstSlot >= retainedMasterBurstIndices.size() || matrix.type() != CV_64F ||
+        matrix.rows != static_cast<int>(retainedMasterBurstIndices.size()) || matrix.cols != 6)
+        return -1;
+    for (int column = 0; column < 6; ++column)
+    {
+        coefficients[column] = matrix.at<double>(static_cast<int>(burstSlot), column);
+        if (!std::isfinite(coefficients[column])) return -1;
+    }
+    return 0;
+}
+
+
 int Sentinel1BackGeocoding::computeSlaveOffset(Mat& slaveAzimuthOffset, Mat& slaveRangeOffset)
 {
 	if (!isMasterRgAzComputed)
@@ -12244,6 +13259,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	const int candidatePoints = nr * nc;
 	for (int i = 0; i < nr; i++)
 	{
+		if ((i & 31) == 0 && isCancelRequested()) return -2;
 		for (int j = 0; j < nc; j++)
 		{
 			if (fabs(slaveOffset.at<double>(i, j) - invalidOffset) > 0.0001) count++;
@@ -12261,6 +13277,7 @@ int Sentinel1BackGeocoding::fitSlaveOffset(
 	count = 0;
 	for (int i = 0; i < nr; i++)
 	{
+		if ((i & 31) == 0 && isCancelRequested()) return -2;
 		for (int j = 0; j < nc; j++)
 		{
 			if (fabs(slaveOffset.at<double>(i, j) - invalidOffset) > 0.0001)
@@ -12503,30 +13520,29 @@ int Sentinel1BackGeocoding::slaveSincInterpolation(
 	ret = performDerampDemod(derampDemodPhase, slave);
 	if (return_check(ret, "performDerampDemod()", error_head)) return -1;
 	const ULONGLONG geometryStartTick = GetTickCount64();
-	ret = computeSlavePosition(slaveImageIndex, mBurstIndex);
-	if (ret == -2) return -2;
-	if (return_check(ret, "computeSlavePosition()", error_head)) return -1;
-	Mat slaveAzimuthOffset, slaveRangeOffset;
-	ret = computeSlaveOffset(slaveAzimuthOffset, slaveRangeOffset);
-	if (ret == -2) return -2;
-	if (return_check(ret, "computeSlaveOffset()", error_head)) return -1;
-	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "projection_and_offset.complete", "Geometric projection and offset-grid generation completed.",
-		nullptr, su[slaveImageIndex - 1]->h5File.c_str(), nullptr, 0, slaveRangeOffset.rows, slaveRangeOffset.cols,
-		slaveRangeOffset.type(), static_cast<long long>(GetTickCount64() - geometryStartTick));
+	double preparedCoefficients[6] = {};
+	ret = getPreparedGeometryCoefficients(slaveImageIndex, mBurstIndex, preparedCoefficients);
+	if (ret != 0)
+	{
+		emit_diagnostic(INSAR_DIAGNOSTIC_ERROR, "geometry", "projection.batched.contract",
+			"Prepared batched geometry coefficients are missing or invalid.",
+			"Production processing does not fall back to the legacy per-burst projection path.",
+			su[slaveImageIndex - 1]->h5File.c_str());
+		return -1;
+	}
+	a0Rg = preparedCoefficients[0];
+	a1Rg = preparedCoefficients[1];
+	a2Rg = preparedCoefficients[2];
+	a0Az = preparedCoefficients[3];
+	a1Az = preparedCoefficients[4];
+	a2Az = preparedCoefficients[5];
 	FormatConversion conversion;
-	const ULONGLONG fitStartTick = GetTickCount64();
-	ret = fitSlaveOffset(slaveAzimuthOffset, &a0Az, &a1Az, &a2Az);
-	if (ret == -2) return -2;
-	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
-	ret = fitSlaveOffset(slaveRangeOffset, &a0Rg, &a1Rg, &a2Rg);
-	if (ret == -2) return -2;
-	if (return_check(ret, "fitSlaveOffset()", error_head)) return -1;
-	sprintf_s(stageMessage, "Offset fitting completed: range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}.",
+	sprintf_s(stageMessage, "Using prepared batched exact coefficients: range={%.8f, %.10f, %.10f}, azimuth={%.8f, %.10f, %.10f}.",
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
-	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "offset_fit.complete", stageMessage,
+	emit_diagnostic(INSAR_DIAGNOSTIC_DEBUG, "geometry", "projection_and_offset.complete", stageMessage,
 		"Range and azimuth offsets use the model a0 + a1 * range + a2 * azimuth, in pixels.",
-		nullptr, nullptr, 0, slaveRangeOffset.rows, slaveRangeOffset.cols, slaveRangeOffset.type(),
-		static_cast<long long>(GetTickCount64() - fitStartTick));
+		su[slaveImageIndex - 1]->h5File.c_str(), nullptr, 0, dem->rows, dem->cols, -1,
+		static_cast<long long>(GetTickCount64() - geometryStartTick));
 	const ULONGLONG resamplingStartTick = GetTickCount64();
 	ret = performSincResampling(slave, su[masterIndex - 1]->linesPerBurst, su[masterIndex - 1]->samplesPerBurst,
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
@@ -12855,6 +13871,9 @@ int Sentinel1BackGeocoding::backGeoCodingCoregistration(
 	if (ret != 0) return ret;
 	ret = deBurstConfig();
 	if (return_check(ret, "deBurstConfig()", error_head)) return -1;
+	ret = prepareBatchedGeometryPlan();
+	if (ret == -2) return -2;
+	if (return_check(ret, "prepareBatchedGeometryPlan()", error_head)) return -1;
 	ret = prepareOutFiles();
 	if (return_check(ret, "prepareOutFiles()", error_head)) return -1;
 	if (static_cast<int>(fullBurstFiles.size()) != numOfImages) return -1;
