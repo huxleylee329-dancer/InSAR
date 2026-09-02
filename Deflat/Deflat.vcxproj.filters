@@ -27,6 +27,9 @@
     <ClInclude Include="..\include\Deflat.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="TopsNativeGeometry.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="..\FormatConversion\tinystr.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -39,6 +42,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="Deflat.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="TopsNativeGeometry.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="dllmain.cpp">

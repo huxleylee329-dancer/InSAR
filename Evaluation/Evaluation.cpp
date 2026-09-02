@@ -3,6 +3,8 @@
 #include<Utils.h>
 #include<ComplexMat.h>
 #include<Deflat.h>
+#include<Hdf5IO.h>
+#include<cmath>
 
 #ifdef _DEBUG
 #pragma comment(lib, "FormatConversion_d.lib")
@@ -15,6 +17,169 @@
 #pragma comment(lib, "ComplexMat.lib")
 #pragma comment(lib, "Deflat.lib")
 #endif
+
+static bool validateVersionedFlatEarthContract(const char* file, const cv::Mat& phase, cv::Mat& reference)
+{
+	FormatConversion conversion;
+	int modelVersion = 0, sourceRowCount = 0, validationRequired = 0;
+	if (conversion.read_int_from_h5(file, "flat_earth_model_version", &modelVersion) != 0 ||
+		(modelVersion != 5 && modelVersion != 6) ||
+		conversion.read_int_from_h5(file, "flat_earth_model_source_row_count", &sourceRowCount) != 0 || sourceRowCount < 1 ||
+		conversion.read_int_from_h5(file, "flat_earth_reference_validation_required", &validationRequired) != 0 || validationRequired != 1) return false;
+	const bool geometryOnly = modelVersion == 6;
+	const char* const expectedProcessing = geometryOnly ?
+		"master_native_phase;slave_registration_mapping_seed_only_m_conjugate_s_v2" :
+		"master_native_phase;slave_registered_mapping_and_resampled_reramp_reference_m_conjugate_s_v1";
+	const char* const expectedStatus = geometryOnly ?
+		"tops_native_range_doppler_h0_geometry_only_reference_v2" : "tops_native_range_doppler_h0_reference_v1";
+	const char* const expectedReferenceSemantics = geometryOnly ?
+		"unwrapped_master_native_h0_rde_geometry_only_reference_v6" :
+		"unwrapped_master_native_h0_rde_geometry_plus_slave_native_processing_effective_complex_block_reference_v5";
+	int masterLinesPerBurst = 0, slaveLinesPerBurst = 0, slaveBurstOffset = 0;
+	Mat masterBurstTimes, slaveBurstTimes;
+	if (conversion.read_int_from_h5(file, "flat_earth_master_lines_per_burst", &masterLinesPerBurst) != 0 ||
+		conversion.read_int_from_h5(file, "flat_earth_slave_lines_per_burst", &slaveLinesPerBurst) != 0 ||
+		conversion.read_int_from_h5(file, "flat_earth_slave_source_burst_offset", &slaveBurstOffset) != 0 ||
+		masterLinesPerBurst < 1 || slaveLinesPerBurst < 1 ||
+		conversion.read_array_from_h5(file, "flat_earth_master_burst_azimuth_time", masterBurstTimes) != 0 ||
+		conversion.read_array_from_h5(file, "flat_earth_slave_burst_azimuth_time", slaveBurstTimes) != 0 ||
+		masterBurstTimes.type() != CV_64F || masterBurstTimes.cols != 1 || masterBurstTimes.rows < 1 ||
+		slaveBurstTimes.type() != CV_64F || slaveBurstTimes.cols != 1 || slaveBurstTimes.rows < 1 ||
+		sourceRowCount > masterBurstTimes.rows * masterLinesPerBurst ||
+		!cv::checkRange(masterBurstTimes, true, nullptr) || !cv::checkRange(slaveBurstTimes, true, nullptr)) return false;
+	const char* const phaseFloatDatasets[] = {
+		"flat_earth_master_azimuth_fm_rate_list", "flat_earth_slave_azimuth_fm_rate_list",
+		"flat_earth_master_dc_estimate_list", "flat_earth_slave_dc_estimate_list" };
+	const char* const phaseIntegerDatasets[] = {
+		"flat_earth_master_first_valid_line", "flat_earth_master_last_valid_line",
+		"flat_earth_slave_first_valid_line", "flat_earth_slave_last_valid_line",
+		"flat_earth_master_first_valid_sample", "flat_earth_master_last_valid_sample",
+		"flat_earth_slave_first_valid_sample", "flat_earth_slave_last_valid_sample" };
+	for (const char* dataset : phaseFloatDatasets) {
+		Mat value;
+		if (conversion.read_array_from_h5(file, dataset, value) != 0 || value.type() != CV_64F ||
+			value.rows < 1 || value.cols < 5 || !cv::checkRange(value, true, nullptr)) return false;
+	}
+	for (const char* dataset : phaseIntegerDatasets) {
+		Mat value;
+		if (conversion.read_array_from_h5(file, dataset, value) != 0 || value.type() != CV_32S ||
+			value.cols != 1 || value.rows < 1) return false;
+	}
+	std::string sourceRows, timing, processing, mappingSemantics, rerampSemantics, status, target, semantics, geolocation, timeScale, strategy, masterSource, slaveSource, masterSelectionReason, slaveSelectionReason, masterLookSideSource;
+	if (conversion.read_str_from_h5(file, "flat_earth_model_source_row_semantics", sourceRows) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_model_timing_semantics", timing) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_processing_phase_semantics", processing) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_slave_registration_mapping_semantics", mappingSemantics) != 0 ||
+		(!geometryOnly && conversion.read_str_from_h5(file, "flat_earth_slave_registration_reramp_phase_semantics", rerampSemantics) != 0) ||
+		conversion.read_str_from_h5(file, "flat_earth_model_status", status) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_geolocation_coordinate_semantics", geolocation) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_orbit_time_scale", timeScale) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_orbit_interpolation_strategy", strategy) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_master_orbit_source", masterSource) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_slave_orbit_source", slaveSource) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_master_orbit_selection_reason", masterSelectionReason) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_slave_orbit_selection_reason", slaveSelectionReason) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_master_look_side_source", masterLookSideSource) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_reference_validation_target", target) != 0 ||
+		conversion.read_str_from_h5(file, "flat_earth_reference_phase_semantics", semantics) != 0 ||
+		sourceRows != "source_row_map_selects_master_native_burst_line_only_v1" ||
+		timing != "strict_gps_h5_time_v2__registration_time_seed_not_geometry_truth_v1" ||
+		processing != expectedProcessing ||
+		mappingSemantics != "pull_source_row_and_column_offsets_a0_a1_column_a2_master_burst_line_v1" ||
+		(!geometryOnly && rerampSemantics != "resampled_slave_deramp_demod_phase_before_conjugated_reramp_v1") ||
+		status != expectedStatus ||
+		geolocation != "master_native_line_sample_to_h0_rde__slave_zero_doppler_range_v1" ||
+		timeScale != "GPS" || strategy != "orbit_state_vectors_apply_orbit_1s_lagrange_v1" ||
+		!((masterSource == "fine_state_vec" && masterSelectionReason == "fine_state_vec_valid_preferred_v1") ||
+		  (masterSource == "state_vec" && (masterSelectionReason == "fine_state_vec_invalid__state_vec_valid_fallback_v1" || masterSelectionReason == "fine_state_vec_absent__state_vec_valid_fallback_v1"))) ||
+		!((slaveSource == "fine_state_vec" && slaveSelectionReason == "fine_state_vec_valid_preferred_v1") ||
+		  (slaveSource == "state_vec" && (slaveSelectionReason == "fine_state_vec_invalid__state_vec_valid_fallback_v1" || slaveSelectionReason == "fine_state_vec_absent__state_vec_valid_fallback_v1"))) ||
+		(masterLookSideSource != "h5_lookside_v1" && masterLookSideSource != "sentinel1_fixed_right_looking_v1") ||
+		target != "external_unfitted_comparison_only_v1" ||
+		semantics != expectedReferenceSemantics) return false;
+	int transmitReceiveMode = 0, rdeMaxIterations = 0, zeroDopplerMaxIterations = 0;
+	double masterOrbitStart = 0.0, masterOrbitStop = 0.0, masterGeometryStart = 0.0, masterGeometryStop = 0.0,
+		slaveOrbitStart = 0.0, slaveOrbitStop = 0.0, slaveGeometryStart = 0.0, slaveGeometryStop = 0.0, interpolationMargin = 0.0,
+		epsilonPhase = 0.0, wavelength = 0.0,
+		rdeResidual = 0.0, zeroDopplerResidual = 0.0, jacobianCondition = 0.0, initialWindow = 0.0, maximumWindow = 0.0, expansionFactor = 0.0;
+	if (conversion.read_double_from_h5(file, "flat_earth_master_orbit_osv_start_gps", &masterOrbitStart) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_master_orbit_osv_stop_gps", &masterOrbitStop) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_master_geometry_start_gps", &masterGeometryStart) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_master_geometry_stop_gps", &masterGeometryStop) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_orbit_osv_start_gps", &slaveOrbitStart) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_orbit_osv_stop_gps", &slaveOrbitStop) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_geometry_start_gps", &slaveGeometryStart) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_geometry_stop_gps", &slaveGeometryStop) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_orbit_interpolation_margin_seconds", &interpolationMargin) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_rde_epsilon_phase", &epsilonPhase) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_wavelength_meters", &wavelength) != 0 ||
+		conversion.read_int_from_h5(file, "flat_earth_transmit_receive_mode", &transmitReceiveMode) != 0 ||
+		conversion.read_int_from_h5(file, "flat_earth_rde_max_iterations", &rdeMaxIterations) != 0 ||
+		conversion.read_int_from_h5(file, "flat_earth_zero_doppler_max_iterations", &zeroDopplerMaxIterations) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_rde_max_residual", &rdeResidual) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_zero_doppler_max_residual", &zeroDopplerResidual) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_rde_max_jacobian_condition", &jacobianCondition) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_search_initial_half_window_seconds", &initialWindow) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_search_maximum_half_window_seconds", &maximumWindow) != 0 ||
+		conversion.read_double_from_h5(file, "flat_earth_slave_search_expansion_factor", &expansionFactor) != 0 ||
+		!std::isfinite(masterOrbitStart) || !std::isfinite(masterOrbitStop) || !std::isfinite(masterGeometryStart) || !std::isfinite(masterGeometryStop) ||
+		!std::isfinite(slaveOrbitStart) || !std::isfinite(slaveOrbitStop) || !std::isfinite(slaveGeometryStart) || !std::isfinite(slaveGeometryStop) || !std::isfinite(interpolationMargin) ||
+		!(masterOrbitStop > masterOrbitStart) || !(masterGeometryStop > masterGeometryStart) || !(slaveOrbitStop > slaveOrbitStart) || !(slaveGeometryStop > slaveGeometryStart) || interpolationMargin <= 0.0 ||
+		masterOrbitStart > masterGeometryStart - interpolationMargin || masterOrbitStop < masterGeometryStop + interpolationMargin ||
+		slaveOrbitStart > slaveGeometryStart - interpolationMargin || slaveOrbitStop < slaveGeometryStop + interpolationMargin ||
+		!std::isfinite(epsilonPhase) || !std::isfinite(wavelength) || !std::isfinite(rdeResidual) || !std::isfinite(zeroDopplerResidual) ||
+		!std::isfinite(jacobianCondition) || !std::isfinite(initialWindow) || !std::isfinite(maximumWindow) ||
+		!std::isfinite(expansionFactor) || epsilonPhase <= 0.0 || rdeResidual <= 0.0 || zeroDopplerResidual <= 0.0 ||
+		wavelength <= 0.0 || (transmitReceiveMode != 1 && transmitReceiveMode != 2) || rdeMaxIterations < 1 || zeroDopplerMaxIterations < 1 || jacobianCondition <= 0.0 || initialWindow <= 0.0 || maximumWindow < initialWindow || expansionFactor <= 1.0) return false;
+	int maxSlaveSearchExpansions = 0;
+	if (conversion.read_int_from_h5(file, "flat_earth_slave_search_max_expansions", &maxSlaveSearchExpansions) != 0 || maxSlaveSearchExpansions < 0) return false;
+	Mat rdeStatistics, validMask, validSampleCount, rerampPhase, mappingCoefficients, mappingBurstIndices;
+	const bool contractArraysValid = conversion.read_array_from_h5(file, "flat_earth_reference_phase", reference) == 0 &&
+		reference.type() == CV_64F && reference.size() == phase.size() && cv::checkRange(reference, true, nullptr) &&
+		conversion.read_array_from_h5(file, "phase_valid_mask", validMask) == 0 &&
+		validMask.type() == CV_8U && validMask.size() == phase.size() &&
+		conversion.read_array_from_h5(file, "phase_valid_sample_count", validSampleCount) == 0 &&
+		validSampleCount.type() == CV_32S && validSampleCount.size() == phase.size() &&
+		conversion.read_array_from_h5(file, "flat_earth_rde_burst_statistics", rdeStatistics) == 0 &&
+		rdeStatistics.type() == CV_64F && rdeStatistics.rows == masterBurstTimes.rows && rdeStatistics.cols == 13 &&
+		cv::checkRange(rdeStatistics, true, nullptr) &&
+		(geometryOnly || (conversion.read_array_from_h5(file, "flat_earth_slave_registration_reramp_phase", rerampPhase) == 0 &&
+		rerampPhase.type() == CV_64F && rerampPhase.size() == phase.size() && cv::checkRange(rerampPhase, true, nullptr))) &&
+		conversion.read_array_from_h5(file, "flat_earth_slave_registration_mapping_coefficients", mappingCoefficients) == 0 &&
+		mappingCoefficients.type() == CV_64F && mappingCoefficients.rows >= 1 && mappingCoefficients.cols == 6 && cv::checkRange(mappingCoefficients, true, nullptr) &&
+		conversion.read_array_from_h5(file, "flat_earth_slave_registration_mapping_master_burst_indices", mappingBurstIndices) == 0 &&
+		mappingBurstIndices.type() == CV_32S && mappingBurstIndices.rows == 1 && mappingBurstIndices.cols == mappingCoefficients.rows &&
+		cv::countNonZero(validMask) == static_cast<int>(validMask.total()) &&
+		cv::countNonZero(validSampleCount <= 0) == 0;
+	if (!contractArraysValid) return false;
+	if (geometryOnly) {
+		int rerampExists = 0;
+		int rerampSemanticsExists = 0;
+		if (Hdf5IO::datasetExists(file, "flat_earth_slave_registration_reramp_phase", &rerampExists) != 0 ||
+			Hdf5IO::datasetExists(file, "flat_earth_slave_registration_reramp_phase_semantics", &rerampSemanticsExists) != 0 ||
+			rerampExists != rerampSemanticsExists) return false;
+		if (rerampExists != 0) {
+			std::string optionalRerampSemantics;
+			if (conversion.read_array_from_h5(file, "flat_earth_slave_registration_reramp_phase", rerampPhase) != 0 ||
+				rerampPhase.type() != CV_64F || rerampPhase.size() != phase.size() || !cv::checkRange(rerampPhase, true, nullptr) ||
+				conversion.read_str_from_h5(file, "flat_earth_slave_registration_reramp_phase_semantics", optionalRerampSemantics) != 0 ||
+				optionalRerampSemantics != "resampled_slave_deramp_demod_phase_registration_only_v1") return false;
+		}
+	}
+	const double differentialRangeBudget = epsilonPhase * wavelength * transmitReceiveMode / (4.0 * CV_PI);
+	for (int burst = 0; burst < rdeStatistics.rows; ++burst) {
+		if (rdeStatistics.at<double>(burst, 0) == 0.0) continue;
+		if (rdeStatistics.at<double>(burst, 2) > rdeMaxIterations ||
+			rdeStatistics.at<double>(burst, 3) > zeroDopplerMaxIterations ||
+			rdeStatistics.at<double>(burst, 8) > jacobianCondition ||
+			rdeStatistics.at<double>(burst, 9) > epsilonPhase ||
+			rdeStatistics.at<double>(burst, 10) > differentialRangeBudget ||
+			rdeStatistics.at<double>(burst, 11) < initialWindow ||
+			rdeStatistics.at<double>(burst, 11) > maximumWindow ||
+			rdeStatistics.at<double>(burst, 12) > maxSlaveSearchExpansions) return false;
+	}
+	return true;
+}
 
 
 
@@ -632,7 +797,7 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 	int nr, nc, ret, offset_row, offset_col;
 	double time_interval1, time_interval2;
 	string source_1, source_2;
-	Mat unwrapped_phase, flat_phase_coefficient, gcps, temp, range_spacing,
+	Mat unwrapped_phase, flat_phase_coefficient, flat_earth_reference_phase, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
 	ret = conversion.read_array_from_h5(unwrapped_phase_file, "phase", unwrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
@@ -642,8 +807,45 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		fprintf(stderr, "dem_newton_iter(): invalid unwrapped_phase !\n");
 		return -1;
 	}
-	ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
-	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+	int schemaExists = 0;
+	int modelExists = 0;
+	if (Hdf5IO::datasetExists(unwrapped_phase_file, "phase_processing_schema_version", &schemaExists) != 0 ||
+		Hdf5IO::datasetExists(unwrapped_phase_file, "flat_earth_model_version", &modelExists) != 0) {
+		fprintf(stderr, "Evaluation::Pos(): cannot inspect flat-earth contract version!\n");
+		return -1;
+	}
+	int phaseSchemaVersion = 0;
+	if (schemaExists != 0 &&
+		(conversion.read_int_from_h5(unwrapped_phase_file, "phase_processing_schema_version", &phaseSchemaVersion) != 0 ||
+		 (phaseSchemaVersion != 1 && phaseSchemaVersion != 2))) {
+		fprintf(stderr, "Evaluation::Pos(): unsupported phase-processing schema version!\n");
+		return -1;
+	}
+	const bool requiresVersionedReference = phaseSchemaVersion == 2 || modelExists != 0;
+	if (requiresVersionedReference && phaseSchemaVersion != 2) {
+		fprintf(stderr, "Evaluation::Pos(): versioned flat-earth model requires phase-processing schema version 2!\n");
+		return -1;
+	}
+	const bool hasFlatEarthReference = requiresVersionedReference &&
+		validateVersionedFlatEarthContract(unwrapped_phase_file, unwrapped_phase, flat_earth_reference_phase);
+	if (requiresVersionedReference && !hasFlatEarthReference) {
+		fprintf(stderr, "Evaluation::Pos(): versioned flat-earth contract is incomplete or unsupported; legacy coefficients are not a fallback!\n");
+		return -1;
+	}
+	if (hasFlatEarthReference) {
+		if (flat_earth_reference_phase.type() != CV_64F || flat_earth_reference_phase.size() != unwrapped_phase.size()) {
+			fprintf(stderr, "Evaluation::Pos(): flat_earth_reference_phase does not match phase grid!\n");
+			return -1;
+		}
+	}
+	else {
+		ret = conversion.read_array_from_h5(unwrapped_phase_file, "flat_phase_coefficient", flat_phase_coefficient);
+		if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
+		if (flat_phase_coefficient.type() != CV_64F || flat_phase_coefficient.rows != 1 || flat_phase_coefficient.cols != 6) {
+			fprintf(stderr, "Evaluation::Pos(): legacy flat_phase_coefficient must be one 1x6 row!\n");
+			return -1;
+		}
+	}
 	PathResolver::SourcePathPair sourcePaths;
 	PathResolver::Error pathError = PathResolver::Error::None;
 	string pathDetail;
@@ -783,22 +985,24 @@ int Evaluation::Pos(const char* unwrapped_phase_file, const char* project_path, 
 		orbit_idx = (peak_loc.y + j) > (sate2_xyz.rows - 1) ? (sate2_xyz.rows - 1) : (peak_loc.y + j);
 		sate2_xyz(Range(orbit_idx, orbit_idx + 1), Range(0, 3)).copyTo(sate2(Range(j, j + 1), Range(0, 3)));
 	}
-	//加回平地相位
-	//Mat coef;
-	//cv::transpose(flat_phase_coefficient, coef);
-#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < nr; i++)
-	{
-		Mat temp(1, 6, CV_64F);
-		for (int j = 0; j < nc; j++)
+	if (hasFlatEarthReference) {
+		unwrapped_phase += flat_earth_reference_phase;
+	}
+	else {
+	#pragma omp parallel for schedule(guided)
+		for (int i = 0; i < nr; i++)
 		{
-			temp.at<double>(0, 0) = 1.0;
-			temp.at<double>(0, 1) = i;
-			temp.at<double>(0, 2) = j;
-			temp.at<double>(0, 3) = i * j;
-			temp.at<double>(0, 4) = i * i;
-			temp.at<double>(0, 5) = j * j;
-			unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + sum(temp.mul(flat_phase_coefficient))[0];
+			Mat temp(1, 6, CV_64F);
+			for (int j = 0; j < nc; j++)
+			{
+				temp.at<double>(0, 0) = 1.0;
+				temp.at<double>(0, 1) = i;
+				temp.at<double>(0, 2) = j;
+				temp.at<double>(0, 3) = i * j;
+				temp.at<double>(0, 4) = i * i;
+				temp.at<double>(0, 5) = j * j;
+				unwrapped_phase.at<double>(i, j) = unwrapped_phase.at<double>(i, j) + sum(temp.mul(flat_phase_coefficient))[0];
+			}
 		}
 	}
 	//控制点绝对相位计算

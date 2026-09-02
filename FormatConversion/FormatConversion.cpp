@@ -8503,6 +8503,8 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 		"azimuth_resolution", "range_resolution", "azimuth_spacing", "range_spacing", "state_vec",
 		"acquisition_start_time_gps", "acquisition_stop_time_gps",
 		"fine_state_vec", "doppler_centroid", "doppler_coefficient_a", "doppler_coefficient_b",
+		"burstAzimuthTime", "azimuthFmRateList", "dcEstimateList", "firstValidSample", "lastValidSample",
+		"firstValidLine", "lastValidLine", "burstCount", "linesPerBurst", "azimuthSteeringRate",
 		"lon_coefficient", "lat_coefficient", "row_coefficient", "col_coefficient", "inc_coefficient",
 		"inc_coefficient_r", "inc_center", "row_coefficient", "slant_range_first_pixel", "topLeftLon",
 		"topLeftLat", "topRightLon", "topRightLat", "bottomLeftLon", "bottomLeftLat", "bottomRightLon",
@@ -8514,6 +8516,51 @@ int FormatConversion::Copy_para_from_h5_2_h5(const char* Input_file, const char*
 	result = Hdf5IO::copyDatasetsIfPresent(Input_file, Output_file, arrayDatasets,
 		static_cast<int>(sizeof(arrayDatasets) / sizeof(arrayDatasets[0])), true);
 	if (result != 0) return result;
+
+	// Older Sentinel-1 products can already declare GPS state vectors and time
+	// contract v2 while lacking explicit acquisition GPS scalars. Materialize
+	// those scalars at this producer boundary; v5 consumers never derive GPS
+	// time from UTC themselves.
+	int timeReferenceExists = 0;
+	int stateVectorScaleExists = 0;
+	if (Hdf5IO::datasetExists(Output_file, "h5_time_reference_version", &timeReferenceExists) != 0 ||
+		Hdf5IO::datasetExists(Output_file, "state_vec_time_scale", &stateVectorScaleExists) != 0) return -1;
+	if (timeReferenceExists != 0 && stateVectorScaleExists != 0)
+	{
+		std::string timeReferenceVersion;
+		std::string stateVectorScale;
+		if (Hdf5IO::readString(Output_file, "h5_time_reference_version", timeReferenceVersion) != 0 ||
+			Hdf5IO::readString(Output_file, "state_vec_time_scale", stateVectorScale) != 0) return -1;
+		if (timeReferenceVersion == "2" && stateVectorScale == "GPS")
+		{
+			int startGpsExists = 0;
+			int stopGpsExists = 0;
+			int gpsScaleExists = 0;
+			if (Hdf5IO::datasetExists(Output_file, "acquisition_start_time_gps", &startGpsExists) != 0 ||
+				Hdf5IO::datasetExists(Output_file, "acquisition_stop_time_gps", &stopGpsExists) != 0 ||
+				Hdf5IO::datasetExists(Output_file, "acquisition_time_gps_scale", &gpsScaleExists) != 0) return -1;
+			if (startGpsExists == 0 && stopGpsExists == 0 && gpsScaleExists == 0)
+			{
+				std::string startUtc;
+				std::string stopUtc;
+				double startGps = 0.0;
+				double stopGps = 0.0;
+				if (Hdf5IO::readString(Output_file, "acquisition_start_time", startUtc) != 0 ||
+					Hdf5IO::readString(Output_file, "acquisition_stop_time", stopUtc) != 0 ||
+					UTC2GPS(startUtc.c_str(), &startGps) != 0 || UTC2GPS(stopUtc.c_str(), &stopGps) != 0 ||
+					!std::isfinite(startGps) || !std::isfinite(stopGps) || !(stopGps > startGps)) return -1;
+				Mat startGpsMat(1, 1, CV_64F, cv::Scalar(startGps));
+				Mat stopGpsMat(1, 1, CV_64F, cv::Scalar(stopGps));
+				if (Hdf5IO::writeArray(Output_file, "acquisition_start_time_gps", startGpsMat) != 0 ||
+					Hdf5IO::writeArray(Output_file, "acquisition_stop_time_gps", stopGpsMat) != 0 ||
+					Hdf5IO::writeString(Output_file, "acquisition_time_gps_scale", "GPS") != 0) return -1;
+			}
+			else if (startGpsExists == 0 || stopGpsExists == 0 || gpsScaleExists == 0)
+			{
+				return -1;
+			}
+		}
+	}
 
 	std::string source1;
 	std::string source2;
@@ -11701,6 +11748,11 @@ int Sentinel1BackGeocoding::prepareOutFiles()
 			if (return_check(ret, "creat_new_h5()", error_head)) return -1;
 		ret = conversion.write_slc_to_h5(this->fullBurstFiles[i].c_str(), fullBurst);
 		if (return_check(ret, "write_slc_to_h5()", error_head)) return -1;
+		if (i != masterIndex - 1 &&
+			Hdf5IO::createEmptyDataset(this->fullBurstFiles[i].c_str(),
+				"s1_tops_registration_reramp_phase", fullBurstLines,
+				su[masterIndex - 1]->samplesPerBurst, CV_64F) != 0)
+			return -1;
 		if (!commonBurstCoveragePrepared || commonBurstCoverageSignature.empty() ||
 			Hdf5IO::writeString(this->fullBurstFiles[i].c_str(), "s1_tops_coverage_signature",
 				commonBurstCoverageSignature.c_str()) != 0)
@@ -11751,6 +11803,17 @@ int Sentinel1BackGeocoding::writeCommonBurstCoverageProvenance(const char* outpu
 			outputSourceRowMap.at<int>(outputRow++, 0) = sourceRow;
 	}
 	if (outputRow != deburstLines) return -1;
+	if (imageIndex - 1 != masterImage) {
+		const cv::Mat& mapping = batchedGeometryCoefficients[imageIndex - 1];
+		if (mapping.type() != CV_64F || mapping.rows != static_cast<int>(retainedMasterBurstIndices.size()) ||
+			mapping.cols != 6 || !cv::checkRange(mapping, true, nullptr) ||
+			Hdf5IO::writeArrayReplace(outputFile, "s1_tops_registration_mapping_coefficients", mapping) != 0 ||
+			Hdf5IO::writeString(outputFile, "s1_tops_registration_mapping_semantics",
+				"pull_source_row_and_column_offsets_a0_a1_column_a2_master_burst_line_v1") != 0 ||
+			Hdf5IO::writeString(outputFile, "s1_tops_registration_reramp_phase_semantics",
+				"resampled_slave_deramp_demod_phase_before_conjugated_reramp_v1") != 0)
+			return -1;
+	}
 	if (Hdf5IO::writeString(outputFile, "s1_tops_product_contract", "continuous_deburst_common_coverage_v1") != 0 ||
 		Hdf5IO::writeString(outputFile, "s1_tops_coverage_signature", commonBurstCoverageSignature.c_str()) != 0 ||
 		Hdf5IO::writeString(outputFile, "s1_tops_source_frame_mapping",
@@ -11837,6 +11900,29 @@ int Sentinel1BackGeocoding::materializeDeburstOutput(const char* fullBurstFile, 
 		outputRow += retainedRows;
 	}
 	if (outputRow != deburstLines) return -1;
+	int rerampExists = 0;
+	if (Hdf5IO::datasetExists(fullBurstFile, "s1_tops_registration_reramp_phase", &rerampExists) != 0)
+		return -1;
+	if (rerampExists == 1) {
+		int rerampRows = 0, rerampColumns = 0;
+		cv::Mat rerampPart;
+		if (Hdf5IO::getDatasetDims(fullBurstFile, "s1_tops_registration_reramp_phase", &rerampRows, &rerampColumns) != 0 ||
+			rerampRows != reRows || rerampColumns != reColumns ||
+			Hdf5IO::removeDatasetIfPresent(deburstFile, "s1_tops_registration_reramp_phase") < 0 ||
+			Hdf5IO::createEmptyDataset(deburstFile, "s1_tops_registration_reramp_phase", deburstLines, rerampColumns, CV_64F) != 0)
+			return -1;
+		int rerampOutputRow = 0;
+		for (int burst = 0; burst < start.rows; ++burst) {
+			const int inputRow = start.at<int>(burst, 0);
+			const int retainedRows = end.at<int>(burst, 0) - inputRow;
+			if (Hdf5IO::readSubarray(fullBurstFile, "s1_tops_registration_reramp_phase", inputRow, 0,
+				retainedRows, rerampColumns, rerampPart) != 0 || rerampPart.type() != CV_64F ||
+				Hdf5IO::writeSubarray(deburstFile, "s1_tops_registration_reramp_phase", rerampPart, rerampOutputRow, 0) != 0)
+				return -1;
+			rerampOutputRow += retainedRows;
+		}
+		if (rerampOutputRow != deburstLines) return -1;
+	}
 	char message[384] = {};
 	if (Hdf5IO::writeInt(deburstFile, "deburst_first_source_row", firstRetainedRow) != 0 ||
 		Hdf5IO::writeInt(deburstFile, "deburst_first_source_column", 0) != 0 ||
@@ -13573,6 +13659,10 @@ int Sentinel1BackGeocoding::slaveSincInterpolation(
 			"Post-registration refinement requires this exact 1x6 CV_64F coefficient vector.", fullBurstFiles[slaveImageIndex - 1].c_str(), coefficientName.c_str(), -1201);
 		return -1;
 	}
+	const int rerampOutputRow = (mBurstIndex - 1) * su[masterIndex - 1]->linesPerBurst;
+	if (Hdf5IO::writeSubarray(fullBurstFiles[slaveImageIndex - 1].c_str(),
+		"s1_tops_registration_reramp_phase", derampDemodPhase, rerampOutputRow, 0) != 0)
+		return -1;
 	char coefficientMessage[384] = {};
 	sprintf_s(coefficientMessage, "Persisted geometric coefficients: range={%.12g, %.12g, %.12g}, azimuth={%.12g, %.12g, %.12g}.",
 		a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az);
@@ -14547,8 +14637,18 @@ int Sentinel1BackGeocoding::applyPostRegistrationRefinement(
 			slaveSlc.convertTo(slaveSlc, CV_32F);
 			const int outputRow = (masterBurst - 1) * master->linesPerBurst;
 			if (Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_re", slaveSlc.re, outputRow, 0) != 0 ||
-				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_im", slaveSlc.im, outputRow, 0) != 0)
+				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s_im", slaveSlc.im, outputRow, 0) != 0 ||
+				Hdf5IO::writeSubarray(transactionFiles[slaveIndex].fullBurstTemporaryPath.c_str(), "s1_tops_registration_reramp_phase", derampPhase, outputRow, 0) != 0)
 				return fail(kRefinementTransactionError, "refinement.write_slc", "Failed to write compensated SLC data.");
+			cv::Mat& mapping = batchedGeometryCoefficients[slaveIndex];
+			if (mapping.type() != CV_64F || mapping.rows != static_cast<int>(retainedMasterBurstIndices.size()) || mapping.cols != 6)
+				return fail(kRefinementTransactionError, "refinement.mapping", "Registration mapping provenance is unavailable.");
+			mapping.at<double>(retainedIndex, 0) = a0Rg;
+			mapping.at<double>(retainedIndex, 1) = a1Rg;
+			mapping.at<double>(retainedIndex, 2) = a2Rg;
+			mapping.at<double>(retainedIndex, 3) = a0Az;
+			mapping.at<double>(retainedIndex, 4) = a1Az;
+			mapping.at<double>(retainedIndex, 5) = a2Az;
 		}
 		emit_progress(84 + 12 * (retainedIndex + 1) / static_cast<int>(retainedMasterBurstIndices.size()), "Applying ESD and range corrections.");
 	}

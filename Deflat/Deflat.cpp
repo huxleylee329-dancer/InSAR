@@ -4,8 +4,12 @@
 #include "stdafx.h"
 #include"..\include\Deflat.h"
 #include"..\include\FormatConversion.h"
+#include "TopsNativeGeometry.h"
 #include<direct.h>
 #include <mutex>
+#include <vector>
+#include <cfloat>
+#include <atomic>
 #include<Windows.h>
 #include<SensAPI.h>
 #include<urlmon.h>
@@ -24,6 +28,217 @@ using namespace cv;
 
 namespace {
 	const double NEWTON_CONVERGENCE_THRESHOLD = 0.0000454;
+
+	bool interpolateOrbitPositionAtTime(const Mat& stateVectors, double time, Vec3d& position)
+	{
+		if (stateVectors.type() != CV_64F || stateVectors.cols != 7 || stateVectors.rows < 2 ||
+			!std::isfinite(time)) return false;
+		for (int row = 0; row < stateVectors.rows; ++row) {
+			if (!std::isfinite(stateVectors.at<double>(row, 0)) ||
+				(row > 0 && stateVectors.at<double>(row, 0) <= stateVectors.at<double>(row - 1, 0))) return false;
+		}
+		if (time < stateVectors.at<double>(0, 0) || time > stateVectors.at<double>(stateVectors.rows - 1, 0)) return false;
+		int upper = 1;
+		while (upper < stateVectors.rows && stateVectors.at<double>(upper, 0) < time) ++upper;
+		if (upper == stateVectors.rows) upper = stateVectors.rows - 1;
+		const int lower = std::max(0, upper - 1);
+		const double t0 = stateVectors.at<double>(lower, 0);
+		const double t1 = stateVectors.at<double>(upper, 0);
+		if (t1 <= t0) return false;
+		const double h = t1 - t0;
+		const double u = (time - t0) / h;
+		const double h00 = 2.0 * u * u * u - 3.0 * u * u + 1.0;
+		const double h10 = u * u * u - 2.0 * u * u + u;
+		const double h01 = -2.0 * u * u * u + 3.0 * u * u;
+		const double h11 = u * u * u - u * u;
+		for (int coordinate = 0; coordinate < 3; ++coordinate) {
+			const double p0 = stateVectors.at<double>(lower, coordinate + 1);
+			const double p1 = stateVectors.at<double>(upper, coordinate + 1);
+			const double v0 = stateVectors.at<double>(lower, coordinate + 4);
+			const double v1 = stateVectors.at<double>(upper, coordinate + 4);
+			if (!std::isfinite(p0) || !std::isfinite(p1) || !std::isfinite(v0) || !std::isfinite(v1)) return false;
+			position[coordinate] = h00 * p0 + h10 * h * v0 + h01 * p1 + h11 * h * v1;
+		}
+		return std::isfinite(position[0]) && std::isfinite(position[1]) && std::isfinite(position[2]);
+	}
+
+	bool buildTopsBurstTrack(const Mat& stateVectors, const Mat& burstAzimuthTime,
+		const Mat& sourceRowMap, int linesPerBurst, int burstOffset, double lineInterval, Mat& track)
+	{
+		if (burstAzimuthTime.type() != CV_64F || burstAzimuthTime.cols != 1 || burstAzimuthTime.rows < 1 ||
+			linesPerBurst < 1 || !std::isfinite(lineInterval) || lineInterval <= 0.0) return false;
+		track.create(sourceRowMap.rows, 3, CV_64F);
+		for (int row = 0; row < sourceRowMap.rows; ++row) {
+			const int sourceRow = sourceRowMap.at<int>(row, 0);
+			const int masterBurst = sourceRow / linesPerBurst;
+			const int burst = masterBurst + burstOffset;
+			const int lineInBurst = sourceRow % linesPerBurst;
+			if (sourceRow < 0 || burst < 0 || burst >= burstAzimuthTime.rows || lineInBurst < 0 ||
+				!std::isfinite(burstAzimuthTime.at<double>(burst, 0))) return false;
+			Vec3d position;
+			const double acquisitionTime = burstAzimuthTime.at<double>(burst, 0) + lineInBurst * lineInterval;
+			if (!interpolateOrbitPositionAtTime(stateVectors, acquisitionTime, position)) return false;
+			track.at<double>(row, 0) = position[0];
+			track.at<double>(row, 1) = position[1];
+			track.at<double>(row, 2) = position[2];
+		}
+		return true;
+	}
+
+	bool isValidTopsPhaseMetadata(const TopsBurstPhaseMetadata& metadata)
+	{
+		const Mat* const matrices[] = {
+			&metadata.burstAzimuthTime, &metadata.azimuthFmRateList, &metadata.dcEstimateList,
+			&metadata.firstValidLine, &metadata.lastValidLine,
+			&metadata.firstValidSample, &metadata.lastValidSample };
+		for (const Mat* matrix : matrices) {
+			if (!matrix || matrix->empty()) return false;
+		}
+		const int bursts = metadata.burstAzimuthTime.rows;
+		if (metadata.burstAzimuthTime.type() != CV_64F || metadata.burstAzimuthTime.cols != 1 || bursts < 1 ||
+			metadata.azimuthFmRateList.type() != CV_64F || metadata.azimuthFmRateList.rows < 1 || metadata.azimuthFmRateList.cols < 5 ||
+			metadata.dcEstimateList.type() != CV_64F || metadata.dcEstimateList.rows < 1 || metadata.dcEstimateList.cols < 5 ||
+			metadata.firstValidLine.type() != CV_32S || metadata.lastValidLine.type() != CV_32S ||
+			metadata.firstValidSample.type() != CV_32S || metadata.lastValidSample.type() != CV_32S ||
+			metadata.firstValidLine.rows != bursts || metadata.lastValidLine.rows != bursts ||
+			metadata.firstValidSample.rows != bursts || metadata.lastValidSample.rows != bursts ||
+			metadata.firstValidLine.cols != 1 || metadata.lastValidLine.cols != 1 ||
+			metadata.firstValidSample.cols != 1 || metadata.lastValidSample.cols != 1 ||
+			metadata.linesPerBurst < 1 || !std::isfinite(metadata.azimuthSteeringRate) ||
+			fabs(metadata.azimuthSteeringRate) <= DBL_EPSILON ||
+		!std::isfinite(metadata.rangeSpacing) || metadata.rangeSpacing <= 0.0 ||
+		!std::isfinite(metadata.slantRangeFirstPixel) || metadata.slantRangeFirstPixel <= 0.0 ||
+		!std::isfinite(metadata.azimuthIntervalSeconds) || metadata.azimuthIntervalSeconds <= 0.0 ||
+			!checkRange(metadata.burstAzimuthTime, true, nullptr) ||
+			!checkRange(metadata.azimuthFmRateList, true, nullptr) || !checkRange(metadata.dcEstimateList, true, nullptr)) return false;
+		for (int burst = 0; burst < bursts; ++burst) {
+			const int firstLine = metadata.firstValidLine.at<int>(burst, 0);
+			const int lastLine = metadata.lastValidLine.at<int>(burst, 0);
+			const int firstSample = metadata.firstValidSample.at<int>(burst, 0);
+			const int lastSample = metadata.lastValidSample.at<int>(burst, 0);
+			if (firstLine < 1 || lastLine < firstLine || lastLine > metadata.linesPerBurst ||
+				firstSample < 0 || lastSample < firstSample) return false;
+		}
+		return true;
+	}
+
+	bool isValidTopsRegistrationReference(const TopsBurstPhaseMetadata& metadata, int outputRows, int outputColumns)
+	{
+		if (metadata.registrationRerampPhase.type() != CV_64F ||
+			metadata.registrationRerampPhase.rows != outputRows ||
+			metadata.registrationRerampPhase.cols != outputColumns ||
+			!checkRange(metadata.registrationRerampPhase, true, nullptr) ||
+			metadata.registrationMappingCoefficients.type() != CV_64F ||
+			metadata.registrationMappingCoefficients.rows < 1 ||
+			metadata.registrationMappingCoefficients.cols != 6 ||
+			!checkRange(metadata.registrationMappingCoefficients, true, nullptr) ||
+			metadata.registrationMappingMasterBurstIndices.type() != CV_32S ||
+			metadata.registrationMappingMasterBurstIndices.rows != 1 ||
+			metadata.registrationMappingMasterBurstIndices.cols != metadata.registrationMappingCoefficients.rows)
+			return false;
+		for (int row = 0; row < metadata.registrationMappingMasterBurstIndices.cols; ++row) {
+			const int burst = metadata.registrationMappingMasterBurstIndices.at<int>(0, row);
+			if (burst < 1) return false;
+			for (int previous = 0; previous < row; ++previous) {
+				if (metadata.registrationMappingMasterBurstIndices.at<int>(0, previous) == burst) return false;
+			}
+		}
+		return true;
+	}
+
+	bool isValidTopsRegistrationMapping(const TopsBurstPhaseMetadata& metadata)
+	{
+		if (metadata.registrationMappingCoefficients.type() != CV_64F ||
+			metadata.registrationMappingCoefficients.rows < 1 ||
+			metadata.registrationMappingCoefficients.cols != 6 ||
+			!checkRange(metadata.registrationMappingCoefficients, true, nullptr) ||
+			metadata.registrationMappingMasterBurstIndices.type() != CV_32S ||
+			metadata.registrationMappingMasterBurstIndices.rows != 1 ||
+			metadata.registrationMappingMasterBurstIndices.cols != metadata.registrationMappingCoefficients.rows)
+			return false;
+		for (int row = 0; row < metadata.registrationMappingMasterBurstIndices.cols; ++row) {
+			const int burst = metadata.registrationMappingMasterBurstIndices.at<int>(0, row);
+			if (burst < 1) return false;
+			for (int previous = 0; previous < row; ++previous) {
+				if (metadata.registrationMappingMasterBurstIndices.at<int>(0, previous) == burst) return false;
+			}
+		}
+		return true;
+	}
+
+	bool registrationMappingForMasterBurst(const TopsBurstPhaseMetadata& metadata, int masterBurst,
+		double& a0Rg, double& a1Rg, double& a2Rg, double& a0Az, double& a1Az, double& a2Az)
+	{
+		for (int row = 0; row < metadata.registrationMappingMasterBurstIndices.cols; ++row) {
+			if (metadata.registrationMappingMasterBurstIndices.at<int>(0, row) == masterBurst + 1) {
+				a0Rg = metadata.registrationMappingCoefficients.at<double>(row, 0);
+				a1Rg = metadata.registrationMappingCoefficients.at<double>(row, 1);
+				a2Rg = metadata.registrationMappingCoefficients.at<double>(row, 2);
+				a0Az = metadata.registrationMappingCoefficients.at<double>(row, 3);
+				a1Az = metadata.registrationMappingCoefficients.at<double>(row, 4);
+				a2Az = metadata.registrationMappingCoefficients.at<double>(row, 5);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	int selectTopsPolynomialRow(const Mat& estimates, double burstTime)
+	{
+		if (burstTime <= estimates.at<double>(0, 0)) return 0;
+		for (int row = 1; row < estimates.rows; ++row) {
+			if (burstTime <= estimates.at<double>(row, 0)) return row;
+		}
+		return estimates.rows - 1;
+	}
+
+	bool computeTopsDerampDemodPhase(const TopsBurstPhaseMetadata& metadata, const Mat& stateVectors,
+		int burst, double lineInBurst, double sample, double timeInterval, double wavelength, double& phase)
+	{
+		if (burst < 0 || burst >= metadata.burstAzimuthTime.rows || lineInBurst < 0 ||
+			lineInBurst >= metadata.linesPerBurst || sample < metadata.firstValidSample.at<int>(burst, 0) ||
+			sample > metadata.lastValidSample.at<int>(burst, 0) ||
+			lineInBurst + 1.0 < metadata.firstValidLine.at<int>(burst, 0) ||
+			lineInBurst + 1.0 > metadata.lastValidLine.at<int>(burst, 0)) return false;
+		const double burstTime = metadata.burstAzimuthTime.at<double>(burst, 0);
+		const int fmRow = selectTopsPolynomialRow(metadata.azimuthFmRateList, burstTime);
+		const int dcRow = selectTopsPolynomialRow(metadata.dcEstimateList, burstTime);
+		const auto evaluate = [&](const Mat& estimates, int row, double slantRangeTime) {
+			const double delta = slantRangeTime - estimates.at<double>(row, 1);
+			return estimates.at<double>(row, 2) + estimates.at<double>(row, 3) * delta +
+				estimates.at<double>(row, 4) * delta * delta;
+		};
+		const double slantRangeTime = 2.0 * (metadata.slantRangeFirstPixel + sample * metadata.rangeSpacing) / VEL_C;
+		const double rangeRate = evaluate(metadata.azimuthFmRateList, fmRow, slantRangeTime);
+		const double doppler = evaluate(metadata.dcEstimateList, dcRow, slantRangeTime);
+		const int referenceSample = metadata.firstValidSample.at<int>(burst, 0);
+		const double referenceRangeTime = 2.0 * (metadata.slantRangeFirstPixel + referenceSample * metadata.rangeSpacing) / VEL_C;
+		const double referenceRangeRate = evaluate(metadata.azimuthFmRateList, fmRow, referenceRangeTime);
+		const double referenceDoppler = evaluate(metadata.dcEstimateList, dcRow, referenceRangeTime);
+		const Vec3d velocity(stateVectors.at<double>(0, 4), stateVectors.at<double>(0, 5), stateVectors.at<double>(0, 6));
+		const double speed = sqrt(velocity.dot(velocity));
+		const double krot = 2.0 * speed * metadata.azimuthSteeringRate * PI / 180.0 / wavelength;
+		const double totalRate = rangeRate * krot / (rangeRate - krot);
+		const double referenceTime = metadata.linesPerBurst * timeInterval * 0.5 +
+			referenceDoppler / referenceRangeRate - doppler / rangeRate;
+		const double azimuthTime = lineInBurst * timeInterval;
+		phase = -PI * totalRate * pow(azimuthTime - referenceTime, 2.0) - 2.0 * PI * azimuthTime * doppler;
+		return std::isfinite(phase) && std::isfinite(rangeRate) && std::isfinite(referenceRangeRate) &&
+			std::isfinite(speed) && speed > 0.0 && fabs(rangeRate) > DBL_EPSILON &&
+			fabs(referenceRangeRate) > DBL_EPSILON && fabs(rangeRate - krot) > DBL_EPSILON;
+	}
+
+	bool isTopsNativeCoordinateInsideValidWindow(const TopsBurstPhaseMetadata& metadata,
+		int burst, double lineInBurst, double sample)
+	{
+		return burst >= 0 && burst < metadata.burstAzimuthTime.rows &&
+			std::isfinite(lineInBurst) && std::isfinite(sample) &&
+			lineInBurst >= 0.0 && lineInBurst < metadata.linesPerBurst &&
+			sample >= metadata.firstValidSample.at<int>(burst, 0) &&
+			sample <= metadata.lastValidSample.at<int>(burst, 0) &&
+			lineInBurst + 1.0 >= metadata.firstValidLine.at<int>(burst, 0) &&
+			lineInBurst + 1.0 <= metadata.lastValidLine.at<int>(burst, 0);
+	}
 }
 
 
@@ -42,6 +257,608 @@ Deflat::Deflat()
 
 Deflat::~Deflat()
 {
+}
+
+int Deflat::computeSentinel1FlatEarthPhaseCandidate(
+	const Mat& stateVec1, const Mat& stateVec2, const Mat& lonCoef, const Mat& latCoef,
+	const Mat& sourceRowMap, Mat& pairValidMask,
+	const TopsBurstPhaseMetadata& masterTops, const TopsBurstPhaseMetadata& slaveTops,
+	int sourceRowCount, int outputColumns, int offsetCol,
+	double height, double timeInterval1, double timeInterval2, int slaveSourceBurstOffset, int mode, double wavelength,
+	int polynomialDegree, int numberPoints, Mat& flatEarthPhase, FlatEarthModel& model,
+	DeflatProgressCallback cb)
+{
+	if (stateVec1.cols != 7 || stateVec2.cols != 7 || stateVec1.rows < 7 || stateVec2.rows < 7 ||
+		stateVec1.type() != CV_64F || stateVec2.type() != CV_64F || lonCoef.type() != CV_64F || latCoef.type() != CV_64F ||
+		lonCoef.rows != 1 || latCoef.rows != 1 || lonCoef.cols != 32 || latCoef.cols != 32 ||
+		sourceRowMap.type() != CV_32S || sourceRowMap.cols != 1 || sourceRowMap.rows < 1 ||
+		pairValidMask.type() != CV_8U || pairValidMask.rows != sourceRowMap.rows || pairValidMask.cols != outputColumns ||
+		sourceRowCount < 1 || outputColumns < 1 || height < 0.0 || timeInterval1 <= 0.0 || timeInterval2 <= 0.0 ||
+		!isValidTopsPhaseMetadata(masterTops) || !isValidTopsPhaseMetadata(slaveTops) ||
+		!isValidTopsRegistrationReference(slaveTops, sourceRowMap.rows, outputColumns) ||
+		(mode != TR_MODE_SINGLE_TX_SINGLE_RX && mode != TR_MODE_SINGLE_TX_DOUBLE_RX) || wavelength <= 0.0 ||
+		polynomialDegree < 0 || polynomialDegree > 8 || numberPoints < 1)
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): input check failed!\n");
+		return -1;
+	}
+
+	const int rows = sourceRowMap.rows;
+	for (int y = 0; y < rows; ++y) {
+		const uchar* valid = pairValidMask.ptr<uchar>(y);
+		for (int x = 0; x < outputColumns; ++x) {
+			if (valid[x] != 0 && valid[x] != 1) {
+				fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): pair-valid mask is not binary!\n");
+				return -1;
+			}
+		}
+	}
+	const int basisCount = (polynomialDegree + 1) * (polynomialDegree + 1);
+	if (numberPoints < basisCount || static_cast<long long>(rows) * outputColumns < basisCount) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): insufficient polynomial samples!\n");
+		return -1;
+	}
+	int minSourceRow = sourceRowMap.at<int>(0, 0);
+	int maxSourceRow = minSourceRow;
+	for (int y = 0; y < rows; ++y) {
+		const int sourceRow = sourceRowMap.at<int>(y, 0);
+		if (sourceRow < 0 || sourceRow >= sourceRowCount) {
+			fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): source-row map is out of range!\n");
+			return -1;
+		}
+		const int masterBurst = sourceRow / masterTops.linesPerBurst;
+		const int slaveBurst = masterBurst + slaveSourceBurstOffset;
+		if (masterBurst < 0 || masterBurst >= masterTops.burstAzimuthTime.rows ||
+			slaveBurst < 0 || slaveBurst >= slaveTops.burstAzimuthTime.rows) {
+			fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): common burst mapping is outside TOPS metadata coverage!\n");
+			return -1;
+		}
+		minSourceRow = std::min(minSourceRow, sourceRow);
+		maxSourceRow = std::max(maxSourceRow, sourceRow);
+	}
+
+	if (sourceRowCount > masterTops.burstAzimuthTime.rows * masterTops.linesPerBurst) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): source-row grid exceeds master burst timing!\n");
+		return -1;
+	}
+	Utils util;
+	Mat row(rows, outputColumns, CV_64F), col(rows, outputColumns, CV_64F);
+	for (int y = 0; y < rows; ++y) {
+		for (int x = 0; x < outputColumns; ++x) {
+			// The geolocation polynomial belongs to the published, continuous
+			// deburst raster.  sourceRowMap is only the native TOPS timing key;
+			// using it here would reintroduce each removed burst-overlap gap.
+			row.at<double>(y, x) = static_cast<double>(y);
+			col.at<double>(y, x) = static_cast<double>(offsetCol + x);
+		}
+	}
+	Mat lon, lat, lonCoefficient = lonCoef.clone(), latCoefficient = latCoef.clone();
+	if (util.coord_conversion(lonCoefficient, row, col, lon) != 0 ||
+		util.coord_conversion(latCoefficient, row, col, lat) != 0) return -1;
+
+	Mat sate1;
+	if (!buildTopsBurstTrack(stateVec1, masterTops.burstAzimuthTime, sourceRowMap, masterTops.linesPerBurst, 0,
+		timeInterval1, sate1)) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): TOPS burst timing or orbit coverage is invalid!\n");
+		return -1;
+	}
+
+	Mat geometricPhase(rows, outputColumns, CV_64F);
+	std::atomic<bool> cancelled(false);
+	std::atomic<bool> invalidProcessingReference(false);
+	std::atomic<long long> nativeSupportMasked(0);
+	std::atomic<int> completed(0);
+	const int progressStep = std::max(1, rows / 100);
+#pragma omp parallel for schedule(guided)
+	for (int y = 0; y < rows; ++y) {
+		if (cancelled) continue;
+		Mat point(1, 3, CV_64F), pointXyz;
+		for (int x = 0; x < outputColumns; ++x) {
+			const int sourceRow = sourceRowMap.at<int>(y, 0);
+			const int masterBurst = sourceRow / masterTops.linesPerBurst;
+			const int slaveBurst = masterBurst + slaveSourceBurstOffset;
+			const int lineInBurst = sourceRow % masterTops.linesPerBurst;
+			if (masterBurst < 0 || masterBurst >= masterTops.burstAzimuthTime.rows ||
+				slaveBurst < 0 || slaveBurst >= slaveTops.burstAzimuthTime.rows) {
+				invalidProcessingReference = true;
+				continue;
+			}
+			double a0Rg = 0.0, a1Rg = 0.0, a2Rg = 0.0, a0Az = 0.0, a1Az = 0.0, a2Az = 0.0;
+			if (!registrationMappingForMasterBurst(slaveTops, masterBurst,
+				a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az)) {
+				invalidProcessingReference = true;
+				continue;
+			}
+			if (!std::isfinite(a0Rg) || !std::isfinite(a1Rg) || !std::isfinite(a2Rg) ||
+				!std::isfinite(a0Az) || !std::isfinite(a1Az) || !std::isfinite(a2Az)) {
+				invalidProcessingReference = true;
+				continue;
+			}
+			const double outputSample = static_cast<double>(x);
+			const double slaveLine = lineInBurst + a0Az + a1Az * outputSample + a2Az * lineInBurst;
+			const double slaveSample = outputSample + a0Rg + a1Rg * outputSample + a2Rg * lineInBurst;
+			if (!std::isfinite(slaveLine) || !std::isfinite(slaveSample)) {
+				invalidProcessingReference = true;
+				continue;
+			}
+			const bool masterNativeCoordinateValid =
+				isTopsNativeCoordinateInsideValidWindow(masterTops, masterBurst,
+					lineInBurst, offsetCol + x);
+			const bool slaveNativeCoordinateValid =
+				isTopsNativeCoordinateInsideValidWindow(slaveTops, slaveBurst, slaveLine, slaveSample);
+			if (!masterNativeCoordinateValid || !slaveNativeCoordinateValid) {
+				// Sinc interpolation can retain non-zero tails beyond Sentinel-1's
+				// declared native support, and retained master rows can include the
+				// analogous invalid boundary. Neither has a physical TOPS reference.
+				if (pairValidMask.at<uchar>(y, x) != 0) {
+					pairValidMask.at<uchar>(y, x) = 0;
+					nativeSupportMasked.fetch_add(1, std::memory_order_relaxed);
+				}
+				geometricPhase.at<double>(y, x) = 0.0;
+				continue;
+			}
+			double masterNativeDerampDemod = 0.0;
+			double slaveNativeDerampDemod = 0.0;
+			if (!computeTopsDerampDemodPhase(masterTops, stateVec1, masterBurst, lineInBurst, offsetCol + x,
+				timeInterval1, wavelength, masterNativeDerampDemod) ||
+				!computeTopsDerampDemodPhase(slaveTops, stateVec2, slaveBurst, slaveLine, slaveSample,
+				timeInterval2, wavelength, slaveNativeDerampDemod)) {
+				// The slave native-window condition was checked separately above. Any
+				// remaining failure is a metadata, Doppler/FM, or timing contract error.
+				invalidProcessingReference = true;
+				continue;
+			}
+			Vec3d slavePosition;
+			const double slaveAcquisitionTime = slaveTops.burstAzimuthTime.at<double>(slaveBurst, 0) +
+				slaveLine * timeInterval2;
+			if (!interpolateOrbitPositionAtTime(stateVec2, slaveAcquisitionTime, slavePosition)) {
+				invalidProcessingReference = true;
+				continue;
+			}
+			point.at<double>(0, 0) = lat.at<double>(y, x);
+			point.at<double>(0, 1) = lon.at<double>(y, x);
+			point.at<double>(0, 2) = height;
+			util.ell2xyz(point, pointXyz);
+			Mat difference = pointXyz - sate1(Range(y, y + 1), Range(0, 3));
+			const double range1 = sqrt(sum(difference.mul(difference))[0]);
+			const double dx = pointXyz.at<double>(0, 0) - slavePosition[0];
+			const double dy = pointXyz.at<double>(0, 1) - slavePosition[1];
+			const double dz = pointXyz.at<double>(0, 2) - slavePosition[2];
+			const double range2 = sqrt(dx * dx + dy * dy + dz * dz);
+			// The master output is native.  The registered slave applies +d before
+			// resampling and -d_r after resampling.  In M * conj(S), that becomes
+			// -d(source) + d_r(output).  d_r is the exact field persisted by the
+			// registration path rather than a same-coordinate approximation.
+			const double slaveDerampApplied = -slaveNativeDerampDemod;
+			const double slaveRerampApplied = slaveTops.registrationRerampPhase.at<double>(y, x);
+			const double masterOutputProcessingReference = 0.0 * masterNativeDerampDemod;
+			const double finalProcessingReference = masterOutputProcessingReference +
+				slaveDerampApplied + slaveRerampApplied;
+			geometricPhase.at<double>(y, x) = (range2 - range1) * 4.0 * PI / (wavelength * mode) +
+				finalProcessingReference;
+		}
+		const int current = ++completed;
+		if (cb && current % progressStep == 0) {
+			bool keepGoing = true;
+#pragma omp critical(deflat_progress_lock)
+			{
+				keepGoing = cb(current * 100 / rows, "Computing flat phase reference...");
+			}
+			if (!keepGoing) cancelled = true;
+		}
+	}
+	if (cancelled) return -2;
+	if (invalidProcessingReference) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): TOPS deramp/demod reference is invalid!\n");
+		return -1;
+	}
+	if (nativeSupportMasked != 0) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): excluded %lld pair samples outside TOPS native support.\n",
+			static_cast<long long>(nativeSupportMasked));
+	}
+
+	model = FlatEarthModel();
+	model.polynomialDegree = polynomialDegree;
+	model.numberPoints = numberPoints;
+	model.sourceRowCount = sourceRowCount;
+	model.rowOrigin = 0.5 * (minSourceRow + maxSourceRow);
+	model.rowScale = std::max(1.0, 0.5 * static_cast<double>(maxSourceRow - minSourceRow));
+	model.columnOrigin = 0.5 * (outputColumns - 1);
+	model.columnScale = std::max(1.0, 0.5 * static_cast<double>(outputColumns - 1));
+	const int sampleCount = std::min(numberPoints, rows * outputColumns);
+	Mat design(sampleCount, basisCount, CV_64F), values(sampleCount, 1, CV_64F);
+	for (int sample = 0; sample < sampleCount; ++sample) {
+		const long long flatIndex = sampleCount == 1 ? 0 :
+			(static_cast<long long>(sample) * (static_cast<long long>(rows) * outputColumns - 1)) / (sampleCount - 1);
+		const int y = static_cast<int>(flatIndex / outputColumns);
+		const int x = static_cast<int>(flatIndex % outputColumns);
+		const double normalizedRow = (sourceRowMap.at<int>(y, 0) - model.rowOrigin) / model.rowScale;
+		const double normalizedColumn = (x - model.columnOrigin) / model.columnScale;
+		int term = 0;
+		for (int rowPower = 0; rowPower <= polynomialDegree; ++rowPower) {
+			const double rowTerm = pow(normalizedRow, rowPower);
+			for (int columnPower = 0; columnPower <= polynomialDegree; ++columnPower) {
+				design.at<double>(sample, term++) = rowTerm * pow(normalizedColumn, columnPower);
+			}
+		}
+		values.at<double>(sample, 0) = geometricPhase.at<double>(y, x);
+	}
+	Mat coefficients;
+	if (!solve(design, values, coefficients, DECOMP_SVD)) {
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseCandidate(): polynomial solve failed!\n");
+		return -1;
+	}
+	model.coefficients = coefficients.t();
+	// The polynomial records a compact scene-level diagnostic only.  It must not
+	// replace the physical TOPS field: a single global polynomial cannot retain
+	// a burst-specific acquisition-time reference across source-row gaps.
+	flatEarthPhase = geometricPhase;
+	if (cb && !cb(100, "Flat phase reference ready")) return -2;
+	return 0;
+}
+
+int Deflat::computeSentinel1FlatEarthPhaseV5(
+	const TopsFepV5Orbit& masterOrbit,
+	const TopsFepV5Orbit& slaveOrbit,
+	const TopsBurstPhaseMetadata& masterTops,
+	const TopsBurstPhaseMetadata& slaveTops,
+	const Mat& sourceRowMap,
+	Mat& pairValidMask,
+	int sourceRowCount,
+	int outputColumns,
+	int offsetCol,
+	int slaveSourceBurstOffset,
+	int mode,
+	double wavelength,
+	const TopsFepV5Options& options,
+	Mat& flatEarthPhase,
+	TopsFepV5Provenance& provenance,
+	DeflatProgressCallback cb)
+{
+	if (sourceRowMap.type() != CV_32S || sourceRowMap.cols != 1 || sourceRowMap.rows < 1 ||
+		pairValidMask.type() != CV_8U || pairValidMask.rows != sourceRowMap.rows || pairValidMask.cols != outputColumns ||
+		sourceRowCount < 1 || outputColumns < 1 || offsetCol < 0 ||
+		!isValidTopsPhaseMetadata(masterTops) || !isValidTopsPhaseMetadata(slaveTops) ||
+		!isValidTopsRegistrationMapping(slaveTops) ||
+		(mode != TR_MODE_SINGLE_TX_SINGLE_RX && mode != TR_MODE_SINGLE_TX_DOUBLE_RX) ||
+		!std::isfinite(wavelength) || wavelength <= 0.0 || !std::isfinite(options.epsilonPhase) ||
+		options.epsilonPhase <= 0.0 || options.masterLookSide == 0)
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): input contract is invalid!\n");
+		return -1;
+	}
+	if (sourceRowCount > masterTops.burstAzimuthTime.rows * masterTops.linesPerBurst)
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): source-row grid exceeds master TOPS timing!\n");
+		return -1;
+	}
+	for (int y = 0; y < sourceRowMap.rows; ++y)
+	{
+		const int sourceRow = sourceRowMap.at<int>(y, 0);
+		const int masterBurst = sourceRow / masterTops.linesPerBurst;
+		const int slaveBurst = masterBurst + slaveSourceBurstOffset;
+		if (sourceRow < 0 || sourceRow >= sourceRowCount || masterBurst < 0 ||
+			masterBurst >= masterTops.burstAzimuthTime.rows || slaveBurst < 0 ||
+			slaveBurst >= slaveTops.burstAzimuthTime.rows)
+		{
+			fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): source-row or common burst mapping is invalid!\n");
+			return -1;
+		}
+		const uchar* valid = pairValidMask.ptr<uchar>(y);
+		for (int x = 0; x < outputColumns; ++x)
+		{
+			if (valid[x] != 0 && valid[x] != 1)
+			{
+				fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): pair-valid mask is not binary!\n");
+				return -1;
+			}
+		}
+	}
+
+	const double phaseScale = 4.0 * PI / (wavelength * mode);
+	const double deltaRangeBudget = wavelength * mode * options.epsilonPhase / (4.0 * PI);
+	TopsFepV5Options geometryOptions = options;
+	// Reserve half of the differential-range error budget for the slave
+	// zero-Doppler solution. The propagated master RDE bound is checked after
+	// both physical ranges are available.
+	geometryOptions.maxSlaveRangeError = 0.5 * deltaRangeBudget;
+	TopsNativeGeometry geometry(masterOrbit, slaveOrbit, geometryOptions);
+	if (!geometry.prepare())
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): strict GPS orbit preparation failed!\n");
+		return -1;
+	}
+	const int rows = sourceRowMap.rows;
+	std::vector<Position> masterPositions(rows);
+	std::vector<Velocity> masterVelocities(rows);
+	std::vector<double> masterTimes(rows);
+	// `burstAzimuthTime` is a GPS timestamp for native line zero.  The line
+	// interval is supplied by the v5 caller in the metadata's physical source
+	// contract through `azimuthIntervalSeconds`; use it below after validation.
+	// This guard makes an unset interval a whole-task failure rather than a
+	// silent zero-time geometry field.
+	const double masterAzimuthInterval = masterTops.azimuthIntervalSeconds;
+	const double slaveAzimuthInterval = slaveTops.azimuthIntervalSeconds;
+	if (!std::isfinite(masterAzimuthInterval) || !std::isfinite(slaveAzimuthInterval) ||
+		masterAzimuthInterval <= 0.0 || slaveAzimuthInterval <= 0.0)
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): native azimuth intervals are invalid!\n");
+		return -1;
+	}
+	for (int y = 0; y < rows; ++y)
+	{
+		const int sourceRow = sourceRowMap.at<int>(y, 0);
+		const int burst = sourceRow / masterTops.linesPerBurst;
+		const int line = sourceRow % masterTops.linesPerBurst;
+		const double time = masterTops.burstAzimuthTime.at<double>(burst, 0) + line * masterAzimuthInterval;
+		masterTimes[y] = time;
+		if (!geometry.masterState(time, masterPositions[y], masterVelocities[y]))
+		{
+			fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): master orbit does not cover a native burst line!\n");
+			return -1;
+		}
+	}
+
+	flatEarthPhase = Mat::zeros(rows, outputColumns, CV_64F);
+	provenance = TopsFepV5Provenance();
+	provenance.masterOrbit = masterOrbit;
+	provenance.slaveOrbit = slaveOrbit;
+	provenance.options = options;
+	provenance.burstStatistics.assign(static_cast<size_t>(masterTops.burstAzimuthTime.rows), TopsFepV5BurstStatistics());
+	provenance.fixedPointDiagnostics.assign(static_cast<size_t>(masterTops.burstAzimuthTime.rows), TopsFepV5FixedPointDiagnostic());
+	std::vector<int> fixedPointRows(masterTops.burstAzimuthTime.rows, -1);
+	std::vector<int> fixedPointColumns(masterTops.burstAzimuthTime.rows, -1);
+	for (int y = 0; y < rows; ++y)
+	{
+		const int sourceRow = sourceRowMap.at<int>(y, 0);
+		const int burst = sourceRow / masterTops.linesPerBurst;
+		const int nativeLine = sourceRow % masterTops.linesPerBurst;
+		const int preferredLine = masterTops.linesPerBurst / 2;
+		if (burst < 0 || burst >= static_cast<int>(fixedPointRows.size()) ||
+			(fixedPointRows[burst] >= 0 &&
+			 std::abs(nativeLine - preferredLine) >=
+			 std::abs((sourceRowMap.at<int>(fixedPointRows[burst], 0) % masterTops.linesPerBurst) - preferredLine))) continue;
+		fixedPointRows[burst] = y;
+	}
+	for (int burst = 0; burst < static_cast<int>(fixedPointRows.size()); ++burst)
+	{
+		const int y = fixedPointRows[burst];
+		if (y < 0) continue;
+		const int center = outputColumns / 2;
+		for (int delta = 0; delta < outputColumns; ++delta)
+		{
+			const int left = center - delta;
+			const int right = center + delta;
+			if (left >= 0 && pairValidMask.at<uchar>(y, left) == 1) { fixedPointColumns[burst] = left; break; }
+			if (right < outputColumns && pairValidMask.at<uchar>(y, right) == 1) { fixedPointColumns[burst] = right; break; }
+		}
+		if (fixedPointColumns[burst] < 0) continue;
+		TopsFepV5FixedPointDiagnostic& diagnostic = provenance.fixedPointDiagnostics[burst];
+		diagnostic.outputRow = y;
+		diagnostic.outputColumn = fixedPointColumns[burst];
+		diagnostic.sourceRow = sourceRowMap.at<int>(y, 0);
+		diagnostic.masterBurst = burst + 1;
+		diagnostic.slaveBurst = burst + slaveSourceBurstOffset + 1;
+		diagnostic.masterTimeGps = masterTimes[y];
+	}
+	std::atomic<bool> cancelled(false);
+	std::atomic<bool> failed(false);
+	std::atomic<bool> failureCaptured(false);
+	std::atomic<int> completed(0);
+	struct NativeGeometryFailureDiagnostic
+	{
+		int reason = 0;
+		int outputRow = -1;
+		int outputColumn = -1;
+		int sourceRow = -1;
+		int masterBurst = -1;
+		int slaveBurst = -1;
+		double rhoMaster = 0.0;
+		double slaveLine = 0.0;
+		double slaveSample = 0.0;
+		double differentialRangeErrorBound = 0.0;
+		double finalGeometryPhaseChange = 0.0;
+	};
+	NativeGeometryFailureDiagnostic failureDiagnostic;
+	const auto captureFailure = [&](int reason, int outputRow, int outputColumn, int sourceRow,
+		int masterBurst, int slaveBurst, double rhoMaster, double slaveLine, double slaveSample,
+		double differentialRangeErrorBound, double finalGeometryPhaseChange)
+	{
+		bool expected = false;
+		if (failureCaptured.compare_exchange_strong(expected, true))
+		{
+			failureDiagnostic.reason = reason;
+			failureDiagnostic.outputRow = outputRow;
+			failureDiagnostic.outputColumn = outputColumn;
+			failureDiagnostic.sourceRow = sourceRow;
+			failureDiagnostic.masterBurst = masterBurst;
+			failureDiagnostic.slaveBurst = slaveBurst;
+			failureDiagnostic.rhoMaster = rhoMaster;
+			failureDiagnostic.slaveLine = slaveLine;
+			failureDiagnostic.slaveSample = slaveSample;
+			failureDiagnostic.differentialRangeErrorBound = differentialRangeErrorBound;
+			failureDiagnostic.finalGeometryPhaseChange = finalGeometryPhaseChange;
+		}
+	};
+	const int progressStep = std::max(1, rows / 100);
+
+#pragma omp parallel for schedule(guided)
+	for (int y = 0; y < rows; ++y)
+	{
+		if (cancelled || failed) continue;
+		const int sourceRow = sourceRowMap.at<int>(y, 0);
+		const int masterBurst = sourceRow / masterTops.linesPerBurst;
+		const int slaveBurst = masterBurst + slaveSourceBurstOffset;
+		const int masterLine = sourceRow % masterTops.linesPerBurst;
+		TopsFepV5BurstStatistics local;
+		const int fixedPointColumn = fixedPointColumns[masterBurst];
+		double a0Rg = 0.0, a1Rg = 0.0, a2Rg = 0.0, a0Az = 0.0, a1Az = 0.0, a2Az = 0.0;
+		if (!registrationMappingForMasterBurst(slaveTops, masterBurst, a0Rg, a1Rg, a2Rg, a0Az, a1Az, a2Az))
+		{
+			captureFailure(1, y, 0, sourceRow, masterBurst, slaveBurst, 0.0, 0.0, 0.0, 0.0, 0.0);
+			failed = true;
+			continue;
+		}
+		Position previousMasterPoint;
+		bool hasPreviousMasterPoint = false;
+		for (int x = 0; x < outputColumns; ++x)
+		{
+			TopsFepV5FixedPointDiagnostic* fixedPoint =
+				(y == fixedPointRows[masterBurst] && x == fixedPointColumn)
+				? &provenance.fixedPointDiagnostics[masterBurst] : nullptr;
+			bool fixedPointSlaveStateCaptured = true;
+			const double slaveLine = masterLine + a0Az + a1Az * x + a2Az * masterLine;
+			const double slaveSample = x + a0Rg + a1Rg * x + a2Rg * masterLine;
+			if (fixedPoint) {
+				fixedPoint->masterSatelliteX = masterPositions[y].x;
+				fixedPoint->masterSatelliteY = masterPositions[y].y;
+				fixedPoint->masterSatelliteZ = masterPositions[y].z;
+				fixedPoint->masterVelocityX = masterVelocities[y].vx;
+				fixedPoint->masterVelocityY = masterVelocities[y].vy;
+				fixedPoint->masterVelocityZ = masterVelocities[y].vz;
+				fixedPoint->slaveNativeLine = slaveLine;
+				fixedPoint->slaveNativeSample = slaveSample;
+			}
+			if (pairValidMask.at<uchar>(y, x) == 0)
+			{
+				flatEarthPhase.at<double>(y, x) = 0.0;
+				continue;
+			}
+			if (!isTopsNativeCoordinateInsideValidWindow(masterTops, masterBurst, masterLine, offsetCol + x) ||
+				!isTopsNativeCoordinateInsideValidWindow(slaveTops, slaveBurst, slaveLine, slaveSample))
+			{
+				if (fixedPoint) fixedPoint->status = 2;
+				if (pairValidMask.at<uchar>(y, x) != 0) pairValidMask.at<uchar>(y, x) = 0;
+				flatEarthPhase.at<double>(y, x) = 0.0;
+				++local.nativeSupportMaskedSamples;
+				continue;
+			}
+			Position point;
+			TopsNativeGeometry::SampleClosure closure;
+			const double rhoMaster = masterTops.slantRangeFirstPixel + (offsetCol + x) * masterTops.rangeSpacing;
+			if (fixedPoint) fixedPoint->rhoMaster = rhoMaster;
+			if (!geometry.solveMasterH0Point(masterPositions[y], masterVelocities[y], rhoMaster,
+				hasPreviousMasterPoint ? &previousMasterPoint : nullptr, point, closure, local))
+			{
+				if (fixedPoint) fixedPoint->status = 3;
+				++local.masterRdeFailureCount;
+				captureFailure(2, y, x, sourceRow, masterBurst, slaveBurst, rhoMaster, slaveLine, slaveSample, 0.0, 0.0);
+				failed = true;
+				break;
+			}
+			previousMasterPoint = point;
+			hasPreviousMasterPoint = true;
+			if (fixedPoint) {
+				fixedPoint->pointX = point.x;
+				fixedPoint->pointY = point.y;
+				fixedPoint->pointZ = point.z;
+			}
+			const double slaveSeed = slaveTops.burstAzimuthTime.at<double>(slaveBurst, 0) + slaveLine * slaveAzimuthInterval;
+			if (fixedPoint) fixedPoint->slaveTimeSeedGps = slaveSeed;
+			double slaveTime = 0.0;
+			double rhoSlave = 0.0;
+			if (!geometry.solveSlaveZeroDoppler(point, slaveSeed, slaveTime, rhoSlave, closure, local))
+			{
+				if (fixedPoint) fixedPoint->status = 4;
+				++local.slaveZeroDopplerFailureCount;
+				captureFailure(3, y, x, sourceRow, masterBurst, slaveBurst, rhoMaster, slaveLine, slaveSample, 0.0, 0.0);
+				failed = true;
+				break;
+			}
+			// Deramp/reramp is an internal interpolation operation.  It restores the
+			// registered slave SLC to its native phase convention and therefore must
+			// not be counted again as a flat-earth reference term.  Its per-burst
+			// phase origin would otherwise be exported as an artificial burst offset.
+			flatEarthPhase.at<double>(y, x) = phaseScale * (rhoSlave - rhoMaster);
+			const double differentialRangeErrorBound = closure.masterRangeErrorBound + closure.slaveRangeErrorBound;
+			const double finalGeometryPhaseChange = phaseScale * (closure.masterPointLastStep + closure.slaveRangeLastStep);
+			if (fixedPoint) {
+				Position slaveSatellite;
+				Velocity slaveVelocity;
+				fixedPointSlaveStateCaptured = geometry.slaveState(slaveTime, slaveSatellite, slaveVelocity);
+				fixedPoint->slaveTimeGps = slaveTime;
+				if (fixedPointSlaveStateCaptured) {
+					fixedPoint->slaveSatelliteX = slaveSatellite.x;
+					fixedPoint->slaveSatelliteY = slaveSatellite.y;
+					fixedPoint->slaveSatelliteZ = slaveSatellite.z;
+					fixedPoint->slaveVelocityX = slaveVelocity.vx;
+					fixedPoint->slaveVelocityY = slaveVelocity.vy;
+					fixedPoint->slaveVelocityZ = slaveVelocity.vz;
+				}
+				fixedPoint->rhoSlave = rhoSlave;
+				fixedPoint->geometryPhase = flatEarthPhase.at<double>(y, x);
+				fixedPoint->differentialRangeErrorBound = differentialRangeErrorBound;
+				fixedPoint->finalGeometryPhaseChange = finalGeometryPhaseChange;
+			}
+			if (!std::isfinite(flatEarthPhase.at<double>(y, x)) ||
+				!std::isfinite(differentialRangeErrorBound) || differentialRangeErrorBound > deltaRangeBudget ||
+				!std::isfinite(finalGeometryPhaseChange) || finalGeometryPhaseChange > options.epsilonPhase ||
+				deltaRangeBudget <= 0.0)
+			{
+				if (fixedPoint) fixedPoint->status = 5;
+				++local.closureFailureCount;
+				captureFailure(4, y, x, sourceRow, masterBurst, slaveBurst, rhoMaster, slaveLine, slaveSample,
+					differentialRangeErrorBound, finalGeometryPhaseChange);
+				failed = true;
+				break;
+			}
+			if (fixedPoint) {
+				fixedPoint->status = fixedPointSlaveStateCaptured ? 1 : 6;
+			}
+			local.maxDifferentialRangeErrorBound = std::max(local.maxDifferentialRangeErrorBound, differentialRangeErrorBound);
+			local.maxLastGeometryPhaseChange = std::max(local.maxLastGeometryPhaseChange, finalGeometryPhaseChange);
+			++local.solvedSamples;
+		}
+#pragma omp critical(deflat_v5_statistics)
+		{
+			TopsFepV5BurstStatistics& total = provenance.burstStatistics[masterBurst];
+			total.solvedSamples += local.solvedSamples;
+			total.nativeSupportMaskedSamples += local.nativeSupportMaskedSamples;
+			total.masterRdeFailureCount += local.masterRdeFailureCount;
+			total.slaveZeroDopplerFailureCount += local.slaveZeroDopplerFailureCount;
+			total.closureFailureCount += local.closureFailureCount;
+			total.totalRdeIterations += local.totalRdeIterations;
+			total.totalZeroDopplerIterations += local.totalZeroDopplerIterations;
+			total.totalSlaveDopplerEvaluations += local.totalSlaveDopplerEvaluations;
+			total.maxRdeIterations = std::max(total.maxRdeIterations, local.maxRdeIterations);
+			total.maxZeroDopplerIterations = std::max(total.maxZeroDopplerIterations, local.maxZeroDopplerIterations);
+			total.maxSlaveDopplerEvaluations = std::max(total.maxSlaveDopplerEvaluations, local.maxSlaveDopplerEvaluations);
+			total.maxMasterRangeResidual = std::max(total.maxMasterRangeResidual, local.maxMasterRangeResidual);
+			total.maxMasterZeroDopplerResidual = std::max(total.maxMasterZeroDopplerResidual, local.maxMasterZeroDopplerResidual);
+			total.maxSlaveZeroDopplerResidual = std::max(total.maxSlaveZeroDopplerResidual, local.maxSlaveZeroDopplerResidual);
+			total.maxEllipsoidResidual = std::max(total.maxEllipsoidResidual, local.maxEllipsoidResidual);
+			total.maxJacobianCondition = std::max(total.maxJacobianCondition, local.maxJacobianCondition);
+			total.maxLastGeometryPhaseChange = std::max(total.maxLastGeometryPhaseChange, local.maxLastGeometryPhaseChange);
+			total.maxDifferentialRangeErrorBound = std::max(total.maxDifferentialRangeErrorBound, local.maxDifferentialRangeErrorBound);
+			total.maxSlaveSearchHalfWindowSeconds = std::max(total.maxSlaveSearchHalfWindowSeconds, local.maxSlaveSearchHalfWindowSeconds);
+			total.maxSlaveSearchExpansions = std::max(total.maxSlaveSearchExpansions, local.maxSlaveSearchExpansions);
+			total.masterRdeElapsedMilliseconds += local.masterRdeElapsedMilliseconds;
+			total.slaveZeroDopplerElapsedMilliseconds += local.slaveZeroDopplerElapsedMilliseconds;
+		}
+		const int current = ++completed;
+		if (cb && current % progressStep == 0)
+		{
+			bool keepGoing = true;
+#pragma omp critical(deflat_v5_progress)
+			{
+				keepGoing = cb(current * 100 / rows, "Computing native TOPS flat phase reference...");
+			}
+			if (!keepGoing) cancelled = true;
+		}
+	}
+	if (cancelled) return -2;
+	if (failed)
+	{
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): physical closure diagnostic: reason=%d, output=(%d,%d), sourceRow=%d, masterBurst=%d, slaveBurst=%d, rhoMaster=%.12g, slaveNative=(%.12g,%.12g), differentialRangeErrorBound=%.12g, finalGeometryPhaseChange=%.12g.\n",
+			failureDiagnostic.reason, failureDiagnostic.outputRow, failureDiagnostic.outputColumn,
+			failureDiagnostic.sourceRow, failureDiagnostic.masterBurst + 1, failureDiagnostic.slaveBurst + 1,
+			failureDiagnostic.rhoMaster, failureDiagnostic.slaveLine, failureDiagnostic.slaveSample,
+			failureDiagnostic.differentialRangeErrorBound, failureDiagnostic.finalGeometryPhaseChange);
+		fprintf(stderr, "computeSentinel1FlatEarthPhaseV5(): a valid native sample did not satisfy the physical closure!\n");
+		return -1;
+	}
+	if (cb && !cb(100, "Native TOPS flat phase reference ready")) return -2;
+	return 0;
 }
 
 int Deflat::get_xyz(double aztime, Mat& coef, Mat& pos_xyz)

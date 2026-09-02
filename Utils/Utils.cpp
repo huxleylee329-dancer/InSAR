@@ -4,6 +4,8 @@
 #include <mutex>
 #include <atomic>
 #include <vector>
+#include <cfloat>
+#include <cmath>
 #include <omp.h>
 #include<direct.h>
 #include<SensAPI.h>
@@ -3735,6 +3737,157 @@ int Utils::Multilook(
 		}
 	}
 	if (cancel_flag) return -2;
+	return 0;
+}
+
+int Utils::multilookCorrectedInterferogram(
+	const ComplexMat& master, const ComplexMat& slave, const Mat& correctionPhase, const Mat& flatEarthPhase,
+	const Mat& sourceRowMap, const Mat& validSampleMask, int multilookRg, int multilookAz, Mat& phase,
+	Mat& effectiveFlatEarthReference,
+	Mat& phaseValidMask, Mat& validSampleCount,
+	NewtonProgressCallback cb)
+{
+	if (master.GetRows() != slave.GetRows() || master.GetCols() != slave.GetCols() ||
+		(master.type() != CV_32F && master.type() != CV_64F) || slave.type() != master.type() ||
+		correctionPhase.type() != CV_64F || correctionPhase.rows != master.GetRows() || correctionPhase.cols != master.GetCols() ||
+		(!flatEarthPhase.empty() && (flatEarthPhase.type() != CV_64F || flatEarthPhase.size() != correctionPhase.size())) ||
+		sourceRowMap.type() != CV_32S || sourceRowMap.rows != master.GetRows() || sourceRowMap.cols != 1 ||
+		validSampleMask.type() != CV_8U || validSampleMask.size() != correctionPhase.size() ||
+		multilookRg < 1 || multilookAz < 1 || master.GetCols() < multilookRg)
+	{
+		fprintf(stderr, "multilookCorrectedInterferogram(): input check failed!\n");
+		return -1;
+	}
+
+	const int rows = master.GetRows();
+	const int columns = master.GetCols();
+	const int outputColumns = columns / multilookRg;
+	if (outputColumns < 1) return -1;
+	struct Run { int first; int count; };
+	std::vector<Run> runs;
+	for (int first = 0; first < rows;) {
+		if (sourceRowMap.at<int>(first, 0) < 0) return -1;
+		int end = first + 1;
+		while (end < rows && sourceRowMap.at<int>(end, 0) == sourceRowMap.at<int>(end - 1, 0) + 1) ++end;
+		if (end - first >= multilookAz) runs.push_back({ first, end - first });
+		first = end;
+	}
+	int outputRows = 0;
+	for (const Run& run : runs) outputRows += run.count / multilookAz;
+	if (outputRows < 1) {
+		fprintf(stderr, "multilookCorrectedInterferogram(): no complete source-row run for requested azimuth looks!\n");
+		return -1;
+	}
+
+	phase.create(outputRows, outputColumns, CV_64F);
+	phase.setTo(0.0);
+	phaseValidMask.create(outputRows, outputColumns, CV_8U);
+	phaseValidMask.setTo(0);
+	validSampleCount.create(outputRows, outputColumns, CV_32S);
+	validSampleCount.setTo(0);
+	if (flatEarthPhase.empty()) effectiveFlatEarthReference.release();
+	else {
+		effectiveFlatEarthReference.create(outputRows, outputColumns, CV_64F);
+		effectiveFlatEarthReference.setTo(0.0);
+	}
+	std::atomic<bool> cancelled(false);
+	std::atomic<bool> invalidSelectedSample(false);
+	std::atomic<int> completed(0);
+	const int progressStep = std::max(1, outputRows / 100);
+	int outputRowBase = 0;
+	for (const Run& run : runs) {
+		const int runOutputRows = run.count / multilookAz;
+#pragma omp parallel for schedule(guided)
+		for (int outY = 0; outY < runOutputRows; ++outY) {
+			if (cancelled) continue;
+			const int inputTop = run.first + outY * multilookAz;
+			for (int outX = 0; outX < outputColumns; ++outX) {
+				const int inputLeft = outX * multilookRg;
+				double correctedReal = 0.0;
+				double correctedImaginary = 0.0;
+				double uncorrectedReal = 0.0;
+				double uncorrectedImaginary = 0.0;
+				double flatCorrectedReal = 0.0;
+				double flatCorrectedImaginary = 0.0;
+				int selectedSampleCount = 0;
+				for (int y = inputTop; y < inputTop + multilookAz; ++y) {
+					for (int x = inputLeft; x < inputLeft + multilookRg; ++x) {
+						if (validSampleMask.at<uchar>(y, x) == 0) continue;
+						const double masterReal = master.type() == CV_64F ? master.re.at<double>(y, x) : master.re.at<float>(y, x);
+						const double masterImaginary = master.type() == CV_64F ? master.im.at<double>(y, x) : master.im.at<float>(y, x);
+						const double slaveReal = slave.type() == CV_64F ? slave.re.at<double>(y, x) : slave.re.at<float>(y, x);
+						const double slaveImaginary = slave.type() == CV_64F ? slave.im.at<double>(y, x) : slave.im.at<float>(y, x);
+						const double correction = correctionPhase.at<double>(y, x);
+						if (!std::isfinite(masterReal) || !std::isfinite(masterImaginary) ||
+							!std::isfinite(slaveReal) || !std::isfinite(slaveImaginary) || !std::isfinite(correction) ||
+							(!flatEarthPhase.empty() && !std::isfinite(flatEarthPhase.at<double>(y, x)))) {
+							invalidSelectedSample = true;
+							continue;
+						}
+						const double interferogramReal = masterReal * slaveReal + masterImaginary * slaveImaginary;
+						const double interferogramImaginary = masterImaginary * slaveReal - masterReal * slaveImaginary;
+						const double correctionCosine = cos(correction);
+						const double correctionSine = sin(correction);
+						++selectedSampleCount;
+						uncorrectedReal += interferogramReal;
+						uncorrectedImaginary += interferogramImaginary;
+						correctedReal += interferogramReal * correctionCosine + interferogramImaginary * correctionSine;
+						correctedImaginary += interferogramImaginary * correctionCosine - interferogramReal * correctionSine;
+						if (!flatEarthPhase.empty()) {
+							const double flatEarth = flatEarthPhase.at<double>(y, x);
+							const double flatCosine = cos(flatEarth);
+							const double flatSine = sin(flatEarth);
+							flatCorrectedReal += interferogramReal * flatCosine + interferogramImaginary * flatSine;
+							flatCorrectedImaginary += interferogramImaginary * flatCosine - interferogramReal * flatSine;
+						}
+					}
+				}
+				validSampleCount.at<int>(outputRowBase + outY, outX) = selectedSampleCount;
+				if (selectedSampleCount == 0) continue;
+				const double correctedMagnitude = hypot(correctedReal, correctedImaginary);
+				if (!std::isfinite(uncorrectedReal) || !std::isfinite(uncorrectedImaginary) ||
+					!std::isfinite(correctedReal) || !std::isfinite(correctedImaginary) ||
+					correctedMagnitude <= DBL_EPSILON) {
+					continue;
+				}
+				if (!flatEarthPhase.empty()) {
+					const double rawMagnitude = hypot(uncorrectedReal, uncorrectedImaginary);
+					const double flatMagnitude = hypot(flatCorrectedReal, flatCorrectedImaginary);
+					if (!std::isfinite(flatCorrectedReal) || !std::isfinite(flatCorrectedImaginary) ||
+						rawMagnitude <= DBL_EPSILON || flatMagnitude <= DBL_EPSILON) {
+						continue;
+					}
+					const double effectiveWrapped = atan2(
+						sin(atan2(uncorrectedImaginary, uncorrectedReal) - atan2(flatCorrectedImaginary, flatCorrectedReal)),
+						cos(atan2(uncorrectedImaginary, uncorrectedReal) - atan2(flatCorrectedImaginary, flatCorrectedReal)));
+					const double branchAnchor = flatEarthPhase.at<double>(
+						inputTop + multilookAz / 2, inputLeft + multilookRg / 2);
+					if (!std::isfinite(branchAnchor)) {
+						continue;
+					}
+					if (multilookRg == 1 && multilookAz == 1) {
+						// Preserve the caller's unwrapped reference value bit-for-bit at 1x1.
+						effectiveFlatEarthReference.at<double>(outputRowBase + outY, outX) = branchAnchor;
+					}
+					else {
+						const double branchDelta = effectiveWrapped - atan2(sin(branchAnchor), cos(branchAnchor));
+						effectiveFlatEarthReference.at<double>(outputRowBase + outY, outX) =
+							branchAnchor + atan2(sin(branchDelta), cos(branchDelta));
+					}
+				}
+				phase.at<double>(outputRowBase + outY, outX) = atan2(correctedImaginary, correctedReal);
+				phaseValidMask.at<uchar>(outputRowBase + outY, outX) = 1;
+			}
+			const int current = ++completed;
+			if (cb && current % progressStep == 0 && !cb(current * 100 / outputRows, "Corrected interferogram multilooking...")) cancelled = true;
+		}
+		outputRowBase += runOutputRows;
+	}
+	if (cancelled) return -2;
+	if (invalidSelectedSample) {
+		fprintf(stderr, "multilookCorrectedInterferogram(): valid-sample mask selected a non-finite input or reference value!\n");
+		return -1;
+	}
 	return 0;
 }
 

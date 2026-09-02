@@ -62,11 +62,19 @@ namespace PathResolver
 /*--------------------------------------*/
 /*              卫星轨道数据            */
 /*--------------------------------------*/
+enum class OrbitInterpolationMode
+{
+	ResampledLagrange,
+	FineV2CubicHermite
+};
+
 class UTILS_API orbitStateVectors
 {
 public:
 	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime);
 	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime, double delta_time);
+	orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime,
+		OrbitInterpolationMode interpolationMode);
 	~orbitStateVectors();
 	/** @brief 设置场景拍摄起始终止时间
 	* @param startTime
@@ -136,6 +144,7 @@ private:
 	int polyDegree = 3;
 	double startTime;
 	double stopTime;
+	OrbitInterpolationMode interpolationMode;
 	/*轨道信息是否已更新*/
 	bool isOrbitUpdated;
 };
@@ -1050,6 +1059,40 @@ public:
 		int multilook_rg,
 		int multilook_az,
 		Mat& phase,
+		NewtonProgressCallback cb = nullptr
+	);
+	/**
+	 * Correct the complex interferogram M*conj(S) by correctionPhase before
+	 * block multilooking. flatEarthPhase, when nonempty, is independently
+	 * aggregated with the same V to produce effectiveFlatEarthReference. Its
+	 * wrapped value is wrap(arg(sum(V)) - arg(sum(V*exp(-i*flatEarthPhase)))).
+	 * The persisted value is lifted to the unwrapped branch of the candidate
+	 * flatEarthPhase at the block center, so 1x1 preserves that input exactly.
+	 * The candidate only selects a 2*pi branch; it never replaces the complex
+	 * block-derived effective value. This is the only reference field valid for
+	 * restoring a downstream unwrapped block phase. validSampleMask selects
+	 * finite, non-zero SLC-pair samples to aggregate. phaseValidMask and
+	 * validSampleCount describe every output block. A block with no selected
+	 * samples, or without a finite non-zero sum required for its phase/reference,
+	 * is marked invalid instead of failing the whole product. Its numeric
+	 * phase/reference value is an unusable placeholder; consumers must honor
+	 * phaseValidMask before interpreting it.
+	 * sourceRowMap is an output-row to source-row map; each azimuth block is
+	 * constrained to one contiguous source-row run.
+	 */
+	int multilookCorrectedInterferogram(
+		const ComplexMat& master,
+		const ComplexMat& slave,
+		const Mat& correctionPhase,
+		const Mat& flatEarthPhase,
+		const Mat& sourceRowMap,
+		const Mat& validSampleMask,
+		int multilookRg,
+		int multilookAz,
+		Mat& phase,
+		Mat& effectiveFlatEarthReference,
+		Mat& phaseValidMask,
+		Mat& validSampleCount,
 		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 相位多视处理(改变尺寸)

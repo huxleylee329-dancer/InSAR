@@ -179,6 +179,9 @@
     <ProjectReference Include="..\ComplexMat\ComplexMat.vcxproj">
       <Project>{1722AA5B-2D2B-4F87-A36C-5D25A2F7AF42}</Project>
     </ProjectReference>
+    <ProjectReference Include="..\Hdf5IO\Hdf5IO.vcxproj">
+      <Project>{D2EF3583-99B5-423E-A7B5-28B6404B951E}</Project>
+    </ProjectReference>
   </ItemGroup>
 <ItemDefinitionGroup Condition="'$(Platform)'=='x64' And ('$(Configuration)'=='Debug' Or '$(Configuration)'=='Release')">
   <PostBuildEvent>

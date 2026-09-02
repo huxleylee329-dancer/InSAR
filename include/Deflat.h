@@ -2,10 +2,172 @@
 #include "..\include\Package.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
+#include <string>
+#include <vector>
 
 
 // 定义 Deflat 专用的进度回调函数指针类型
 typedef bool (__stdcall *DeflatProgressCallback)(int progress, const char* message);
+
+struct TopsBurstPhaseMetadata
+{
+	Mat burstAzimuthTime;
+	Mat azimuthFmRateList;
+	Mat dcEstimateList;
+	Mat firstValidLine;
+	Mat lastValidLine;
+	Mat firstValidSample;
+	Mat lastValidSample;
+	// Registration provenance for a slave TOPS image.  These fields are empty
+	// for the master; the flat-earth path requires all three for the slave.
+	Mat registrationRerampPhase;
+	Mat registrationMappingCoefficients;
+	Mat registrationMappingMasterBurstIndices;
+	int linesPerBurst = 0;
+	double azimuthSteeringRate = 0.0;
+	double rangeSpacing = 0.0;
+	double slantRangeFirstPixel = 0.0;
+	double azimuthIntervalSeconds = 0.0;
+};
+
+// The versioned description is persisted with Sentinel-1 flat-earth products.
+// Coefficients are a scene-level diagnostic approximation; the persisted field
+// remains the physical burst-time reference and is not reconstructed from them.
+struct FlatEarthModel
+{
+	int version = 4;
+	int polynomialDegree = 0;
+	int numberPoints = 0;
+	int sourceRowCount = 0;
+	double rowOrigin = 0.0;
+	double rowScale = 1.0;
+	double columnOrigin = 0.0;
+	double columnScale = 1.0;
+	Mat coefficients;
+};
+
+// v5 deliberately keeps the selected orbit and its time contract explicit.
+// The caller selects a valid H5 source before entering Core; Core never reads
+// H5 or derives a replacement time scale.
+struct TopsFepV5Orbit
+{
+	Mat stateVectors;
+	double acquisitionStartGps = 0.0;
+	double acquisitionStopGps = 0.0;
+	// Exact interval passed to orbitStateVectors::applyOrbit().  It is derived
+	// from the native FEP geometry and includes any bounded slave ZD search.
+	double geometryStartGps = 0.0;
+	double geometryStopGps = 0.0;
+	double interpolationMarginSeconds = 0.0;
+	double osvStartGps = 0.0;
+	double osvStopGps = 0.0;
+	std::string source;
+	std::string selectionReason;
+	std::string timeScale;
+	std::string interpolationStrategy;
+};
+
+struct TopsFepV5Options
+{
+	double epsilonPhase = 0.01;
+	// Recomputing a roughly 9e5 m slant range from ECEF double components has
+	// a residual floor of several 1e-10 m.  This is a numerical convergence
+	// gate only; propagated point/range bounds are still checked against the
+	// much larger but explicit differential-range phase budget.
+	double maxRdeResidual = 1e-8;
+	// Absolute GPS seconds near Sentinel-1 acquisition epochs have a double
+	// quantization of roughly 1e-7 s.  The zero-Doppler residual therefore
+	// cannot reliably be tested below the resulting ~1e-9 normalized Doppler
+	// floor.  Final FEP precision remains governed by maxSlaveRangeError and
+	// the differential-range phase budget.
+	double maxZeroDopplerResidual = 1e-8;
+	double maxJacobianCondition = 1e10;
+	double slaveSearchHalfWindowSeconds = 8.0;
+	double slaveSearchMaximumHalfWindowSeconds = 64.0;
+	double slaveSearchExpansionFactor = 2.0;
+	// Set internally from the phase budget before constructing native geometry.
+	// The slave zero-Doppler solver uses it to bound range uncertainty directly;
+	// absolute GPS timestamps cannot support a meaningful sub-nanosecond time
+	// tolerance at Sentinel-1 epoch magnitudes.
+	double maxSlaveRangeError = 0.0;
+	int maxSlaveSearchExpansions = 3;
+	int maxRdeIterations = 20;
+	int maxZeroDopplerIterations = 48;
+	// +1 is right looking, -1 is left looking. There is no implicit branch.
+	int masterLookSide = 0;
+};
+
+struct TopsFepV5BurstStatistics
+{
+	long long solvedSamples = 0;
+	long long nativeSupportMaskedSamples = 0;
+	long long masterRdeFailureCount = 0;
+	long long slaveZeroDopplerFailureCount = 0;
+	long long closureFailureCount = 0;
+	long long totalRdeIterations = 0;
+	long long totalZeroDopplerIterations = 0;
+	long long totalSlaveDopplerEvaluations = 0;
+	int maxRdeIterations = 0;
+	int maxZeroDopplerIterations = 0;
+	int maxSlaveDopplerEvaluations = 0;
+	double maxMasterRangeResidual = 0.0;
+	double maxMasterZeroDopplerResidual = 0.0;
+	double maxSlaveZeroDopplerResidual = 0.0;
+	double maxEllipsoidResidual = 0.0;
+	double maxJacobianCondition = 0.0;
+	double maxLastGeometryPhaseChange = 0.0;
+	double maxDifferentialRangeErrorBound = 0.0;
+	double maxSlaveSearchHalfWindowSeconds = 0.0;
+	int maxSlaveSearchExpansions = 0;
+	double masterRdeElapsedMilliseconds = 0.0;
+	double slaveZeroDopplerElapsedMilliseconds = 0.0;
+};
+
+struct TopsFepV5FixedPointDiagnostic
+{
+	// 0 means this burst had no pair-valid fixed point. Other values identify
+	// the exact stage reached by the selected native coordinate.
+	int status = 0;
+	int outputRow = -1;
+	int outputColumn = -1;
+	int sourceRow = -1;
+	int masterBurst = -1;
+	int slaveBurst = -1;
+	double masterTimeGps = 0.0;
+	double masterSatelliteX = 0.0;
+	double masterSatelliteY = 0.0;
+	double masterSatelliteZ = 0.0;
+	double masterVelocityX = 0.0;
+	double masterVelocityY = 0.0;
+	double masterVelocityZ = 0.0;
+	double pointX = 0.0;
+	double pointY = 0.0;
+	double pointZ = 0.0;
+	double rhoMaster = 0.0;
+	double slaveNativeLine = 0.0;
+	double slaveNativeSample = 0.0;
+	double slaveTimeSeedGps = 0.0;
+	double slaveTimeGps = 0.0;
+	double slaveSatelliteX = 0.0;
+	double slaveSatelliteY = 0.0;
+	double slaveSatelliteZ = 0.0;
+	double slaveVelocityX = 0.0;
+	double slaveVelocityY = 0.0;
+	double slaveVelocityZ = 0.0;
+	double rhoSlave = 0.0;
+	double geometryPhase = 0.0;
+	double differentialRangeErrorBound = 0.0;
+	double finalGeometryPhaseChange = 0.0;
+};
+
+struct TopsFepV5Provenance
+{
+	TopsFepV5Orbit masterOrbit;
+	TopsFepV5Orbit slaveOrbit;
+	TopsFepV5Options options;
+	std::vector<TopsFepV5BurstStatistics> burstStatistics;
+	std::vector<TopsFepV5FixedPointDiagnostic> fixedPointDiagnostics;
+};
 
 class InSAR_API Deflat
 {
@@ -54,7 +216,7 @@ public:
 	 参数8 收发模式（单发单收1，单发双收2）
 	 参数9 干涉多视倍数（>= 1）
 	*/
-	int deflat(	
+	int deflat(
 		Mat& phase,
 		Mat& phase_deflat,
 		Mat& flat_phase,
@@ -64,6 +226,74 @@ public:
 		const Mat& orbit_slave,
 		int mode,
 		int multilook_times,
+		DeflatProgressCallback cb = nullptr
+	);
+
+	/**
+	 * Build one source-row-aware Sentinel-1 TOPS flat-earth field. Every output
+	 * row is mapped to the physical master and slave burst acquisition times;
+	 * source-row gaps are preserved and never become synthetic continuous time.
+	 * TOPS DC/FM and valid-line/sample metadata are evaluated for the native
+	 * deramp/demod reference. The registered slave mapping and the exact
+	 * resampled reramp field are consumed so the processing reference is
+	 * evaluated in the same slave coordinate system as registration.
+	 * sourceRowMap maps each output row directly to its original input global
+	 * row. Gaps in that coordinate system must be retained and callers must not
+	 * apply an additional row offset. Master and slave lines-per-burst may
+	 * differ: source rows select the master burst, while the registered mapping
+	 * supplies the slave-local coordinate. pairValidMask is the final native
+	 * SLC-pair CV_8U binary mask on the same grid. Samples outside either
+	 * image's declared native TOPS support are excluded from that mask and
+	 * receive a zero reference. The returned field
+	 * is unwrapped CV_64F.
+	 */
+	int computeSentinel1FlatEarthPhaseCandidate(
+		const Mat& stateVec1,
+		const Mat& stateVec2,
+		const Mat& lonCoef,
+		const Mat& latCoef,
+		const Mat& sourceRowMap,
+		Mat& pairValidMask,
+		const TopsBurstPhaseMetadata& masterTops,
+		const TopsBurstPhaseMetadata& slaveTops,
+		int sourceRowCount,
+		int outputColumns,
+		int offsetCol,
+		double height,
+		double timeInterval1,
+		double timeInterval2,
+		int slaveSourceBurstOffset,
+		int mode,
+		double wavelength,
+		int polynomialDegree,
+		int numberPoints,
+		Mat& flatEarthPhase,
+		FlatEarthModel& model,
+		DeflatProgressCallback cb = nullptr
+	);
+
+	// Sentinel-1 TOPS physical-reference kernel. The legacy ABI name remains
+	// v5, while its geometry-only output is persisted by the UI as model v6.
+	// This path accepts neither
+	// geolocation polynomials nor UTC strings: every point is constructed from
+	// master native range/Doppler/ellipsoid constraints and the slave time is
+	// independently solved near, but never defined by, registration mapping.
+	int computeSentinel1FlatEarthPhaseV5(
+		const TopsFepV5Orbit& masterOrbit,
+		const TopsFepV5Orbit& slaveOrbit,
+		const TopsBurstPhaseMetadata& masterTops,
+		const TopsBurstPhaseMetadata& slaveTops,
+		const Mat& sourceRowMap,
+		Mat& pairValidMask,
+		int sourceRowCount,
+		int outputColumns,
+		int offsetCol,
+		int slaveSourceBurstOffset,
+		int mode,
+		double wavelength,
+		const TopsFepV5Options& options,
+		Mat& flatEarthPhase,
+		TopsFepV5Provenance& provenance,
 		DeflatProgressCallback cb = nullptr
 	);
 	/** @brief 去平地

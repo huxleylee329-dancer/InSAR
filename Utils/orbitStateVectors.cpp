@@ -37,6 +37,85 @@ bool hasValidOrbitStateVectors(const Mat& vectors, int minimumRows)
     }
     return true;
 }
+
+bool evaluateCubicHermite(const Mat& vectors, double time, Position* position, Velocity* velocity)
+{
+    if ((!position && !velocity) || !std::isfinite(time) || !hasValidOrbitStateVectors(vectors, 2) ||
+        time < vectors.at<double>(0, 0) || time > vectors.at<double>(vectors.rows - 1, 0))
+    {
+        return false;
+    }
+
+    int lower = 0;
+    int upper = vectors.rows - 1;
+    if (time < vectors.at<double>(upper, 0))
+    {
+        while (upper - lower > 1)
+        {
+            const int middle = lower + (upper - lower) / 2;
+            if (vectors.at<double>(middle, 0) <= time)
+            {
+                lower = middle;
+            }
+            else
+            {
+                upper = middle;
+            }
+        }
+    }
+    else
+    {
+        lower = upper - 1;
+    }
+
+    const double t0 = vectors.at<double>(lower, 0);
+    const double interval = vectors.at<double>(upper, 0) - t0;
+    if (!std::isfinite(interval) || interval <= 0.0)
+    {
+        return false;
+    }
+    const double s = (time - t0) / interval;
+    const double s2 = s * s;
+    const double s3 = s2 * s;
+    const double h00 = 2.0 * s3 - 3.0 * s2 + 1.0;
+    const double h10 = s3 - 2.0 * s2 + s;
+    const double h01 = -2.0 * s3 + 3.0 * s2;
+    const double h11 = s3 - s2;
+    const double dh00 = 6.0 * s2 - 6.0 * s;
+    const double dh10 = 3.0 * s2 - 4.0 * s + 1.0;
+    const double dh01 = -6.0 * s2 + 6.0 * s;
+    const double dh11 = 3.0 * s2 - 2.0 * s;
+
+    double values[3] = {};
+    double derivatives[3] = {};
+    for (int component = 0; component < 3; ++component)
+    {
+        const double p0 = vectors.at<double>(lower, component + 1);
+        const double p1 = vectors.at<double>(upper, component + 1);
+        const double v0 = vectors.at<double>(lower, component + 4);
+        const double v1 = vectors.at<double>(upper, component + 4);
+        values[component] = h00 * p0 + h10 * interval * v0 + h01 * p1 + h11 * interval * v1;
+        derivatives[component] = (dh00 * p0 + dh10 * interval * v0 + dh01 * p1 + dh11 * interval * v1) / interval;
+        if (!std::isfinite(values[component]) || !std::isfinite(derivatives[component]))
+        {
+            return false;
+        }
+    }
+
+    if (position)
+    {
+        position->x = values[0];
+        position->y = values[1];
+        position->z = values[2];
+    }
+    if (velocity)
+    {
+        velocity->vx = derivatives[0];
+        velocity->vy = derivatives[1];
+        velocity->vz = derivatives[2];
+    }
+    return true;
+}
 }
 
 orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime)
@@ -44,6 +123,7 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 	this->startTime = startTime;
 	this->stopTime = stopTime;
 	this->isOrbitUpdated = false;
+	this->interpolationMode = OrbitInterpolationMode::ResampledLagrange;
 	stateVectors.copyTo(this->stateVectors);
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
 	double delta_time = 0.0;
@@ -65,6 +145,7 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 {
 	this->dt = delta_time;
 	this->isOrbitUpdated = false;
+	this->interpolationMode = OrbitInterpolationMode::ResampledLagrange;
 	stateVectors.copyTo(this->stateVectors);
 	if (this->stateVectors.type() != CV_64F) this->stateVectors.convertTo(this->stateVectors, CV_64F);
 	if (hasValidOrbitStateVectors(this->stateVectors, 2) && std::isfinite(delta_time) &&
@@ -74,6 +155,13 @@ orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, 
 		this->stateVectors.copyTo(this->newStateVectors);
 	}
 	setSceneStartStopTime(startTime, stopTime);
+}
+
+orbitStateVectors::orbitStateVectors(const Mat& stateVectors, double startTime, double stopTime,
+	OrbitInterpolationMode interpolationMode)
+	: orbitStateVectors(stateVectors, startTime, stopTime)
+{
+	this->interpolationMode = interpolationMode;
 }
 
 orbitStateVectors::~orbitStateVectors()
@@ -99,6 +187,10 @@ double orbitStateVectors::get_stop_time()
 
 int orbitStateVectors::getPosition(double azimuthTime, Position& position)
 {
+	if (interpolationMode == OrbitInterpolationMode::FineV2CubicHermite)
+	{
+		return evaluateCubicHermite(stateVectors, azimuthTime, &position, nullptr) ? 0 : -1;
+	}
 	if (newStateVectors.cols != 7 || newStateVectors.rows < 2 || !isOrbitUpdated)
 	{
 		fprintf(stderr, "getPosition(): input check failed!\n");
@@ -139,6 +231,10 @@ int orbitStateVectors::getPosition(double azimuthTime, Position& position)
 
 int orbitStateVectors::getVelocity(double azimuthTime, Velocity& velocity)
 {
+	if (interpolationMode == OrbitInterpolationMode::FineV2CubicHermite)
+	{
+		return evaluateCubicHermite(stateVectors, azimuthTime, nullptr, &velocity) ? 0 : -1;
+	}
 	if (newStateVectors.cols != 7 || newStateVectors.rows < 2 || !isOrbitUpdated)
 	{
 		fprintf(stderr, "getVelocity(): input check failed!\n");
@@ -179,6 +275,27 @@ int orbitStateVectors::getVelocity(double azimuthTime, Velocity& velocity)
 
 int orbitStateVectors::getOrbitData(double time, OSV* osv)
 {
+	if (interpolationMode == OrbitInterpolationMode::FineV2CubicHermite)
+	{
+		if (!osv)
+		{
+			return -1;
+		}
+		Position position;
+		Velocity velocity;
+		if (!evaluateCubicHermite(stateVectors, time, &position, &velocity))
+		{
+			return -1;
+		}
+		osv->time = time;
+		osv->x = position.x;
+		osv->y = position.y;
+		osv->z = position.z;
+		osv->vx = velocity.vx;
+		osv->vy = velocity.vy;
+		osv->vz = velocity.vz;
+		return 0;
+	}
 	if (!osv || !std::isfinite(time) || time < 0 || isOrbitUpdated ||
 		!hasValidOrbitStateVectors(stateVectors, polyDegree + 1))
 	{
