@@ -84,6 +84,19 @@ public:
 		int n_pad,
 		FilterProgressCallback cb = nullptr
 	);
+	// Mask-aware Goldstein filtering. Only fully valid local FFT windows are
+	// evaluated. filter_support_mask describes where filtered values have FFT
+	// support; it is not a replacement for the product valid-domain mask.
+	int Goldstein_filter_masked(
+		Mat& phase,
+		const Mat& valid_mask,
+		Mat& phase_filter,
+		Mat& filter_support_mask,
+		double alpha,
+		int n_win,
+		int n_pad,
+		FilterProgressCallback cb = nullptr
+	);
 	// 按二维高斯函数实现高斯滤波
 	int GaussianFilter(Mat& src, Mat& dst, const Mat& window);
 	int GenerateGaussMask(Mat& Mask, int window_height, int win_width, double sigma);
@@ -95,7 +108,9 @@ private:
 		int n_win,
 		int n_pad,
 		bool parallel,
-		FilterProgressCallback cb = nullptr
+		FilterProgressCallback cb = nullptr,
+		const Mat* valid_mask = nullptr,
+		Mat* filter_support_mask = nullptr
 	);
 	std::string error_head;
 	std::string parallel_error_head;

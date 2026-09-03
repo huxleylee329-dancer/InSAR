@@ -6,6 +6,8 @@
 #include<tchar.h>
 #include <atlconv.h>
 #include <atomic>
+#include <cmath>
+#include <limits>
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -586,7 +588,9 @@ int Filter::goldstein_filter_impl(
 	int n_win,
 	int n_pad,
 	bool parallel,
-	FilterProgressCallback cb
+	FilterProgressCallback cb,
+	const Mat* valid_mask,
+	Mat* filter_support_mask
 ) {
 	if (phase.cols < 3 ||
 		phase.rows < 3 ||
@@ -594,18 +598,51 @@ int Filter::goldstein_filter_impl(
 		phase.type() != CV_64F ||
 		alpha <= 0 ||
 		n_win < 5 ||
-		n_pad < 0
+		n_pad < 0 ||
+		(valid_mask != nullptr &&
+			(valid_mask->type() != CV_8U || valid_mask->channels() != 1 || valid_mask->size() != phase.size()))
 		)
 	{
 		fprintf(stderr, "%s(): input check failed!\n\n", parallel ? "Goldstein_filter_parallel" : "Goldstein_filter");
 		return -1;
+	}
+	if (filter_support_mask != nullptr)
+	{
+		*filter_support_mask = Mat::zeros(phase.size(), CV_8U);
+	}
+	Mat phase_for_filtering;
+	if (valid_mask != nullptr)
+	{
+		phase.copyTo(phase_for_filtering);
+		for (int row = 0; row < phase.rows; ++row)
+		{
+			const uchar* maskRow = valid_mask->ptr<uchar>(row);
+			double* phaseRow = phase_for_filtering.ptr<double>(row);
+			for (int column = 0; column < phase.cols; ++column)
+			{
+				if (maskRow[column] != 0 && maskRow[column] != 1)
+				{
+					fprintf(stderr, "Goldstein_filter_masked(): valid mask is not binary!\n\n");
+					return -1;
+				}
+				if (maskRow[column] == 0)
+				{
+					phaseRow[column] = 0.0;
+				}
+				else if (!std::isfinite(phaseRow[column]))
+				{
+					fprintf(stderr, "Goldstein_filter_masked(): valid phase is not finite!\n\n");
+					return -1;
+				}
+			}
+		}
 	}
 	int n_i = phase.rows;
 	int n_j = phase.cols;
 	ComplexMat ph;
 	
 	Utils util;
-	util.phase2cos(phase, ph.re, ph.im);
+	util.phase2cos(valid_mask != nullptr ? phase_for_filtering : phase, ph.re, ph.im);
 
 	ComplexMat ph_out(n_i, n_j);
 	int n_inc = static_cast<int>(floor(n_win / 4));
@@ -697,8 +734,15 @@ int Filter::goldstein_filter_impl(
 				parallel_flag = false;
 				continue;
 			}
+			const Range windowRows(i1 - 1, i2);
+			const Range windowCols(j1 - 1, j2);
+			if (valid_mask != nullptr &&
+				countNonZero((*valid_mask)(windowRows, windowCols)) != n_win * n_win)
+			{
+				continue;
+			}
 
-			temp = ph(cv::Range(i1 - 1, i2), cv::Range(j1 - 1, j2));
+			temp = ph(windowRows, windowCols);
 			ret = ph_bit.SetValue(cv::Range(0, n_win), cv::Range(0, n_win), temp);
 			if (ret < 0) { parallel_flag = false; continue; }
 
@@ -740,8 +784,13 @@ int Filter::goldstein_filter_impl(
 			im = temp.GetIm();
 			temp1 = temp(Range(0, n_win), Range(0, n_win));
 			ph_filt = temp1 * wf2;
-			temp = ph_out(Range(i1 - 1, i2), Range(j1 - 1, j2)) + ph_filt;
-			ret = ph_out.SetValue(Range(i1 - 1, i2), Range(j1 - 1, j2), temp);
+			temp = ph_out(windowRows, windowCols) + ph_filt;
+			ret = ph_out.SetValue(windowRows, windowCols, temp);
+			if (ret < 0) { parallel_flag = false; continue; }
+			if (filter_support_mask != nullptr)
+			{
+				(*filter_support_mask)(windowRows, windowCols).setTo(1);
+			}
 		}
 
 		int current = ++completed_wins;
@@ -756,6 +805,22 @@ int Filter::goldstein_filter_impl(
 	}
 	if (!parallel_flag) return -2;
 	ph_out.GetPhase().copyTo(phase_filter);
+	if (filter_support_mask != nullptr)
+	{
+		for (int row = 0; row < phase_filter.rows; ++row)
+		{
+			uchar* maskRow = filter_support_mask->ptr<uchar>(row);
+			double* phaseRow = phase_filter.ptr<double>(row);
+			for (int column = 0; column < phase_filter.cols; ++column)
+			{
+				if (maskRow[column] == 0 || !std::isfinite(phaseRow[column]))
+				{
+					maskRow[column] = 0;
+					phaseRow[column] = std::numeric_limits<double>::quiet_NaN();
+				}
+			}
+		}
+	}
 	return 0;
 }
 
@@ -767,6 +832,24 @@ int Filter::Goldstein_filter(Mat& phase, Mat& phase_filter, double alpha, int n_
 int Filter::Goldstein_filter_parallel(Mat& phase, Mat& phase_filter, double alpha, int n_win, int n_pad, FilterProgressCallback cb)
 {
 	return goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, true, cb);
+}
+
+int Filter::Goldstein_filter_masked(Mat& phase, const Mat& valid_mask, Mat& phase_filter,
+	Mat& filter_support_mask, double alpha, int n_win, int n_pad, FilterProgressCallback cb)
+{
+	if (phase.rows < n_win || phase.cols < n_win)
+	{
+		fprintf(stderr, "Goldstein_filter_masked(): phase is smaller than the FFT window!\n\n");
+		return -1;
+	}
+	const int status = goldstein_filter_impl(phase, phase_filter, alpha, n_win, n_pad, false, cb,
+		&valid_mask, &filter_support_mask);
+	if (status == 0 && countNonZero(filter_support_mask) == 0)
+	{
+		fprintf(stderr, "Goldstein_filter_masked(): no fully valid FFT window!\n\n");
+		return -1;
+	}
+	return status;
 }
 
 // 按二维高斯函数实现高斯滤波

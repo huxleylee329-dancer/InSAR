@@ -4229,6 +4229,197 @@ int Unwrap::SPD_Guided_Unwrap(Mat& wrapped_phase, Mat& unwrapped_phase, UnwrapPr
 	return 0;
 }
 
+int Unwrap::SPD_Guided_Unwrap_Masked(Mat& wrapped_phase, const Mat& valid_mask,
+	Mat& unwrapped_phase, Mat& connected_component, UnwrapProgressCallback cb)
+{
+	if (wrapped_phase.rows < 1 || wrapped_phase.cols < 1 || wrapped_phase.type() != CV_64F ||
+		wrapped_phase.channels() != 1 || valid_mask.type() != CV_8U ||
+		valid_mask.channels() != 1 || valid_mask.size() != wrapped_phase.size())
+	{
+		fprintf(stderr, "SPD_Guided_Unwrap_Masked(): input check failed!\n\n");
+		return -1;
+	}
+
+	int validCount = 0;
+	Mat SPD = Mat::zeros(wrapped_phase.size(), CV_64FC1);
+	for (int row = 0; row < wrapped_phase.rows; ++row)
+	{
+		const uchar* maskRow = valid_mask.ptr<uchar>(row);
+		for (int column = 0; column < wrapped_phase.cols; ++column)
+		{
+			if (maskRow[column] != 0 && maskRow[column] != 1)
+			{
+				fprintf(stderr, "SPD_Guided_Unwrap_Masked(): valid mask is not binary!\n\n");
+				return -1;
+			}
+			if (maskRow[column] == 0)
+			{
+				continue;
+			}
+			if (!std::isfinite(wrapped_phase.ptr<double>(row)[column]))
+			{
+				fprintf(stderr, "SPD_Guided_Unwrap_Masked(): valid phase is not finite!\n\n");
+				return -1;
+			}
+			++validCount;
+			double sum = 0.0;
+			int neighbourCount = 0;
+			for (int rowOffset = -1; rowOffset <= 1; ++rowOffset)
+			{
+				for (int columnOffset = -1; columnOffset <= 1; ++columnOffset)
+				{
+					const int neighbourRow = row + rowOffset;
+					const int neighbourColumn = column + columnOffset;
+					if ((rowOffset == 0 && columnOffset == 0) || neighbourRow < 0 ||
+						neighbourRow >= wrapped_phase.rows || neighbourColumn < 0 ||
+						neighbourColumn >= wrapped_phase.cols ||
+						valid_mask.ptr<uchar>(neighbourRow)[neighbourColumn] == 0)
+					{
+						continue;
+					}
+					const double delta = atan2(sin(wrapped_phase.ptr<double>(row)[column] -
+						wrapped_phase.ptr<double>(neighbourRow)[neighbourColumn]),
+						cos(wrapped_phase.ptr<double>(row)[column] -
+						wrapped_phase.ptr<double>(neighbourRow)[neighbourColumn]));
+					sum += abs(delta);
+					++neighbourCount;
+				}
+			}
+			SPD.ptr<double>(row)[column] = neighbourCount == 0 ? 0.0 : sqrt(sum / neighbourCount);
+		}
+	}
+	if (validCount == 0)
+	{
+		fprintf(stderr, "SPD_Guided_Unwrap_Masked(): no valid samples!\n\n");
+		return -1;
+	}
+
+	unwrapped_phase = Mat(wrapped_phase.size(), CV_64FC1,
+		Scalar(std::numeric_limits<double>::quiet_NaN()));
+	connected_component = Mat::zeros(wrapped_phase.size(), CV_32SC1);
+	Mat flag = Mat::zeros(wrapped_phase.size(), CV_64FC1);
+	for (int row = 0; row < wrapped_phase.rows; ++row)
+	{
+		const uchar* maskRow = valid_mask.ptr<uchar>(row);
+		double* flagRow = flag.ptr<double>(row);
+		for (int column = 0; column < wrapped_phase.cols; ++column)
+		{
+			flagRow[column] = maskRow[column] == 1 ? 1.0 : 0.0;
+		}
+	}
+	Mat adjoin = Mat::zeros(wrapped_phase.size(), CV_64FC1);
+	Heap heap;
+	int completed = 0;
+	int componentId = 0;
+	const int progressStep = std::max(1, validCount / 100);
+	while (completed < validCount)
+	{
+		Point seed;
+		double minSpd = std::numeric_limits<double>::infinity();
+		for (int row = 0; row < wrapped_phase.rows; ++row)
+		{
+			const double* flagRow = flag.ptr<double>(row);
+			const double* spdRow = SPD.ptr<double>(row);
+			for (int column = 0; column < wrapped_phase.cols; ++column)
+			{
+				if (flagRow[column] == 1.0 && spdRow[column] < minSpd)
+				{
+					minSpd = spdRow[column];
+					seed = Point(column, row);
+				}
+			}
+		}
+		if (!std::isfinite(minSpd))
+		{
+			return -1;
+		}
+		++componentId;
+		unwrapped_phase.ptr<double>(seed.y)[seed.x] = wrapped_phase.ptr<double>(seed.y)[seed.x];
+		connected_component.ptr<int>(seed.y)[seed.x] = componentId;
+		flag.ptr<double>(seed.y)[seed.x] = 0.0;
+		++completed;
+		for (int d = 0; d < 4; ++d)
+		{
+			const int nx = seed.x + DIR_DC[d];
+			const int ny = seed.y + DIR_DR[d];
+			if (nx >= 0 && nx < wrapped_phase.cols && ny >= 0 && ny < wrapped_phase.rows &&
+				flag.ptr<double>(ny)[nx] == 1.0)
+			{
+				if (unwrap(wrapped_phase, unwrapped_phase, seed.x, seed.y, nx, ny,
+					flag, adjoin, SPD, heap) < 0)
+				{
+					return -1;
+				}
+				connected_component.ptr<int>(ny)[nx] = componentId;
+				++completed;
+			}
+		}
+		while (heap.size != 0)
+		{
+			int x = 0;
+			int y = 0;
+			if (heap.top(&x, &y) < 0)
+			{
+				return -1;
+			}
+			heap.pop();
+			if (connected_component.ptr<int>(y)[x] != 0)
+			{
+				continue;
+			}
+			bool foundParent = false;
+			for (int d = 0; d < 4; ++d)
+			{
+				const int parentX = x + DIR_DC[d];
+				const int parentY = y + DIR_DR[d];
+				if (parentX >= 0 && parentX < wrapped_phase.cols && parentY >= 0 && parentY < wrapped_phase.rows &&
+					connected_component.ptr<int>(parentY)[parentX] == componentId)
+				{
+					if (unwrap(wrapped_phase, unwrapped_phase, parentX, parentY, x, y,
+						flag, adjoin, SPD, heap) < 0)
+					{
+						return -1;
+					}
+					connected_component.ptr<int>(y)[x] = componentId;
+					++completed;
+					foundParent = true;
+					break;
+				}
+			}
+			if (!foundParent)
+			{
+				return -1;
+			}
+			if (cb && completed % progressStep == 0 &&
+				!cb(completed * 100 / validCount, "Masked SPD guided flood-fill unwrapping..."))
+			{
+				return -2;
+			}
+		}
+	}
+	for (int row = 0; row < wrapped_phase.rows; ++row)
+	{
+		const uchar* maskRow = valid_mask.ptr<uchar>(row);
+		const int* componentRow = connected_component.ptr<int>(row);
+		const double* phaseRow = unwrapped_phase.ptr<double>(row);
+		for (int column = 0; column < wrapped_phase.cols; ++column)
+		{
+			if ((maskRow[column] == 1 &&
+				(componentRow[column] <= 0 || !std::isfinite(phaseRow[column]))) ||
+				(maskRow[column] == 0 && componentRow[column] != 0))
+			{
+				fprintf(stderr, "SPD_Guided_Unwrap_Masked(): output mask/component/phase mismatch!\n\n");
+				return -1;
+			}
+		}
+	}
+	if (cb && !cb(100, "Masked SPD guided flood-fill unwrapping..."))
+	{
+		return -2;
+	}
+	return 0;
+}
+
 int Unwrap::MCFEx(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& coherence, Mat& residue,
 	const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb,
 	UnwrapDiagnostic* diagnostic)

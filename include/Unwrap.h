@@ -479,6 +479,13 @@ public:
 	int SPD_Guided_Unwrap(Mat& wrapped_phase,
 		Mat& unwrapped_phase,
 		UnwrapProgressCallback cb = nullptr);
+	// Mask-aware SPD unwrapping. Invalid samples are never connected across;
+	// connected_component uses 0 for invalid samples and positive IDs otherwise.
+	int SPD_Guided_Unwrap_Masked(Mat& wrapped_phase,
+		const Mat& valid_mask,
+		Mat& unwrapped_phase,
+		Mat& connected_component,
+		UnwrapProgressCallback cb = nullptr);
 
 private:
 	int MCFInternal(Mat& wrapped_phase, Mat& unwrapped_phase, Mat& coherence, Mat& residue,
