@@ -1093,6 +1093,30 @@ public:
 		Mat& effectiveFlatEarthReference,
 		Mat& phaseValidMask,
 		Mat& validSampleCount,
+		NewtonProgressCallback cb = nullptr,
+		Mat* correctedInterferogramReal = nullptr,
+		Mat* correctedInterferogramImaginary = nullptr
+	);
+	/**
+	 * Estimate true complex coherence on precisely the same corrected,
+	 * source-row-aware multilook grid as multilookCorrectedInterferogram().
+	 * The output-row packing follows contiguous sourceRowMap runs, so it must
+	 * be used instead of complex_coherence_demodulated() for compacted TOPS
+	 * coverage.
+	 */
+	int complex_coherence_corrected_multilooked(
+		const ComplexMat& master,
+		const ComplexMat& slave,
+		const Mat& correctionPhase,
+		const Mat& sourceRowMap,
+		const Mat& validSampleMask,
+		int multilookRg,
+		int multilookAz,
+		int estWndsizeRg,
+		int estWndsizeAz,
+		Mat& coherence,
+		Mat& validMask,
+		Mat& validSampleCount,
 		NewtonProgressCallback cb = nullptr
 	);
 	/*@brief 相位多视处理(改变尺寸)

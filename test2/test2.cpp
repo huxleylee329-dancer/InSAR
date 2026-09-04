@@ -19,6 +19,7 @@
 #include "RobustCoregistrationRegression.h"
 #include "CoherenceSemanticsRegression.h"
 #include "DemSourceValidityRegression.h"
+#include "SnapGoldsteinCompatibleRegression.h"
 #include "..\Dem\ProgressReporter.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
@@ -1185,6 +1186,15 @@ int main(int argc, char* argv[])
 	if (argc == 2 && std::strcmp(argv[1], "--dem-source-validity-regression") == 0)
 	{
 		return RunDemSourceValidityRegression();
+	}
+	if (argc == 3 && std::strcmp(argv[1], "--snap-goldstein-compatible-regression") == 0)
+	{
+		return RunSnapGoldsteinCompatibleRegression(argv[2]);
+	}
+	if (argc == 2 && std::strcmp(argv[1], "--snap-goldstein-compatible-regression") == 0)
+	{
+		fprintf(stderr, "usage: test2.exe --snap-goldstein-compatible-regression <frozen-snap-fixture.h5>\n");
+		return 2;
 	}
 
 	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,

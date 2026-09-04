@@ -97,6 +97,20 @@ public:
 		int n_pad,
 		FilterProgressCallback cb = nullptr
 	);
+	// SNAP 14 compatible Goldstein profile. This is intentionally separate from
+	// phase-only Goldstein_filter_masked(): it requires corrected interferogram
+	// I/Q and true complex-gamma coherence on the same grid.
+	int Goldstein_filter_snap_compatible(
+		const Mat& interferogram_real,
+		const Mat& interferogram_imaginary,
+		const Mat& complex_gamma,
+		const Mat& gamma_valid_mask,
+		const Mat& valid_mask,
+		Mat& filtered_real,
+		Mat& filtered_imaginary,
+		Mat& filter_support_mask,
+		FilterProgressCallback cb = nullptr
+	);
 	// 按二维高斯函数实现高斯滤波
 	int GaussianFilter(Mat& src, Mat& dst, const Mat& window);
 	int GenerateGaussMask(Mat& Mask, int window_height, int win_width, double sigma);

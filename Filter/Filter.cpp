@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cmath>
 #include <limits>
+#include <vector>
 #ifdef _DEBUG
 #pragma comment(lib,"ComplexMat_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -850,6 +851,201 @@ int Filter::Goldstein_filter_masked(Mat& phase, const Mat& valid_mask, Mat& phas
 		return -1;
 	}
 	return status;
+}
+
+int Filter::Goldstein_filter_snap_compatible(
+	const Mat& interferogram_real, const Mat& interferogram_imaginary,
+	const Mat& complex_gamma, const Mat& gamma_valid_mask, const Mat& valid_mask,
+	Mat& filtered_real, Mat& filtered_imaginary, Mat& filter_support_mask,
+	FilterProgressCallback cb)
+{
+	constexpr int kWindow = 64;
+	constexpr int kStep = 16;
+	if (interferogram_real.type() != CV_32F || interferogram_imaginary.type() != CV_32F ||
+		interferogram_real.size() != interferogram_imaginary.size() ||
+		complex_gamma.type() != CV_64F || complex_gamma.size() != interferogram_real.size() ||
+		gamma_valid_mask.type() != CV_8U || gamma_valid_mask.size() != interferogram_real.size() ||
+		valid_mask.type() != CV_8U || valid_mask.size() != interferogram_real.size() ||
+		interferogram_real.rows < kWindow || interferogram_real.cols < kWindow)
+	{
+		fprintf(stderr, "Goldstein_filter_snap_compatible(): input contract check failed!\n");
+		return -1;
+	}
+	const int rows = interferogram_real.rows;
+	const int columns = interferogram_real.cols;
+	for (int y = 0; y < rows; ++y)
+	{
+		const float* realRow = interferogram_real.ptr<float>(y);
+		const float* imaginaryRow = interferogram_imaginary.ptr<float>(y);
+		const double* gammaRow = complex_gamma.ptr<double>(y);
+		const uchar* gammaMaskRow = gamma_valid_mask.ptr<uchar>(y);
+		const uchar* validMaskRow = valid_mask.ptr<uchar>(y);
+		for (int x = 0; x < columns; ++x)
+		{
+			if ((gammaMaskRow[x] != 0 && gammaMaskRow[x] != 1) ||
+				(validMaskRow[x] != 0 && validMaskRow[x] != 1) ||
+				(gammaMaskRow[x] != 0 && (!std::isfinite(gammaRow[x]) || gammaRow[x] < 0.0 || gammaRow[x] > 1.0)) ||
+				(validMaskRow[x] != 0 && (!std::isfinite(realRow[x]) || !std::isfinite(imaginaryRow[x]))))
+			{
+				fprintf(stderr, "Goldstein_filter_snap_compatible(): invalid I/Q, gamma, or mask value!\n");
+				return -1;
+			}
+		}
+	}
+
+	filtered_real = Mat::zeros(interferogram_real.size(), CV_32F);
+	filtered_imaginary = Mat::zeros(interferogram_imaginary.size(), CV_32F);
+	filter_support_mask = Mat::zeros(interferogram_real.size(), CV_8U);
+	Mat accumulated_real = Mat::zeros(interferogram_real.size(), CV_64F);
+	Mat accumulated_imaginary = Mat::zeros(interferogram_imaginary.size(), CV_64F);
+	Mat accumulated_window = Mat::zeros(interferogram_real.size(), CV_64F);
+
+	// SNAP's overlap window is separable triangular, unlike legacy's diamond.
+	Mat triangle(kWindow, kWindow, CV_64F);
+	for (int y = 0; y < kWindow; ++y)
+	{
+		const double wy = 1.0 - fabs((2.0 * y - (kWindow - 1)) / kWindow);
+		for (int x = 0; x < kWindow; ++x)
+		{
+			const double wx = 1.0 - fabs((2.0 * x - (kWindow - 1)) / kWindow);
+			triangle.at<double>(y, x) = wx * wy;
+		}
+	}
+	std::vector<int> originsY;
+	std::vector<int> originsX;
+	for (int y = 0;; y += kStep) {
+		const int origin = std::min(y, rows - kWindow);
+		originsY.push_back(origin);
+		if (origin == rows - kWindow) break;
+	}
+	for (int x = 0;; x += kStep) {
+		const int origin = std::min(x, columns - kWindow);
+		originsX.push_back(origin);
+		if (origin == columns - kWindow) break;
+	}
+	const int totalWindows = static_cast<int>(originsY.size() * originsX.size());
+	int completedWindows = 0;
+	const int progressStep = std::max(1, totalWindows / 100);
+	for (const int originY : originsY)
+	{
+		for (const int originX : originsX)
+		{
+			const Range windowRows(originY, originY + kWindow);
+			const Range windowCols(originX, originX + kWindow);
+			const Mat windowValid = valid_mask(windowRows, windowCols);
+			if (countNonZero(windowValid) == 0) {
+				++completedWindows;
+				continue;
+			}
+			double gammaSum = 0.0;
+			int gammaCount = 0;
+			for (int y = originY; y < originY + kWindow; ++y) {
+				const double* gammaRow = complex_gamma.ptr<double>(y);
+				const uchar* gammaMaskRow = gamma_valid_mask.ptr<uchar>(y);
+				for (int x = originX; x < originX + kWindow; ++x) {
+					if (gammaMaskRow[x] != 0) {
+						gammaSum += gammaRow[x];
+						++gammaCount;
+					}
+				}
+			}
+			if (gammaCount == 0) {
+				fprintf(stderr, "Goldstein_filter_snap_compatible(): processed I/Q window has no valid complex-gamma samples!\n");
+				return -1;
+			}
+			const double alpha = std::max(0.2, std::min(1.0, 1.0 - gammaSum / gammaCount));
+			Mat realWindow = Mat::zeros(kWindow, kWindow, CV_64F);
+			Mat imaginaryWindow = Mat::zeros(kWindow, kWindow, CV_64F);
+			for (int y = 0; y < kWindow; ++y) {
+				const float* inputReal = interferogram_real.ptr<float>(originY + y);
+				const float* inputImaginary = interferogram_imaginary.ptr<float>(originY + y);
+				const uchar* validRow = valid_mask.ptr<uchar>(originY + y);
+				double* outReal = realWindow.ptr<double>(y);
+				double* outImaginary = imaginaryWindow.ptr<double>(y);
+				for (int x = 0; x < kWindow; ++x) {
+					if (validRow[originX + x] != 0) {
+						outReal[x] = inputReal[originX + x];
+						outImaginary[x] = inputImaginary[originX + x];
+					}
+				}
+			}
+			Mat planes[] = { realWindow, imaginaryWindow };
+			Mat spectrum;
+			merge(planes, 2, spectrum);
+			dft(spectrum, spectrum, DFT_COMPLEX_OUTPUT);
+			Mat spectrumPlanes[2];
+			split(spectrum, spectrumPlanes);
+			Mat magnitude;
+			magnitude = spectrumPlanes[0].mul(spectrumPlanes[0]) + spectrumPlanes[1].mul(spectrumPlanes[1]);
+			sqrt(magnitude, magnitude);
+			// SNAP's windowSize=3 is a spectrum-domain arithmetic mean. Zero
+			// power terms do not contribute to either the sum or the divisor.
+			Mat smoothedMagnitude = Mat::zeros(kWindow, kWindow, CV_64F);
+			for (int y = 0; y < kWindow; ++y) {
+				for (int x = 0; x < kWindow; ++x) {
+					double sum = 0.0;
+					int count = 0;
+					for (int yy = std::max(0, y - 1); yy <= std::min(kWindow - 1, y + 1); ++yy) {
+						const double* magnitudeRow = magnitude.ptr<double>(yy);
+						for (int xx = std::max(0, x - 1); xx <= std::min(kWindow - 1, x + 1); ++xx) {
+							if (magnitudeRow[xx] > 0.0) {
+								sum += magnitudeRow[xx];
+								++count;
+							}
+						}
+					}
+					smoothedMagnitude.at<double>(y, x) = count > 0 ? sum / count : 0.0;
+				}
+			}
+			magnitude = smoothedMagnitude;
+			pow(magnitude, alpha, magnitude);
+			spectrumPlanes[0] = spectrumPlanes[0].mul(magnitude);
+			spectrumPlanes[1] = spectrumPlanes[1].mul(magnitude);
+			merge(spectrumPlanes, 2, spectrum);
+			idft(spectrum, spectrum, DFT_INVERSE | DFT_SCALE | DFT_COMPLEX_OUTPUT);
+			split(spectrum, spectrumPlanes);
+			for (int y = 0; y < kWindow; ++y) {
+				double* accReal = accumulated_real.ptr<double>(originY + y) + originX;
+				double* accImaginary = accumulated_imaginary.ptr<double>(originY + y) + originX;
+				double* accWindow = accumulated_window.ptr<double>(originY + y) + originX;
+				const double* filteredReal = spectrumPlanes[0].ptr<double>(y);
+				const double* filteredImaginary = spectrumPlanes[1].ptr<double>(y);
+				const double* windowRow = triangle.ptr<double>(y);
+				for (int x = 0; x < kWindow; ++x) {
+					const double weight = windowRow[x];
+					accReal[x] += filteredReal[x] * weight;
+					accImaginary[x] += filteredImaginary[x] * weight;
+					accWindow[x] += weight;
+				}
+			}
+			++completedWindows;
+			if (cb && completedWindows % progressStep == 0 &&
+				!cb(completedWindows * 100 / totalWindows, "SNAP-compatible Goldstein filtering...")) {
+				return -2;
+			}
+		}
+	}
+	for (int y = 0; y < rows; ++y) {
+		const uchar* validRow = valid_mask.ptr<uchar>(y);
+		const double* accReal = accumulated_real.ptr<double>(y);
+		const double* accImaginary = accumulated_imaginary.ptr<double>(y);
+		const double* accWindow = accumulated_window.ptr<double>(y);
+		float* outputReal = filtered_real.ptr<float>(y);
+		float* outputImaginary = filtered_imaginary.ptr<float>(y);
+		uchar* supportRow = filter_support_mask.ptr<uchar>(y);
+		for (int x = 0; x < columns; ++x) {
+			if (validRow[x] != 0 && accWindow[x] > 0.0 && std::isfinite(accReal[x]) && std::isfinite(accImaginary[x])) {
+				outputReal[x] = static_cast<float>(accReal[x] / accWindow[x]);
+				outputImaginary[x] = static_cast<float>(accImaginary[x] / accWindow[x]);
+				supportRow[x] = 1;
+			}
+		}
+	}
+	if (countNonZero(filter_support_mask) == 0) {
+		fprintf(stderr, "Goldstein_filter_snap_compatible(): no valid pixel received FFT support!\n");
+		return -1;
+	}
+	return 0;
 }
 
 // 按二维高斯函数实现高斯滤波

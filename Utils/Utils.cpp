@@ -3745,7 +3745,9 @@ int Utils::multilookCorrectedInterferogram(
 	const Mat& sourceRowMap, const Mat& validSampleMask, int multilookRg, int multilookAz, Mat& phase,
 	Mat& effectiveFlatEarthReference,
 	Mat& phaseValidMask, Mat& validSampleCount,
-	NewtonProgressCallback cb)
+	NewtonProgressCallback cb,
+	Mat* correctedInterferogramReal,
+	Mat* correctedInterferogramImaginary)
 {
 	if (master.GetRows() != slave.GetRows() || master.GetCols() != slave.GetCols() ||
 		(master.type() != CV_32F && master.type() != CV_64F) || slave.type() != master.type() ||
@@ -3785,6 +3787,20 @@ int Utils::multilookCorrectedInterferogram(
 	phaseValidMask.setTo(0);
 	validSampleCount.create(outputRows, outputColumns, CV_32S);
 	validSampleCount.setTo(0);
+	if ((correctedInterferogramReal == nullptr) != (correctedInterferogramImaginary == nullptr))
+	{
+		fprintf(stderr, "multilookCorrectedInterferogram(): corrected I/Q outputs must be supplied as a pair!\n");
+		return -1;
+	}
+	if (correctedInterferogramReal != nullptr)
+	{
+		// Persist the corrected, multilooked complex sum rather than a unit
+		// phasor reconstructed from phase. float32 is the H5 product contract.
+		correctedInterferogramReal->create(outputRows, outputColumns, CV_32F);
+		correctedInterferogramReal->setTo(0.0f);
+		correctedInterferogramImaginary->create(outputRows, outputColumns, CV_32F);
+		correctedInterferogramImaginary->setTo(0.0f);
+	}
 	if (flatEarthPhase.empty()) effectiveFlatEarthReference.release();
 	else {
 		effectiveFlatEarthReference.create(outputRows, outputColumns, CV_64F);
@@ -3877,6 +3893,13 @@ int Utils::multilookCorrectedInterferogram(
 				}
 				phase.at<double>(outputRowBase + outY, outX) = atan2(correctedImaginary, correctedReal);
 				phaseValidMask.at<uchar>(outputRowBase + outY, outX) = 1;
+				if (correctedInterferogramReal != nullptr)
+				{
+					correctedInterferogramReal->at<float>(outputRowBase + outY, outX) =
+						static_cast<float>(correctedReal);
+					correctedInterferogramImaginary->at<float>(outputRowBase + outY, outX) =
+						static_cast<float>(correctedImaginary);
+				}
 			}
 			const int current = ++completed;
 			if (cb && current % progressStep == 0 && !cb(current * 100 / outputRows, "Corrected interferogram multilooking...")) cancelled = true;
@@ -3889,6 +3912,181 @@ int Utils::multilookCorrectedInterferogram(
 		return -1;
 	}
 	return 0;
+}
+
+int Utils::complex_coherence_corrected_multilooked(
+	const ComplexMat& master, const ComplexMat& slave, const Mat& correctionPhase,
+	const Mat& sourceRowMap, const Mat& validSampleMask, int multilookRg, int multilookAz,
+	int estWndsizeRg, int estWndsizeAz, Mat& coherence, Mat& validMask,
+	Mat& validSampleCount, NewtonProgressCallback cb)
+{
+	coherence.release();
+	validMask.release();
+	validSampleCount.release();
+	const int rows = master.GetRows();
+	const int columns = master.GetCols();
+	if (rows < 1 || columns < 1 || master.GetRows() != slave.GetRows() ||
+		master.GetCols() != slave.GetCols() || master.type() != slave.type() ||
+		(master.type() != CV_32F && master.type() != CV_64F) ||
+		correctionPhase.type() != CV_64F || correctionPhase.size() != Size(columns, rows) ||
+		sourceRowMap.type() != CV_32S || sourceRowMap.rows != rows || sourceRowMap.cols != 1 ||
+		validSampleMask.type() != CV_8U || validSampleMask.size() != correctionPhase.size() ||
+		multilookRg < 1 || multilookAz < 1 || columns < multilookRg ||
+		estWndsizeRg < 3 || estWndsizeAz < 3 || estWndsizeRg % 2 == 0 || estWndsizeAz % 2 == 0)
+	{
+		fprintf(stderr, "complex_coherence_corrected_multilooked(): input check failed!\n");
+		return -1;
+	}
+
+	struct Run { int first; int count; };
+	std::vector<Run> runs;
+	for (int first = 0; first < rows;)
+	{
+		if (sourceRowMap.at<int>(first, 0) < 0) return -1;
+		int end = first + 1;
+		while (end < rows && sourceRowMap.at<int>(end, 0) == sourceRowMap.at<int>(end - 1, 0) + 1) ++end;
+		if (end - first >= multilookAz) runs.push_back({ first, end - first });
+		first = end;
+	}
+	const int outputColumns = columns / multilookRg;
+	int outputRows = 0;
+	for (const Run& run : runs) outputRows += run.count / multilookAz;
+	if (outputRows < 1 || outputColumns < 1) {
+		fprintf(stderr, "complex_coherence_corrected_multilooked(): no complete source-row run!\n");
+		return -1;
+	}
+
+	// This aggregation intentionally mirrors multilookCorrectedInterferogram():
+	// same source-row runs, same complete-look cells, same validity selection,
+	// and the same exp(-i * correctionPhase) convention.
+	Mat sumRe(outputRows, outputColumns, CV_64F, Scalar::all(0));
+	Mat sumIm(outputRows, outputColumns, CV_64F, Scalar::all(0));
+	Mat powM(outputRows, outputColumns, CV_64F, Scalar::all(0));
+	Mat powS(outputRows, outputColumns, CV_64F, Scalar::all(0));
+	Mat aggregatedCount(outputRows, outputColumns, CV_32S, Scalar::all(0));
+	std::atomic<bool> cancelled(false);
+	std::atomic<bool> invalidSelectedSample(false);
+	std::atomic<int> completed(0);
+	const int progressStep = std::max(1, outputRows / 100);
+	int outputRowBase = 0;
+	for (const Run& run : runs)
+	{
+		const int runOutputRows = run.count / multilookAz;
+#pragma omp parallel for schedule(guided)
+		for (int outY = 0; outY < runOutputRows; ++outY)
+		{
+			if (cancelled) continue;
+			const int inputTop = run.first + outY * multilookAz;
+			for (int outX = 0; outX < outputColumns; ++outX)
+			{
+				const int inputLeft = outX * multilookRg;
+				double accRe = 0.0, accIm = 0.0, accM = 0.0, accS = 0.0;
+				int count = 0;
+				for (int y = inputTop; y < inputTop + multilookAz; ++y)
+				{
+					for (int x = inputLeft; x < inputLeft + multilookRg; ++x)
+					{
+						if (validSampleMask.at<uchar>(y, x) == 0) continue;
+						const double mr = master.type() == CV_64F ? master.re.at<double>(y, x) : master.re.at<float>(y, x);
+						const double mi = master.type() == CV_64F ? master.im.at<double>(y, x) : master.im.at<float>(y, x);
+						const double sr = slave.type() == CV_64F ? slave.re.at<double>(y, x) : slave.re.at<float>(y, x);
+						const double si = slave.type() == CV_64F ? slave.im.at<double>(y, x) : slave.im.at<float>(y, x);
+						const double correction = correctionPhase.at<double>(y, x);
+						if (!std::isfinite(mr) || !std::isfinite(mi) || !std::isfinite(sr) ||
+							!std::isfinite(si) || !std::isfinite(correction))
+						{
+							invalidSelectedSample = true;
+							continue;
+						}
+						const double rawRe = mr * sr + mi * si;
+						const double rawIm = mi * sr - mr * si;
+						const double cosCorrection = cos(correction);
+						const double sinCorrection = sin(correction);
+						accRe += rawRe * cosCorrection + rawIm * sinCorrection;
+						accIm += rawIm * cosCorrection - rawRe * sinCorrection;
+						accM += mr * mr + mi * mi;
+						accS += sr * sr + si * si;
+						++count;
+					}
+				}
+				sumRe.at<double>(outputRowBase + outY, outX) = accRe;
+				sumIm.at<double>(outputRowBase + outY, outX) = accIm;
+				powM.at<double>(outputRowBase + outY, outX) = accM;
+				powS.at<double>(outputRowBase + outY, outX) = accS;
+				aggregatedCount.at<int>(outputRowBase + outY, outX) = count;
+			}
+			const int current = ++completed;
+			if (cb && current % progressStep == 0 &&
+				!cb(current * 50 / outputRows, "Aggregating corrected interferogram for complex coherence...")) {
+				cancelled = true;
+			}
+		}
+		outputRowBase += runOutputRows;
+	}
+	if (cancelled) return -2;
+	if (invalidSelectedSample) {
+		fprintf(stderr, "complex_coherence_corrected_multilooked(): valid-sample mask selected a non-finite input or correction!\n");
+		return -1;
+	}
+
+	coherence.create(outputRows, outputColumns, CV_64F);
+	validMask.create(outputRows, outputColumns, CV_8U);
+	validSampleCount.create(outputRows, outputColumns, CV_32S);
+	const int halfAz = (estWndsizeAz - 1) / 2;
+	const int halfRg = (estWndsizeRg - 1) / 2;
+	completed = 0;
+#pragma omp parallel for schedule(guided)
+	for (int y = 0; y < outputRows; ++y)
+	{
+		if (cancelled) continue;
+		double* coherenceRow = coherence.ptr<double>(y);
+		uchar* maskRow = validMask.ptr<uchar>(y);
+		int* countRow = validSampleCount.ptr<int>(y);
+		const int top = std::max(0, y - halfAz);
+		const int bottom = std::min(outputRows - 1, y + halfAz);
+		for (int x = 0; x < outputColumns; ++x)
+		{
+			const int left = std::max(0, x - halfRg);
+			const int right = std::min(outputColumns - 1, x + halfRg);
+			double nRe = 0.0, nIm = 0.0, totalM = 0.0, totalS = 0.0;
+			int support = 0;
+			for (int yy = top; yy <= bottom; ++yy)
+			{
+				for (int xx = left; xx <= right; ++xx)
+				{
+					nRe += sumRe.at<double>(yy, xx);
+					nIm += sumIm.at<double>(yy, xx);
+					totalM += powM.at<double>(yy, xx);
+					totalS += powS.at<double>(yy, xx);
+					support += aggregatedCount.at<int>(yy, xx);
+				}
+			}
+			countRow[x] = support;
+			const double denominator = sqrt(totalM * totalS);
+			const double numeratorSquared = nRe * nRe + nIm * nIm;
+			if (support <= 0 || !std::isfinite(denominator) || denominator <= 0.0 ||
+				!std::isfinite(numeratorSquared) || numeratorSquared < 0.0)
+			{
+				coherenceRow[x] = 0.0;
+				maskRow[x] = 0;
+				continue;
+			}
+			double gamma = sqrt(numeratorSquared) / denominator;
+			if (!std::isfinite(gamma)) {
+				coherenceRow[x] = 0.0;
+				maskRow[x] = 0;
+				continue;
+			}
+			coherenceRow[x] = std::min(1.0, gamma);
+			maskRow[x] = 1;
+		}
+		const int current = ++completed;
+		if (cb && current % progressStep == 0 &&
+			!cb(50 + current * 50 / outputRows, "Estimating corrected complex coherence...")) {
+			cancelled = true;
+		}
+	}
+	return cancelled ? -2 : 0;
 }
 
 int Utils::multilook(const Mat& phase, Mat& outPhase, int multi_rg, int multi_az, NewtonProgressCallback cb)
