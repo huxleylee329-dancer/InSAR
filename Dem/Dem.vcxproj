@@ -139,7 +139,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;DEM_EXPORTS;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>true</SDLCheck>
-      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
@@ -149,7 +149,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
-      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\lib;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>gdal_i.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
