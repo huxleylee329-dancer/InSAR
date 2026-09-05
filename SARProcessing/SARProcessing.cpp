@@ -12,6 +12,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <limits>
 
 // MultiByteToWideChar 需要 windows.h（x64 配置未启用预编译头）
 #ifndef WIN32_LEAN_AND_MEAN
@@ -550,7 +551,7 @@ double SARProcessor::CalculateENL(const cv::Mat& roiGray)
     double mean = meanMat.at<double>(0, 0);
     double stddev = stddevMat.at<double>(0, 0);
 
-    if (stddev == 0) return 0.0;
+    if (stddev <= 1.0e-12) return std::numeric_limits<double>::infinity();
 
     return (mean * mean) / (stddev * stddev);
 }
