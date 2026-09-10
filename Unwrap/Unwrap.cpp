@@ -353,8 +353,13 @@ using namespace cv;
 
 	bool quoteSnaphuConfigPath(const std::string& path, std::string& quoted)
 	{
-		if (path.empty() || path.find('\0') != std::string::npos || path.find_first_of("\"\r\n") != std::string::npos) return false;
-		quoted = "\"" + path + "\"";
+		std::string normalized = path;
+		// SNAPHU's tile filename parser treats '/' as the path separator.
+		// Windows accepts it for every path written into the UTF-8 config.
+		std::replace(normalized.begin(), normalized.end(), '\\', '/');
+		if (normalized.empty() || normalized.find('\0') != std::string::npos ||
+			normalized.find_first_of("\"\r\n") != std::string::npos) return false;
+		quoted = "\"" + normalized + "\"";
 		return true;
 	}
 
@@ -3576,6 +3581,7 @@ int Unwrap::QualityGuidedMCFInternal(
 
 int Unwrap::SnaphuFileInternal(
 	const char* wrapped_phase_file,
+	const Mat* valid_mask,
 	Mat& unwrapped_phase,
 	const char* project_path,
 	const char* tmp_folder,
@@ -3617,7 +3623,8 @@ int Unwrap::SnaphuFileInternal(
 	string coherence_file = folder + "\\coherence.dat";
 	string IN_file = folder + "\\wrapped_phase.dat";
 	string OUT_file = folder + "\\unwrapped_phase.dat";
-	std::wstring configFileWide, ampfile1Wide, ampfile2Wide, coherenceFileWide, inFileWide, outFileWide;
+	string mask_file = folder + "\\phase_valid_mask.dat";
+	std::wstring configFileWide, ampfile1Wide, ampfile2Wide, coherenceFileWide, inFileWide, outFileWide, maskFileWide;
 	PathResolver::Error artifactPathError = PathResolver::Error::None;
 	if (!PathResolver::utf8ToWide(config_file, configFileWide, &artifactPathError) ||
 		!PathResolver::utf8ToWide(ampfile1, ampfile1Wide, &artifactPathError) ||
@@ -3632,10 +3639,49 @@ int Unwrap::SnaphuFileInternal(
 		fprintf(stderr, "snaphu(): unable to register task artifacts (%s).\n", PathResolver::errorMessage(artifactPathError));
 		return -1;
 	}
+	if (valid_mask != nullptr &&
+		(!PathResolver::utf8ToWide(mask_file, maskFileWide, &artifactPathError) ||
+			!artifacts.registerCandidate(maskFileWide)))
+	{
+		fprintf(stderr, "snaphu(): unable to register phase-validity mask artifact (%s).\n",
+			PathResolver::errorMessage(artifactPathError));
+		return -1;
+	}
 
 	ret = conversion.read_array_from_h5(wrapped_phase_file, "phase", wrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
+	Mat mask;
+	bool hasMask = false;
+	if (valid_mask != nullptr)
+	{
+		if (valid_mask->type() != CV_8UC1 || valid_mask->rows != nr || valid_mask->cols != nc || valid_mask->empty())
+		{
+			fprintf(stderr, "snaphu(): invalid phase-validity mask.\n");
+			return -1;
+		}
+		mask = valid_mask->clone();
+		int validCount = 0;
+		for (int row = 0; row < mask.rows; ++row)
+		{
+			const uchar* values = mask.ptr<uchar>(row);
+			for (int column = 0; column < mask.cols; ++column)
+			{
+				if (values[column] != 0 && values[column] != 1)
+				{
+					fprintf(stderr, "snaphu(): phase-validity mask must be binary.\n");
+					return -1;
+				}
+				validCount += values[column] != 0 ? 1 : 0;
+			}
+		}
+		if (validCount == 0)
+		{
+			fprintf(stderr, "snaphu(): phase-validity mask has no valid pixels.\n");
+			return -1;
+		}
+		hasMask = true;
+	}
 	int multilookRg = 1;
 	int multilookAz = 1;
 	auto readMultilookFactor = [&](const char* dataset, int& factor) -> int
@@ -3669,7 +3715,7 @@ int Unwrap::SnaphuFileInternal(
 		multilookAz = 1;
 		fprintf(stderr, "snaphu(): multilook metadata unavailable; source amplitudes will not be resampled.\n");
 	}
-	enum class CorrelationSource { InputH5, Disabled };
+	enum class CorrelationSource { InputComplexGamma, InputCoherence, Disabled };
 	enum class AmplitudeStatus { Used, Unavailable, OmittedDimensionMismatch };
 	CorrelationSource correlationSource = CorrelationSource::Disabled;
 	AmplitudeStatus amplitudeStatus = AmplitudeStatus::Unavailable;
@@ -3689,32 +3735,63 @@ int Unwrap::SnaphuFileInternal(
 	source_1 = sourcePaths.source1.utf8;
 	source_2 = sourcePaths.source2.utf8;
 
-	const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
-	if (inputCoherenceReadStatus == 0)
+	Mat complexGamma;
+	const int complexGammaReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "complex_gamma", complexGamma);
+	if (complexGammaReadStatus == 0)
 	{
-		std::string semantics;
-		const int semanticsReadStatus = conversion.read_str_from_h5(
-			wrapped_phase_file, "coherence_semantics", semantics);
-		if (semanticsReadStatus != 0 || semantics != "complex_gamma")
+		std::string gammaSemantics;
+		const int gammaSemanticsReadStatus = conversion.read_str_from_h5(
+			wrapped_phase_file, "complex_gamma_semantics", gammaSemantics);
+		if (gammaSemanticsReadStatus != 0 || gammaSemantics != "complex_gamma")
 		{
-			correlationReason = "coherence_semantics_not_complex_gamma";
-			fprintf(stderr, "snaphu(): input coherence rejected: physical complex_gamma is required.\n");
+			correlationReason = "complex_gamma_semantics_invalid";
+			fprintf(stderr, "snaphu(): complex_gamma rejected: physical complex_gamma semantics are required.\n");
 		}
-		else if (validateCorrelation(coherence, nr, nc, correlationReason))
+		else if (validateCorrelation(complexGamma, nr, nc, correlationReason))
 		{
-			coherence.convertTo(coherence, CV_32F);
-			if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
-			correlationSource = CorrelationSource::InputH5;
+			complexGamma.convertTo(complexGamma, CV_32F);
+			if (!writeFloatRaster(coherenceFileWide, complexGamma, &artifacts)) return -1;
+			correlationSource = CorrelationSource::InputComplexGamma;
 		}
 		else
 		{
-			fprintf(stderr, "snaphu(): input_coherence_rejected=%s\n", correlationReason.c_str());
+			fprintf(stderr, "snaphu(): complex_gamma_rejected=%s\n", correlationReason.c_str());
 		}
 	}
 	else
 	{
-		correlationReason = "input_missing_or_unreadable";
-		fprintf(stderr, "snaphu(): input_coherence_unavailable=%s\n", correlationReason.c_str());
+		correlationReason = "complex_gamma_missing_or_unreadable";
+	}
+
+	// Keep legacy products usable when their physical correlation is stored in coherence.
+	if (correlationSource == CorrelationSource::Disabled)
+	{
+		const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
+		if (inputCoherenceReadStatus == 0)
+		{
+			std::string semantics;
+			const int semanticsReadStatus = conversion.read_str_from_h5(
+				wrapped_phase_file, "coherence_semantics", semantics);
+			if (semanticsReadStatus != 0 || semantics != "complex_gamma")
+			{
+				correlationReason = "coherence_semantics_not_complex_gamma";
+				fprintf(stderr, "snaphu(): input coherence rejected: physical complex_gamma is required.\n");
+			}
+			else if (validateCorrelation(coherence, nr, nc, correlationReason))
+			{
+				coherence.convertTo(coherence, CV_32F);
+				if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
+				correlationSource = CorrelationSource::InputCoherence;
+			}
+			else
+			{
+				fprintf(stderr, "snaphu(): input_coherence_rejected=%s\n", correlationReason.c_str());
+			}
+		}
+		else
+		{
+			fprintf(stderr, "snaphu(): input_coherence_unavailable=%s\n", correlationReason.c_str());
+		}
 	}
 	if (b_source)
 	{
@@ -3745,6 +3822,7 @@ int Unwrap::SnaphuFileInternal(
 	Mat phase;
 	wrapped_phase.convertTo(phase, CV_32F);
 	if (!writeFloatRaster(inFileWide, phase, &artifacts)) return -1;
+	if (hasMask && (!mask.isContinuous() || !writeBytes(maskFileWide, mask.data, mask.total(), &artifacts))) return -1;
 	if (b_source && amplitudeAvailable)//有幅度信息
 	{
 		if (master.type() != CV_64F) master.convertTo(master, CV_64F);
@@ -3778,7 +3856,7 @@ int Unwrap::SnaphuFileInternal(
 			amplitudeStatus = AmplitudeStatus::Used;
 		}
 	}
-	if (correlationSource != CorrelationSource::InputH5)
+	if (correlationSource == CorrelationSource::Disabled)
 	{
 		correlationReason = correlationReason.empty()
 			? "physical_gamma_required"
@@ -3789,13 +3867,15 @@ int Unwrap::SnaphuFileInternal(
 
 
 	// SNAPHU consumes this configuration as UTF-8; every pathname is UTF-8.
-	std::string configInFile, configOutFile, configCoherenceFile, configAmpfile1, configAmpfile2;
+	std::string configInFile, configOutFile, configCoherenceFile, configAmpfile1, configAmpfile2, configMaskFile;
 	if (!quoteSnaphuConfigPath(IN_file, configInFile) || !quoteSnaphuConfigPath(OUT_file, configOutFile) ||
 		!quoteSnaphuConfigPath(coherence_file, configCoherenceFile) || !quoteSnaphuConfigPath(ampfile1, configAmpfile1) ||
-		!quoteSnaphuConfigPath(ampfile2, configAmpfile2)) return -1;
+		!quoteSnaphuConfigPath(ampfile2, configAmpfile2) ||
+		(hasMask && !quoteSnaphuConfigPath(mask_file, configMaskFile))) return -1;
 	std::ostringstream config;
 	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
 	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\n";
+	if (hasMask) config << "BYTEMASKFILE " << configMaskFile << "\n";
 	if (correlationSource != CorrelationSource::Disabled) config << "CORRFILE " << configCoherenceFile << "\n";
 	if (amplitudeStatus == AmplitudeStatus::Used)
 	{
@@ -3861,9 +3941,13 @@ int Unwrap::SnaphuFileInternal(
 	{
 		std::ostringstream summary;
 		summary << "completed; corr=";
-		if (correlationSource == CorrelationSource::InputH5)
+		if (correlationSource == CorrelationSource::InputComplexGamma)
 		{
-			summary << "input_h5(" << nr << "x" << nc << ")";
+			summary << "input_complex_gamma(" << nr << "x" << nc << ")";
+		}
+		else if (correlationSource == CorrelationSource::InputCoherence)
+		{
+			summary << "input_coherence(" << nr << "x" << nc << ")";
 		}
 		else
 		{
@@ -4463,7 +4547,7 @@ int Unwrap::SnaphuFileEx(const char* wrapped_phase_file, Mat& unwrapped_phase, c
 	const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
 {
 	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
-	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, cb);
+	const int status = SnaphuFileInternal(wrapped_phase_file, nullptr, unwrapped_phase, project_path, tmp_folder, exe_path, cb);
 	scope.finish(status);
 	return status;
 }
@@ -4482,7 +4566,27 @@ int Unwrap::SnaphuFileEx2(const char* wrapped_phase_file, Mat& unwrapped_phase, 
 		return -1;
 	}
 	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
-	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, nullptr);
+	const int status = SnaphuFileInternal(wrapped_phase_file, nullptr, unwrapped_phase, project_path, tmp_folder, exe_path, nullptr);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::SnaphuFileMaskedEx2(const char* wrapped_phase_file, const Mat& valid_mask, Mat& unwrapped_phase,
+	const char* project_path, const char* tmp_folder, const char* exe_path, const SnaphuRunOptionsV1* options,
+	SnaphuRunEventCallbackV1 eventCallback, void* eventUserData, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
+	SnaphuRunOptionsV1 normalized;
+	if (!normalizeSnaphuOptions(options, normalized))
+	{
+		if (g_activeDiagnostic) copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary),
+			"invalid SnaphuRunOptionsV1");
+		scope.finish(-1);
+		return -1;
+	}
+	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
+	const int status = SnaphuFileInternal(wrapped_phase_file, &valid_mask, unwrapped_phase,
+		project_path, tmp_folder, exe_path, nullptr);
 	scope.finish(status);
 	return status;
 }

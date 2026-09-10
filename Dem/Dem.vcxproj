@@ -172,6 +172,7 @@
     <ClCompile Include="..\FormatConversion\tinyxmlparser.cpp" />
     <ClCompile Include="Dem.cpp" />
     <ClCompile Include="DEMSourceManager.cpp" />
+    <ClCompile Include="..\Deflat\TopsNativeGeometry.cpp" />
     <ClCompile Include="dllmain.cpp">
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</CompileAsManaged>
       <CompileAsManaged Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</CompileAsManaged>

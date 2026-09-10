@@ -88,4 +88,8 @@ All source files (`.cpp`, `.h`, `.hpp`) in this repository are unified as UTF-8 
 
 Refer to [gemini.md](file:///D:/SRC/InSAR/gemini.md) for detailed guidelines on when to use double precision (`CV_64F`) vs. single precision (`CV_32F`) in calculations and HDF5 storage. Always ensure that the HDF5 dataset initialization type matches the subarray write type to prevent datatype mismatches.
 
+## Large file hashing rules (大文件哈希禁令)
+
+Do not add full-file byte-by-byte hash calculations (such as SHA-256 or MD5) for large data files (such as `.h5`, `.tif`, `.raw`, `.dat` radar image matrices ranging from hundreds of megabytes to tens of gigabytes) without explicit user confirmation and consent. Always ask and obtain user approval before introducing any hash verification for large files. Prefer O(1) lightweight metadata checks (file size, timestamp, header attributes) to prevent severe I/O bottlenecks.
+
 

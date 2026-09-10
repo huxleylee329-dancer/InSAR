@@ -1,4 +1,5 @@
 #include "TopsNativeGeometry.h"
+#include "..\include\Utils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -85,7 +86,7 @@ bool rdeConditionAndPointBound(const cv::Vec3d& point, const cv::Vec3d& satellit
     return std::isfinite(condition) && std::isfinite(pointErrorBound);
 }
 
-bool validOrbitContract(const TopsFepV5Orbit& orbit)
+bool validOrbitContract(const TopsFepV5Orbit& orbit, std::string* error = nullptr)
 {
     const bool rawStateVecCubic =
         orbit.interpolationStrategy == "raw_state_vec_nearest_contiguous_8_osv_cubic_least_squares_v1";
@@ -93,28 +94,66 @@ bool validOrbitContract(const TopsFepV5Orbit& orbit)
         orbit.interpolationStrategy == "orbit_state_vectors_apply_orbit_1s_lagrange_v1";
     const bool fineV2CubicHermite =
         orbit.interpolationStrategy == "fine_state_vec_cubic_hermite_v2";
-    if (orbit.stateVectors.type() != CV_64F || orbit.stateVectors.cols != 7 ||
-        orbit.stateVectors.rows < (rawStateVecCubic ? 8 : 4) || orbit.timeScale != "GPS" ||
-        !std::isfinite(orbit.acquisitionStartGps) || !std::isfinite(orbit.acquisitionStopGps) ||
-        !(orbit.acquisitionStopGps > orbit.acquisitionStartGps) ||
-		!std::isfinite(orbit.geometryStartGps) || !std::isfinite(orbit.geometryStopGps) ||
-		!(orbit.geometryStopGps > orbit.geometryStartGps) || !std::isfinite(orbit.interpolationMarginSeconds) ||
-		orbit.interpolationMarginSeconds <= 0.0 ||
-        !std::isfinite(orbit.osvStartGps) || !std::isfinite(orbit.osvStopGps) ||
-        !(orbit.osvStopGps > orbit.osvStartGps) || orbit.source.empty() || orbit.selectionReason.empty() ||
-        (!rawStateVecCubic && !fineApplyOrbit && !fineV2CubicHermite) ||
-        (rawStateVecCubic && orbit.source != "state_vec") ||
-        (fineV2CubicHermite && orbit.source != "fine_state_vec"))
-    {
+    if (orbit.stateVectors.type() != CV_64F || orbit.stateVectors.cols != 7) {
+        if (error) *error = "stateVectors type/cols invalid (type=" + std::to_string(orbit.stateVectors.type()) + ", cols=" + std::to_string(orbit.stateVectors.cols) + ")";
+        return false;
+    }
+    if (orbit.stateVectors.rows < (rawStateVecCubic ? 8 : 4)) {
+        if (error) *error = "stateVectors rows too few (" + std::to_string(orbit.stateVectors.rows) + ")";
+        return false;
+    }
+    if (orbit.timeScale != "GPS") {
+        if (error) *error = "timeScale != GPS (" + orbit.timeScale + ")";
+        return false;
+    }
+    if (!std::isfinite(orbit.acquisitionStartGps) || !std::isfinite(orbit.acquisitionStopGps) ||
+        !(orbit.acquisitionStopGps > orbit.acquisitionStartGps)) {
+        if (error) *error = "acquisition GPS range invalid";
+        return false;
+    }
+    if (!std::isfinite(orbit.geometryStartGps) || !std::isfinite(orbit.geometryStopGps) ||
+        !(orbit.geometryStopGps > orbit.geometryStartGps)) {
+        if (error) *error = "geometry GPS range invalid";
+        return false;
+    }
+    if (!std::isfinite(orbit.interpolationMarginSeconds) || orbit.interpolationMarginSeconds <= 0.0) {
+        if (error) *error = "interpolationMarginSeconds invalid";
+        return false;
+    }
+    if (!std::isfinite(orbit.osvStartGps) || !std::isfinite(orbit.osvStopGps) ||
+        !(orbit.osvStopGps > orbit.osvStartGps)) {
+        if (error) *error = "osv GPS range invalid";
+        return false;
+    }
+    if (orbit.source.empty() || orbit.selectionReason.empty()) {
+        if (error) *error = "source or selectionReason empty";
+        return false;
+    }
+    if (!rawStateVecCubic && !fineApplyOrbit && !fineV2CubicHermite) {
+        if (error) *error = "unsupported interpolationStrategy (" + orbit.interpolationStrategy + ")";
+        return false;
+    }
+    if (rawStateVecCubic && orbit.source != "state_vec") {
+        if (error) *error = "rawStateVecCubic but source != state_vec (" + orbit.source + ")";
+        return false;
+    }
+    if (fineV2CubicHermite && orbit.source != "fine_state_vec") {
+        if (error) *error = "fineV2CubicHermite but source != fine_state_vec (" + orbit.source + ")";
         return false;
     }
     for (int row = 0; row < orbit.stateVectors.rows; ++row)
     {
         for (int column = 0; column < orbit.stateVectors.cols; ++column)
         {
-            if (!std::isfinite(orbit.stateVectors.at<double>(row, column))) return false;
+            if (!std::isfinite(orbit.stateVectors.at<double>(row, column))) {
+                if (error) *error = "stateVectors contains non-finite at row " + std::to_string(row) + ", col " + std::to_string(column);
+                return false;
+            }
         }
-        if (row > 0 && orbit.stateVectors.at<double>(row, 0) <= orbit.stateVectors.at<double>(row - 1, 0)) return false;
+        if (row > 0 && orbit.stateVectors.at<double>(row, 0) <= orbit.stateVectors.at<double>(row - 1, 0)) {
+            if (error) *error = "stateVectors timestamps not strictly increasing at row " + std::to_string(row);
+            return false;
+        }
     }
     const double first = orbit.stateVectors.at<double>(0, 0);
     const double last = orbit.stateVectors.at<double>(orbit.stateVectors.rows - 1, 0);
@@ -122,8 +161,21 @@ bool validOrbitContract(const TopsFepV5Orbit& orbit)
         ? first <= orbit.geometryStartGps && last >= orbit.geometryStopGps
         : first <= orbit.geometryStartGps - orbit.interpolationMarginSeconds &&
           last >= orbit.geometryStopGps + orbit.interpolationMarginSeconds;
-    return std::fabs(first - orbit.osvStartGps) < 1e-6 && std::fabs(last - orbit.osvStopGps) < 1e-6 &&
-           geometryCovered;
+    if (std::fabs(first - orbit.osvStartGps) >= 1e-6) {
+        if (error) *error = "first timestamp differs from osvStartGps (" + std::to_string(first) + " vs " + std::to_string(orbit.osvStartGps) + ")";
+        return false;
+    }
+    if (std::fabs(last - orbit.osvStopGps) >= 1e-6) {
+        if (error) *error = "last timestamp differs from osvStopGps (" + std::to_string(last) + " vs " + std::to_string(orbit.osvStopGps) + ")";
+        return false;
+    }
+    if (!geometryCovered) {
+        if (error) *error = "geometry not covered (first=" + std::to_string(first) + ", last=" + std::to_string(last) +
+            ", geoStart=" + std::to_string(orbit.geometryStartGps) + ", geoStop=" + std::to_string(orbit.geometryStopGps) +
+            ", margin=" + std::to_string(orbit.interpolationMarginSeconds) + ")";
+        return false;
+    }
+    return true;
 }
 }
 
@@ -210,22 +262,65 @@ TopsNativeGeometry::TopsNativeGeometry(const TopsFepV5Orbit& masterOrbit,
 
 TopsNativeGeometry::~TopsNativeGeometry() = default;
 
-bool TopsNativeGeometry::prepare()
+bool TopsNativeGeometry::prepare(std::string* failureReason)
 {
-    if (!validOrbitContract(m_masterOrbit) || !validOrbitContract(m_slaveOrbit) ||
-        m_masterOrbit.interpolationStrategy != m_slaveOrbit.interpolationStrategy ||
-        m_options.masterLookSide == 0 || m_options.maxRdeIterations < 1 ||
-        m_options.maxZeroDopplerIterations < 1 || m_options.slaveSearchHalfWindowSeconds <= 0.0 ||
-		m_options.slaveSearchMaximumHalfWindowSeconds < m_options.slaveSearchHalfWindowSeconds ||
-        m_options.slaveSearchExpansionFactor <= 1.0 || m_options.maxSlaveSearchExpansions < 0 ||
-        !std::isfinite(m_options.maxSlaveRangeError) || m_options.maxSlaveRangeError <= 0.0)
-    {
+    std::string err;
+    if (!validOrbitContract(m_masterOrbit, &err)) {
+        if (failureReason) *failureReason = "masterOrbit: " + err;
+        return false;
+    }
+    if (!validOrbitContract(m_slaveOrbit, &err)) {
+        if (failureReason) *failureReason = "slaveOrbit: " + err;
+        return false;
+    }
+    if (m_masterOrbit.interpolationStrategy != m_slaveOrbit.interpolationStrategy) {
+        if (failureReason) *failureReason = "interpolationStrategy mismatch: master=" + m_masterOrbit.interpolationStrategy + ", slave=" + m_slaveOrbit.interpolationStrategy;
+        return false;
+    }
+    if (m_options.masterLookSide == 0) {
+        if (failureReason) *failureReason = "masterLookSide == 0";
+        return false;
+    }
+    if (m_options.maxRdeIterations < 1) {
+        if (failureReason) *failureReason = "maxRdeIterations < 1 (" + std::to_string(m_options.maxRdeIterations) + ")";
+        return false;
+    }
+    if (m_options.maxZeroDopplerIterations < 1) {
+        if (failureReason) *failureReason = "maxZeroDopplerIterations < 1 (" + std::to_string(m_options.maxZeroDopplerIterations) + ")";
+        return false;
+    }
+    if (m_options.slaveSearchHalfWindowSeconds <= 0.0) {
+        if (failureReason) *failureReason = "slaveSearchHalfWindowSeconds <= 0.0 (" + std::to_string(m_options.slaveSearchHalfWindowSeconds) + ")";
+        return false;
+    }
+    if (m_options.slaveSearchMaximumHalfWindowSeconds < m_options.slaveSearchHalfWindowSeconds) {
+        if (failureReason) *failureReason = "slaveSearchMaximumHalfWindowSeconds < slaveSearchHalfWindowSeconds";
+        return false;
+    }
+    if (m_options.slaveSearchExpansionFactor <= 1.0) {
+        if (failureReason) *failureReason = "slaveSearchExpansionFactor <= 1.0 (" + std::to_string(m_options.slaveSearchExpansionFactor) + ")";
+        return false;
+    }
+    if (m_options.maxSlaveSearchExpansions < 0) {
+        if (failureReason) *failureReason = "maxSlaveSearchExpansions < 0 (" + std::to_string(m_options.maxSlaveSearchExpansions) + ")";
+        return false;
+    }
+    if (!std::isfinite(m_options.maxSlaveRangeError) || m_options.maxSlaveRangeError <= 0.0) {
+        if (failureReason) *failureReason = "maxSlaveRangeError invalid or <= 0.0 (" + std::to_string(m_options.maxSlaveRangeError) + ")";
         return false;
     }
     if (m_masterOrbit.interpolationStrategy == "raw_state_vec_nearest_contiguous_8_osv_cubic_least_squares_v1") {
         m_masterRaw.reset(new RawStateVecCubicInterpolator(m_masterOrbit.stateVectors));
         m_slaveRaw.reset(new RawStateVecCubicInterpolator(m_slaveOrbit.stateVectors));
-        return m_masterRaw->prepare() && m_slaveRaw->prepare();
+        if (!m_masterRaw->prepare()) {
+            if (failureReason) *failureReason = "m_masterRaw->prepare() returned false";
+            return false;
+        }
+        if (!m_slaveRaw->prepare()) {
+            if (failureReason) *failureReason = "m_slaveRaw->prepare() returned false";
+            return false;
+        }
+        return true;
     }
     const OrbitInterpolationMode mode = m_masterOrbit.interpolationStrategy == "fine_state_vec_cubic_hermite_v2"
         ? OrbitInterpolationMode::FineV2CubicHermite
@@ -238,7 +333,17 @@ bool TopsNativeGeometry::prepare()
                                             m_slaveOrbit.geometryStartGps,
                                             m_slaveOrbit.geometryStopGps,
                                             mode));
-    return m_masterFine->applyOrbit() == 0 && m_slaveFine->applyOrbit() == 0;
+    const int masterRc = m_masterFine->applyOrbit();
+    if (masterRc != 0) {
+        if (failureReason) *failureReason = "m_masterFine->applyOrbit() failed, rc=" + std::to_string(masterRc);
+        return false;
+    }
+    const int slaveRc = m_slaveFine->applyOrbit();
+    if (slaveRc != 0) {
+        if (failureReason) *failureReason = "m_slaveFine->applyOrbit() failed, rc=" + std::to_string(slaveRc);
+        return false;
+    }
+    return true;
 }
 
 bool TopsNativeGeometry::masterState(double time, Position& position, Velocity& velocity) const
@@ -420,6 +525,146 @@ bool TopsNativeGeometry::solveMasterH0Point(const Position& satellite,
     statistics.maxJacobianCondition = std::max(statistics.maxJacobianCondition, condition);
 	statistics.masterRdeElapsedMilliseconds +=
 		std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+    return true;
+}
+
+bool TopsNativeGeometry::solveMasterReferenceHeightPoint(const Position& satellite,
+                                                         const Velocity& velocity,
+                                                         double rhoMaster,
+                                                         double referenceEllipsoidHeight,
+                                                         const Position* rangeSeed,
+                                                         Position& point,
+                                                         SampleClosure& closure,
+                                                         TopsFepV5BurstStatistics& statistics) const
+{
+    if (!std::isfinite(referenceEllipsoidHeight) ||
+        referenceEllipsoidHeight <= -kSemiMinorAxis + 1.0) return false;
+    if (std::fabs(referenceEllipsoidHeight) <= 1e-9) {
+        return solveMasterH0Point(satellite, velocity, rhoMaster, rangeSeed, point, closure, statistics);
+    }
+
+    const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+    const cv::Vec3d s = toVector(satellite);
+    const cv::Vec3d v = toVector(velocity);
+    const double speed = vectorNorm(v);
+    if (!finiteVector(s) || !finiteVector(v) || !std::isfinite(rhoMaster) || rhoMaster <= 0.0 || speed <= 0.0)
+        return false;
+    const cv::Vec3d vUnit = v * (1.0 / speed);
+    cv::Vec3d towardEarth = -s;
+    towardEarth -= vUnit * towardEarth.dot(vUnit);
+    const double towardEarthNorm = vectorNorm(towardEarth);
+    const cv::Vec3d lookAxis = v.cross(s);
+    const double lookAxisNorm = vectorNorm(lookAxis);
+    if (towardEarthNorm <= 0.0 || lookAxisNorm <= 0.0) return false;
+    const cv::Vec3d e1 = towardEarth * (1.0 / towardEarthNorm);
+    const cv::Vec3d e2 = vUnit.cross(e1);
+	const double heightTolerance = kSemiMajorAxis * m_options.maxRdeResidual;
+    // A constant geodetic/ellipsoidal height is not an ellipsoid obtained by
+    // adding h to both semi-axes.  Evaluate height through the project's
+    // canonical ECEF-to-ellipsoid conversion so h_ref has exactly the same
+    // meaning as ell2xyz() consumers use.
+    const auto evaluate = [&](double theta) {
+        const cv::Vec3d p = s + rhoMaster * (std::cos(theta) * e1 + std::sin(theta) * e2);
+        double latitude = 0.0, longitude = 0.0, height = 0.0;
+        if (!finiteVector(p) || Utils::xyz2ell(p[0], p[1], p[2], latitude, longitude, height) != 0 ||
+            !std::isfinite(height)) return std::numeric_limits<double>::quiet_NaN();
+        return height - referenceEllipsoidHeight;
+    };
+
+    double left = 0.0;
+    double right = 0.0;
+    double fLeft = 0.0;
+    double fRight = 0.0;
+    bool bracketed = false;
+    const auto acceptBracket = [&](double candidateLeft, double candidateRight,
+                                   double candidateFLeft, double candidateFRight) {
+        if (!std::isfinite(candidateFLeft) || !std::isfinite(candidateFRight) ||
+            candidateFLeft * candidateFRight > 0.0) return false;
+        const double mid = 0.5 * (candidateLeft + candidateRight);
+        const cv::Vec3d candidate = s + rhoMaster * (std::cos(mid) * e1 + std::sin(mid) * e2);
+        if ((candidate - s).dot(lookAxis) * m_options.masterLookSide <= 0.0) return false;
+        left = candidateLeft;
+        right = candidateRight;
+        fLeft = candidateFLeft;
+        fRight = candidateFRight;
+        return true;
+    };
+    if (rangeSeed) {
+        const cv::Vec3d seedLos = toVector(*rangeSeed) - s;
+        const double seedNorm = vectorNorm(seedLos);
+        if (seedNorm > 0.0) {
+            const double seed = std::atan2(seedLos.dot(e2) / seedNorm, seedLos.dot(e1) / seedNorm);
+            const cv::Vec3d candidate = s + rhoMaster * (std::cos(seed) * e1 + std::sin(seed) * e2);
+            if ((candidate - s).dot(lookAxis) * m_options.masterLookSide > 0.0) {
+                const double candidateLeft = seed - 0.05;
+                const double candidateRight = seed + 0.05;
+                bracketed = acceptBracket(candidateLeft, candidateRight,
+                                          evaluate(candidateLeft), evaluate(candidateRight));
+            }
+        }
+    }
+    for (int index = 0; !bracketed && index < 720; ++index) {
+        const double candidateLeft = -CV_PI + 2.0 * CV_PI * index / 720.0;
+        const double candidateRight = -CV_PI + 2.0 * CV_PI * (index + 1) / 720.0;
+        bracketed = acceptBracket(candidateLeft, candidateRight,
+                                  evaluate(candidateLeft), evaluate(candidateRight));
+    }
+    if (!bracketed) return false;
+
+    double theta = 0.5 * (left + right);
+    double lastStep = std::numeric_limits<double>::infinity();
+    int iteration = 0;
+    bool converged = false;
+    for (; iteration < m_options.maxRdeIterations; ++iteration) {
+        const double value = evaluate(theta);
+        if (!std::isfinite(value)) return false;
+        if (std::fabs(value) <= heightTolerance) {
+            converged = true;
+            break;
+        }
+        if (fLeft * value <= 0.0) {
+            right = theta;
+            fRight = value;
+        } else {
+            left = theta;
+            fLeft = value;
+        }
+        const double midpoint = 0.5 * (left + right);
+        const double delta = 1e-7;
+        const double derivative = (evaluate(theta + delta) - evaluate(theta - delta)) / (2.0 * delta);
+        double next = midpoint;
+        if (std::isfinite(derivative) && std::fabs(derivative) > 1e-14) {
+            const double newton = theta - value / derivative;
+            if (std::isfinite(newton) && newton > left && newton < right) next = newton;
+        }
+        lastStep = next - theta;
+        theta = next;
+    }
+    const cv::Vec3d solved = s + rhoMaster * (std::cos(theta) * e1 + std::sin(theta) * e2);
+    const cv::Vec3d los = solved - s;
+    const double rangeResidual = std::fabs(vectorNorm(los) - rhoMaster);
+    const double dopplerResidual = std::fabs(los.dot(v) / (rhoMaster * speed));
+    const double heightResidual = std::fabs(evaluate(theta));
+    double condition = 0.0;
+    double pointErrorBound = 0.0;
+    if (!rdeConditionAndPointBound(solved, s, v, rhoMaster, rangeResidual,
+                                   dopplerResidual, heightResidual, condition, pointErrorBound)) return false;
+    if (!finiteVector(solved) || los.dot(lookAxis) * m_options.masterLookSide <= 0.0 ||
+        rangeResidual > m_options.maxRdeResidual || dopplerResidual > m_options.maxZeroDopplerResidual ||
+        heightResidual > heightTolerance || condition > m_options.maxJacobianCondition ||
+        !std::isfinite(pointErrorBound) || !converged)
+        return false;
+    point = toPosition(solved);
+    closure.masterRangeErrorBound = pointErrorBound;
+    closure.masterPointLastStep = std::fabs(lastStep) * rhoMaster;
+    statistics.maxRdeIterations = std::max(statistics.maxRdeIterations, iteration + 1);
+    statistics.totalRdeIterations += iteration + 1;
+    statistics.maxMasterRangeResidual = std::max(statistics.maxMasterRangeResidual, rangeResidual);
+    statistics.maxMasterZeroDopplerResidual = std::max(statistics.maxMasterZeroDopplerResidual, dopplerResidual);
+    statistics.maxEllipsoidResidual = std::max(statistics.maxEllipsoidResidual, heightResidual);
+	statistics.maxJacobianCondition = std::max(statistics.maxJacobianCondition, condition);
+    statistics.masterRdeElapsedMilliseconds +=
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
     return true;
 }
 

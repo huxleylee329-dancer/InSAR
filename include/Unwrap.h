@@ -402,6 +402,20 @@ public:
 		void* eventUserData,
 		UnwrapDiagnostic* diagnostic
 	);
+	// Mask-aware file-based SNAPHU entry point. valid_mask must be CV_8UC1,
+	// match the phase grid, and use 0 for invalid pixels and 1 for valid pixels.
+	int SnaphuFileMaskedEx2(
+		const char* wrapped_phase_file,
+		const Mat& valid_mask,
+		Mat& unwrapped_phase,
+		const char* project_path,
+		const char* tmp_folder,
+		const char* exe_path,
+		const SnaphuRunOptionsV1* options,
+		SnaphuRunEventCallbackV1 eventCallback,
+		void* eventUserData,
+		UnwrapDiagnostic* diagnostic
+	);
 
 	/*@brief 统计费用流法解缠（SNAPHU）
 	* @param wrapped_phase                               待解缠相位
@@ -495,8 +509,8 @@ private:
 	int McfDelaunayInternal(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb);
 	int QualityGuidedMCFInternal(const Mat& wrapped_phase, Mat& unwrapped_phase, double coherence_thresh,
 		double distance_thresh, const char* tmp_path, const char* EXE_path, UnwrapProgressCallback cb);
-	int SnaphuFileInternal(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
-		const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb);
+	int SnaphuFileInternal(const char* wrapped_phase_file, const Mat* valid_mask, Mat& unwrapped_phase,
+		const char* project_path, const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb);
 	int SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
 		UnwrapProgressCallback cb);
 	char error_head[256];
