@@ -116,6 +116,8 @@ struct UnwrapDiagnostic
 	uint32_t stage;
 	int32_t operationStatus;
 	uint32_t win32Error;
+	// Process exit code; zero when the external process was not started or no
+	// exit code is available yet.
 	uint32_t exitCode;
 	uint8_t cancelled;
 	uint8_t reserved[3];

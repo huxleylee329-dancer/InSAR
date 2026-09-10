@@ -15,6 +15,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <iomanip>
 #include <algorithm>
 
 #ifdef _DEBUG
@@ -98,6 +99,283 @@ using namespace cv;
 		destination[length] = '\0';
 	}
 
+	void setActiveDiagnosticFailure(UnwrapDiagnosticStage stage, const std::string& summary)
+	{
+		if (!g_activeDiagnostic) return;
+		g_activeDiagnostic->stage = stage;
+		copyDiagnosticText(g_activeDiagnostic->tool, sizeof(g_activeDiagnostic->tool), "MCF");
+		copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary), summary);
+	}
+
+	constexpr long long kDimacsCostScale = 1000000LL;
+	constexpr long long kCs2PriceSafetyFactor = 64LL;
+	constexpr double kMcfSupplyIntegerTolerance = 1e-9;
+	// A conservative working-set ceiling for the legacy CS2 process. This is a
+	// memory budget derived from the network estimate, not a fixed pixel limit.
+	constexpr uint64_t kMcfWorkingSetBudgetBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+
+	// These layouts mirror the arrays allocated by Mcf/mcmf.cpp.  The estimate
+	// intentionally includes parser and flow-vector storage as well as CS2's
+	// working arrays, so a network is rejected before DIMACS generation when the
+	// solver would require an impractical amount of memory.
+	struct Cs2NodeLayoutEstimate
+	{
+		int64_t excess;
+		int64_t price;
+		void* first;
+		void* current;
+		void* suspended;
+		void* qNext;
+		void* bucketNext;
+		void* bucketPrevious;
+		long rank;
+		long input;
+	};
+
+	struct Cs2ArcLayoutEstimate
+	{
+		long residualCapacity;
+		int64_t cost;
+		void* head;
+		void* sister;
+		long sourceIndex;
+	};
+
+	struct Cs2BucketLayoutEstimate
+	{
+		void* first;
+	};
+
+	struct McfInputArcLayoutEstimate
+	{
+		long tail;
+		long head;
+		long lower;
+		long upper;
+		long long cost;
+	};
+
+	struct McfPreflightReport
+	{
+		uint64_t nodes = 0;
+		uint64_t arcs = 0;
+		uint64_t estimatedWorkingSetBytes = 0;
+		double rawCostMin = 0.0;
+		double rawCostMax = 0.0;
+		long long scaledCostMin = 0;
+		long long scaledCostMax = 0;
+		long long cs2MaximumCost = 0;
+		std::string costLabel;
+		std::string failure;
+	};
+
+	bool checkedAdd(uint64_t left, uint64_t right, uint64_t& output)
+	{
+		if (right > (std::numeric_limits<uint64_t>::max)() - left) return false;
+		output = left + right;
+		return true;
+	}
+
+	bool checkedMultiply(uint64_t left, uint64_t right, uint64_t& output)
+	{
+		if (left != 0 && right > (std::numeric_limits<uint64_t>::max)() / left) return false;
+		output = left * right;
+		return true;
+	}
+
+	bool scaleDimacsCostForPreflight(double value, long long& output)
+	{
+		if (!std::isfinite(value) || value < 0.0) return false;
+		const long double scaled = static_cast<long double>(value) * static_cast<long double>(kDimacsCostScale);
+		if (scaled > static_cast<long double>((std::numeric_limits<long long>::max)()) - 0.5L) return false;
+		output = std::llround(scaled);
+		return true;
+	}
+
+	std::string formatMcfBytes(uint64_t bytes)
+	{
+		char buffer[96] = {};
+		sprintf_s(buffer, sizeof(buffer), "%.1f GiB", static_cast<double>(bytes) /
+			(1024.0 * 1024.0 * 1024.0));
+		return buffer;
+	}
+
+	std::string formatMcfPreflightReport(const McfPreflightReport& report)
+	{
+		std::ostringstream message;
+		message << report.failure
+			<< ": nodes=" << report.nodes
+			<< ", arcs=" << report.arcs
+			<< ", estimatedWorkingSet=" << formatMcfBytes(report.estimatedWorkingSetBytes)
+			<< ", budget=" << formatMcfBytes(kMcfWorkingSetBudgetBytes)
+			<< ", raw " << (report.costLabel.empty() ? "cost" : report.costLabel)
+			<< "=[" << std::setprecision(17) << report.rawCostMin << "," << report.rawCostMax << "]"
+			<< ", scaledCost=[" << report.scaledCostMin << "," << report.scaledCostMax << "]"
+			<< ", cs2MaxCost=" << report.cs2MaximumCost;
+		return message.str();
+	}
+
+	void logMcfPreflightReport(const McfPreflightReport& report)
+	{
+		fprintf(stderr,
+			"MCF preflight: nodes=%llu arcs=%llu raw_%s=[%.17g,%.17g] scaledCost=[%lld,%lld] cs2MaxCost=%lld estimatedWorkingSet=%s budget=%s\n",
+			static_cast<unsigned long long>(report.nodes),
+			static_cast<unsigned long long>(report.arcs),
+			report.costLabel.empty() ? "cost" : report.costLabel.c_str(),
+			report.rawCostMin, report.rawCostMax,
+			report.scaledCostMin, report.scaledCostMax,
+			report.cs2MaximumCost,
+			formatMcfBytes(report.estimatedWorkingSetBytes).c_str(),
+			formatMcfBytes(kMcfWorkingSetBudgetBytes).c_str());
+	}
+
+	bool preflightMcfNetwork(const Mat& residue, const Mat& dimacsCost, double threshold,
+		const char* costLabel, McfPreflightReport& report)
+	{
+		report = McfPreflightReport{};
+		report.costLabel = costLabel ? costLabel : "cost";
+		if (residue.rows < 2 || residue.cols < 2 || dimacsCost.rows < 2 || dimacsCost.cols < 2 ||
+			residue.type() != CV_64F || dimacsCost.type() != CV_64F ||
+			dimacsCost.rows != residue.rows + 1 || dimacsCost.cols != residue.cols + 1)
+		{
+			report.failure = "input data invalid: MCF residue or cost matrix type/dimensions are unsupported";
+			return false;
+		}
+
+		const uint64_t residueRows = static_cast<uint64_t>(residue.rows);
+		const uint64_t residueCols = static_cast<uint64_t>(residue.cols);
+		uint64_t pixelCount = 0;
+		if (!checkedMultiply(residueRows, residueCols, pixelCount) ||
+			!checkedAdd(pixelCount, 1, report.nodes))
+		{
+			report.failure = "MCF network dimensions overflow Core safety checks";
+			return false;
+		}
+
+		uint64_t term = 0;
+		if (!checkedMultiply(2, residueRows - 1, term) || !checkedMultiply(term, residueCols, term) ||
+			!checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(2, residueRows, term) || !checkedMultiply(term, residueCols - 1, term) ||
+			!checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(4, residueCols, term) || !checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(4, residueRows - 2, term) || !checkedAdd(report.arcs, term, report.arcs))
+		{
+			report.failure = "MCF network arc count overflow Core safety checks";
+			return false;
+		}
+
+		if (report.nodes > static_cast<uint64_t>((std::numeric_limits<long>::max)()) ||
+			report.arcs > static_cast<uint64_t>((std::numeric_limits<long>::max)()))
+		{
+			report.failure = "MCF network dimensions exceed the solver's long integer limits";
+			return false;
+		}
+
+		report.rawCostMin = (std::numeric_limits<double>::infinity)();
+		report.rawCostMax = -(std::numeric_limits<double>::infinity)();
+		for (int row = 0; row < dimacsCost.rows; ++row)
+		{
+			for (int column = 0; column < dimacsCost.cols; ++column)
+			{
+				const double value = dimacsCost.at<double>(row, column);
+				if (!std::isfinite(value) || value < 0.0)
+				{
+					char buffer[256] = {};
+					sprintf_s(buffer, sizeof(buffer),
+						"input data invalid: non-finite or negative %s at (%d,%d): %.17g",
+						report.costLabel.c_str(), row, column, value);
+					report.failure = buffer;
+					return false;
+				}
+				report.rawCostMin = (std::min)(report.rawCostMin, value);
+				report.rawCostMax = (std::max)(report.rawCostMax, value);
+			}
+		}
+		if (!scaleDimacsCostForPreflight(report.rawCostMin, report.scaledCostMin) ||
+			!scaleDimacsCostForPreflight(report.rawCostMax, report.scaledCostMax))
+		{
+			report.failure = "input data invalid: DIMACS cost scaling overflows signed 64-bit range";
+			return false;
+		}
+
+		for (int row = 0; row < residue.rows; ++row)
+		{
+			for (int column = 0; column < residue.cols; ++column)
+			{
+				const double value = residue.at<double>(row, column);
+				if (!std::isfinite(value))
+				{
+					char buffer[256] = {};
+					sprintf_s(buffer, sizeof(buffer), "input data invalid: non-finite residue at (%d,%d)", row, column);
+					report.failure = buffer;
+					return false;
+				}
+				if (std::fabs(value) > threshold)
+				{
+					const double rounded = std::round(value);
+					if (!std::isfinite(rounded) ||
+						std::fabs(value - rounded) > kMcfSupplyIntegerTolerance ||
+						value < static_cast<double>(LONG_MIN) || value > static_cast<double>(LONG_MAX))
+					{
+						char buffer[256] = {};
+						sprintf_s(buffer, sizeof(buffer),
+							"input data invalid: non-integral residue at (%d,%d): %.17g", row, column, value);
+						report.failure = buffer;
+						return false;
+					}
+				}
+			}
+		}
+
+		const long long nodeCount = static_cast<long long>(report.nodes);
+		report.cs2MaximumCost = (std::numeric_limits<long long>::max)() / (nodeCount + 1);
+		report.cs2MaximumCost /= (nodeCount + 1);
+		report.cs2MaximumCost /= kCs2PriceSafetyFactor;
+
+		uint64_t bytes = 0;
+		uint64_t count = 0;
+		const uint64_t directedArcSlots = 2 * report.arcs + 1;
+		const uint64_t twoArcSlots = 2 * report.arcs;
+		const uint64_t bucketCount = (report.nodes + 1) * 12 + 2;
+		const auto addAllocation = [&bytes](uint64_t itemCount, size_t itemSize) {
+			uint64_t allocation = 0;
+			uint64_t next = 0;
+			return checkedMultiply(itemCount, static_cast<uint64_t>(itemSize), allocation) &&
+				checkedAdd(bytes, allocation, next) && (bytes = next, true);
+		};
+		if (!checkedAdd(report.nodes, 2, count) ||
+			!addAllocation(count, sizeof(Cs2NodeLayoutEstimate)) ||
+			!addAllocation(directedArcSlots, sizeof(Cs2ArcLayoutEstimate)) ||
+			!addAllocation(twoArcSlots, sizeof(long)) ||
+			!addAllocation(twoArcSlots, sizeof(long)) ||
+			!addAllocation(count, sizeof(long)) ||
+			!addAllocation(bucketCount, sizeof(Cs2BucketLayoutEstimate)) ||
+			!addAllocation(report.nodes, sizeof(int64_t)) ||
+			!addAllocation(report.arcs, sizeof(McfInputArcLayoutEstimate)) ||
+			!addAllocation(report.nodes, sizeof(long long)) ||
+			!addAllocation(report.arcs, sizeof(long)))
+		{
+			report.failure = "MCF network working-set estimate overflowed Core safety checks";
+			return false;
+		}
+		report.estimatedWorkingSetBytes = bytes;
+
+		if (report.estimatedWorkingSetBytes > kMcfWorkingSetBudgetBytes)
+		{
+			report.failure = "MCF network scale unsupported by current CS2 implementation; use SNAPHU tiled mode or SPD Guided";
+			return false;
+		}
+		if (report.scaledCostMax > report.cs2MaximumCost)
+		{
+			std::ostringstream failure;
+			failure << "solver numerical strategy rejected DIMACS cost: scaled maximum "
+				<< report.scaledCostMax << " exceeds CS2 limit " << report.cs2MaximumCost;
+			report.failure = failure.str();
+			return false;
+		}
+		return true;
+	}
+
 	bool initializeDiagnostic(UnwrapDiagnostic* diagnostic, uint32_t algorithm)
 	{
 		if (!diagnostic || diagnostic->structSize < sizeof(UnwrapDiagnostic)) return false;
@@ -106,7 +384,9 @@ using namespace cv;
 		diagnostic->algorithm = algorithm;
 		diagnostic->stage = UNWRAP_DIAGNOSTIC_STAGE_INTERNAL;
 		diagnostic->operationStatus = -1;
-		diagnostic->exitCode = STILL_ACTIVE;
+		// No external process has started at diagnostic initialization.  A real
+		// process exit code is written by the process runner after launch.
+		diagnostic->exitCode = 0;
 		return true;
 	}
 
@@ -204,7 +484,11 @@ using namespace cv;
 		std::string tool;
 		std::string phase;
 		DWORD win32Error = ERROR_SUCCESS;
-		DWORD exitCode = STILL_ACTIVE;
+		// Zero means that no process exit code is available yet.  STILL_ACTIVE
+		// is only meaningful after CreateProcess succeeds and must not leak into
+		// prepare/path diagnostics.
+		DWORD exitCode = 0;
+		bool processStarted = false;
 		bool cancelled = false;
 		bool timedOut = false;
 		bool terminationUncertain = false;
@@ -230,13 +514,22 @@ using namespace cv;
 			else if (phase == "launch") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_LAUNCH;
 			else if (phase == "input") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_INPUT;
 			diagnostic.win32Error = win32Error;
-			diagnostic.exitCode = exitCode;
+			// A launch/prepare failure has no process exit code.  Keep the public
+			// diagnostic explicit instead of reporting Windows STILL_ACTIVE (259).
+			diagnostic.exitCode = processStarted ? exitCode : 0;
 			diagnostic.cancelled = cancelled ? 1 : 0;
 			if (!validationFailure.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), validationFailure);
 			else if (terminationUncertain) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool termination could not be confirmed");
 			else if (timedOut) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool timed out");
 			else if (cancelled) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cancelled");
 			else if (!cleanupResiduals.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cleanup left managed artifacts");
+			else if (phase == "launch") copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool launch failed");
+			else if (processStarted && phase == "process exit")
+			{
+				std::ostringstream failure;
+				failure << "external " << (tool.empty() ? "solver" : tool) << " process exited with code " << exitCode;
+				copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), failure.str());
+			}
 			else copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool process failed");
 			copyDiagnosticText(diagnostic.stderrTail, sizeof(diagnostic.stderrTail), redactExternalText(stderrTail));
 		}
@@ -607,6 +900,7 @@ using namespace cv;
 			if (output) *output = result;
 			return false;
 		}
+		result.processStarted = true;
 		CloseHandle(stdoutWrite);
 		stdoutWrite = INVALID_HANDLE_VALUE;
 		CloseHandle(stderrWrite);
@@ -954,6 +1248,19 @@ using namespace cv;
 		}
 		if (!runExternalProcessUtf8(executableFolder, L"mcf.exe", networkFile, "MCF", errorMessage, cb, &result))
 		{
+			if (result.phase == "process exit" && result.win32Error == ERROR_SUCCESS)
+			{
+				if (result.exitCode == 65)
+					result.validationFailure = "solver rejected DIMACS input (exit=65): parser or CS2 numeric safety limits rejected a node or arc";
+				else if (result.exitCode == 70)
+					result.validationFailure = "MCF solver failed after DIMACS parsing (exit=70): infeasible network or solver resource failure";
+				else
+				{
+					std::ostringstream failure;
+					failure << "MCF solver process exited with code " << result.exitCode;
+					result.validationFailure = failure.str();
+				}
+			}
 			if (artifacts && GetFileAttributesW(wideSolution.c_str()) != INVALID_FILE_ATTRIBUTES)
 			{
 				artifacts->markOwned(wideSolution);
@@ -1250,6 +1557,8 @@ int Unwrap::MCFInternal(
 		residue.type() != CV_64F)
 	{
 		fprintf(stderr, "MCF(): input check failed!\n\n");
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_INPUT,
+			"input data invalid: MCF phase, coherence, residue types or dimensions are inconsistent");
 		return -1;
 	}
 	USES_CONVERSION;
@@ -1295,6 +1604,16 @@ int Unwrap::MCFInternal(
 		unwrapped_phase = unwrapped_phase + wrapped_phase.at<double>(0, 0);
 		return 0;
 	}
+	McfPreflightReport preflight;
+	if (!preflightMcfNetwork(residue, coherence, 0.5, "coherence", preflight))
+	{
+		logMcfPreflightReport(preflight);
+		const std::string message = formatMcfPreflightReport(preflight);
+		fprintf(stderr, "MCF preflight rejected: %s\n\n", message.c_str());
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE, message);
+		return -1;
+	}
+	logMcfPreflightReport(preflight);
 	string taskFolder;
 	std::wstring taskFolderWide;
 	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
@@ -1310,7 +1629,12 @@ int Unwrap::MCFInternal(
 		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
 	ret = util.write_DIMACS(taskNetwork.c_str(), residue, coherence, 0.5);
 	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
-	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
+	if (return_check(ret, "write_DIMACS(*, *, *)", error_head))
+	{
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE,
+			"input data invalid or DIMACS preparation failed before MCF launch");
+		return -1;
+	}
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
 	if (!runMcfProcess(MCF_EXE_PATH, taskNetwork.c_str(), "MCF(): mcf.exe failed!", cb, &artifacts, &toolResult))
 	{
@@ -1361,6 +1685,8 @@ int Unwrap::MCFImprovedInternal(
 		wrapped_phase.type() != CV_64F)
 	{
 		fprintf(stderr, "MCF_improved(): input check failed!\n\n");
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_INPUT,
+			"input data invalid: MCF improved phase type or dimensions are inconsistent");
 		return -1;
 	}
 	USES_CONVERSION;
@@ -1377,6 +1703,16 @@ int Unwrap::MCFImprovedInternal(
 	if (return_check(ret, "gen_mask_pdv()", error_head)) return -1;
 	cost = phase_derivatives_variance + 0.001;
 	cost = 1 / cost;
+	McfPreflightReport preflight;
+	if (!preflightMcfNetwork(residue, cost, 0.7, "cost", preflight))
+	{
+		logMcfPreflightReport(preflight);
+		const std::string message = formatMcfPreflightReport(preflight);
+		fprintf(stderr, "MCF_improved preflight rejected: %s\n\n", message.c_str());
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE, message);
+		return -1;
+	}
+	logMcfPreflightReport(preflight);
 	string taskFolder;
 	std::wstring taskFolderWide;
 	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
@@ -1392,7 +1728,12 @@ int Unwrap::MCFImprovedInternal(
 		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
 	ret = util.write_DIMACS(taskNetwork.c_str(), residue, mask, cost);
 	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
-	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
+	if (return_check(ret, "write_DIMACS(*, *, *)", error_head))
+	{
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE,
+			"input data invalid or DIMACS preparation failed before MCF launch");
+		return -1;
+	}
 	Mat m; mask.convertTo(m, CV_64F);
 	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
 	// util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);

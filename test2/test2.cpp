@@ -20,6 +20,8 @@
 #include "CoherenceSemanticsRegression.h"
 #include "DemSourceValidityRegression.h"
 #include "SnapGoldsteinCompatibleRegression.h"
+#include "DimacsValidationRegression.h"
+#include "Sar2UtmValidationRegression.h"
 #include "..\Dem\ProgressReporter.h"
 #include"..\include\ComplexMat.h"
 #include"..\include\Utils.h"
@@ -1195,6 +1197,14 @@ int main(int argc, char* argv[])
 	{
 		fprintf(stderr, "usage: test2.exe --snap-goldstein-compatible-regression <frozen-snap-fixture.h5>\n");
 		return 2;
+	}
+	if (argc == 2 && std::strcmp(argv[1], "--dimacs-validation-regression") == 0)
+	{
+		return RunDimacsValidationRegression();
+	}
+	if (argc == 2 && std::strcmp(argv[1], "--sar2utm-validation-regression") == 0)
+	{
+		return RunSar2UtmValidationRegression();
 	}
 
 	double lonMax, lonMin, latMax, latMin, lon_upperleft, lat_upperleft, rangeSpacing,

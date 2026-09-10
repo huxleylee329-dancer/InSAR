@@ -161,6 +161,8 @@
     <ClCompile Include="CoherenceSemanticsRegression.cpp" />
     <ClCompile Include="DemSourceValidityRegression.cpp" />
     <ClCompile Include="SnapGoldsteinCompatibleRegression.cpp" />
+    <ClCompile Include="DimacsValidationRegression.cpp" />
+    <ClCompile Include="Sar2UtmValidationRegression.cpp" />
     <ClCompile Include="test2.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -169,6 +171,8 @@
     <ClInclude Include="CoherenceSemanticsRegression.h" />
     <ClInclude Include="DemSourceValidityRegression.h" />
     <ClInclude Include="SnapGoldsteinCompatibleRegression.h" />
+    <ClInclude Include="DimacsValidationRegression.h" />
+    <ClInclude Include="Sar2UtmValidationRegression.h" />
   </ItemGroup>
     <ItemGroup>
     <ProjectReference Include="..\Utils\Utils.vcxproj">
