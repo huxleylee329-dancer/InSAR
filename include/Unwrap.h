@@ -30,6 +30,15 @@ enum SnaphuRunOptionFlags : uint32_t
 	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0
 };
 
+// SNAPHU 统计代价模式。TOPO 为 SNAPHU 内置默认（也是本工程既有行为），DEFO/SMOOTH 与 SNAP
+// 的 snaphu 导出对齐；DEFO/SMOOTH 依赖模糊高度，需要 ORBITRADIUS/EARTHRADIUS/NEARRANGE 几何量。
+enum SnaphuStatisticalCostMode : uint32_t
+{
+	SNAPHU_COST_MODE_TOPO = 0,
+	SNAPHU_COST_MODE_DEFO = 1,
+	SNAPHU_COST_MODE_SMOOTH = 2
+};
+
 enum SnaphuRunMetricAvailability : uint32_t
 {
 	SNAPHU_RUN_METRIC_CPU_TIME = 1u << 0,
@@ -52,7 +61,8 @@ struct SnaphuRunOptionsV1
 	uint32_t flags;
 	uint64_t wallTimeoutMilliseconds;
 	uint32_t heartbeatMilliseconds;
-	uint32_t reserved0;
+	// 复用了原 reserved0 槽位：旧调用方传 0 即 SNAPHU_COST_MODE_TOPO，与本结构引入该字段前行为一致
+	uint32_t statisticalCostMode; // SnaphuStatisticalCostMode
 	uint64_t reserved[4];
 };
 

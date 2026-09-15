@@ -45,11 +45,24 @@ using namespace cv;
 
 	thread_local SnaphuRunContext* g_activeSnaphuRun = nullptr;
 
+	// WGS-84 椭球在给定地心纬度处的地心半径，用于向 SNAPHU 提供 EARTHRADIUS
+	double ellipsoidGeocentricRadius(double geocentricLatitude)
+	{
+		const double a = 6378137.0;
+		const double b = 6356752.314245179;
+		const double sinLat = sin(geocentricLatitude);
+		const double cosLat = cos(geocentricLatitude);
+		const double numerator = sqrt(pow(a * a * cosLat, 2.0) + pow(b * b * sinLat, 2.0));
+		const double denominator = sqrt(pow(a * cosLat, 2.0) + pow(b * sinLat, 2.0));
+		return denominator > 0.0 ? numerator / denominator : 0.0;
+	}
+
 	bool normalizeSnaphuOptions(const SnaphuRunOptionsV1* supplied, SnaphuRunOptionsV1& normalized)
 	{
 		memset(&normalized, 0, sizeof(normalized));
 		normalized.structSize = sizeof(normalized);
 		normalized.version = 1;
+		normalized.statisticalCostMode = SNAPHU_COST_MODE_TOPO;
 		normalized.tileRows = 1;
 		normalized.tileCols = 1;
 		normalized.requestedProcessCount = 1;
@@ -57,7 +70,8 @@ using namespace cv;
 		if (!supplied) return true;
 		if (supplied->version != 1 || supplied->structSize < sizeof(SnaphuRunOptionsV1)) return false;
 		normalized = *supplied;
-		if ((normalized.flags & ~SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0 || normalized.reserved0 != 0) return false;
+		if ((normalized.flags & ~SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0 ||
+			normalized.statisticalCostMode > SNAPHU_COST_MODE_SMOOTH) return false;
 		for (size_t i = 0; i < sizeof(normalized.reserved) / sizeof(normalized.reserved[0]); ++i)
 			if (normalized.reserved[i] != 0) return false;
 		if (normalized.tileRows == 0 || normalized.tileRows > 256 || normalized.tileCols == 0 ||
@@ -65,7 +79,7 @@ using namespace cv;
 		if ((normalized.tileRows == 1 && normalized.tileCols == 1) &&
 			(normalized.rowOverlap != 0 || normalized.colOverlap != 0)) return false;
 		if ((normalized.tileRows > 1 || normalized.tileCols > 1) &&
-			(normalized.rowOverlap < 400 || normalized.colOverlap < 400)) return false;
+			(normalized.rowOverlap < 50 || normalized.colOverlap < 50)) return false;
 		if (normalized.heartbeatMilliseconds == 0) normalized.heartbeatMilliseconds = 1000;
 		if (normalized.heartbeatMilliseconds < 100 || normalized.heartbeatMilliseconds > 60000) return false;
 		const uint64_t maximumTimeout = 30ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
@@ -95,7 +109,8 @@ using namespace cv;
 	{
 		if (!destination || capacity == 0) return;
 		const size_t length = std::min(capacity - 1, text.size());
-		memcpy(destination, text.data(), length);
+		const size_t offset = text.size() > length ? text.size() - length : 0;
+		memcpy(destination, text.data() + offset, length);
 		destination[length] = '\0';
 	}
 
@@ -470,7 +485,7 @@ using namespace cv;
 			const DWORD requested = std::min<DWORD>(available, sizeof(buffer));
 			if (!ReadFile(pipe, buffer, requested, &read, nullptr) || read == 0) return;
 			appendBounded(tail, buffer, read, 2048);
-			if (captured) appendBounded(*captured, buffer, read, 480);
+			if (captured) captured->append(buffer, read);
 		}
 	}
 
@@ -577,12 +592,47 @@ using namespace cv;
 		}
 	}
 
-	bool drainSnaphuPipe(HANDLE pipe, std::string& tail, const char* source, ULONGLONG startedAt, HANDLE job)
+	bool drainSnaphuPipe(HANDLE pipe, std::string& tail, std::string& lineBuffer, const char* source, ULONGLONG startedAt, HANDLE job)
 	{
 		std::string captured;
 		drainPipe(pipe, tail, &captured);
 		if (captured.empty()) return true;
-		return emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + captured, startedAt, job);
+		lineBuffer.append(captured);
+		size_t pos = 0;
+		while (true)
+		{
+			const size_t newlinePos = lineBuffer.find('\n', pos);
+			if (newlinePos == std::string::npos) break;
+			std::string line = lineBuffer.substr(pos, newlinePos - pos);
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			pos = newlinePos + 1;
+			if (!line.empty())
+			{
+				if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + line, startedAt, job))
+				{
+					lineBuffer.clear();
+					return false;
+				}
+			}
+		}
+		if (pos > 0)
+		{
+			lineBuffer.erase(0, pos);
+		}
+		return true;
+	}
+
+	bool flushSnaphuPipe(std::string& lineBuffer, const char* source, ULONGLONG startedAt, HANDLE job)
+	{
+		if (lineBuffer.empty()) return true;
+		std::string line = lineBuffer;
+		lineBuffer.clear();
+		if (!line.empty() && line.back() == '\r') line.pop_back();
+		if (!line.empty())
+		{
+			return emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + line, startedAt, job);
+		}
+		return true;
 	}
 
 	bool absolutePath(const std::wstring& path, std::wstring& absolute)
@@ -944,6 +994,9 @@ using namespace cv;
 		const ULONGLONG startedAt = GetTickCount64();
 		ULONGLONG lastHeartbeatAt = startedAt;
 		result.phase = "process exit";
+		std::string stdoutTail;
+		std::string stdoutLineBuffer;
+		std::string stderrLineBuffer;
 		const std::string runningMessage = "Running external solver " + jobPrefix + " (progress unavailable)...";
 		if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
 		if (!is_cancelled && !emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job)) is_cancelled = true;
@@ -955,8 +1008,8 @@ using namespace cv;
 		while (!is_cancelled && !result.timedOut)
 		{
 			const DWORD waitResult = WaitForSingleObject(pi.hProcess, 100);
-			if (!drainSnaphuPipe(stdoutRead, result.stderrTail, "stdout", startedAt, job)) is_cancelled = true;
-			if (!drainSnaphuPipe(stderrRead, result.stderrTail, "stderr", startedAt, job)) is_cancelled = true;
+			if (!drainSnaphuPipe(stdoutRead, stdoutTail, stdoutLineBuffer, "stdout", startedAt, job)) is_cancelled = true;
+			if (!drainSnaphuPipe(stderrRead, result.stderrTail, stderrLineBuffer, "stderr", startedAt, job)) is_cancelled = true;
 			const ULONGLONG now = GetTickCount64();
 			if (g_activeSnaphuRun && now - lastHeartbeatAt >= g_activeSnaphuRun->options.heartbeatMilliseconds)
 			{
@@ -1000,7 +1053,7 @@ using namespace cv;
 					if ((!jobKnown || processState == WAIT_FAILED) && result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
 					break;
 				}
-				drainPipe(stdoutRead, result.stderrTail);
+				drainPipe(stdoutRead, stdoutTail);
 				drainStderrPipe(stderrRead, result.stderrTail);
 				Sleep(25);
 			}
@@ -1027,15 +1080,17 @@ using namespace cv;
 					if (result.win32Error == ERROR_SUCCESS) result.win32Error = ERROR_BUSY;
 					break;
 				}
-				drainPipe(stdoutRead, result.stderrTail);
+				drainPipe(stdoutRead, stdoutTail);
 				drainStderrPipe(stderrRead, result.stderrTail);
 				Sleep(25);
 			}
 		}
 
 		if (!result.terminationUncertain && !GetExitCodeProcess(pi.hProcess, &result.exitCode)) result.win32Error = GetLastError();
-		drainPipe(stdoutRead, result.stderrTail);
+		drainPipe(stdoutRead, stdoutTail);
 		drainStderrPipe(stderrRead, result.stderrTail);
+		flushSnaphuPipe(stdoutLineBuffer, "stdout", startedAt, job);
+		flushSnaphuPipe(stderrLineBuffer, "stderr", startedAt, job);
 		if (result.cancelled) emitSnaphuRunEvent(SNAPHU_RUN_EVENT_CANCELLED, "SNAPHU cancellation completed.", startedAt, job);
 
 		::CloseHandle(pi.hThread);
@@ -4247,6 +4302,56 @@ int Unwrap::SnaphuFileInternal(
 			config << "AZRES " << DA.at<double>(0, 0) << "\n";
 		}
 	}
+	// SNAPHU 的模糊高度 = -λ·R·sinθ/(2·B⊥)，θ 由 ORBITRADIUS/EARTHRADIUS/NEARRANGE 反算。不写这些
+	// 参数时会退回内置默认（7153000 / 6378000 / 831000），本景实测把入射角算成约 27°（真值 44°）、
+	// 模糊高度偏差约 40%。此处按主星轨道状态矢量与近距斜距给出真实量（本景得 7069717.6 / 6368490.5，
+	// 与 SNAP 导出的 7069750.879 / 6368128.173 相差 <0.01%）。TOPO 代价不使用该几何，故默认路径行为
+	// 不变；DEFO/SMOOTH 依赖它。
+	const uint32_t statisticalCostMode = g_activeSnaphuRun
+		? g_activeSnaphuRun->options.statisticalCostMode : SNAPHU_COST_MODE_TOPO;
+	if (b_source && state_vec1.type() == CV_64F && state_vec1.cols >= 4 && state_vec1.rows >= 2)
+	{
+		double radiusSum = 0.0, xSum = 0.0, ySum = 0.0, zSum = 0.0;
+		int counted = 0;
+		for (int row = 0; row < state_vec1.rows; ++row)
+		{
+			const double px = state_vec1.at<double>(row, 1);
+			const double py = state_vec1.at<double>(row, 2);
+			const double pz = state_vec1.at<double>(row, 3);
+			const double radius = sqrt(px * px + py * py + pz * pz);
+			if (!std::isfinite(radius) || radius <= 0.0) continue;
+			radiusSum += radius;
+			xSum += px; ySum += py; zSum += pz;
+			++counted;
+		}
+		if (counted >= 2)
+		{
+			const double orbitRadius = radiusSum / counted;
+			const double meanX = xSum / counted, meanY = ySum / counted, meanZ = zSum / counted;
+			// 用主星平均位置的地心纬度近似场景纬度：本景得 42.31°，对应半径与 SNAP 导出相差 362 m（<0.01%）
+			const double geocentricLatitude = atan2(meanZ, sqrt(meanX * meanX + meanY * meanY));
+			const double earthRadius = ellipsoidGeocentricRadius(geocentricLatitude);
+			if (std::isfinite(orbitRadius) && std::isfinite(earthRadius) && orbitRadius > earthRadius)
+			{
+				config << "ORBITRADIUS " << orbitRadius << "\nEARTHRADIUS " << earthRadius << "\n";
+			}
+		}
+	}
+	double nearRange = 0.0;
+	if (conversion.read_double_from_h5(wrapped_phase_file, "flat_earth_master_slant_range_first_pixel", &nearRange) == 0 &&
+		std::isfinite(nearRange) && nearRange > 0.0)
+	{
+		config << "NEARRANGE " << nearRange << "\n";
+	}
+	else
+	{
+		fprintf(stderr, "snaphu(): near slant range unavailable; SNAPHU will use its built-in NEARRANGE default.\n");
+	}
+	// Sentinel-1 是单天线重复轨道干涉，TRANSMITMODE 参与 B⊥ 的处理（SNAP 导出同样写 REPEATPASS）
+	config << "TRANSMITMODE REPEATPASS\n";
+	config << "STATCOSTMODE "
+		<< (statisticalCostMode == SNAPHU_COST_MODE_DEFO ? "DEFO" :
+			(statisticalCostMode == SNAPHU_COST_MODE_SMOOTH ? "SMOOTH" : "TOPO")) << "\n";
 	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
 
 	const std::string configText = config.str();

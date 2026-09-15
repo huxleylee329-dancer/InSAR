@@ -12,6 +12,13 @@ namespace
 const double kSemiMajorAxis = 6378137.0;
 const double kSemiMinorAxis = 6356752.314245179;
 
+// slave 零多普勒快速找根窗口。零多普勒解始终落在配准时间种子附近（毫秒量级），
+// 而阶梯搜索窗口的初值是 8 s，按 32 分格从左边缘线性扫描要空走十余次求值才能变号。
+// 这里先在种子附近的窄窗内细步长找变号，命中即用；未命中回退到原有全窗口扫描，
+// 后者语义与结果保持不变。多普勒沿时间单调，窄窗内根唯一，故两条路径给出同一根。
+const double kSlaveZeroDopplerFastProbeHalfWindowSeconds = 0.25;
+const int kSlaveZeroDopplerFastProbePartitions = 16;
+
 cv::Vec3d toVector(const Position& p)
 {
     return cv::Vec3d(p.x, p.y, p.z);
@@ -711,6 +718,51 @@ bool TopsNativeGeometry::solveSlaveZeroDoppler(const Position& point,
 		// Coverage was preflighted for the maximum window.  Clipping here would
 		// turn an orbit-coverage defect into a different local ZD solution.
 		if (begin < first || end > last || !(end > begin)) return false;
+		// 快速路径：零多普勒解几乎总落在种子附近毫秒到百毫秒量级，而本阶梯窗口宽 8 s、按 32 分格
+		// 从左边缘线性扫描要空走十余次求值才变号。这里先在种子两侧的窄窗内细步长找变号，命中即用。
+		// 为与全窗口扫描“取窗口内第一个变号”的语义严格一致，额外校验窄窗左端与整个窗口左端同号——
+		// 多普勒沿时间单调，同号即说明左段无变号，窄窗命中的就是同一个根；否则回退到下面的全扫描。
+		// 窄窗只依赖种子，与阶梯无关，故仅在 expansion==0 尝试，避免后续阶梯重复同一探测。
+		// 记录的最大搜索半窗仍取阶梯窗口值，保持 flat_earth_slave_search_* 契约不变。
+		const double probeHalfWindow = std::min(halfWindow, kSlaveZeroDopplerFastProbeHalfWindowSeconds);
+		if (expansion == 0 && probeHalfWindow > 0.0)
+		{
+			double anchorFLeft = 0.0, anchorRangeLeft = 0.0;
+			++dopplerEvaluations;
+			if (!evaluateSlaveDoppler(point, begin, anchorFLeft, anchorRangeLeft)) return false;
+			const double probeBegin = registrationTimeSeed - probeHalfWindow;
+			const double probeEnd = registrationTimeSeed + probeHalfWindow;
+			double probeLeft = probeBegin;
+			double probeFLeft = 0.0, probeRangeLeft = 0.0;
+			++dopplerEvaluations;
+			if (!evaluateSlaveDoppler(point, probeLeft, probeFLeft, probeRangeLeft)) return false;
+			if (anchorFLeft == 0.0 || anchorFLeft * probeFLeft > 0.0)
+			{
+				for (int index = 1; index <= kSlaveZeroDopplerFastProbePartitions; ++index)
+				{
+					const double probeRight =
+						probeBegin + (probeEnd - probeBegin) * index / kSlaveZeroDopplerFastProbePartitions;
+					double probeFRight = 0.0, probeRangeRight = 0.0;
+					++dopplerEvaluations;
+					if (!evaluateSlaveDoppler(point, probeRight, probeFRight, probeRangeRight)) return false;
+					if (probeFLeft == 0.0 || probeFLeft * probeFRight <= 0.0)
+					{
+						left = probeLeft;
+						right = probeRight;
+						fLeft = probeFLeft;
+						fRight = probeFRight;
+						rangeLeft = probeRangeLeft;
+						rangeRight = probeRangeRight;
+						bracketed = true;
+						break;
+					}
+					probeLeft = probeRight;
+					probeFLeft = probeFRight;
+					probeRangeLeft = probeRangeRight;
+				}
+			}
+			if (bracketed) { usedHalfWindow = halfWindow; break; }
+		}
 		++dopplerEvaluations;
 		if (!evaluateSlaveDoppler(point, begin, fLeft, rangeLeft)) return false;
 		left = begin;

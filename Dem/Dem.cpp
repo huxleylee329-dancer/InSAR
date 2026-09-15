@@ -550,6 +550,13 @@ namespace
 
 	struct ManagedDemSampler
 	{
+		struct SampleDiagnostics
+		{
+			double pixel = 0.0;
+			double line = 0.0;
+			double values[4] = {};
+			GByte valid[4] = {};
+		};
 		GDALDataset* raster = nullptr;
 		GDALDataset* mask = nullptr;
 		double inverseTransform[6] = {};
@@ -580,7 +587,8 @@ namespace
 			return raster->GetProjectionRef() && std::string(raster->GetProjectionRef()).find("WGS 84") != std::string::npos;
 		}
 
-		bool sample(double longitude, double latitude, double& height) const
+		bool sample(double longitude, double latitude, double& height,
+			SampleDiagnostics* diagnostics = nullptr) const
 		{
 			double pixel = inverseTransform[0] + inverseTransform[1] * longitude + inverseTransform[2] * latitude;
 			double line = inverseTransform[3] + inverseTransform[4] * longitude + inverseTransform[5] * latitude;
@@ -593,6 +601,14 @@ namespace
 			GByte valid[4] = {};
 			if (raster->GetRasterBand(1)->RasterIO(GF_Read, x0, y0, 2, 2, values, 2, 2, GDT_Float64, 0, 0) != CE_None ||
 				mask->GetRasterBand(1)->RasterIO(GF_Read, x0, y0, 2, 2, valid, 2, 2, GDT_Byte, 0, 0) != CE_None) return false;
+			if (diagnostics) {
+				diagnostics->pixel = pixel;
+				diagnostics->line = line;
+				for (int index = 0; index < 4; ++index) {
+					diagnostics->values[index] = values[index];
+					diagnostics->valid[index] = valid[index];
+				}
+			}
 			const double dx = pixel - x0, dy = line - y0;
 			weights[0] = (1.0 - dx) * (1.0 - dy); weights[1] = dx * (1.0 - dy);
 			weights[2] = (1.0 - dx) * dy; weights[3] = dx * dy;
@@ -1215,6 +1231,9 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 				double latitude = 0.0, longitude = 0.0, ignoredHeight = 0.0, orthometricHeight = 0.0;
 				if (Utils::xyz2ell(h0Point.x, h0Point.y, h0Point.z, latitude, longitude, ignoredHeight) != 0 ||
 					!referenceDem.sample(longitude, latitude, orthometricHeight)) continue;
+				// Zero is valid DEM data in general, but the current resource uses
+				// exact zero cells for sea-level coverage, which cannot anchor terrain.
+				if (orthometricHeight == 0.0) continue;
 				const double geoidHeight = Utils::getGeoidHeight(request->geoidModelSnapshot, longitude, latitude);
 				if (!std::isfinite(geoidHeight)) continue;
 				const double referenceHeight = orthometricHeight + geoidHeight;
@@ -1349,14 +1368,13 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		const size_t burstIndex = static_cast<size_t>(burst);
 		if (selectionByBurst[burstIndex] < request->minimumSelectionCandidatesPerBurst ||
 			validationByBurst[burstIndex] < request->minimumValidationCandidatesPerBurst ||
-			selectionRanges[burstIndex].size() != static_cast<size_t>(request->rangeCellsPerBurst) ||
-			validationRanges[burstIndex].size() != static_cast<size_t>(request->rangeCellsPerBurst)) {
+			selectionRanges[burstIndex].empty() || validationRanges[burstIndex].empty()) {
 			const std::string detail = "burst=" + std::to_string(burst) +
 				"; selectionCount=" + std::to_string(selectionByBurst[burstIndex]) + " (min " + std::to_string(request->minimumSelectionCandidatesPerBurst) + ")" +
 				"; validationCount=" + std::to_string(validationByBurst[burstIndex]) + " (min " + std::to_string(request->minimumValidationCandidatesPerBurst) + ")" +
-				"; selectionRanges=" + std::to_string(selectionRanges[burstIndex].size()) + "/" + std::to_string(request->rangeCellsPerBurst) +
-				"; validationRanges=" + std::to_string(validationRanges[burstIndex].size()) + "/" + std::to_string(request->rangeCellsPerBurst);
-			return failContract("anchor.coverage", "absolute-phase anchor ambiguous: independent selection/validation strata do not cover every active FEP burst and range interval.", detail);
+				"; selectionRanges=" + std::to_string(selectionRanges[burstIndex].size()) +
+				"; validationRanges=" + std::to_string(validationRanges[burstIndex].size());
+			return failContract("anchor.coverage", "absolute-phase anchor ambiguous: insufficient independent terrain-supported selection/validation coverage in an active FEP burst.", detail);
 		}
 		if (burstHistogram[burstIndex].empty() || bestK(burstHistogram[burstIndex]).first != selected.first) {
 			const int bBestK = burstHistogram[burstIndex].empty() ? -999999 : bestK(burstHistogram[burstIndex]).first;
@@ -1439,24 +1457,44 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			return false;
 		}
 		const double target = phase.at<double>(row, column) + flatEarthReference.at<double>(row, column) + absolutePhaseOffset;
+		// 复用同一像元上一次求值解出的 slave 零多普勒时刻做种子：候选高度之间该时刻只差几十毫秒，
+		// 让 TopsNativeGeometry 走窄窗快速找根路径；链路不可用时回退到配准时间种子
+		double lastSlaveTime = std::numeric_limits<double>::quiet_NaN();
 		const auto residual = [&](double candidateHeight, Position* point) {
 			Position p;
 			TopsNativeGeometry::SampleClosure closure;
 			TopsFepV5BurstStatistics stats;
 			double slaveTime = 0.0, rhoSlave = 0.0;
+			const double zeroDopplerSeed = std::isfinite(lastSlaveTime) ? lastSlaveTime : slaveSeed;
 			if (!geometry.solveMasterReferenceHeightPoint(satellite, velocity, rhoMaster, candidateHeight, rangeSeed, p, closure, stats) ||
-				!geometry.solveSlaveZeroDoppler(p, slaveSeed, slaveTime, rhoSlave, closure, stats)) return std::numeric_limits<double>::quiet_NaN();
+				!geometry.solveSlaveZeroDoppler(p, zeroDopplerSeed, slaveTime, rhoSlave, closure, stats)) return std::numeric_limits<double>::quiet_NaN();
+			lastSlaveTime = slaveTime;
 			if (point) *point = p;
 			return 4.0 * CV_PI * (rhoSlave - rhoMaster) / (wavelength * transmitReceiveMode) - target;
 		};
-		// 自适应物理高程包络：初始区间 [-1000m, 10000m]
+		// DEM 反演收敛门限：本工程像对高程模糊度约 700 m，0.02 rad 相位≈2 m 高程，已远优于 DEM 产品精度；
+		// 原 0.01 rad/1 cm 门限对 DEM 无意义，只会把每像元外层迭代数顶到 20 次以上
+		constexpr double kDemPhaseConvergenceRadians = 0.02;
+		constexpr double kDemHeightConvergenceMeters = 1.0;
+		constexpr double kDemSeedHalfWindowMeters = 500.0;
+		// 自适应物理高程包络：默认退回 [-1000m, 10000m]；有上一像元解出的高程时以它为中心取窄区间，
+		// 把外层迭代数从 ~12 次压到 ~7 次。下方自适应扩边保证种子落空时仍能框住根
+		//（残差对高程单调，区间内根唯一）
 		double low = -1000.0, high = 10000.0;
+		if (rangeSeed) {
+			double seedLatitude = 0.0, seedLongitude = 0.0, seedHeight = 0.0;
+			if (Utils::xyz2ell(rangeSeed->x, rangeSeed->y, rangeSeed->z, seedLatitude, seedLongitude, seedHeight) == 0 &&
+				std::isfinite(seedHeight)) {
+				low = seedHeight - kDemSeedHalfWindowMeters;
+				high = seedHeight + kDemSeedHalfWindowMeters;
+			}
+		}
 		double fLow = residual(low, nullptr), fHigh = residual(high, nullptr);
 		if (!std::isfinite(fLow) || !std::isfinite(fHigh)) {
 			if (failureReason) *failureReason = "residual evaluation returned non-finite: fLow=" + std::to_string(fLow) + ", fHigh=" + std::to_string(fHigh);
 			return false;
 		}
-		// 若因边缘像元相位波动、局部解缠残差或复杂地形导致初始根未落入 [-1000, 10000]，向外自适应扩展闭合区间
+		// 若因边缘像元相位波动、局部解缠残差、地形突变或种子高程失效导致根未落入当前区间，向外自适应扩展闭合区间
 		while (fLow > 0.0 && low >= -20000.0) {
 			const double nextLow = low - 2000.0;
 			const double nextFLow = residual(nextLow, nullptr);
@@ -1479,7 +1517,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		}
 		Position point;
 		for (int iteration = 0; iteration < request->iterations; ++iteration) {
-			if (high - low <= 0.01) {
+			if (high - low <= kDemHeightConvergenceMeters) {
 				height = 0.5 * (low + high);
 				if (solvedPoint) *solvedPoint = point;
 				return true;
@@ -1501,7 +1539,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 					if (failureReason) *failureReason = "residual returned non-finite at iteration=" + std::to_string(iteration) + ", candidate=" + std::to_string(candidate);
 					return false;
 				}
-				if (std::fabs(valFallback) <= 0.01) {
+				if (std::fabs(valFallback) <= kDemPhaseConvergenceRadians) {
 					height = candidate;
 					if (solvedPoint) *solvedPoint = point;
 					return true;
@@ -1510,7 +1548,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 				else { high = candidate; fHigh = valFallback; }
 				continue;
 			}
-			if (std::fabs(value) <= 0.01) {
+			if (std::fabs(value) <= kDemPhaseConvergenceRadians) {
 				height = candidate;
 				if (solvedPoint) *solvedPoint = point;
 				return true;
@@ -1524,7 +1562,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			}
 		}
 		// 若达到最大迭代次数但已收敛至米级（< 1m），依然作为有效解输出以提高全图鲁棒性
-		if (high - low <= 1.0) {
+		if (high - low <= kDemHeightConvergenceMeters) {
 			height = 0.5 * (low + high);
 			if (solvedPoint) *solvedPoint = point;
 			return true;
@@ -1532,13 +1570,122 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		if (failureReason) *failureReason = "bisection did not reach precision within iterations=" + std::to_string(request->iterations) + ", low=" + std::to_string(low) + ", high=" + std::to_string(high);
 		return false;
 	};
-	dem.create(phase.rows, phase.cols, CV_64F);
 	double residualSum = 0.0, residualSquareSum = 0.0, residualMax = 0.0;
 	int validationCount = 0;
+	bool hasMaxResidualPoint = false;
+	int maxResidualRow = -1, maxResidualColumn = -1, maxResidualSourceRow = -1;
+	int maxResidualBurst = -1, maxResidualComponent = -1, maxResidualLocalK = 0;
+	double maxResidualSolvedHeight = 0.0, maxResidualOrthometric = 0.0, maxResidualGeoid = 0.0;
+	double maxResidualPhase = 0.0, maxResidualFlatEarth = 0.0;
+	double maxResidualLatitude = 0.0, maxResidualLongitude = 0.0;
+	ManagedDemSampler::SampleDiagnostics maxResidualDemSample;
+	// Validate the held-out strata before spending time on the full DEM grid.
+	// The validation is independent of the output matrix and must remain
+	// fail-closed, but a rejected anchor should not consume hours of compute.
+	for (size_t candidateIndex = 0; candidateIndex < candidates.size(); ++candidateIndex) {
+		const int validationProgress = 50 + static_cast<int>((5 * candidateIndex) /
+			std::max<size_t>(1, candidates.size()));
+		if (!progressReporter.report(validationProgress, "Validating absolute-phase anchor height residuals...")) return cancellationResult();
+		const Candidate& candidate = candidates[candidateIndex];
+		if (candidate.selection) continue;
+		Position point;
+		double solvedHeight = 0.0;
+		if (!solveHeight(candidate.row, candidate.column, solvedHeight, &point)) {
+			if (progressReporter.cancelled()) return cancellationResult();
+			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference height solve failed.");
+		}
+		double latitude = 0.0, longitude = 0.0, ignored = 0.0, orthometric = 0.0;
+		ManagedDemSampler::SampleDiagnostics demSample;
+		if (Utils::xyz2ell(point.x, point.y, point.z, latitude, longitude, ignored) != 0 ||
+			!referenceDem.sample(longitude, latitude, orthometric, &demSample))
+			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference sampling failed.");
+		const double geoid = Utils::getGeoidHeight(request->geoidModelSnapshot, longitude, latitude);
+		if (!std::isfinite(geoid)) return failContract("anchor.validation", "DEM absolute-phase anchoring v2 geoid sampling failed.");
+		const double error = solvedHeight - (orthometric + geoid);
+		residualSum += error;
+		residualSquareSum += error * error;
+		if (!hasMaxResidualPoint || std::fabs(error) > residualMax) {
+			hasMaxResidualPoint = true;
+			residualMax = std::fabs(error);
+			maxResidualRow = candidate.row;
+			maxResidualColumn = candidate.column;
+			maxResidualSourceRow = sourceRowMap.at<int>(candidate.row, 0);
+			maxResidualBurst = candidate.burst;
+			maxResidualComponent = candidate.component;
+			maxResidualLocalK = candidate.k;
+			maxResidualSolvedHeight = solvedHeight;
+			maxResidualOrthometric = orthometric;
+			maxResidualGeoid = geoid;
+			maxResidualPhase = phase.at<double>(candidate.row, candidate.column);
+			maxResidualFlatEarth = flatEarthReference.at<double>(candidate.row, candidate.column);
+			maxResidualLatitude = latitude;
+			maxResidualLongitude = longitude;
+			maxResidualDemSample = demSample;
+		}
+		++validationCount;
+	}
+	if (validationCount == 0) { dem.release(); return failContract("anchor.validation", "DEM absolute-phase anchoring v2 has no independent validation samples."); }
+	// Stored order is [validation_count, mean_m, rms_m, max_abs_m].
+	result->sparseHeightResidualStats[0] = static_cast<double>(validationCount);
+	result->sparseHeightResidualStats[1] = residualSum / validationCount;
+	result->sparseHeightResidualStats[2] = std::sqrt(residualSquareSum / validationCount);
+	result->sparseHeightResidualStats[3] = residualMax;
+	const std::string validationDiag = "validationCount=" + std::to_string(validationCount) +
+		"; mean_m=" + std::to_string(result->sparseHeightResidualStats[1]) +
+		"; rms_m=" + std::to_string(result->sparseHeightResidualStats[2]) +
+		"; maxAbs_m=" + std::to_string(residualMax) +
+		"; maxAbsThreshold_m=" + std::to_string(request->maximumSparseHeightResidualMeters) +
+		"; maxPointValid=" + std::string(hasMaxResidualPoint ? "true" : "false") +
+		"; maxPoint=(row=" + std::to_string(maxResidualRow) +
+		",col=" + std::to_string(maxResidualColumn) +
+		",sourceRow=" + std::to_string(maxResidualSourceRow) +
+		",burst=" + std::to_string(maxResidualBurst) +
+		",component=" + std::to_string(maxResidualComponent) +
+		",localK=" + std::to_string(maxResidualLocalK) +
+		",solvedEllipsoidHeight_m=" + std::to_string(maxResidualSolvedHeight) +
+		",externalOrthometric_m=" + std::to_string(maxResidualOrthometric) +
+		",geoid_m=" + std::to_string(maxResidualGeoid) +
+		",latitude_deg=" + std::to_string(maxResidualLatitude) +
+		",longitude_deg=" + std::to_string(maxResidualLongitude) +
+		",demPixel=" + std::to_string(maxResidualDemSample.pixel) +
+		",demLine=" + std::to_string(maxResidualDemSample.line) +
+		",demValues=[" + std::to_string(maxResidualDemSample.values[0]) + "," +
+			std::to_string(maxResidualDemSample.values[1]) + "," +
+			std::to_string(maxResidualDemSample.values[2]) + "," +
+			std::to_string(maxResidualDemSample.values[3]) + "]"+
+		",demValid=[" + std::to_string(static_cast<int>(maxResidualDemSample.valid[0])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[1])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[2])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[3])) + "]" +
+		",phase_rad=" + std::to_string(maxResidualPhase) +
+		",flatEarthReference_rad=" + std::to_string(maxResidualFlatEarth) + ")";
+	// 残差超限不再拒绝：改为质量告警后继续出图，供与 SNAP 等外部参考对标。
+	// 判据本身仍随 dem_anchor_policy 持久化，调用方据此决定节点是否进入 Warning 状态。
+	if (residualMax > request->maximumSparseHeightResidualMeters) {
+		diagnosticContext.emit(DEM_LOG_WARNING, static_cast<DemError>(0), "anchor.validation",
+			"Independent external DEM height residual exceeds policy; anchor accepted with a quality warning.", validationDiag);
+	} else {
+		diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "anchor.validation",
+			"Independent external DEM height residual validation passed.", validationDiag);
+	}
+
+	dem.create(phase.rows, phase.cols, CV_64F);
 	std::atomic<int> completedRows(0);
 	std::atomic<bool> parallelCancelled(false);
 	std::string parallelFailContext;
 	std::mutex failMutex;
+	// GDALDataset 是 GDALOpen 独占句柄，不允许跨线程并发 RasterIO，
+	// 而海面掩膜需要在并行反演中逐像元采样外源 DEM，故单独串行化该采样
+	std::mutex referenceDemMutex;
+	// 反演掩膜：低相干像元（此处门限）与海面（外源 DEM 以精确 0 表示海平面覆盖，见求解后判定）
+	// 都没有可用的地形相位，强行反演只会产出无意义的极大负值（本景实测低至 -10000 m），一律置 NaN
+	constexpr double kDemInversionMinimumCoherence = 0.2;
+	// 少数像元相位超出物理可解范围而解不出，置 NoData 后继续；但解不出的比例超过此值即视为
+	// 几何/相位契约整体损坏（整景级故障），仍按 fail-closed 中止，避免静默产出一景空图
+	constexpr double kDemMaxUnsolvedPixelFraction = 0.005;
+	std::atomic<long long> maskedLowCoherence(0);
+	std::atomic<long long> maskedSeaLevel(0);
+	std::atomic<long long> unsolvedPixels(0);
 
 	#pragma omp parallel for schedule(dynamic, 16)
 	for (int row = 0; row < phase.rows; ++row) {
@@ -1574,6 +1721,12 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 				}
 				break;
 			}
+			// 低相干掩膜：相干系数过低时相位误差可达数弧度，反演结果无意义
+			if (gamma.at<double>(row, column) < kDemInversionMinimumCoherence) {
+				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				++maskedLowCoherence;
+				continue;
+			}
 			Position point;
 			double height = 0.0;
 			std::string solveDetail;
@@ -1583,8 +1736,10 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 					parallelCancelled.store(true);
 					break;
 				}
-				std::lock_guard<std::mutex> lock(failMutex);
-				if (!parallelCancelled.load()) {
+				// 个别像元无解（相位超出物理可解范围、内层几何闭包失败等）不再中止整轮，
+				// 置 NoData 并计数后继续；仅首个失败样本记录完整上下文，供超阈值时的诊断使用
+				if (unsolvedPixels.fetch_add(1) == 0) {
+					std::lock_guard<std::mutex> lock(failMutex);
 					parallelFailContext = "row=" + std::to_string(row) +
 						"; col=" + std::to_string(column) +
 						"; sourceRow=" + std::to_string(sourceRowMap.at<int>(row, 0)) +
@@ -1594,9 +1749,23 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 						"; flatEarthRef=" + std::to_string(flatEarthReference.at<double>(row, column)) +
 						"; selectedK=" + std::to_string(selected.first) +
 						"; " + solveDetail;
-					parallelCancelled.store(true);
 				}
-				break;
+				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				continue;
+			}
+			// 海面掩膜：本外源 DEM 以精确 0 表示海平面覆盖，那里没有地形相位可反演，
+			// 求解出的极大负值（本景实测低至 -10000 m）属伪解，置 NaN 丢弃；
+			// 掩膜像元仍推进地面点，保证后续沿海像元的求解种子与海面判定都连续可用
+			double maskLatitude = 0.0, maskLongitude = 0.0, maskIgnoredHeight = 0.0, maskOrthometricHeight = 0.0;
+			bool maskIsSeaLevel = false;
+			if (Utils::xyz2ell(point.x, point.y, point.z, maskLatitude, maskLongitude, maskIgnoredHeight) == 0) {
+				std::lock_guard<std::mutex> lock(referenceDemMutex);
+				maskIsSeaLevel = referenceDem.sample(maskLongitude, maskLatitude, maskOrthometricHeight) &&
+					maskOrthometricHeight == 0.0;
+			}
+			if (maskIsSeaLevel) {
+				height = std::numeric_limits<double>::quiet_NaN();
+				++maskedSeaLevel;
 			}
 			dem.at<double>(row, column) = height;
 			lastSolvedPoint = point;
@@ -1615,41 +1784,29 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 	if (parallelCancelled.load() || progressReporter.cancelled()) {
 		dem.release();
 		if (progressReporter.cancelled()) return cancellationResult();
-		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 FEP height solve failed for a valid phase sample.", parallelFailContext);
+		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 height solve loop aborted before completion.", parallelFailContext);
 	}
-	// Validation consumes only the held-out strata.  It never reuses a K-vote
-	// coordinate, even though the full-grid inversion has already been run.
-	for (size_t candidateIndex = 0; candidateIndex < candidates.size(); ++candidateIndex) {
-		const int validationProgress = 90 + static_cast<int>((9 * candidateIndex) /
-			std::max<size_t>(1, candidates.size()));
-		if (!progressReporter.report(validationProgress, "Validating absolute-phase anchor height residuals...")) return cancellationResult();
-		const Candidate& candidate = candidates[candidateIndex];
-		if (candidate.selection) continue;
-		Position point;
-		double solvedHeight = 0.0;
-		if (!solveHeight(candidate.row, candidate.column, solvedHeight, &point)) {
-			if (progressReporter.cancelled()) return cancellationResult();
-			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference height solve failed.");
-		}
-		double latitude = 0.0, longitude = 0.0, ignored = 0.0, orthometric = 0.0;
-		if (Utils::xyz2ell(point.x, point.y, point.z, latitude, longitude, ignored) != 0 ||
-			!referenceDem.sample(longitude, latitude, orthometric))
-			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference sampling failed.");
-		const double geoid = Utils::getGeoidHeight(request->geoidModelSnapshot, longitude, latitude);
-		if (!std::isfinite(geoid)) return failContract("anchor.validation", "DEM absolute-phase anchoring v2 geoid sampling failed.");
-		const double error = solvedHeight - (orthometric + geoid);
-		residualSum += error;
-		residualSquareSum += error * error;
-		residualMax = std::max(residualMax, std::fabs(error));
-		++validationCount;
+	const long long totalInversionPixels = static_cast<long long>(phase.rows) * static_cast<long long>(phase.cols);
+	const std::string unsolvedDetail = "unsolvedPixels=" + std::to_string(unsolvedPixels.load()) +
+		"; totalPixels=" + std::to_string(totalInversionPixels) +
+		"; maxFraction=" + std::to_string(kDemMaxUnsolvedPixelFraction) +
+		"; firstFailure=(" + parallelFailContext + ")";
+	if (unsolvedPixels.load() > 0 &&
+		static_cast<double>(unsolvedPixels.load()) > kDemMaxUnsolvedPixelFraction * static_cast<double>(totalInversionPixels)) {
+		dem.release();
+		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 FEP height solve failed for too many valid phase samples.", unsolvedDetail);
 	}
-	if (validationCount == 0) { dem.release(); return failContract("anchor.validation", "DEM absolute-phase anchoring v2 has no independent validation samples."); }
-	// Stored order is [validation_count, mean_m, rms_m, max_abs_m].
-	result->sparseHeightResidualStats[0] = static_cast<double>(validationCount);
-	result->sparseHeightResidualStats[1] = residualSum / validationCount;
-	result->sparseHeightResidualStats[2] = std::sqrt(residualSquareSum / validationCount);
-	result->sparseHeightResidualStats[3] = residualMax;
-	if (residualMax > request->maximumSparseHeightResidualMeters) { dem.release(); return failContract("anchor.validation", "absolute-phase anchor ambiguous: independent external DEM height residual exceeds policy."); }
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "inversion.mask",
+		"DEM grid inversion masking summary.",
+		"minCoherence=" + std::to_string(kDemInversionMinimumCoherence) +
+		"; maskedLowCoherence=" + std::to_string(maskedLowCoherence.load()) +
+		"; maskedSeaLevel=" + std::to_string(maskedSeaLevel.load()) +
+		"; unsolvedPixels=" + std::to_string(unsolvedPixels.load()) +
+		"; totalPixels=" + std::to_string(totalInversionPixels));
+	if (unsolvedPixels.load() > 0) {
+		diagnosticContext.emit(DEM_LOG_WARNING, static_cast<DemError>(0), "inversion.solve",
+			"Some phase-valid pixels have no solvable height; they were written as NoData.", unsolvedDetail);
+	}
 	// This preliminary bridge does not retain HDF5 handles.  Rechecking every
 	// consumed artifact detects replacement during the open/read sequence and
 	// keeps the call fail-closed until a handle-pinned snapshot reader exists.

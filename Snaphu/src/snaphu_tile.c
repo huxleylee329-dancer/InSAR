@@ -2022,10 +2022,11 @@ int TraceRegions(short **regions, short **nextregions, short **lastregions,
 
         /* create the secondary node */
         nnewnodes++;
-        if(nnewnodes > SHRT_MAX){
+        if(nnewnodes > 200000L){
           fflush(NULL);
-          fprintf(sp0,"Exceeded maximum number of secondary nodes\n"
-                  "Decrease TILECOSTTHRESH and/or increase MINREGIONSIZE\n");
+          fprintf(sp0,"Exceeded maximum number of secondary nodes in tile(%ld,%ld) tilenum=%ld\n"
+                  "Decrease TILECOSTTHRESH and/or increase MINREGIONSIZE\n",
+                  tilerow, tilecol, tilenum);
           exit(ABNORMAL_EXIT);
         }
         scndrynodes[tilenum]=(nodeT *)ReAlloc(scndrynodes[tilenum],
@@ -3446,10 +3447,11 @@ int TraceSecondaryArc(nodeT *primaryhead, nodeT **scndrynodes,
 
   /* set up secondary arc datastructures */
   nnewarcs=++(*nnewarcsptr);
-  if(nnewarcs > SHRT_MAX){
+  if(nnewarcs > 200000L){
     fflush(NULL);
-    fprintf(sp0,"Exceeded maximum number of secondary arcs\n"
-            "Decrease TILECOSTTHRESH and/or increase MINREGIONSIZE\n");
+    fprintf(sp0,"Exceeded maximum number of secondary arcs in tile(%ld,%ld) tilenum=%ld\n"
+            "Decrease TILECOSTTHRESH and/or increase MINREGIONSIZE\n",
+            tilerow, tilecol, tilenum);
     exit(ABNORMAL_EXIT);  
   }
   scndryarcs[tilenum]=(scndryarcT *)ReAlloc(scndryarcs[tilenum],
