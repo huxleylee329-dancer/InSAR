@@ -1560,9 +1560,12 @@ int AssembleTiles(outfileT *outfiles, paramT *params,
   }
 
   /* Give notice about increasing overlap if there are edge artifacts */
+  /* 注意：分块模式下 rowovrlp < 单块行数 几乎恒真（200 < 1523），此提示默认每次
+     都会打印，并不代表本次解真的存在边缘伪影。故改走 verbose 流（默认进 null
+     文件，仅 -v/verbose 时转向 stdout），避免污染状态日志。 */
   if(params->rowovrlp<ni || params->colovrlp<nj){
     fflush(NULL);
-    fprintf(sp1,
+    fprintf(sp2,
             "SUGGESTION: Try increasing tile overlap and/or size"
             " if solution has edge artifacts\n");
   }

@@ -70,7 +70,8 @@ using namespace cv;
 		if (!supplied) return true;
 		if (supplied->version != 1 || supplied->structSize < sizeof(SnaphuRunOptionsV1)) return false;
 		normalized = *supplied;
-		if ((normalized.flags & ~SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0 ||
+		if ((normalized.flags & ~(SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS |
+			SNAPHU_RUN_OPTION_ASSEMBLE_ONLY)) != 0 ||
 			normalized.statisticalCostMode > SNAPHU_COST_MODE_SMOOTH) return false;
 		for (size_t i = 0; i < sizeof(normalized.reserved) / sizeof(normalized.reserved[0]); ++i)
 			if (normalized.reserved[i] != 0) return false;
@@ -550,15 +551,15 @@ using namespace cv;
 		}
 	};
 
-	bool emitSnaphuRunEvent(uint32_t type, const std::string& message, ULONGLONG startedAt, HANDLE job)
+	bool emitSnaphuRunEvent(uint32_t type, const std::string& message, ULONGLONG startedAt, HANDLE job,
+		uint32_t effectiveProcessCount = 1)
 	{
 		if (!g_activeSnaphuRun || !g_activeSnaphuRun->callback) return true;
 		SnaphuRunEventV1 event = {};
 		event.structSize = sizeof(event);
 		event.version = 1;
 		event.type = type;
-		// Windows SNAPHU currently forces tile workers to one process.
-		event.effectiveProcessCount = 1;
+		event.effectiveProcessCount = effectiveProcessCount;
 		event.elapsedMilliseconds = GetTickCount64() - startedAt;
 		if (job)
 		{
@@ -1000,11 +1001,6 @@ using namespace cv;
 		const std::string runningMessage = "Running external solver " + jobPrefix + " (progress unavailable)...";
 		if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
 		if (!is_cancelled && !emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job)) is_cancelled = true;
-		if (g_activeSnaphuRun && g_activeSnaphuRun->options.requestedProcessCount != 1)
-		{
-			if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING,
-				"Windows SNAPHU runs with NPROC=1; the requested process count was downgraded.", startedAt, job)) is_cancelled = true;
-		}
 		while (!is_cancelled && !result.timedOut)
 		{
 			const DWORD waitResult = WaitForSingleObject(pi.hProcess, 100);
@@ -1381,7 +1377,10 @@ using namespace cv;
 	}
 
 	bool appendSnaphuTilingConfig(std::ostringstream& config, const std::wstring& taskFolderWide,
-		int rows, int cols, ExternalToolResult& result)
+		int rows, int cols, ExternalToolResult& result,
+		const std::wstring* tileDirectoryOverride = nullptr,
+		const std::wstring* dotileMaskPathWide = nullptr,
+		bool noAssemble = false)
 	{
 		if (!g_activeSnaphuRun) return true;
 		const SnaphuRunOptionsV1& options = g_activeSnaphuRun->options;
@@ -1399,8 +1398,11 @@ using namespace cv;
 			result.validationFailure = "SNAPHU tile count or overlap is incompatible with input dimensions";
 			return false;
 		}
-		const std::wstring tileDirectoryWide = taskFolderWide + L"\\tiles";
-		if (!CreateDirectoryW(tileDirectoryWide.c_str(), nullptr))
+		const std::wstring tileDirectoryWide = tileDirectoryOverride ? *tileDirectoryOverride
+			: taskFolderWide + L"\\tiles";
+		// 分片驱动时同一个 TILEDIR 会被写进多份 config（每个 worker 一份），
+		// 恢复重放时指向的还是上一轮已存在的目录，故“已存在”必须视为正常。
+		if (!CreateDirectoryW(tileDirectoryWide.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
 		{
 			result.phase = "prepare solution";
 			result.win32Error = GetLastError();
@@ -1425,6 +1427,27 @@ using namespace cv;
 		config << "NTILEROW " << options.tileRows << "\nNTILECOL " << options.tileCols << "\n";
 		config << "NPROC 1\nROWOVRLP " << options.rowOverlap << "\nCOLOVRLP " << options.colOverlap << "\n";
 		config << "TILEDIR " << quotedTileDirectory << "\nRMTMPTILE FALSE\n";
+		if (dotileMaskPathWide)
+		{
+			std::string dotileMaskUtf8;
+			PathResolver::Error maskError = PathResolver::Error::None;
+			if (!PathResolver::wideToUtf8(*dotileMaskPathWide, dotileMaskUtf8, &maskError))
+			{
+				result.phase = "path conversion";
+				result.validationFailure = PathResolver::errorMessage(maskError);
+				return false;
+			}
+			std::string quotedDotileMask;
+			if (!quoteSnaphuConfigPath(dotileMaskUtf8, quotedDotileMask))
+			{
+				result.phase = "path conversion";
+				result.validationFailure = "SNAPHU tile mask cannot be represented in config";
+				return false;
+			}
+			config << "DOTILEMASKFILE " << quotedDotileMask << "\n";
+		}
+		// 分片驱动时每个 worker 只解缠自己的子集，装配由驱动方单独收尾
+		if (noAssemble) config << "NOASSEMBLE TRUE\n";
 		return true;
 	}
 
@@ -1446,6 +1469,431 @@ using namespace cv;
 		}
 		if (!CloseHandle(file)) ok = false;
 		return ok;
+	}
+
+	// ==================== 分片驱动（DOTILEMASK 多进程）====================
+	//
+	// 目标：把 6x6 这类分块解缠从「单进程串行跑 36 块」变成「N 个进程各跑一个互不相交
+	// 的子集」，最后统一装配一次。SNAPHU 侧只依赖三个既有/新增开关：
+	//   DOTILEMASKFILE  只解缠掩码为 1 的块（既有）
+	//   NOASSEMBLE      本进程只解缠、不装配（新增）
+	//   --assemble      只装配、不解缠（既有，用于收尾与恢复重放）
+	// 关键前提（已在源码核实）：
+	//   * MakeTileDir() 在 TILEDIR 已存在时直接返回，不会删除/重建，故多个 worker 可共用同一 TILEDIR；
+	//   * 解缠阶段每个 block 之间相互独立，不读其它 block 的 tile 文件（读邻块只在装配阶段）；
+	//   * 全部 worker 挂到同一个 job object，指标（CPU/内存/读/写）自动聚合。
+
+	// 一个 SNAPHU tile worker：独立进程 + 两条管道 + 独立的行缓冲（保证日志不交错）
+	struct SnaphuTileWorker
+	{
+		PROCESS_INFORMATION info = {};
+		HANDLE stdoutRead = INVALID_HANDLE_VALUE;
+		HANDLE stderrRead = INVALID_HANDLE_VALUE;
+		std::string stdoutLineBuffer;
+		std::string stderrLineBuffer;
+		std::string stdoutSink;   // stdout 只进日志，用作有界丢弃目标
+		std::string stderrSink;   // stderr 既进日志，也汇总进诊断
+		std::string source;       // 日志前缀，例如 "w1"
+		DWORD exitCode = STILL_ACTIVE;
+		bool started = false;
+		bool exited = false;
+	};
+
+	// DOTILEMASKFILE：ntilerow × ntilecol 的裸字节数组（行主序），1 = 解缠该块
+	bool writeSnaphuDotileMask(const std::wstring& pathWide, const std::vector<char>& selected,
+		ScopedArtifactDirectory* artifacts)
+	{
+		if (selected.empty()) return false;
+		return writeBytes(pathWide, selected.data(), selected.size(), artifacts);
+	}
+
+	// 结构级校验 tile 现场是否足以装配：目录可枚举、每块都有代价与区域产物、无 0 字节文件。
+	// 这是"恢复重放"的安全守卫。O(tile 数) 次 stat，不做大文件逐字节哈希。
+	bool validateSnaphuTileSet(const std::wstring& tileDirectoryWide, long ntiles, std::string& summary)
+	{
+		if (GetFileAttributesW(tileDirectoryWide.c_str()) == INVALID_FILE_ATTRIBUTES)
+		{
+			summary = "tile directory does not exist";
+			return false;
+		}
+		WIN32_FIND_DATAW entry = {};
+		HANDLE find = FindFirstFileW((tileDirectoryWide + L"\\*").c_str(), &entry);
+		if (find == INVALID_HANDLE_VALUE)
+		{
+			summary = "tile directory cannot be enumerated";
+			return false;
+		}
+		long total = 0, costFiles = 0, regionFiles = 0, emptyFiles = 0;
+		do
+		{
+			if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+			const std::wstring name = entry.cFileName;
+			++total;
+			if (entry.nFileSizeHigh == 0 && entry.nFileSizeLow == 0) ++emptyFiles;
+			if (name.find(L"cost_") != std::wstring::npos) ++costFiles;
+			if (name.size() >= 8 && name.compare(name.size() - 8, 8, L"_regions") == 0) ++regionFiles;
+		} while (FindNextFileW(find, &entry));
+		FindClose(find);
+		std::ostringstream text;
+		text << "total=" << total << ", cost=" << costFiles << ", regions=" << regionFiles
+			<< ", empty=" << emptyFiles << ", expectedTiles=" << ntiles;
+		summary = text.str();
+		return costFiles >= ntiles && regionFiles >= ntiles && emptyFiles == 0;
+	}
+
+	// 在 tmp 根目录下挑最近一次留下 tile 现场的 insar-snaphu-* 目录（供恢复重放）。
+	// 注意：目录选择只是"最近一次"，是否属于本轮输入由调用方（人工显式触发）负责。
+	bool findRecoverableSnaphuTaskDirectory(const char* tmpFolder,
+		std::wstring& taskFolderWide, std::wstring& tileDirectoryWide, std::string& summary)
+	{
+		if (!tmpFolder || !*tmpFolder) { summary = "empty temporary root"; return false; }
+		std::wstring root;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(tmpFolder, root, &error)) { summary = PathResolver::errorMessage(error); return false; }
+		while (!root.empty() && (root.back() == L'\\' || root.back() == L'/')) root.pop_back();
+		if (root.empty()) { summary = "empty temporary root"; return false; }
+		WIN32_FIND_DATAW entry = {};
+		HANDLE find = FindFirstFileW((root + L"\\insar-snaphu-*").c_str(), &entry);
+		if (find == INVALID_HANDLE_VALUE) { summary = "no retained SNAPHU task directory"; return false; }
+		std::wstring best;
+		FILETIME bestTime = {};
+		do
+		{
+			if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) continue;
+			if (best.empty() || CompareFileTime(&entry.ftLastWriteTime, &bestTime) > 0)
+			{
+				bestTime = entry.ftLastWriteTime;
+				best = root + L"\\" + entry.cFileName;
+			}
+		} while (FindNextFileW(find, &entry));
+		FindClose(find);
+		if (best.empty()) { summary = "no retained SNAPHU task directory"; return false; }
+		taskFolderWide = best;
+		tileDirectoryWide = best + L"\\tiles";
+		summary = "reused retained SNAPHU task directory";
+		return true;
+	}
+
+	// 并发驱动 N 个 worker：共用同一个 job（指标聚合）与同一个 TILEDIR，
+	// 各自用 DOTILEMASKFILE 解缠互不相交的子集，且 config 内 NOASSEMBLE TRUE。
+	// 全部 worker 结束后由调用方再跑一次 --assemble 收尾。
+	bool runSnaphuTileWorkers(const std::wstring& executable,
+		const std::vector<std::wstring>& configPaths, const std::vector<std::string>& sources,
+		UnwrapProgressCallback cb, ExternalToolResult& result)
+	{
+		result.tool = "SNAPHU";
+		result.phase = "create job";
+		if (configPaths.empty() || configPaths.size() != sources.size())
+		{
+			result.validationFailure = "SNAPHU tile worker request is empty or inconsistent";
+			return false;
+		}
+		const uint32_t workerCount = static_cast<uint32_t>(configPaths.size());
+		SECURITY_ATTRIBUTES inheritable = {};
+		inheritable.nLength = sizeof(inheritable);
+		inheritable.bInheritHandle = TRUE;
+		HANDLE nullInput = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (nullInput == INVALID_HANDLE_VALUE)
+		{
+			result.win32Error = GetLastError();
+			return false;
+		}
+		HANDLE job = CreateJobObjectW(nullptr, nullptr);
+		if (!job)
+		{
+			result.win32Error = GetLastError();
+			CloseHandle(nullInput);
+			return false;
+		}
+		result.phase = "configure job";
+		{
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+			{
+				result.win32Error = GetLastError();
+				CloseHandle(job);
+				CloseHandle(nullInput);
+				return false;
+			}
+		}
+
+		std::vector<SnaphuTileWorker> workers(configPaths.size());
+		bool launchFailed = false;
+		for (size_t i = 0; i < configPaths.size() && !launchFailed; ++i)
+		{
+			SnaphuTileWorker& worker = workers[i];
+			worker.source = sources[i];
+			result.phase = "launch";
+			STARTUPINFO si = {};
+			PROCESS_INFORMATION pi = {};
+			si.cb = sizeof(si);
+			si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+			si.wShowWindow = FALSE;
+			si.hStdInput = nullInput;
+			HANDLE stdoutWrite = INVALID_HANDLE_VALUE;
+			HANDLE stderrWrite = INVALID_HANDLE_VALUE;
+			if (!CreatePipe(&worker.stdoutRead, &stdoutWrite, &inheritable, 0) ||
+				!SetHandleInformation(worker.stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
+				!CreatePipe(&worker.stderrRead, &stderrWrite, &inheritable, 0) ||
+				!SetHandleInformation(worker.stderrRead, HANDLE_FLAG_INHERIT, 0))
+			{
+				result.win32Error = GetLastError();
+				if (stdoutWrite != INVALID_HANDLE_VALUE) CloseHandle(stdoutWrite);
+				if (stderrWrite != INVALID_HANDLE_VALUE) CloseHandle(stderrWrite);
+				launchFailed = true;
+				break;
+			}
+			si.hStdOutput = stdoutWrite;
+			si.hStdError = stderrWrite;
+			std::wstring commandLine = quoteCommandArgument(executable) + L" " +
+				quoteCommandArgument(L"-f") + L" " + quoteCommandArgument(configPaths[i]);
+			std::vector<wchar_t> cmdLineCopy(commandLine.begin(), commandLine.end());
+			cmdLineCopy.push_back(L'\0');
+			const BOOL created = ::CreateProcessW(executable.c_str(), cmdLineCopy.data(), nullptr, nullptr, TRUE,
+				CREATE_NO_WINDOW | CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+			CloseHandle(stdoutWrite);
+			CloseHandle(stderrWrite);
+			if (!created)
+			{
+				result.win32Error = GetLastError();
+				launchFailed = true;
+				break;
+			}
+			worker.info = pi;
+			worker.started = true;
+			result.processStarted = true;
+			if (!AssignProcessToJobObject(job, pi.hProcess) ||
+				ResumeThread(pi.hThread) == static_cast<DWORD>(-1))
+			{
+				result.win32Error = GetLastError();
+				result.phase = "bind job";
+				launchFailed = true;
+				break;
+			}
+		}
+
+		bool is_cancelled = false;
+		bool wait_failed = false;
+		// 任一 worker 失败即快速失败：否则一个 worker 在开头失败，其余会白跑十几个小时
+		bool worker_failed_early = false;
+		int early_failed_index = -1;
+		DWORD early_failed_code = 0;
+		const ULONGLONG startedAt = GetTickCount64();
+		ULONGLONG lastHeartbeatAt = startedAt;
+		std::ostringstream runningText;
+		runningText << "Running " << workerCount << " SNAPHU tile worker processes (progress unavailable)...";
+		const std::string runningMessage = runningText.str();
+		if (!launchFailed)
+		{
+			result.phase = "process exit";
+			if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
+			if (!is_cancelled &&
+				!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job, workerCount))
+				is_cancelled = true;
+			while (!is_cancelled && !result.timedOut)
+			{
+				size_t pending = 0;
+				for (size_t wi = 0; wi < workers.size(); ++wi)
+				{
+					SnaphuTileWorker& worker = workers[wi];
+					if (!worker.started) continue;
+					if (!worker.exited)
+					{
+						const DWORD state = WaitForSingleObject(worker.info.hProcess, 0);
+						if (state == WAIT_OBJECT_0)
+						{
+							worker.exited = true;
+							DWORD earlyCode = 0;
+							if (!worker_failed_early &&
+								GetExitCodeProcess(worker.info.hProcess, &earlyCode) && earlyCode != 0)
+							{
+								worker_failed_early = true;
+								early_failed_index = static_cast<int>(wi);
+								early_failed_code = earlyCode;
+							}
+						}
+						else if (state == WAIT_FAILED)
+						{
+							result.win32Error = GetLastError();
+							wait_failed = true;
+						}
+						else ++pending;
+					}
+					const std::string stdoutSource = worker.source + "/stdout";
+					const std::string stderrSource = worker.source + "/stderr";
+					if (!drainSnaphuPipe(worker.stdoutRead, worker.stdoutSink, worker.stdoutLineBuffer,
+						stdoutSource.c_str(), startedAt, job)) is_cancelled = true;
+					if (!drainSnaphuPipe(worker.stderrRead, worker.stderrSink, worker.stderrLineBuffer,
+						stderrSource.c_str(), startedAt, job)) is_cancelled = true;
+				}
+				if (wait_failed || worker_failed_early) break;
+				if (pending == 0) break;
+				const ULONGLONG now = GetTickCount64();
+				if (g_activeSnaphuRun && now - lastHeartbeatAt >= g_activeSnaphuRun->options.heartbeatMilliseconds)
+				{
+					if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_HEARTBEAT, runningMessage, startedAt, job, workerCount))
+						is_cancelled = true;
+					lastHeartbeatAt = now;
+				}
+				if (g_activeSnaphuRun && g_activeSnaphuRun->options.wallTimeoutMilliseconds != 0 &&
+					now - startedAt >= g_activeSnaphuRun->options.wallTimeoutMilliseconds)
+				{
+					result.timedOut = true;
+					result.phase = "timeout";
+					emitSnaphuRunEvent(SNAPHU_RUN_EVENT_TIMED_OUT, "SNAPHU wall-clock timeout reached.",
+						startedAt, job, workerCount);
+					break;
+				}
+				Sleep(25);
+			}
+		}
+
+		if (is_cancelled || result.timedOut || wait_failed || launchFailed || worker_failed_early)
+		{
+			result.cancelled = is_cancelled;
+			if (is_cancelled) result.phase = "cancel";
+			if (!TerminateJobObject(job, static_cast<UINT>(is_cancelled ? -2 : -3)) && result.win32Error == ERROR_SUCCESS)
+				result.win32Error = GetLastError();
+			// 硬停之后必须给一个上界等待，否则调用方可能永远等不到 job 清空
+			const ULONGLONG terminationDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				const bool jobKnown = QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr) != FALSE;
+				if (jobKnown && accounting.ActiveProcesses == 0) break;
+				if (!jobKnown || GetTickCount64() >= terminationDeadline)
+				{
+					result.terminationUncertain = true;
+					if (!jobKnown && result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				for (SnaphuTileWorker& worker : workers)
+				{
+					if (!worker.started) continue;
+					drainPipe(worker.stdoutRead, worker.stdoutSink);
+					drainStderrPipe(worker.stderrRead, worker.stderrSink);
+				}
+				Sleep(25);
+			}
+		}
+		else
+		{
+			// 根进程已退出，但 job 计数可能短暂滞后；给一个有界窗口再判定 terminationUncertain
+			const ULONGLONG completionDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr))
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				if (accounting.ActiveProcesses == 0) break;
+				if (GetTickCount64() >= completionDeadline)
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = ERROR_BUSY;
+					break;
+				}
+				for (SnaphuTileWorker& worker : workers)
+				{
+					if (!worker.started) continue;
+					drainPipe(worker.stdoutRead, worker.stdoutSink);
+					drainStderrPipe(worker.stderrRead, worker.stderrSink);
+				}
+				Sleep(25);
+			}
+		}
+
+		int failedIndex = -1;
+		DWORD failedExitCode = 0;
+		std::ostringstream exitSummary;
+		for (size_t i = 0; i < workers.size(); ++i)
+		{
+			SnaphuTileWorker& worker = workers[i];
+			if (!worker.started)
+			{
+				if (i) exitSummary << ", ";
+				exitSummary << sources[i] << "=not-started";
+				continue;
+			}
+			if (!GetExitCodeProcess(worker.info.hProcess, &worker.exitCode) && result.win32Error == ERROR_SUCCESS)
+				result.win32Error = GetLastError();
+			if (i) exitSummary << ", ";
+			exitSummary << worker.source << "=" << worker.exitCode;
+			if (failedIndex < 0 && worker.exitCode != 0)
+			{
+				failedIndex = static_cast<int>(i);
+				failedExitCode = worker.exitCode;
+			}
+			drainPipe(worker.stdoutRead, worker.stdoutSink);
+			drainStderrPipe(worker.stderrRead, worker.stderrSink);
+			const std::string stdoutSource = worker.source + "/stdout";
+			const std::string stderrSource = worker.source + "/stderr";
+			flushSnaphuPipe(worker.stdoutLineBuffer, stdoutSource.c_str(), startedAt, job);
+			flushSnaphuPipe(worker.stderrLineBuffer, stderrSource.c_str(), startedAt, job);
+			// 失败者的 stderr 必须汇总进诊断，否则真正的 SNAPHU 报错会丢
+			if (!worker.stderrSink.empty())
+			{
+				if (!result.stderrTail.empty() && result.stderrTail.back() != '\n') result.stderrTail.push_back('\n');
+				appendBounded(result.stderrTail, worker.stderrSink.data(), worker.stderrSink.size(), 2048);
+			}
+		}
+		if (worker_failed_early && early_failed_index >= 0)
+		{
+			// 快速失败时被我们主动终止的兄弟 worker 也会带非零退出码，
+			// 真正的原因必须按记录的顺序上报，不能取"第一个非零"。
+			failedIndex = early_failed_index;
+			failedExitCode = early_failed_code;
+		}
+		for (SnaphuTileWorker& worker : workers)
+		{
+			if (worker.started)
+			{
+				CloseHandle(worker.info.hThread);
+				CloseHandle(worker.info.hProcess);
+			}
+			if (worker.stdoutRead != INVALID_HANDLE_VALUE) CloseHandle(worker.stdoutRead);
+			if (worker.stderrRead != INVALID_HANDLE_VALUE) CloseHandle(worker.stderrRead);
+		}
+		CloseHandle(nullInput);
+		CloseHandle(job);
+
+		if (launchFailed)
+		{
+			if (result.validationFailure.empty())
+				result.validationFailure = "failed to launch all SNAPHU tile workers";
+			return false;
+		}
+		if (result.cancelled || result.timedOut || result.terminationUncertain) return false;
+		if (result.win32Error != ERROR_SUCCESS) return false;
+		if (failedIndex >= 0)
+		{
+			std::ostringstream failure;
+			failure << "SNAPHU tile worker " << sources[failedIndex] << " exited with code " << failedExitCode
+				<< " (all workers: " << exitSummary.str() << ")";
+			result.phase = "process exit";
+			result.exitCode = failedExitCode;
+			result.validationFailure = failure.str();
+			emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, failure.str(), startedAt, nullptr, workerCount);
+			return false;
+		}
+		std::ostringstream completedText;
+		completedText << "All " << workerCount << " SNAPHU tile workers completed.";
+		const std::string completedMessage = completedText.str();
+		emitSnaphuRunEvent(SNAPHU_RUN_EVENT_COMPLETED, completedMessage, startedAt, nullptr, workerCount);
+		if (cb && !cb(100, completedMessage.c_str()))
+		{
+			result.cancelled = true;
+			result.phase = "cancel";
+			return false;
+		}
+		return true;
 	}
 
 	bool writeFloatRaster(const std::wstring& path, const Mat& input, ScopedArtifactDirectory* artifacts = nullptr)
@@ -4352,7 +4800,48 @@ int Unwrap::SnaphuFileInternal(
 	config << "STATCOSTMODE "
 		<< (statisticalCostMode == SNAPHU_COST_MODE_DEFO ? "DEFO" :
 			(statisticalCostMode == SNAPHU_COST_MODE_SMOOTH ? "SMOOTH" : "TOPO")) << "\n";
-	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
+	// 运行模式判定：单进程（默认）/ 分片驱动（requestedProcessCount>1）/ 装配重放（ASSEMBLE_ONLY）
+	SnaphuRunOptionsV1 runOptions = {};
+	if (g_activeSnaphuRun) runOptions = g_activeSnaphuRun->options;
+	const bool tiledRun = runOptions.tileRows > 1 || runOptions.tileCols > 1;
+	const long tileCount = static_cast<long>(runOptions.tileRows) * static_cast<long>(runOptions.tileCols);
+	const bool assembleOnlyRequested = (runOptions.flags & SNAPHU_RUN_OPTION_ASSEMBLE_ONLY) != 0;
+	const std::wstring currentTileDirectoryWide = taskFolderWide + L"\\tiles";
+
+	// 装配重放（恢复）：不启动 worker，指向上一轮留下的 tile 现场，只跑一次装配。
+	// 不自动触发——必须由调用方显式置 ASSEMBLE_ONLY；且复用哪一个目录在这里只是"最近一次"，
+	// 是否属于本轮输入由调用方（人工）负责，本层只做结构级校验与显式告警。
+	const std::wstring* tileOverride = nullptr;
+	std::wstring recoveredTileDirectoryWide;
+	if (tiledRun && assembleOnlyRequested)
+	{
+		std::wstring recoveredTaskFolderWide;
+		std::string discovery;
+		if (!findRecoverableSnaphuTaskDirectory(tmp_folder, recoveredTaskFolderWide, recoveredTileDirectoryWide, discovery))
+		{
+			toolResult.phase = "prepare solution";
+			toolResult.validationFailure = "SNAPHU 装配重放：找不到可复用的 tile 现场（" + discovery + "）";
+			fprintf(stderr, "snaphu(): assemble-only reuse failed (%s).\n", discovery.c_str());
+			return -1;
+		}
+		std::string tileSummary;
+		const bool tilesOk = validateSnaphuTileSet(recoveredTileDirectoryWide, tileCount, tileSummary);
+		// 无论成败都显式告警：复用上一轮目录有"陈旧 tile"风险，必须在日志里留痕
+		{
+			std::ostringstream note;
+			note << "SNAPHU 装配重放（恢复模式）：复用 tile 现场 " << discovery << " [" << tileSummary << "]";
+			emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, note.str(), GetTickCount64(), nullptr);
+		}
+		if (!tilesOk)
+		{
+			toolResult.phase = "prepare solution";
+			toolResult.validationFailure = "SNAPHU 装配重放的 tile 现场不完整：" + tileSummary;
+			return -1;
+		}
+		tileOverride = &recoveredTileDirectoryWide;
+	}
+
+	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult, tileOverride)) return -1;
 
 	const std::string configText = config.str();
 	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
@@ -4364,12 +4853,131 @@ int Unwrap::SnaphuFileInternal(
 		return -2;
 	}
 
-	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
-	if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
-		"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
+	// 分片驱动：为每个 worker 生成一份 config（在完整 config 后追加 DOTILEMASKFILE + NOASSEMBLE）
+	std::vector<std::wstring> workerConfigPaths;
+	std::vector<std::string> workerSources;
+	if (tiledRun && !assembleOnlyRequested && runOptions.requestedProcessCount > 1)
 	{
-		if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
-		return -2;
+		uint32_t workerCount = runOptions.requestedProcessCount;
+		if (workerCount > static_cast<uint32_t>(tileCount)) workerCount = static_cast<uint32_t>(tileCount);
+		if (workerCount > 32) workerCount = 32;   // 进程上限，避免进程风暴
+		for (uint32_t w = 0; w < workerCount; ++w)
+		{
+			// 轮询分配：第 t 块归 worker (t % workerCount)，保证各 worker 负载接近且互不相交
+			std::vector<char> selected(static_cast<size_t>(tileCount), 0);
+			for (long t = static_cast<long>(w); t < tileCount; t += static_cast<long>(workerCount))
+				selected[static_cast<size_t>(t)] = 1;
+			std::wostringstream maskName;
+			maskName << taskFolderWide << L"\\dotilemask_" << (w + 1) << L".dat";
+			const std::wstring maskPathWide = maskName.str();
+			if (!writeSnaphuDotileMask(maskPathWide, selected, &artifacts))
+			{
+				toolResult.phase = "prepare solution";
+				toolResult.validationFailure = "cannot write SNAPHU tile mask for worker " + std::to_string(w + 1);
+				return -1;
+			}
+			std::string maskUtf8;
+			PathResolver::Error maskPathError = PathResolver::Error::None;
+			if (!PathResolver::wideToUtf8(maskPathWide, maskUtf8, &maskPathError))
+			{
+				toolResult.phase = "path conversion";
+				toolResult.validationFailure = PathResolver::errorMessage(maskPathError);
+				return -1;
+			}
+			std::string quotedMask;
+			if (!quoteSnaphuConfigPath(maskUtf8, quotedMask))
+			{
+				toolResult.phase = "path conversion";
+				toolResult.validationFailure = "SNAPHU tile mask cannot be represented in config";
+				return -1;
+			}
+			std::wostringstream workerConfigName;
+			workerConfigName << taskFolderWide << L"\\snaphu_worker_" << (w + 1) << L".config";
+			const std::wstring workerConfigWide = workerConfigName.str();
+			std::ostringstream workerConfigText;
+			workerConfigText << configText << "DOTILEMASKFILE " << quotedMask << "\nNOASSEMBLE TRUE\n";
+			const std::string workerConfig = workerConfigText.str();
+			if (!writeBytes(workerConfigWide, workerConfig.data(), workerConfig.size(), &artifacts))
+			{
+				toolResult.phase = "prepare solution";
+				toolResult.validationFailure = "cannot write SNAPHU worker config " + std::to_string(w + 1);
+				return -1;
+			}
+			workerConfigPaths.push_back(workerConfigWide);
+			std::ostringstream label;
+			label << "w" << (w + 1);
+			workerSources.push_back(label.str());
+		}
+	}
+
+	// 失败时给出可执行的恢复指引：tile 现场完整才提示可以只重放装配
+	auto emitAssemblyRecoveryHint = [&]()
+	{
+		std::string tileSummary = "unknown";
+		const bool tilesOk = validateSnaphuTileSet(currentTileDirectoryWide, tileCount, tileSummary);
+		std::string taskFolderUtf8;
+		PathResolver::Error hintError = PathResolver::Error::None;
+		std::ostringstream hint;
+		if (tilesOk && PathResolver::wideToUtf8(taskFolderWide, taskFolderUtf8, &hintError))
+		{
+			hint << "SNAPHU 装配阶段失败；本任务 tile 现场完整（" << tileSummary
+				<< "），可用 `snaphu.exe -f \"" << taskFolderUtf8
+				<< "\\snaphu.config\" --assemble` 约 4 分钟重放装配，无需重跑 tile 阶段。";
+		}
+		else
+		{
+			hint << "SNAPHU 装配阶段失败；tile 现场不完整（" << tileSummary << "），仍需重跑 tile 阶段。";
+		}
+		emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, hint.str(), GetTickCount64(), nullptr);
+	};
+
+	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
+	if (tiledRun && assembleOnlyRequested)
+	{
+		// 恢复重放：直接装配，跳过全部解缠
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide, L"--assemble" },
+			"SNAPHU", "snaphu(): snaphu.exe --assemble failed!", cb, &toolResult))
+		{
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+	}
+	else if (!workerConfigPaths.empty())
+	{
+		std::wstring executableFolder;
+		PathResolver::Error exeFolderError = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(EXE_path, executableFolder, &exeFolderError))
+		{
+			toolResult.phase = "path conversion";
+			toolResult.validationFailure = PathResolver::errorMessage(exeFolderError);
+			return -1;
+		}
+		if (!executableFolder.empty() && executableFolder.back() != L'\\' && executableFolder.back() != L'/')
+			executableFolder.push_back(L'\\');
+		if (!runSnaphuTileWorkers(executableFolder + L"snaphu.exe", workerConfigPaths, workerSources, cb, toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+		// 全部 worker 结束后统一装配一次（config 内不含 NOASSEMBLE，用 --assemble 只做装配）
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide, L"--assemble" },
+			"SNAPHU", "snaphu(): snaphu.exe --assemble failed!", cb, &toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+	}
+	else
+	{
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
+			"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
 	}
 
 	// A zero exit code is insufficient: reject stale, truncated, NaN and Inf output.

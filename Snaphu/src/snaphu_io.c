@@ -253,6 +253,7 @@ int SetDefaults(infileT *infiles, outfileT *outfiles, paramT *params){
   params->scndryarcflowmax=DEF_SCNDRYARCFLOWMAX;
   StrNCopy(params->tiledir,DEF_TILEDIR,MAXSTRLEN);
   params->assembleonly=DEF_ASSEMBLEONLY;
+  params->noassemble=DEF_NOASSEMBLE;
   params->rmtmptile=DEF_RMTMPTILE;
   params->tileedgeweight=DEF_TILEEDGEWEIGHT;
 
@@ -542,6 +543,8 @@ int ProcessArgs(int argc, char *argv[], infileT *infiles, outfileT *outfiles,
           }
         }else if(!strcmp(argv[i],"--assemble")){
           params->assembleonly=TRUE;
+        }else if(!strcmp(argv[i],"--noassemble")){
+          params->noassemble=TRUE;
         }else if(!strcmp(argv[i],"--copyright") || !strcmp(argv[i],"--info")){
           fprintf(sp1,COPYRIGHT);
           exit(ABNORMAL_EXIT);    
@@ -1064,6 +1067,11 @@ int CheckParams(infileT *infiles, outfileT *outfiles,
       }
       params->rmtmptile=FALSE;     /* cowardly avoid removing tile dir input */
     }
+    if(params->assembleonly && params->noassemble){
+      fflush(NULL);
+      fprintf(sp0,"assemble-only and unwrap-only modes are mutually exclusive\n");
+      exit(ABNORMAL_EXIT);
+    }
     if(params->piecefirstrow!=DEF_PIECEFIRSTROW 
        || params->piecefirstcol!=DEF_PIECEFIRSTCOL
        || params->piecenrow!=DEF_PIECENROW
@@ -1086,6 +1094,11 @@ int CheckParams(infileT *infiles, outfileT *outfiles,
     if(params->assembleonly){
       fflush(NULL);
       fprintf(sp0,"assemble-only mode can only be used with multiple tiles\n");
+      exit(ABNORMAL_EXIT);
+    }
+    if(params->noassemble){
+      fflush(NULL);
+      fprintf(sp0,"unwrap-only mode can only be used with multiple tiles\n");
       exit(ABNORMAL_EXIT);
     }
     if(params->nthreads>1){
@@ -1579,6 +1592,8 @@ int ParseConfigLine(char *buf, char *conffile, long nlines,
       StrNCopy(params->tiledir,str2,MAXSTRLEN);
     }else if(!strcmp(str1,"ASSEMBLEONLY")){
       badparam=SetBooleanSignedChar(&(params->assembleonly),str2);
+    }else if(!strcmp(str1,"NOASSEMBLE")){
+      badparam=SetBooleanSignedChar(&(params->noassemble),str2);
     }else if(!strcmp(str1,"SINGLETILEREOPTIMIZE")){
       badparam=SetBooleanSignedChar(&(params->onetilereopt),str2);
     }else if(!strcmp(str1,"RMTMPTILE")){
@@ -2023,6 +2038,7 @@ int WriteConfigLogFile(int argc, char *argv[], infileT *infiles,
     LogStringParam(fp,"DOTILEMASKFILE",infiles->dotilemaskfile);
     LogStringParam(fp,"TILEDIR",params->tiledir);
     LogBoolParam(fp,"ASSEMBLEONLY",params->assembleonly);
+    LogBoolParam(fp,"NOASSEMBLE",params->noassemble);
     LogBoolParam(fp,"SINGLETILEREOPTIMIZE",params->onetilereopt);
 
     /* connected component control */

@@ -27,7 +27,12 @@ enum SnaphuRunEventType : uint32_t
 
 enum SnaphuRunOptionFlags : uint32_t
 {
-	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0
+	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0,
+	// 装配重放：跳过 tile 解缠与 worker 启动，直接对 TILEDIR 内已存在的完整 tile 现场
+	// 执行一次组装。用于分块解缠在组装阶段失败后的恢复（实测 16 h 的 tile 阶段可用
+	// 约 4 min 重放复现）。该模式下 requestedProcessCount 被忽略。
+	// 注意：调用方必须自行保证 TILEDIR 内的 tile 与本轮输入/参数一致，本层只做结构性校验。
+	SNAPHU_RUN_OPTION_ASSEMBLE_ONLY = 1u << 1
 };
 
 // SNAPHU 统计代价模式。TOPO 为 SNAPHU 内置默认（也是本工程既有行为），DEFO/SMOOTH 与 SNAP
