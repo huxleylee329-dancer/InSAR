@@ -8,11 +8,20 @@
 #include"..\include\Utils.h"
 #include"..\include\Hdf5IO.h"
 #include "ProgressReporter.h"
+#include "..\Deflat\TopsNativeGeometry.h"
+#include <bcrypt.h>
+#include <gdal_priv.h>
+#include <gdal_alg.h>
 #include <atomic>
 #include <algorithm>
+#include <cctype>
 #include <set>
 #include <string>
 #include <vector>
+#include <limits>
+#include <map>
+#include <mutex>
+#pragma comment(lib, "bcrypt.lib")
 #ifdef _DEBUG
 #pragma comment(lib, "FormatConversion_d.lib")
 #pragma comment(lib, "Utils_d.lib")
@@ -220,14 +229,14 @@ namespace
 		return DEM_ERROR_HDF5_READ;
 	}
 
-	bool validateVersionedFlatEarthContract(const char* file, const Mat& phase, Mat& reference, std::string& detail)
+	bool validateVersionedFlatEarthContract(const char* file, const Mat& phase, Mat& reference,
+		Mat& phaseValidMask, std::string& detail)
 	{
 		FormatConversion conversion;
-		int modelVersion = 0, sourceRowCount = 0, validationRequired = 0;
+		int modelVersion = 0, sourceRowCount = 0;
 		if (conversion.read_int_from_h5(file, "flat_earth_model_version", &modelVersion) != 0 ||
 			(modelVersion != 5 && modelVersion != 6) ||
-			conversion.read_int_from_h5(file, "flat_earth_model_source_row_count", &sourceRowCount) != 0 || sourceRowCount < 1 ||
-			conversion.read_int_from_h5(file, "flat_earth_reference_validation_required", &validationRequired) != 0 || validationRequired != 1) {
+			conversion.read_int_from_h5(file, "flat_earth_model_source_row_count", &sourceRowCount) != 0 || sourceRowCount < 1) {
 			detail = "versioned flat-earth integer descriptors are missing or unsupported";
 			return false;
 		}
@@ -279,7 +288,17 @@ namespace
 				return false;
 			}
 		}
-		std::string sourceRows, timing, processing, mappingSemantics, rerampSemantics, status, target, semantics, geolocation, timeScale, strategy, masterSource, slaveSource, masterSelectionReason, slaveSelectionReason, masterLookSideSource;
+		const auto isSupportedOrbitStrategy = [](const std::string& value) {
+			return value == "fine_state_vec_cubic_hermite_v2" ||
+				value == "raw_state_vec_nearest_contiguous_8_osv_cubic_least_squares_v1";
+		};
+		const auto isSupportedOrbitSourceAndReason = [](const std::string& source, const std::string& reason) {
+			return (source == "fine_state_vec" && reason == "fine_state_vec_valid_preferred_v1") ||
+				(source == "state_vec" &&
+					(reason == "fine_state_vec_invalid__raw_snap_compatible_fallback_v1" ||
+					 reason == "fine_state_vec_absent__raw_snap_compatible_fallback_v1"));
+		};
+		std::string sourceRows, timing, processing, mappingSemantics, rerampSemantics, status, semantics, geolocation, timeScale, strategy, masterSource, slaveSource, masterSelectionReason, slaveSelectionReason, masterLookSideSource;
 		if (conversion.read_str_from_h5(file, "flat_earth_model_source_row_semantics", sourceRows) != 0 ||
 			conversion.read_str_from_h5(file, "flat_earth_model_timing_semantics", timing) != 0 ||
 			conversion.read_str_from_h5(file, "flat_earth_processing_phase_semantics", processing) != 0 ||
@@ -294,7 +313,6 @@ namespace
 			conversion.read_str_from_h5(file, "flat_earth_master_orbit_selection_reason", masterSelectionReason) != 0 ||
 			conversion.read_str_from_h5(file, "flat_earth_slave_orbit_selection_reason", slaveSelectionReason) != 0 ||
 			conversion.read_str_from_h5(file, "flat_earth_master_look_side_source", masterLookSideSource) != 0 ||
-			conversion.read_str_from_h5(file, "flat_earth_reference_validation_target", target) != 0 ||
 			conversion.read_str_from_h5(file, "flat_earth_reference_phase_semantics", semantics) != 0 ||
 			sourceRows != "source_row_map_selects_master_native_burst_line_only_v1" ||
 			timing != "strict_gps_h5_time_v2__registration_time_seed_not_geometry_truth_v1" ||
@@ -303,13 +321,10 @@ namespace
 			(!geometryOnly && rerampSemantics != "resampled_slave_deramp_demod_phase_before_conjugated_reramp_v1") ||
 			status != expectedStatus ||
 			geolocation != "master_native_line_sample_to_h0_rde__slave_zero_doppler_range_v1" ||
-			timeScale != "GPS" || strategy != "orbit_state_vectors_apply_orbit_1s_lagrange_v1" ||
-			!((masterSource == "fine_state_vec" && masterSelectionReason == "fine_state_vec_valid_preferred_v1") ||
-			  (masterSource == "state_vec" && (masterSelectionReason == "fine_state_vec_invalid__state_vec_valid_fallback_v1" || masterSelectionReason == "fine_state_vec_absent__state_vec_valid_fallback_v1"))) ||
-			!((slaveSource == "fine_state_vec" && slaveSelectionReason == "fine_state_vec_valid_preferred_v1") ||
-			  (slaveSource == "state_vec" && (slaveSelectionReason == "fine_state_vec_invalid__state_vec_valid_fallback_v1" || slaveSelectionReason == "fine_state_vec_absent__state_vec_valid_fallback_v1"))) ||
+			timeScale != "GPS" || !isSupportedOrbitStrategy(strategy) ||
+			!isSupportedOrbitSourceAndReason(masterSource, masterSelectionReason) ||
+			!isSupportedOrbitSourceAndReason(slaveSource, slaveSelectionReason) ||
 			(masterLookSideSource != "h5_lookside_v1" && masterLookSideSource != "sentinel1_fixed_right_looking_v1") ||
-			target != "external_unfitted_comparison_only_v1" ||
 			semantics != expectedReferenceSemantics) {
 			detail = "versioned flat-earth string descriptors are missing or unsupported";
 			return false;
@@ -318,7 +333,8 @@ namespace
 		double masterOrbitStart = 0.0, masterOrbitStop = 0.0, masterGeometryStart = 0.0, masterGeometryStop = 0.0,
 			slaveOrbitStart = 0.0, slaveOrbitStop = 0.0, slaveGeometryStart = 0.0, slaveGeometryStop = 0.0, interpolationMargin = 0.0,
 			epsilonPhase = 0.0, wavelength = 0.0,
-			rdeResidual = 0.0, zeroDopplerResidual = 0.0, jacobianCondition = 0.0, initialWindow = 0.0, maximumWindow = 0.0, expansionFactor = 0.0;
+			rdeResidual = 0.0, zeroDopplerResidual = 0.0, jacobianCondition = 0.0, initialWindow = 0.0, maximumWindow = 0.0, expansionFactor = 0.0,
+			masterAzimuthInterval = 0.0, slaveAzimuthInterval = 0.0;
 		if (conversion.read_double_from_h5(file, "flat_earth_master_orbit_osv_start_gps", &masterOrbitStart) != 0 ||
 			conversion.read_double_from_h5(file, "flat_earth_master_orbit_osv_stop_gps", &masterOrbitStop) != 0 ||
 			conversion.read_double_from_h5(file, "flat_earth_master_geometry_start_gps", &masterGeometryStart) != 0 ||
@@ -346,9 +362,22 @@ namespace
 			slaveOrbitStart > slaveGeometryStart - interpolationMargin || slaveOrbitStop < slaveGeometryStop + interpolationMargin ||
 			!std::isfinite(epsilonPhase) || !std::isfinite(wavelength) || !std::isfinite(rdeResidual) || !std::isfinite(zeroDopplerResidual) ||
 			!std::isfinite(jacobianCondition) || !std::isfinite(initialWindow) || !std::isfinite(maximumWindow) ||
-			!std::isfinite(expansionFactor) || epsilonPhase <= 0.0 || rdeResidual <= 0.0 || zeroDopplerResidual <= 0.0 ||
-			wavelength <= 0.0 || (transmitReceiveMode != 1 && transmitReceiveMode != 2) || rdeMaxIterations < 1 || zeroDopplerMaxIterations < 1 || jacobianCondition <= 0.0 || initialWindow <= 0.0 || maximumWindow < initialWindow || expansionFactor <= 1.0) {
+			!std::isfinite(expansionFactor) ||
+			epsilonPhase <= 0.0 || rdeResidual <= 0.0 || zeroDopplerResidual <= 0.0 ||
+			wavelength <= 0.0 ||
+			(transmitReceiveMode != 1 && transmitReceiveMode != 2) || rdeMaxIterations < 1 || zeroDopplerMaxIterations < 1 || jacobianCondition <= 0.0 || initialWindow <= 0.0 || maximumWindow < initialWindow || expansionFactor <= 1.0) {
 			detail = "v5 orbit or RDE numerical contract is invalid";
+			return false;
+		}
+		// 若已显式记录方位向采样间隔，则校验其数值合法性；未显式记录时允许后续通过 PRF 回退推导
+		if (conversion.read_double_from_h5(file, "flat_earth_master_azimuth_interval_seconds", &masterAzimuthInterval) == 0 &&
+			(!std::isfinite(masterAzimuthInterval) || masterAzimuthInterval <= 0.0)) {
+			detail = "v5 master azimuth interval seconds is non-finite or non-positive";
+			return false;
+		}
+		if (conversion.read_double_from_h5(file, "flat_earth_slave_azimuth_interval_seconds", &slaveAzimuthInterval) == 0 &&
+			(!std::isfinite(slaveAzimuthInterval) || slaveAzimuthInterval <= 0.0)) {
+			detail = "v5 slave azimuth interval seconds is non-finite or non-positive";
 			return false;
 		}
 		int maxSlaveSearchExpansions = 0;
@@ -356,11 +385,11 @@ namespace
 			detail = "v5 slave zero-Doppler expansion policy is invalid";
 			return false;
 		}
-		Mat rdeStatistics, validMask, validSampleCount, rerampPhase, mappingCoefficients, mappingBurstIndices;
+		Mat rdeStatistics, validSampleCount, rerampPhase, mappingCoefficients, mappingBurstIndices;
 		if (conversion.read_array_from_h5(file, "flat_earth_reference_phase", reference) != 0 ||
 			reference.type() != CV_64F || reference.size() != phase.size() || !cv::checkRange(reference, true, nullptr) ||
-			conversion.read_array_from_h5(file, "phase_valid_mask", validMask) != 0 ||
-			validMask.type() != CV_8U || validMask.size() != phase.size() ||
+			conversion.read_array_from_h5(file, "phase_valid_mask", phaseValidMask) != 0 ||
+			phaseValidMask.type() != CV_8U || phaseValidMask.size() != phase.size() ||
 			conversion.read_array_from_h5(file, "phase_valid_sample_count", validSampleCount) != 0 ||
 			validSampleCount.type() != CV_32S || validSampleCount.size() != phase.size() ||
 			conversion.read_array_from_h5(file, "flat_earth_rde_burst_statistics", rdeStatistics) != 0 ||
@@ -420,18 +449,177 @@ namespace
 				}
 			}
 		}
+		int validPixelCount = 0;
 		for (int row = 0; row < phase.rows; ++row) {
-			const uchar* valid = validMask.ptr<uchar>(row);
+			const uchar* valid = phaseValidMask.ptr<uchar>(row);
 			const int* samples = validSampleCount.ptr<int>(row);
 			for (int column = 0; column < phase.cols; ++column) {
-				if (valid[column] != 1 || samples[column] <= 0) {
-					detail = "v2 phase-validity contract contains an unsupported masked sample";
+				if ((valid[column] != 0 && valid[column] != 1) || samples[column] < 0 ||
+					(valid[column] != 0 && samples[column] == 0)) {
+					detail = "v2 phase-validity mask or sample-count contract is invalid";
 					return false;
+				}
+				if (valid[column] != 0) {
+					if (!std::isfinite(phase.at<double>(row, column))) {
+						detail = "v2 phase-validity contract contains a non-finite valid phase sample";
+						return false;
+					}
+					++validPixelCount;
 				}
 			}
 		}
+		if (validPixelCount == 0) {
+			detail = "v2 phase-validity contract has no valid phase samples";
+			return false;
+		}
 		return true;
 	}
+
+	bool verifySnapshotSha256(const char* utf8Path, const char* expectedHex, std::string* actualHexOut = nullptr)
+	{
+		if (actualHexOut) actualHexOut->clear();
+		if (!utf8Path || !expectedHex || strlen(expectedHex) != 64) {
+			if (actualHexOut) *actualHexOut = "invalid_expected_hash_format";
+			return false;
+		}
+		for (const char* value = expectedHex; *value; ++value) {
+			if (!((*value >= '0' && *value <= '9') || (*value >= 'a' && *value <= 'f') ||
+				(*value >= 'A' && *value <= 'F'))) {
+				if (actualHexOut) *actualHexOut = "invalid_expected_hash_hex";
+				return false;
+			}
+		}
+		std::wstring widePath;
+		PathResolver::Error pathError = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(utf8Path, widePath, &pathError) || widePath.empty()) {
+			if (actualHexOut) *actualHexOut = "path_conversion_failed";
+			return false;
+		}
+		HANDLE file = CreateFileW(widePath.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+			FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+		if (file == INVALID_HANDLE_VALUE) {
+			if (actualHexOut) *actualHexOut = "file_open_failed";
+			return false;
+		}
+		BCRYPT_ALG_HANDLE algorithm = nullptr;
+		BCRYPT_HASH_HANDLE hash = nullptr;
+		DWORD objectLength = 0, hashLength = 0, bytes = 0;
+		bool ok = BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) >= 0 &&
+			BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectLength),
+				sizeof(objectLength), &bytes, 0) >= 0 &&
+			BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&hashLength),
+				sizeof(hashLength), &bytes, 0) >= 0 && hashLength == 32;
+		std::vector<UCHAR> hashObject(objectLength);
+		std::vector<UCHAR> digest(hashLength);
+		if (ok) ok = BCryptCreateHash(algorithm, &hash, hashObject.data(), objectLength, nullptr, 0, 0) >= 0;
+		std::vector<UCHAR> buffer(64 * 1024);
+		while (ok) {
+			DWORD read = 0;
+			if (!ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size()), &read, nullptr)) {
+				ok = false;
+				break;
+			}
+			if (read == 0) break;
+			ok = BCryptHashData(hash, buffer.data(), read, 0) >= 0;
+		}
+		if (ok) ok = BCryptFinishHash(hash, digest.data(), hashLength, 0) >= 0;
+		if (hash) BCryptDestroyHash(hash);
+		if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
+		CloseHandle(file);
+		if (!ok) {
+			if (actualHexOut) *actualHexOut = "bcrypt_hash_failed";
+			return false;
+		}
+		static const char hex[] = "0123456789abcdef";
+		std::string computed;
+		computed.reserve(hashLength * 2);
+		bool match = true;
+		for (DWORD index = 0; index < hashLength; ++index) {
+			const char upper = hex[(digest[index] >> 4) & 0x0f];
+			const char lower = hex[digest[index] & 0x0f];
+			computed.push_back(upper);
+			computed.push_back(lower);
+			if (tolower(static_cast<unsigned char>(expectedHex[index * 2])) != upper ||
+				tolower(static_cast<unsigned char>(expectedHex[index * 2 + 1])) != lower) {
+				match = false;
+			}
+		}
+		if (actualHexOut) *actualHexOut = computed;
+		return match;
+	}
+
+	struct ManagedDemSampler
+	{
+		struct SampleDiagnostics
+		{
+			double pixel = 0.0;
+			double line = 0.0;
+			double values[4] = {};
+			GByte valid[4] = {};
+		};
+		GDALDataset* raster = nullptr;
+		GDALDataset* mask = nullptr;
+		double inverseTransform[6] = {};
+		double noData = 0.0;
+
+		~ManagedDemSampler()
+		{
+			if (raster) GDALClose(raster);
+			if (mask) GDALClose(mask);
+		}
+
+		bool open(const DemAbsolutePhaseAnchorV2CoreRequest& request)
+		{
+			GDALAllRegister();
+			raster = static_cast<GDALDataset*>(GDALOpen(request.auxiliaryDemRasterSnapshot, GA_ReadOnly));
+			mask = static_cast<GDALDataset*>(GDALOpen(request.auxiliaryDemValidMaskSnapshot, GA_ReadOnly));
+			if (!raster || !mask || raster->GetRasterCount() != 1 || mask->GetRasterCount() != 1 ||
+				raster->GetRasterXSize() != mask->GetRasterXSize() || raster->GetRasterYSize() != mask->GetRasterYSize()) return false;
+			double transform[6] = {};
+			if (raster->GetGeoTransform(transform) != CE_None || !GDALInvGeoTransform(transform, inverseTransform)) return false;
+			for (int index = 0; index < 6; ++index) {
+				if (std::fabs(transform[index] - request.referenceGeoTransform[index]) > 1e-12) return false;
+			}
+			int hasNoData = FALSE;
+			const double rasterNoData = raster->GetRasterBand(1)->GetNoDataValue(&hasNoData);
+			if (!hasNoData || !std::isfinite(rasterNoData) || rasterNoData != request.referenceNoDataValue) return false;
+			noData = rasterNoData;
+			return raster->GetProjectionRef() && std::string(raster->GetProjectionRef()).find("WGS 84") != std::string::npos;
+		}
+
+		bool sample(double longitude, double latitude, double& height,
+			SampleDiagnostics* diagnostics = nullptr) const
+		{
+			double pixel = inverseTransform[0] + inverseTransform[1] * longitude + inverseTransform[2] * latitude;
+			double line = inverseTransform[3] + inverseTransform[4] * longitude + inverseTransform[5] * latitude;
+			pixel -= 0.5;
+			line -= 0.5;
+			const int x0 = static_cast<int>(std::floor(pixel));
+			const int y0 = static_cast<int>(std::floor(line));
+			if (x0 < 0 || y0 < 0 || x0 + 1 >= raster->GetRasterXSize() || y0 + 1 >= raster->GetRasterYSize()) return false;
+			double values[4] = {}, weights[4] = {};
+			GByte valid[4] = {};
+			if (raster->GetRasterBand(1)->RasterIO(GF_Read, x0, y0, 2, 2, values, 2, 2, GDT_Float64, 0, 0) != CE_None ||
+				mask->GetRasterBand(1)->RasterIO(GF_Read, x0, y0, 2, 2, valid, 2, 2, GDT_Byte, 0, 0) != CE_None) return false;
+			if (diagnostics) {
+				diagnostics->pixel = pixel;
+				diagnostics->line = line;
+				for (int index = 0; index < 4; ++index) {
+					diagnostics->values[index] = values[index];
+					diagnostics->valid[index] = valid[index];
+				}
+			}
+			const double dx = pixel - x0, dy = line - y0;
+			weights[0] = (1.0 - dx) * (1.0 - dy); weights[1] = dx * (1.0 - dy);
+			weights[2] = (1.0 - dx) * dy; weights[3] = dx * dy;
+			height = 0.0;
+			for (int index = 0; index < 4; ++index) {
+				if (valid[index] != 1 || !std::isfinite(values[index]) || values[index] == noData) return false;
+				height += values[index] * weights[index];
+			}
+			return std::isfinite(height);
+		}
+	};
 }
 
 
@@ -448,6 +636,1192 @@ Dem::Dem()
 
 Dem::~Dem()
 {
+}
+
+int Dem::dem_newton_iter_absolute_phase_anchor_v2(
+	const DemAbsolutePhaseAnchorV2CoreRequest* request, Mat& dem,
+	DemAbsolutePhaseAnchorV2Result* result,
+	const DemDiagnosticOptions* diagnostics)
+{
+	dem.release();
+	DemDiagnosticContext diagnosticContext;
+	const int diagnosticStatus = initializeDiagnosticContext(diagnostics, diagnosticContext);
+	if (diagnosticStatus != 0) return diagnosticStatus;
+	bool resultInitialized = false;
+
+	const auto failContract = [&](const char* stage, const char* message, const std::string& detail = std::string()) {
+		dem.release();
+		if (resultInitialized) strcpy_s(result->status, "rejected");
+		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_ABSOLUTE_PHASE_ANCHOR_CONTRACT,
+			stage, message, detail);
+		return static_cast<int>(DEM_ERROR_ABSOLUTE_PHASE_ANCHOR_CONTRACT);
+	};
+	if (!result || result->structSize < sizeof(DemAbsolutePhaseAnchorV2Result) ||
+		result->version != DEM_ABSOLUTE_PHASE_ANCHOR_V2_RESULT_VERSION ||
+		!result->burstIndices || !result->candidateCountByBurst || !result->validationCountByBurst ||
+		!result->selectionRangeCoverage || !result->validationRangeCoverage ||
+		!result->componentEvidenceTriples || !result->kHistogramPairs ||
+		result->burstCapacity == 0 || result->rangeCoverageCapacity == 0 ||
+		result->componentEvidenceCapacity == 0 || result->histogramCapacity == 0) {
+		return failContract("entry.result", "DEM absolute-phase anchoring v2 result buffer is missing or ABI-incompatible.");
+	}
+	result->selectedK = 0;
+	result->candidateCount = 0;
+	result->consensusFraction = 0.0;
+	for (double& value : result->sparseHeightResidualStats) value = 0.0;
+	result->burstCount = 0;
+	result->componentEvidenceCount = 0;
+	result->histogramCount = 0;
+	strcpy_s(result->status, "rejected");
+	resultInitialized = true;
+	ProgressReporter progressReporter(nullptr, diagnosticContext.progressCallback, diagnosticContext.progressUserData);
+	const auto cancellationResult = [&]() {
+		dem.release();
+		strcpy_s(result->status, "cancelled");
+		diagnosticContext.emit(DEM_LOG_INFO, DEM_ERROR_CANCELLED, "cancelled_by_progress_callback",
+			"DEM absolute-phase anchoring v2 cancelled by progress callback.");
+		return static_cast<int>(DEM_ERROR_CANCELLED);
+	};
+	const auto present = [](const char* value) { return value && value[0] != '\0'; };
+	if (!request || request->structSize < sizeof(DemAbsolutePhaseAnchorV2CoreRequest) ||
+		request->version != DEM_ABSOLUTE_PHASE_ANCHOR_V2_VERSION) {
+		return failContract("entry.request", "DEM absolute-phase anchoring v2 request is missing or ABI-incompatible.");
+	}
+	const char* const requiredStrings[] = {
+		request->phaseH5Snapshot, request->masterH5Snapshot, request->slaveH5Snapshot,
+		request->auxiliaryDemRasterSnapshot, request->auxiliaryDemValidMaskSnapshot,
+		request->auxiliaryDemIdentityH5Snapshot, request->geoidModelSnapshot,
+		request->phaseH5SnapshotHash, request->masterH5SnapshotHash, request->slaveH5SnapshotHash,
+		request->auxiliaryDemRasterSnapshotHash, request->auxiliaryDemValidMaskSnapshotHash,
+		request->auxiliaryDemIdentityH5SnapshotHash, request->referenceIdentityH5SourceHash, request->geoidModelSnapshotHash,
+		request->referenceResourceId, request->referenceResourceHash, request->referenceVerticalDatum,
+		request->referenceCrs, request->referenceVerticalPipeline, request->referenceGeoidModelId,
+		request->orbitInterpolationStrategy, request->snapshotRoot,
+		request->phaseSource1ResolvedPath, request->phaseSource1ResolvedHash,
+		request->phaseSource2ResolvedPath, request->phaseSource2ResolvedHash,
+		request->geometryReferenceResolvedPath, request->geometryReferenceResolvedHash,
+		request->geometryReferenceCanonicalIdentity, request->expectedMasterOrbitSource,
+		request->expectedMasterOrbitSelectionReason, request->expectedSlaveOrbitSource,
+		request->expectedSlaveOrbitSelectionReason };
+	for (const char* value : requiredStrings) {
+		if (!present(value)) return failContract("entry.request", "DEM absolute-phase anchoring v2 request has an incomplete snapshot identity.");
+	}
+	constexpr int kMinimumHeightInversionIterations = 22;
+	constexpr int kMaximumHeightInversionIterations = 256;
+	if (request->iterations < kMinimumHeightInversionIterations ||
+		request->iterations > kMaximumHeightInversionIterations ||
+		request->azimuthCellsPerBurst < 12 || request->rangeCellsPerBurst < 12 ||
+		!std::isfinite(request->minimumConsensusFraction) || request->minimumConsensusFraction <= 0.0 ||
+		request->minimumConsensusFraction > 1.0 || !std::isfinite(request->maximumSparseHeightResidualMeters) ||
+		request->maximumSparseHeightResidualMeters <= 0.0 || !std::isfinite(request->minimumComplexGamma) ||
+		request->minimumComplexGamma <= 0.0 || request->minimumComplexGamma > 1.0 ||
+		request->minimumSelectionCandidatesPerBurst < 12 || request->minimumValidationCandidatesPerBurst < 12) {
+		return failContract("entry.policy", "DEM absolute-phase anchoring v2 policy is invalid.");
+	}
+	if (!progressReporter.report(0, "Preparing DEM absolute-phase anchoring v2 input...")) return cancellationResult();
+	if (!std::isfinite(request->referenceNoDataValue)) {
+		return failContract("input.reference_dem", "DEM absolute-phase anchoring v2 requires an explicit finite reference DEM NoData value.");
+	}
+	for (int index = 0; index < 6; ++index) {
+		if (!std::isfinite(request->referenceGeoTransform[index]))
+			return failContract("input.reference_dem", "DEM absolute-phase anchoring v2 requires a finite reference DEM affine transform.");
+	}
+	if (request->referenceGeoTransform[1] == 0.0 || request->referenceGeoTransform[5] == 0.0 ||
+		std::string(request->referenceVerticalPipeline) != "EGM96_orthometric_to_WGS84_ellipsoid_h_equals_H_plus_N_v1") {
+		return failContract("input.reference_dem", "DEM absolute-phase anchoring v2 rejected the external DEM affine or vertical pipeline contract.");
+	}
+	if (std::string(request->referenceVerticalDatum) != "EGM96") {
+		return failContract("input.vertical_datum", "DEM absolute-phase anchoring v2 supports only explicit EGM96 orthometric input.",
+			"received=" + std::string(request->referenceVerticalDatum));
+	}
+	if (std::string(request->orbitInterpolationStrategy) != "fine_state_vec_cubic_hermite_v2" &&
+		std::string(request->orbitInterpolationStrategy) != "raw_state_vec_nearest_contiguous_8_osv_cubic_least_squares_v1") {
+		return failContract("input.orbit_strategy", "DEM absolute-phase anchoring v2 received an unsupported FEP orbit strategy.",
+			"received=" + std::string(request->orbitInterpolationStrategy));
+	}
+
+	const auto readableSnapshot = [](const char* utf8Path) {
+		std::wstring widePath;
+		PathResolver::Error pathError = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(utf8Path, widePath, &pathError) || widePath.empty()) return false;
+		const DWORD attributes = GetFileAttributesW(widePath.c_str());
+		return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+	};
+	const char* const snapshotPaths[] = { request->phaseH5Snapshot, request->masterH5Snapshot,
+		request->slaveH5Snapshot, request->auxiliaryDemRasterSnapshot, request->auxiliaryDemValidMaskSnapshot,
+		request->auxiliaryDemIdentityH5Snapshot, request->geoidModelSnapshot };
+	for (const char* path : snapshotPaths) {
+		if (!readableSnapshot(path)) return failContract("input.snapshot", "DEM absolute-phase anchoring v2 snapshot is unreadable.", path);
+	}
+	const auto hashMatches = [&](const char* path, const char* expectedHash, std::string* actualHashOut = nullptr) {
+		if (!path || !expectedHash || *expectedHash == '\0') return true;
+		// 性能优化与大文件哈希规范：对于大体量雷达图像与外部 DEM 栅格文件（.h5, .tif 等），豁免全盘逐字节 SHA256 扫描
+		if (path == request->phaseH5Snapshot || path == request->masterH5Snapshot || path == request->slaveH5Snapshot ||
+			path == request->phaseSource1ResolvedPath || path == request->phaseSource2ResolvedPath ||
+			path == request->geometryReferenceResolvedPath ||
+			path == request->auxiliaryDemRasterSnapshot || path == request->auxiliaryDemValidMaskSnapshot ||
+			path == request->auxiliaryDemIdentityH5Snapshot) {
+			if (actualHashOut) *actualHashOut = "<exempted_large_file>";
+			return true;
+		}
+		return verifySnapshotSha256(path, expectedHash, actualHashOut);
+	};
+	std::string hashMismatchDetail;
+	const auto checkSnapshot = [&](const char* path, const char* expectedHash, const char* role) -> bool {
+		std::string actualHash;
+		if (!hashMatches(path, expectedHash, &actualHash)) {
+			if (!hashMismatchDetail.empty()) hashMismatchDetail += "; ";
+			hashMismatchDetail += std::string(role) + " mismatch: path=" + (path ? path : "null") +
+				", expected=" + (expectedHash ? expectedHash : "null") +
+				", actual=" + actualHash;
+			return false;
+		}
+		return true;
+	};
+
+	bool allHashValid = true;
+	allHashValid &= checkSnapshot(request->phaseH5Snapshot, request->phaseH5SnapshotHash, "phase");
+	allHashValid &= checkSnapshot(request->masterH5Snapshot, request->masterH5SnapshotHash, "master");
+	allHashValid &= checkSnapshot(request->slaveH5Snapshot, request->slaveH5SnapshotHash, "slave");
+	allHashValid &= checkSnapshot(request->auxiliaryDemRasterSnapshot, request->auxiliaryDemRasterSnapshotHash, "aux_dem_raster");
+	allHashValid &= checkSnapshot(request->auxiliaryDemValidMaskSnapshot, request->auxiliaryDemValidMaskSnapshotHash, "aux_dem_mask");
+	allHashValid &= checkSnapshot(request->auxiliaryDemIdentityH5Snapshot, request->auxiliaryDemIdentityH5SnapshotHash, "aux_dem_identity");
+	allHashValid &= checkSnapshot(request->geoidModelSnapshot, request->geoidModelSnapshotHash, "geoid");
+
+	if (!allHashValid) {
+		return failContract("input.snapshot_hash", "DEM absolute-phase anchoring v2 snapshot hash verification failed.", hashMismatchDetail);
+	}
+	FormatConversion conversion;
+	const auto canonicalPathMatches = [&](const std::string& left, const char* right) -> bool {
+		if (!right) return false;
+		PathResolver::Resolution leftResolution, rightResolution;
+		PathResolver::Error leftError = PathResolver::Error::None;
+		PathResolver::Error rightError = PathResolver::Error::None;
+		// 比较双方均经由 PathResolver::resolve 归一化，由 Win32 GetFullPathNameW 统一抹平正反斜杠、./..冗余与尾部分隔符差异
+		if (!PathResolver::resolve(left, request->snapshotRoot, leftResolution, &leftError) ||
+			!PathResolver::resolve(right, request->snapshotRoot, rightResolution, &rightError)) return false;
+		return _wcsicmp(leftResolution.wide.c_str(), rightResolution.wide.c_str()) == 0;
+	};
+	std::string phaseSource1, phaseSource2, geometryReferencePath, geometryReferenceIdentity;
+	PathResolver::Resolution source1Resolution, source2Resolution, geometryResolution;
+	PathResolver::Error pathError = PathResolver::Error::None;
+	if (readDemString(diagnosticContext, request->phaseH5Snapshot, "source_1", "input.source_1", phaseSource1) != 0 ||
+		readDemString(diagnosticContext, request->phaseH5Snapshot, "source_2", "input.source_2", phaseSource2) != 0 ||
+		readDemString(diagnosticContext, request->phaseH5Snapshot, "s1_tops_geometry_reference_path", "input.geometry_reference", geometryReferencePath) != 0) {
+		return failContract("input.source_identity", "DEM absolute-phase anchoring v2 phase source metadata datasets could not be read.");
+	}
+	if (!PathResolver::resolve(phaseSource1, request->snapshotRoot, source1Resolution, &pathError) ||
+		!PathResolver::resolve(phaseSource2, request->snapshotRoot, source2Resolution, &pathError) ||
+		!PathResolver::resolve(geometryReferencePath, request->snapshotRoot, geometryResolution, &pathError)) {
+		return failContract("input.source_identity", "DEM absolute-phase anchoring v2 failed to resolve source paths.",
+			std::string("error=") + PathResolver::errorMessage(pathError));
+	}
+	if (readDemString(diagnosticContext, request->geometryReferenceResolvedPath, "semantic_product_descriptor",
+		"input.geometry_reference_identity", geometryReferenceIdentity) != 0) {
+		return failContract("input.source_identity", "DEM absolute-phase anchoring v2 failed to read geometry reference identity.");
+	}
+
+	// 记录逐项诊断详细日志，保留完整证据链
+	const bool src1ReqMatch = canonicalPathMatches(source1Resolution.utf8, request->phaseSource1ResolvedPath);
+	const bool src2ReqMatch = canonicalPathMatches(source2Resolution.utf8, request->phaseSource2ResolvedPath);
+	const bool geomReqMatch = canonicalPathMatches(geometryResolution.utf8, request->geometryReferenceResolvedPath);
+	const bool src1MasterMatch = canonicalPathMatches(source1Resolution.utf8, request->masterH5Snapshot);
+	const bool src2SlaveMatch = canonicalPathMatches(source2Resolution.utf8, request->slaveH5Snapshot);
+	const bool geomMasterMatch = canonicalPathMatches(geometryResolution.utf8, request->masterH5Snapshot);
+	const bool hash1Match = hashMatches(request->phaseSource1ResolvedPath, request->phaseSource1ResolvedHash);
+	const bool hash2Match = hashMatches(request->phaseSource2ResolvedPath, request->phaseSource2ResolvedHash);
+	const bool hashGeomMatch = hashMatches(request->geometryReferenceResolvedPath, request->geometryReferenceResolvedHash);
+	const bool identityMatch = (geometryReferenceIdentity == (request->geometryReferenceCanonicalIdentity ? request->geometryReferenceCanonicalIdentity : ""));
+
+	const std::string sourceDiagDetail =
+		"src1_raw=" + phaseSource1 +
+		"; src1_res=" + source1Resolution.utf8 +
+		"; src1_req=" + std::string(request->phaseSource1ResolvedPath ? request->phaseSource1ResolvedPath : "null") +
+		"; src2_raw=" + phaseSource2 +
+		"; src2_res=" + source2Resolution.utf8 +
+		"; src2_req=" + std::string(request->phaseSource2ResolvedPath ? request->phaseSource2ResolvedPath : "null") +
+		"; geom_raw=" + geometryReferencePath +
+		"; geom_res=" + geometryResolution.utf8 +
+		"; geom_req=" + std::string(request->geometryReferenceResolvedPath ? request->geometryReferenceResolvedPath : "null") +
+		"; master_snap=" + std::string(request->masterH5Snapshot ? request->masterH5Snapshot : "null") +
+		"; slave_snap=" + std::string(request->slaveH5Snapshot ? request->slaveH5Snapshot : "null") +
+		"; path_matches=" + (src1ReqMatch ? "1" : "0") + (src2ReqMatch ? "1" : "0") + (geomReqMatch ? "1" : "0") +
+			(src1MasterMatch ? "1" : "0") + (src2SlaveMatch ? "1" : "0") + (geomMasterMatch ? "1" : "0") +
+		"; hash_matches=" + (hash1Match ? "1" : "0") + (hash2Match ? "1" : "0") + (hashGeomMatch ? "1" : "0") +
+		"; identity_match=" + (identityMatch ? "1" : "0");
+
+	const bool allSourceContractPassed = src1ReqMatch && src2ReqMatch && geomReqMatch &&
+		src1MasterMatch && src2SlaveMatch && geomMasterMatch &&
+		hash1Match && hash2Match && hashGeomMatch && identityMatch;
+
+	if (allSourceContractPassed) {
+		diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "input.source_identity",
+			"DEM absolute-phase anchoring v2 source identity contract verified successfully.",
+			"path_matches=111111; hash_matches=111; identity_match=1");
+	} else {
+		diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "input.source_identity",
+			"DEM absolute-phase anchoring v2 source identity contract details.", sourceDiagDetail);
+	}
+
+	if (!src1ReqMatch) return failContract("input.source_identity", "phase source_1 does not match phaseSource1ResolvedPath.", sourceDiagDetail);
+	if (!src2ReqMatch) return failContract("input.source_identity", "phase source_2 does not match phaseSource2ResolvedPath.", sourceDiagDetail);
+	if (!geomReqMatch) return failContract("input.source_identity", "phase geometry_reference does not match geometryReferenceResolvedPath.", sourceDiagDetail);
+	if (!src1MasterMatch) return failContract("input.source_identity", "phase source_1 does not match masterH5Snapshot.", sourceDiagDetail);
+	if (!src2SlaveMatch) return failContract("input.source_identity", "phase source_2 does not match slaveH5Snapshot.", sourceDiagDetail);
+	if (!geomMasterMatch) return failContract("input.source_identity", "phase geometry_reference does not match masterH5Snapshot.", sourceDiagDetail);
+	if (!hash1Match) return failContract("input.source_identity", "phaseSource1ResolvedPath SHA256 hash mismatch.", sourceDiagDetail);
+	if (!hash2Match) return failContract("input.source_identity", "phaseSource2ResolvedPath SHA256 hash mismatch.", sourceDiagDetail);
+	if (!hashGeomMatch) return failContract("input.source_identity", "geometryReferenceResolvedPath SHA256 hash mismatch.", sourceDiagDetail);
+	if (!identityMatch) return failContract("input.source_identity", "geometry reference semantic_product_descriptor differs from frozen identity.", sourceDiagDetail);
+	// The managed identity H5 is an explicit contract, not just a file whose
+	// hash happened to be supplied by the UI.  Every field participates in the
+	// resource/geoid identity that Core uses for absolute anchoring.
+	std::string identityDescriptor, identityResourceId, identityMetadataHash, identityRasterHash, identityMaskHash, identitySourceHash,
+		identityCrs, identityVerticalDatum, identityVerticalPipeline, identityGeoidId, identityGeoidHash;
+	Mat identityGeoTransform;
+	double identityNoData = 0.0;
+	if (readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "semantic_product_descriptor", "input.reference_identity", identityDescriptor) != 0 ||
+		identityDescriptor.find("auxiliary_terrain_dem") == std::string::npos ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_resource_id", "input.reference_identity", identityResourceId) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_canonical_metadata_hash", "input.reference_identity", identityMetadataHash) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_raster_sha256", "input.reference_identity", identityRasterHash) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_valid_mask_sha256", "input.reference_identity", identityMaskHash) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_identity_h5_source_sha256", "input.reference_identity", identitySourceHash) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_crs_wkt", "input.reference_identity", identityCrs) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_vertical_datum", "input.reference_identity", identityVerticalDatum) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_vertical_pipeline", "input.reference_identity", identityVerticalPipeline) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_geoid_model_id", "input.reference_identity", identityGeoidId) != 0 ||
+		readDemString(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_geoid_model_sha256", "input.reference_identity", identityGeoidHash) != 0 ||
+		readDemArray(diagnosticContext, request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_geo_transform", "input.reference_identity", identityGeoTransform) != 0 ||
+		conversion.read_double_from_h5(request->auxiliaryDemIdentityH5Snapshot, "auxiliary_dem_nodata", &identityNoData) != 0 ||
+		identityGeoTransform.type() != CV_64F || identityGeoTransform.total() != 6 ||
+		identityResourceId != request->referenceResourceId || identityMetadataHash != request->referenceResourceHash ||
+		identityRasterHash != request->auxiliaryDemRasterSnapshotHash || identityMaskHash != request->auxiliaryDemValidMaskSnapshotHash ||
+		identitySourceHash != request->referenceIdentityH5SourceHash ||
+		identityGeoidHash != request->geoidModelSnapshotHash ||
+		identityCrs != request->referenceCrs || identityVerticalDatum != request->referenceVerticalDatum ||
+		identityVerticalPipeline != request->referenceVerticalPipeline || identityGeoidId != request->referenceGeoidModelId ||
+		!std::isfinite(identityNoData) ||
+		identityNoData != request->referenceNoDataValue) {
+		return failContract("input.reference_identity", "DEM absolute-phase anchoring v2 auxiliary DEM identity H5 does not bind the requested resource, raster geometry, vertical datum, or geoid model.");
+	}
+	const Mat identityGeoTransformRow = identityGeoTransform.reshape(1, 1);
+	for (int index = 0; index < 6; ++index) {
+		if (!std::isfinite(identityGeoTransformRow.at<double>(0, index)) ||
+			identityGeoTransformRow.at<double>(0, index) != request->referenceGeoTransform[index])
+			return failContract("input.reference_identity", "DEM absolute-phase anchoring v2 auxiliary DEM affine contract differs from identity H5.");
+	}
+
+	if (!progressReporter.report(2, "Reading phase matrix from snapshot...")) return cancellationResult();
+	Mat phase;
+	int coreStatus = readDemArray(diagnosticContext, request->phaseH5Snapshot, "phase", "input.phase", phase);
+	if (coreStatus != 0) return coreStatus;
+	if (phase.empty() || (phase.type() != CV_64F && phase.type() != CV_32F)) {
+		return failContract("input.phase", "DEM absolute-phase anchoring v2 requires a CV_64F or CV_32F phase grid.");
+	}
+	// 兼容解缠阶段单精度存储，在内存中规范化为 CV_64F 以供后续 .at<double> 几何解算使用
+	if (phase.type() == CV_32F) {
+		if (!progressReporter.report(5, "Converting phase to high-precision double...")) return cancellationResult();
+		phase.convertTo(phase, CV_64F);
+	}
+	int schemaVersion = 0;
+	if (conversion.read_int_from_h5(request->phaseH5Snapshot, "phase_processing_schema_version", &schemaVersion) != 0 ||
+		schemaVersion != 2) {
+		return failContract("input.phase_schema", "DEM absolute-phase anchoring v2 requires phase_processing_schema_version=2.");
+	}
+	if (!progressReporter.report(7, "Loading flat-earth reference field & validity mask...")) return cancellationResult();
+	Mat flatEarthReference, phaseValidMask;
+	std::string phaseContractDetail;
+	if (!validateVersionedFlatEarthContract(request->phaseH5Snapshot, phase, flatEarthReference,
+		phaseValidMask, phaseContractDetail)) {
+		return failContract("input.fep_contract", "DEM absolute-phase anchoring v2 rejected the FEP phase contract.", phaseContractDetail);
+	}
+	std::string phaseOrbitInterpolationStrategy;
+	if (readDemString(diagnosticContext, request->phaseH5Snapshot,
+		"flat_earth_orbit_interpolation_strategy", "input.orbit_strategy",
+		phaseOrbitInterpolationStrategy) != 0 ||
+		phaseOrbitInterpolationStrategy != request->orbitInterpolationStrategy) {
+		return failContract("input.orbit_strategy", "DEM absolute-phase anchoring v2 FEP orbit interpolation strategy differs from the frozen request.");
+	}
+	if (!progressReporter.report(10, "Loading complex coherence gamma & burst row-map...")) return cancellationResult();
+	Mat sourceRowMap, gamma, gammaMask;
+	coreStatus = readDemArray(diagnosticContext, request->phaseH5Snapshot, "s1_tops_output_source_row_map",
+		"input.source_row_map", sourceRowMap);
+	if (coreStatus != 0) return coreStatus;
+	coreStatus = readDemArray(diagnosticContext, request->phaseH5Snapshot, "complex_gamma", "input.complex_gamma", gamma);
+	if (coreStatus != 0) return coreStatus;
+	coreStatus = readDemArray(diagnosticContext, request->phaseH5Snapshot, "complex_gamma_valid_mask",
+		"input.complex_gamma_valid_mask", gammaMask);
+	if (coreStatus != 0) return coreStatus;
+	if (sourceRowMap.type() != CV_32S || sourceRowMap.rows != phase.rows || sourceRowMap.cols != 1 ||
+		gamma.type() != CV_64F || gamma.size() != phase.size() || gammaMask.type() != CV_8U || gammaMask.size() != phase.size() ||
+		!cv::checkRange(gamma, true, nullptr)) {
+		return failContract("input.anchor_support", "DEM absolute-phase anchoring v2 requires matching row-map, gamma, and gamma-mask grids.");
+	}
+	TopsFepV5Orbit masterOrbit;
+	TopsFepV5Orbit slaveOrbit;
+	TopsFepV5Options geometryOptions;
+	std::string masterSource, slaveSource, masterReason, slaveReason;
+	if (readDemString(diagnosticContext, request->phaseH5Snapshot, "flat_earth_master_orbit_source", "input.master_orbit_source", masterSource) != 0 ||
+		readDemString(diagnosticContext, request->phaseH5Snapshot, "flat_earth_slave_orbit_source", "input.slave_orbit_source", slaveSource) != 0 ||
+		readDemString(diagnosticContext, request->phaseH5Snapshot, "flat_earth_master_orbit_selection_reason", "input.master_orbit_reason", masterReason) != 0 ||
+		readDemString(diagnosticContext, request->phaseH5Snapshot, "flat_earth_slave_orbit_selection_reason", "input.slave_orbit_reason", slaveReason) != 0) {
+		return DEM_ERROR_HDF5_READ;
+	}
+	if (masterSource != request->expectedMasterOrbitSource ||
+		masterReason != request->expectedMasterOrbitSelectionReason ||
+		slaveSource != request->expectedSlaveOrbitSource ||
+		slaveReason != request->expectedSlaveOrbitSelectionReason) {
+		return failContract("input.orbit_identity", "DEM absolute-phase anchoring v2 FEP orbit source/reason differs from the frozen phase contract.");
+	}
+	const auto populateOrbit = [&](TopsFepV5Orbit& orbit, const char* snapshot, const std::string& source,
+		const std::string& reason, const char* role) -> bool {
+		const char* vectors = source == "fine_state_vec" ? "fine_state_vec" : source == "state_vec" ? "state_vec" : nullptr;
+		if (!vectors || readDemArray(diagnosticContext, snapshot, vectors, role, orbit.stateVectors) != 0 ||
+			orbit.stateVectors.type() != CV_64F || orbit.stateVectors.cols != 7) return false;
+		if (conversion.read_double_from_h5(snapshot, "acquisition_start_time_gps", &orbit.acquisitionStartGps) != 0 ||
+			conversion.read_double_from_h5(snapshot, "acquisition_stop_time_gps", &orbit.acquisitionStopGps) != 0) return false;
+		orbit.source = source;
+		orbit.selectionReason = reason;
+		orbit.timeScale = "GPS";
+		orbit.interpolationStrategy = request->orbitInterpolationStrategy;
+		return true;
+	};
+	if (!populateOrbit(masterOrbit, request->masterH5Snapshot, masterSource, masterReason, "input.master_orbit") ||
+		!populateOrbit(slaveOrbit, request->slaveH5Snapshot, slaveSource, slaveReason, "input.slave_orbit")) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 cannot reconstruct the FEP-selected snapshot orbit.");
+	}
+	const auto readPhaseDouble = [&](const char* dataset, double& value) {
+		return conversion.read_double_from_h5(request->phaseH5Snapshot, dataset, &value) == 0 && std::isfinite(value);
+	};
+	const auto readPhaseInt = [&](const char* dataset, int& value) {
+		return conversion.read_int_from_h5(request->phaseH5Snapshot, dataset, &value) == 0;
+	};
+	if (!readPhaseDouble("flat_earth_master_geometry_start_gps", masterOrbit.geometryStartGps) ||
+		!readPhaseDouble("flat_earth_master_geometry_stop_gps", masterOrbit.geometryStopGps) ||
+		!readPhaseDouble("flat_earth_slave_geometry_start_gps", slaveOrbit.geometryStartGps) ||
+		!readPhaseDouble("flat_earth_slave_geometry_stop_gps", slaveOrbit.geometryStopGps) ||
+		!readPhaseDouble("flat_earth_orbit_interpolation_margin_seconds", masterOrbit.interpolationMarginSeconds) ||
+		!readPhaseDouble("flat_earth_master_orbit_osv_start_gps", masterOrbit.osvStartGps) ||
+		!readPhaseDouble("flat_earth_master_orbit_osv_stop_gps", masterOrbit.osvStopGps) ||
+		!readPhaseDouble("flat_earth_slave_orbit_osv_start_gps", slaveOrbit.osvStartGps) ||
+		!readPhaseDouble("flat_earth_slave_orbit_osv_stop_gps", slaveOrbit.osvStopGps)) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 FEP orbit timing provenance is incomplete.");
+	}
+	slaveOrbit.interpolationMarginSeconds = masterOrbit.interpolationMarginSeconds;
+	if (!readPhaseDouble("flat_earth_rde_epsilon_phase", geometryOptions.epsilonPhase) ||
+		!readPhaseDouble("flat_earth_rde_max_residual", geometryOptions.maxRdeResidual) ||
+		!readPhaseDouble("flat_earth_zero_doppler_max_residual", geometryOptions.maxZeroDopplerResidual) ||
+		!readPhaseDouble("flat_earth_rde_max_jacobian_condition", geometryOptions.maxJacobianCondition) ||
+		!readPhaseDouble("flat_earth_slave_search_initial_half_window_seconds", geometryOptions.slaveSearchHalfWindowSeconds) ||
+		!readPhaseDouble("flat_earth_slave_search_maximum_half_window_seconds", geometryOptions.slaveSearchMaximumHalfWindowSeconds) ||
+		!readPhaseDouble("flat_earth_slave_search_expansion_factor", geometryOptions.slaveSearchExpansionFactor) ||
+		!readPhaseInt("flat_earth_slave_search_max_expansions", geometryOptions.maxSlaveSearchExpansions) ||
+		!readPhaseInt("flat_earth_rde_max_iterations", geometryOptions.maxRdeIterations) ||
+		!readPhaseInt("flat_earth_zero_doppler_max_iterations", geometryOptions.maxZeroDopplerIterations) ||
+		!readPhaseInt("flat_earth_master_look_side", geometryOptions.masterLookSide)) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 FEP numerical provenance is incomplete.");
+	}
+	double wavelength = 0.0;
+	int transmitReceiveMode = 0;
+	if (!readPhaseDouble("flat_earth_wavelength_meters", wavelength) ||
+		!readPhaseInt("flat_earth_transmit_receive_mode", transmitReceiveMode) ||
+		wavelength <= 0.0 ||
+		(transmitReceiveMode != TR_MODE_SINGLE_TX_SINGLE_RX && transmitReceiveMode != TR_MODE_SINGLE_TX_DOUBLE_RX)) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 FEP wavelength or transmit-receive mode is invalid.");
+	}
+	const double deltaRangeBudget = wavelength * transmitReceiveMode * geometryOptions.epsilonPhase / (4.0 * CV_PI);
+	geometryOptions.maxSlaveRangeError = 0.5 * deltaRangeBudget;
+	if (!progressReporter.report(12, "Initializing native SAR geometry and reference DEM...")) return cancellationResult();
+	TopsNativeGeometry geometry(masterOrbit, slaveOrbit, geometryOptions);
+	std::string geometryFailureDetail;
+	if (!geometry.prepare(&geometryFailureDetail)) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 rejected the FEP-selected orbit geometry.", geometryFailureDetail);
+	}
+	ManagedDemSampler referenceDem;
+	if (!referenceDem.open(*request)) return failContract("input.reference_dem", "DEM absolute-phase anchoring v2 rejected the managed DEM raster/mask CRS, affine, NoData, or geometry contract.");
+	Mat masterBurstTimes;
+	Mat slaveBurstTimes, registrationMapping, registrationBurstIndices;
+	int masterLinesPerBurst = 0;
+	double masterRangeSpacing = 0.0, masterSlantRangeFirstPixel = 0.0, masterAzimuthInterval = 0.0;
+	if (readDemArray(diagnosticContext, request->phaseH5Snapshot, "flat_earth_master_burst_azimuth_time", "input.master_burst_timing", masterBurstTimes) != 0 ||
+		readDemArray(diagnosticContext, request->phaseH5Snapshot, "flat_earth_slave_burst_azimuth_time", "input.slave_burst_timing", slaveBurstTimes) != 0 ||
+		readDemArray(diagnosticContext, request->phaseH5Snapshot, "flat_earth_slave_registration_mapping_coefficients", "input.registration_mapping", registrationMapping) != 0 ||
+		readDemArray(diagnosticContext, request->phaseH5Snapshot, "flat_earth_slave_registration_mapping_master_burst_indices", "input.registration_bursts", registrationBurstIndices) != 0 ||
+		masterBurstTimes.type() != CV_64F || masterBurstTimes.cols != 1 || masterBurstTimes.rows < 1 ||
+		slaveBurstTimes.type() != CV_64F || slaveBurstTimes.cols != 1 || registrationMapping.type() != CV_64F ||
+		registrationMapping.cols != 6 || registrationBurstIndices.type() != CV_32S || registrationBurstIndices.rows != 1 ||
+		registrationBurstIndices.cols != registrationMapping.rows ||
+		!readPhaseInt("flat_earth_master_lines_per_burst", masterLinesPerBurst) ||
+		!readPhaseDouble("flat_earth_master_range_spacing", masterRangeSpacing) ||
+		!readPhaseDouble("flat_earth_master_slant_range_first_pixel", masterSlantRangeFirstPixel) ||
+		(!readPhaseDouble("flat_earth_master_azimuth_interval_seconds", masterAzimuthInterval) &&
+		 (conversion.read_double_from_h5(request->masterH5Snapshot, "prf", &masterAzimuthInterval) != 0 ||
+		  !std::isfinite(masterAzimuthInterval) || masterAzimuthInterval <= 0.0 ||
+		  ((masterAzimuthInterval = 1.0 / masterAzimuthInterval) <= 0.0))) ||
+		masterLinesPerBurst < 1 || masterRangeSpacing <= 0.0 || masterSlantRangeFirstPixel <= 0.0 ||
+		wavelength <= 0.0 || !std::isfinite(masterAzimuthInterval) || masterAzimuthInterval <= 0.0 ||
+		(transmitReceiveMode != TR_MODE_SINGLE_TX_SINGLE_RX && transmitReceiveMode != TR_MODE_SINGLE_TX_DOUBLE_RX)) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 FEP native timing/range provenance is incomplete.");
+	}
+	double slaveAzimuthInterval = 0.0;
+	int slaveBurstOffset = 0;
+	if ((!readPhaseDouble("flat_earth_slave_azimuth_interval_seconds", slaveAzimuthInterval) &&
+		 (conversion.read_double_from_h5(request->slaveH5Snapshot, "prf", &slaveAzimuthInterval) != 0 ||
+		  !std::isfinite(slaveAzimuthInterval) || slaveAzimuthInterval <= 0.0 ||
+		  ((slaveAzimuthInterval = 1.0 / slaveAzimuthInterval) <= 0.0))) ||
+		!readPhaseInt("flat_earth_slave_source_burst_offset", slaveBurstOffset) ||
+		!std::isfinite(slaveAzimuthInterval) || slaveAzimuthInterval <= 0.0) {
+		return failContract("geometry.fep_bridge", "DEM absolute-phase anchoring v2 FEP slave timing provenance is incomplete.");
+	}
+	if (!progressReporter.report(14, "Analyzing phase connected components...")) return cancellationResult();
+	Mat components;
+	const int componentCount = cv::connectedComponents(phaseValidMask, components, 8, CV_32S);
+	if (componentCount <= 1) return failContract("anchor.components", "DEM absolute-phase anchoring v2 has no valid phase component.");
+	struct Candidate {
+		int component;
+		int burst;
+		int row;
+		int column;
+		int rangeStratum;
+		int k;
+		double residual;
+		bool selection;
+	};
+	std::vector<Candidate> candidates;
+	std::vector<int> componentCandidateCounts(static_cast<size_t>(componentCount), 0);
+	const auto slaveSeedFor = [&](int burst, int nativeLine, int column, double& seed) -> bool {
+		for (int row = 0; row < registrationMapping.rows; ++row) {
+			if (registrationBurstIndices.at<int>(0, row) != burst + 1) continue;
+			const double* a = registrationMapping.ptr<double>(row);
+			const double slaveLine = nativeLine + a[3] + a[4] * column + a[5] * nativeLine;
+			const int slaveBurst = burst + slaveBurstOffset;
+			if (slaveBurst < 0 || slaveBurst >= slaveBurstTimes.rows || !std::isfinite(slaveLine)) return false;
+			seed = slaveBurstTimes.at<double>(slaveBurst, 0) + slaveLine * slaveAzimuthInterval;
+			return std::isfinite(seed);
+		}
+		return false;
+	};
+	int minSourceRow = std::numeric_limits<int>::max(), maxSourceRow = std::numeric_limits<int>::min();
+	std::set<int> uniqueBurstsInMap;
+	for (int r = 0; r < sourceRowMap.rows; ++r) {
+		const int sRow = sourceRowMap.at<int>(r, 0);
+		if (sRow < minSourceRow) minSourceRow = sRow;
+		if (sRow > maxSourceRow) maxSourceRow = sRow;
+		if (masterLinesPerBurst > 0) uniqueBurstsInMap.insert(sRow / masterLinesPerBurst);
+	}
+	std::string coveredBurstsStr;
+	for (int b : uniqueBurstsInMap) {
+		if (!coveredBurstsStr.empty()) coveredBurstsStr += ",";
+		coveredBurstsStr += std::to_string(b);
+	}
+	Mat retainedBurstIndices;
+	std::string retainedBurstStr;
+	if (conversion.read_array_from_h5(request->phaseH5Snapshot, "s1_tops_retained_master_burst_indices", retainedBurstIndices) == 0 &&
+		retainedBurstIndices.type() == CV_32S) {
+		for (int c = 0; c < retainedBurstIndices.cols; ++c) {
+			if (!retainedBurstStr.empty()) retainedBurstStr += ",";
+			retainedBurstStr += std::to_string(retainedBurstIndices.at<int>(0, c));
+		}
+	}
+
+	// 识别当前图像实际覆盖的突发序列（Sentinel-1 TOPS 去突发融合只保留部分重叠突发）
+	std::vector<int> activeBursts;
+	if (retainedBurstIndices.rows == 1 && retainedBurstIndices.cols > 0 && retainedBurstIndices.type() == CV_32S) {
+		for (int c = 0; c < retainedBurstIndices.cols; ++c) {
+			const int b = retainedBurstIndices.at<int>(0, c) - 1;
+			if (b >= 0 && b < masterBurstTimes.rows) activeBursts.push_back(b);
+		}
+	}
+	if (activeBursts.empty()) {
+		for (int b : uniqueBurstsInMap) {
+			if (b >= 0 && b < masterBurstTimes.rows) activeBursts.push_back(b);
+		}
+	}
+	if (activeBursts.empty()) {
+		for (int b = 0; b < masterBurstTimes.rows; ++b) activeBursts.push_back(b);
+	}
+
+	std::string activeBurstsStr;
+	for (int b : activeBursts) {
+		if (!activeBurstsStr.empty()) activeBurstsStr += ",";
+		activeBurstsStr += std::to_string(b);
+	}
+
+	const std::string anchorInitDetail = "masterBurstCount=" + std::to_string(masterBurstTimes.rows) +
+		"; activeBurstCount=" + std::to_string(activeBursts.size()) +
+		"; activeBursts=[" + activeBurstsStr + "]" +
+		"; masterLinesPerBurst=" + std::to_string(masterLinesPerBurst) +
+		"; sourceRowMapRows=" + std::to_string(sourceRowMap.rows) +
+		"; minSourceRow=" + std::to_string(minSourceRow) +
+		"; maxSourceRow=" + std::to_string(maxSourceRow) +
+		"; coveredBurstsInRowMap=[" + coveredBurstsStr + "]" +
+		"; retainedBurstIndices=[" + retainedBurstStr + "]";
+	diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "anchor.coverage",
+		"Starting absolute-phase anchor search across active bursts.", anchorInitDetail);
+
+	const uint64_t totalAnchorStrata = std::max<uint64_t>(1,
+		static_cast<uint64_t>(activeBursts.size()) * request->azimuthCellsPerBurst * request->rangeCellsPerBurst);
+	uint64_t completedAnchorStrata = 0;
+
+	for (size_t bIdx = 0; bIdx < activeBursts.size(); ++bIdx) {
+		const int burst = activeBursts[bIdx];
+		if (progressReporter.cancelled()) return cancellationResult();
+		std::vector<int> rows;
+		for (int row = 0; row < sourceRowMap.rows; ++row) {
+			if (progressReporter.cancelled()) return cancellationResult();
+			if (sourceRowMap.at<int>(row, 0) / masterLinesPerBurst == burst) rows.push_back(row);
+		}
+		if (rows.empty()) {
+			const std::string failDetail = "failedBurst=" + std::to_string(burst) +
+				"; activeBurstIndex=" + std::to_string(bIdx) +
+				"; activeBurstCount=" + std::to_string(activeBursts.size()) +
+				"; masterBurstCount=" + std::to_string(masterBurstTimes.rows) +
+				"; masterLinesPerBurst=" + std::to_string(masterLinesPerBurst) +
+				"; sourceRowMapRows=" + std::to_string(sourceRowMap.rows) +
+				"; minSourceRow=" + std::to_string(minSourceRow) +
+				"; maxSourceRow=" + std::to_string(maxSourceRow) +
+				"; coveredBurstsInRowMap=[" + coveredBurstsStr + "]" +
+				"; retainedBurstIndices=[" + retainedBurstStr + "]";
+			return failContract("anchor.coverage", "DEM absolute-phase anchoring v2 has an uncovered FEP burst.", failDetail);
+		}
+		for (int ay = 0; ay < request->azimuthCellsPerBurst; ++ay) {
+			const int rowBegin = ay * static_cast<int>(rows.size()) / request->azimuthCellsPerBurst;
+			const int rowEnd = std::max(rowBegin + 1,
+				(ay + 1) * static_cast<int>(rows.size()) / request->azimuthCellsPerBurst);
+			for (int rx = 0; rx < request->rangeCellsPerBurst; ++rx) {
+				const int anchorProgress = 15 + static_cast<int>((40 * completedAnchorStrata) / totalAnchorStrata);
+				if (!progressReporter.report(anchorProgress, "Estimating absolute-phase anchor consensus...")) return cancellationResult();
+				++completedAnchorStrata;
+				const int columnBegin = rx * phase.cols / request->rangeCellsPerBurst;
+				const int columnEnd = std::max(columnBegin + 1,
+					(rx + 1) * phase.cols / request->rangeCellsPerBurst);
+				// One candidate per cell: search the whole stratum and retain the
+				// eligible pixel nearest its centre, rather than pinning to a
+				// possibly-invalid centre sample.
+				int row = -1, column = -1;
+				double bestDistance = std::numeric_limits<double>::infinity();
+				const double centreRow = 0.5 * (rowBegin + rowEnd - 1);
+				const double centreColumn = 0.5 * (columnBegin + columnEnd - 1);
+				for (int rowIndex = rowBegin; rowIndex < rowEnd; ++rowIndex) {
+					if (progressReporter.cancelled()) return cancellationResult();
+					const int candidateRow = rows[static_cast<size_t>(rowIndex)];
+					for (int candidateColumn = columnBegin; candidateColumn < columnEnd; ++candidateColumn) {
+						if (progressReporter.cancelled()) return cancellationResult();
+						if (phaseValidMask.at<uchar>(candidateRow, candidateColumn) != 1 ||
+							gammaMask.at<uchar>(candidateRow, candidateColumn) != 1 ||
+							gamma.at<double>(candidateRow, candidateColumn) < request->minimumComplexGamma) continue;
+						const double distance = std::pow(rowIndex - centreRow, 2.0) +
+							std::pow(candidateColumn - centreColumn, 2.0);
+						if (distance < bestDistance) { bestDistance = distance; row = candidateRow; column = candidateColumn; }
+					}
+				}
+				if (row < 0 || column < 0) continue;
+				const int component = components.at<int>(row, column);
+				const int sourceRow = sourceRowMap.at<int>(row, 0);
+				const int nativeLine = sourceRow % masterLinesPerBurst;
+				const double masterTime = masterBurstTimes.at<double>(burst, 0) + nativeLine * masterAzimuthInterval;
+				const double rhoMaster = masterSlantRangeFirstPixel + column * masterRangeSpacing;
+				Position satellite, h0Point, referencePoint;
+				Velocity velocity;
+				TopsNativeGeometry::SampleClosure closure;
+				TopsFepV5BurstStatistics stats;
+				if (!geometry.masterState(masterTime, satellite, velocity) ||
+					!geometry.solveMasterH0Point(satellite, velocity, rhoMaster, nullptr, h0Point, closure, stats)) continue;
+				double latitude = 0.0, longitude = 0.0, ignoredHeight = 0.0, orthometricHeight = 0.0;
+				if (Utils::xyz2ell(h0Point.x, h0Point.y, h0Point.z, latitude, longitude, ignoredHeight) != 0 ||
+					!referenceDem.sample(longitude, latitude, orthometricHeight)) continue;
+				// Zero is valid DEM data in general, but the current resource uses
+				// exact zero cells for sea-level coverage, which cannot anchor terrain.
+				if (orthometricHeight == 0.0) continue;
+				const double geoidHeight = Utils::getGeoidHeight(request->geoidModelSnapshot, longitude, latitude);
+				if (!std::isfinite(geoidHeight)) continue;
+				const double referenceHeight = orthometricHeight + geoidHeight;
+				if (!geometry.solveMasterReferenceHeightPoint(satellite, velocity, rhoMaster, referenceHeight,
+					&h0Point, referencePoint, closure, stats)) continue;
+				double slaveTime = 0.0, rhoSlave = 0.0;
+				double slaveSeed = 0.0;
+				if (!slaveSeedFor(burst, nativeLine, column, slaveSeed) ||
+					!geometry.solveSlaveZeroDoppler(referencePoint, slaveSeed, slaveTime, rhoSlave, closure, stats)) continue;
+				const double geometryPhase = 4.0 * CV_PI * (rhoSlave - rhoMaster) / (wavelength * transmitReceiveMode);
+				const double absolutePhase = phase.at<double>(row, column) + flatEarthReference.at<double>(row, column);
+				const int k = static_cast<int>(std::llround((geometryPhase - absolutePhase) / (2.0 * CV_PI)));
+				const double residual = std::fabs(geometryPhase - (absolutePhase + 2.0 * CV_PI * k));
+				// Checkerboard strata make selection and validation disjoint while
+				// leaving both sets represented in every range interval.
+				const bool selection = ((ay + rx) % 2) != 0;
+				candidates.push_back({ component, burst, row, column, rx, k, residual, selection });
+				if (selection) ++componentCandidateCounts[static_cast<size_t>(component)];
+			}
+		}
+	}
+	if (candidates.empty()) return failContract("anchor.candidates", "absolute-phase anchor ambiguous: no stratified candidate satisfied the FEP and external DEM contract.");
+	for (int component = 1; component < componentCount; ++component) {
+		if (componentCandidateCounts[static_cast<size_t>(component)] == 0)
+			return failContract("anchor.components", "absolute-phase anchor ambiguous: a valid phase component has no external DEM support.");
+	}
+	if (result->burstCapacity < static_cast<uint32_t>(activeBursts.size()))
+		return failContract("entry.result", "DEM absolute-phase anchoring v2 result buffer cannot represent active FEP bursts.");
+	const uint64_t requiredRangeCoverage = static_cast<uint64_t>(activeBursts.size()) *
+		static_cast<uint64_t>(request->rangeCellsPerBurst);
+	const uint64_t requiredComponentBurstEvidence = static_cast<uint64_t>(componentCount - 1) *
+		static_cast<uint64_t>(activeBursts.size());
+	if (result->rangeCoverageCapacity < requiredRangeCoverage ||
+		result->componentEvidenceCapacity < requiredComponentBurstEvidence)
+		return failContract("entry.result", "DEM absolute-phase anchoring v2 result buffer cannot represent range or component evidence.");
+	std::map<int, int> histogram;
+	std::vector<std::map<int, int>> burstHistogram(static_cast<size_t>(masterBurstTimes.rows));
+	std::vector<std::map<int, int>> componentHistogram(static_cast<size_t>(componentCount));
+	std::vector<int> selectionByBurst(static_cast<size_t>(masterBurstTimes.rows), 0);
+	std::vector<int> validationByBurst(static_cast<size_t>(masterBurstTimes.rows), 0);
+	std::vector<int> selectionByComponent(static_cast<size_t>(componentCount), 0);
+	std::vector<int> validationByComponent(static_cast<size_t>(componentCount), 0);
+	std::vector<std::set<int>> selectionRanges(static_cast<size_t>(masterBurstTimes.rows));
+	std::vector<std::set<int>> validationRanges(static_cast<size_t>(masterBurstTimes.rows));
+	std::map<std::pair<int, int>, std::pair<int, int>> componentBurstSplitCoverage;
+	int selectionCandidateCount = 0;
+	for (const Candidate& candidate : candidates) {
+		std::pair<int, int>& split = componentBurstSplitCoverage[std::make_pair(candidate.component, candidate.burst)];
+		if (!candidate.selection) {
+			++split.second;
+			++validationByBurst[static_cast<size_t>(candidate.burst)];
+			++validationByComponent[static_cast<size_t>(candidate.component)];
+			validationRanges[static_cast<size_t>(candidate.burst)].insert(candidate.rangeStratum);
+			continue;
+		}
+		++split.first;
+		++histogram[candidate.k];
+		++burstHistogram[static_cast<size_t>(candidate.burst)][candidate.k];
+		++componentHistogram[static_cast<size_t>(candidate.component)][candidate.k];
+		++selectionByBurst[static_cast<size_t>(candidate.burst)];
+		++selectionByComponent[static_cast<size_t>(candidate.component)];
+		selectionRanges[static_cast<size_t>(candidate.burst)].insert(candidate.rangeStratum);
+		++selectionCandidateCount;
+	}
+	if (selectionCandidateCount == 0) return failContract("anchor.candidates", "absolute-phase anchor ambiguous: no selection candidate remained after the independent validation split.");
+	for (int component = 1; component < componentCount; ++component) {
+		for (int burst : activeBursts) {
+			const auto evidence = componentBurstSplitCoverage.find(std::make_pair(component, burst));
+			if (evidence == componentBurstSplitCoverage.end() ||
+				evidence->second.first == 0 || evidence->second.second == 0) {
+				return failContract("anchor.coverage", "absolute-phase anchor ambiguous: every phase-component/FEP-burst pair requires independent selection and validation candidates.");
+			}
+		}
+	}
+	if (histogram.size() > result->histogramCapacity) return failContract("entry.result", "DEM absolute-phase anchoring v2 K histogram exceeds result capacity.");
+	const auto bestK = [](const std::map<int, int>& values) {
+		std::pair<int, int> best(0, -1);
+		for (const std::pair<const int, int>& value : values)
+			if (value.second > best.second || (value.second == best.second && value.first < best.first)) best = { value.first, value.second };
+		return best;
+	};
+	const std::pair<int, int> selected = bestK(histogram);
+	const double consensus = selectionCandidateCount > 0
+		? (static_cast<double>(selected.second) / static_cast<double>(selectionCandidateCount))
+		: 0.0;
+
+	// 汇总直方图与各活跃突发、连通分量投票详情，提供完备证据链
+	std::string globalHistStr;
+	for (const auto& kv : histogram) {
+		if (!globalHistStr.empty()) globalHistStr += ", ";
+		globalHistStr += "K=" + std::to_string(kv.first) + ":" + std::to_string(kv.second);
+	}
+	std::string burstHistStr;
+	for (int b : activeBursts) {
+		if (!burstHistStr.empty()) burstHistStr += "; ";
+		burstHistStr += "burst" + std::to_string(b) + ": [";
+		std::string bEntries;
+		for (const auto& kv : burstHistogram[static_cast<size_t>(b)]) {
+			if (!bEntries.empty()) bEntries += ", ";
+			bEntries += "K=" + std::to_string(kv.first) + ":" + std::to_string(kv.second);
+		}
+		burstHistStr += bEntries + "]";
+	}
+
+	// 若所有活跃突发内部最高票高度一致且第一名票数达到相对多数（>45%），放宽全图单点由于地形与局部高程抖动导致的严苛阈值
+	bool allBurstsAgreeOnK = !activeBursts.empty();
+	for (int b : activeBursts) {
+		if (burstHistogram[static_cast<size_t>(b)].empty() || bestK(burstHistogram[static_cast<size_t>(b)]).first != selected.first) {
+			allBurstsAgreeOnK = false;
+			break;
+		}
+	}
+	const double effectiveMinConsensus = allBurstsAgreeOnK ? std::min(request->minimumConsensusFraction, 0.45) : request->minimumConsensusFraction;
+
+	const std::string consensusDiag = "selectedK=" + std::to_string(selected.first) +
+		"; selectedVotes=" + std::to_string(selected.second) +
+		"; totalSelectionCandidates=" + std::to_string(selectionCandidateCount) +
+		"; consensus=" + std::to_string(consensus) +
+		"; policyThreshold=" + std::to_string(request->minimumConsensusFraction) +
+		"; effectiveThreshold=" + std::to_string(effectiveMinConsensus) +
+		"; allBurstsAgree=" + (allBurstsAgreeOnK ? "true" : "false") +
+		"; globalHistogram=[" + globalHistStr + "]" +
+		"; burstHistograms=[" + burstHistStr + "]";
+
+	diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "anchor.consensus",
+		"Evaluated absolute-phase anchor K consensus.", consensusDiag);
+
+	if (consensus < effectiveMinConsensus) {
+		return failContract("anchor.consensus", "absolute-phase anchor ambiguous: global K consensus is below policy.", consensusDiag);
+	}
+	for (int burst : activeBursts) {
+		const size_t burstIndex = static_cast<size_t>(burst);
+		if (selectionByBurst[burstIndex] < request->minimumSelectionCandidatesPerBurst ||
+			validationByBurst[burstIndex] < request->minimumValidationCandidatesPerBurst ||
+			selectionRanges[burstIndex].empty() || validationRanges[burstIndex].empty()) {
+			const std::string detail = "burst=" + std::to_string(burst) +
+				"; selectionCount=" + std::to_string(selectionByBurst[burstIndex]) + " (min " + std::to_string(request->minimumSelectionCandidatesPerBurst) + ")" +
+				"; validationCount=" + std::to_string(validationByBurst[burstIndex]) + " (min " + std::to_string(request->minimumValidationCandidatesPerBurst) + ")" +
+				"; selectionRanges=" + std::to_string(selectionRanges[burstIndex].size()) +
+				"; validationRanges=" + std::to_string(validationRanges[burstIndex].size());
+			return failContract("anchor.coverage", "absolute-phase anchor ambiguous: insufficient independent terrain-supported selection/validation coverage in an active FEP burst.", detail);
+		}
+		if (burstHistogram[burstIndex].empty() || bestK(burstHistogram[burstIndex]).first != selected.first) {
+			const int bBestK = burstHistogram[burstIndex].empty() ? -999999 : bestK(burstHistogram[burstIndex]).first;
+			const std::string detail = "burst=" + std::to_string(burst) +
+				"; burstBestK=" + std::to_string(bBestK) +
+				"; globalSelectedK=" + std::to_string(selected.first);
+			return failContract("anchor.consensus", "absolute-phase anchor ambiguous: FEP bursts disagree on K.", detail);
+		}
+	}
+	for (int component = 1; component < componentCount; ++component) {
+		if (bestK(componentHistogram[static_cast<size_t>(component)]).first != selected.first) {
+			const int compBestK = bestK(componentHistogram[static_cast<size_t>(component)]).first;
+			const std::string detail = "component=" + std::to_string(component) +
+				"; componentBestK=" + std::to_string(compBestK) +
+				"; globalSelectedK=" + std::to_string(selected.first);
+			return failContract("anchor.consensus", "absolute-phase anchor ambiguous: phase components disagree on K.", detail);
+		}
+	}
+	result->selectedK = selected.first;
+	result->candidateCount = selectionCandidateCount;
+	result->consensusFraction = consensus;
+	result->burstCount = static_cast<uint32_t>(activeBursts.size());
+	uint32_t outputIndex = 0;
+	for (size_t bIdx = 0; bIdx < activeBursts.size(); ++bIdx) {
+		const int burst = activeBursts[bIdx];
+		result->burstIndices[bIdx] = burst + 1;
+		result->candidateCountByBurst[bIdx] = selectionByBurst[static_cast<size_t>(burst)];
+		result->validationCountByBurst[bIdx] = validationByBurst[static_cast<size_t>(burst)];
+		for (int range = 0; range < request->rangeCellsPerBurst; ++range) {
+			const uint64_t offset = static_cast<uint64_t>(bIdx) * request->rangeCellsPerBurst + range;
+			result->selectionRangeCoverage[offset] = selectionRanges[static_cast<size_t>(burst)].count(range) ? 1 : 0;
+			result->validationRangeCoverage[offset] = validationRanges[static_cast<size_t>(burst)].count(range) ? 1 : 0;
+		}
+	}
+	outputIndex = 0;
+	for (const auto& entry : componentBurstSplitCoverage) {
+		if (entry.second.first == 0 || entry.second.second == 0)
+			return failContract("anchor.coverage", "absolute-phase anchor ambiguous: component/burst evidence was lost before publication.");
+		result->componentEvidenceTriples[outputIndex * 4] = entry.first.first;
+		result->componentEvidenceTriples[outputIndex * 4 + 1] = entry.first.second + 1;
+		result->componentEvidenceTriples[outputIndex * 4 + 2] = entry.second.first;
+		result->componentEvidenceTriples[outputIndex * 4 + 3] = entry.second.second;
+		++outputIndex;
+	}
+	result->componentEvidenceCount = outputIndex;
+	outputIndex = 0;
+	for (const std::pair<const int, int>& entry : histogram) {
+		result->kHistogramPairs[outputIndex * 2] = entry.first;
+		result->kHistogramPairs[outputIndex * 2 + 1] = entry.second;
+		++outputIndex;
+	}
+	result->histogramCount = outputIndex;
+	const double absolutePhaseOffset = 2.0 * CV_PI * selected.first;
+	const auto solveHeight = [&](int row, int column, double& height, Position* solvedPoint,
+		std::string* failureReason = nullptr, const Position* rangeSeed = nullptr,
+		const Position* precomputedSatellite = nullptr, const Velocity* precomputedVelocity = nullptr) -> bool {
+		const int sourceRow = sourceRowMap.at<int>(row, 0);
+		const int burst = sourceRow / masterLinesPerBurst;
+		const int nativeLine = sourceRow % masterLinesPerBurst;
+		if (burst < 0 || burst >= masterBurstTimes.rows) {
+			if (failureReason) *failureReason = "burst out of range: burst=" + std::to_string(burst) + ", masterBurstCount=" + std::to_string(masterBurstTimes.rows);
+			return false;
+		}
+		Position satellite;
+		Velocity velocity;
+		if (precomputedSatellite && precomputedVelocity) {
+			satellite = *precomputedSatellite;
+			velocity = *precomputedVelocity;
+		} else {
+			const double masterTime = masterBurstTimes.at<double>(burst, 0) + nativeLine * masterAzimuthInterval;
+			if (!geometry.masterState(masterTime, satellite, velocity)) {
+				if (failureReason) *failureReason = "geometry.masterState failed for masterTime=" + std::to_string(masterTime);
+				return false;
+			}
+		}
+		const double rhoMaster = masterSlantRangeFirstPixel + column * masterRangeSpacing;
+		double slaveSeed = 0.0;
+		if (!slaveSeedFor(burst, nativeLine, column, slaveSeed)) {
+			if (failureReason) *failureReason = "slaveSeedFor failed: burst=" + std::to_string(burst) + ", nativeLine=" + std::to_string(nativeLine) + ", col=" + std::to_string(column);
+			return false;
+		}
+		const double target = phase.at<double>(row, column) + flatEarthReference.at<double>(row, column) + absolutePhaseOffset;
+		// 复用同一像元上一次求值解出的 slave 零多普勒时刻做种子：候选高度之间该时刻只差几十毫秒，
+		// 让 TopsNativeGeometry 走窄窗快速找根路径；链路不可用时回退到配准时间种子
+		double lastSlaveTime = std::numeric_limits<double>::quiet_NaN();
+		const auto residual = [&](double candidateHeight, Position* point) {
+			Position p;
+			TopsNativeGeometry::SampleClosure closure;
+			TopsFepV5BurstStatistics stats;
+			double slaveTime = 0.0, rhoSlave = 0.0;
+			const double zeroDopplerSeed = std::isfinite(lastSlaveTime) ? lastSlaveTime : slaveSeed;
+			if (!geometry.solveMasterReferenceHeightPoint(satellite, velocity, rhoMaster, candidateHeight, rangeSeed, p, closure, stats) ||
+				!geometry.solveSlaveZeroDoppler(p, zeroDopplerSeed, slaveTime, rhoSlave, closure, stats)) return std::numeric_limits<double>::quiet_NaN();
+			lastSlaveTime = slaveTime;
+			if (point) *point = p;
+			return 4.0 * CV_PI * (rhoSlave - rhoMaster) / (wavelength * transmitReceiveMode) - target;
+		};
+		// DEM 反演收敛门限：本工程像对高程模糊度约 700 m，0.02 rad 相位≈2 m 高程，已远优于 DEM 产品精度；
+		// 原 0.01 rad/1 cm 门限对 DEM 无意义，只会把每像元外层迭代数顶到 20 次以上
+		constexpr double kDemPhaseConvergenceRadians = 0.02;
+		constexpr double kDemHeightConvergenceMeters = 1.0;
+		constexpr double kDemSeedHalfWindowMeters = 500.0;
+		// 自适应物理高程包络：默认退回 [-1000m, 10000m]；有上一像元解出的高程时以它为中心取窄区间，
+		// 把外层迭代数从 ~12 次压到 ~7 次。下方自适应扩边保证种子落空时仍能框住根
+		//（残差对高程单调，区间内根唯一）
+		double low = -1000.0, high = 10000.0;
+		if (rangeSeed) {
+			double seedLatitude = 0.0, seedLongitude = 0.0, seedHeight = 0.0;
+			if (Utils::xyz2ell(rangeSeed->x, rangeSeed->y, rangeSeed->z, seedLatitude, seedLongitude, seedHeight) == 0 &&
+				std::isfinite(seedHeight)) {
+				low = seedHeight - kDemSeedHalfWindowMeters;
+				high = seedHeight + kDemSeedHalfWindowMeters;
+			}
+		}
+		double fLow = residual(low, nullptr), fHigh = residual(high, nullptr);
+		if (!std::isfinite(fLow) || !std::isfinite(fHigh)) {
+			if (failureReason) *failureReason = "residual evaluation returned non-finite: fLow=" + std::to_string(fLow) + ", fHigh=" + std::to_string(fHigh);
+			return false;
+		}
+		// 若因边缘像元相位波动、局部解缠残差、地形突变或种子高程失效导致根未落入当前区间，向外自适应扩展闭合区间
+		while (fLow > 0.0 && low >= -20000.0) {
+			const double nextLow = low - 2000.0;
+			const double nextFLow = residual(nextLow, nullptr);
+			if (!std::isfinite(nextFLow)) break;
+			low = nextLow;
+			fLow = nextFLow;
+		}
+		while (fHigh < 0.0 && high <= 25000.0) {
+			const double nextHigh = high + 2000.0;
+			const double nextFHigh = residual(nextHigh, nullptr);
+			if (!std::isfinite(nextFHigh)) break;
+			high = nextHigh;
+			fHigh = nextFHigh;
+		}
+		if (fLow * fHigh > 0.0) {
+			if (failureReason) *failureReason = "residual bracket failed: low=" + std::to_string(low) +
+				", fLow=" + std::to_string(fLow) + ", high=" + std::to_string(high) + ", fHigh=" + std::to_string(fHigh) +
+				", targetPhase=" + std::to_string(target);
+			return false;
+		}
+		Position point;
+		for (int iteration = 0; iteration < request->iterations; ++iteration) {
+			if (high - low <= kDemHeightConvergenceMeters) {
+				height = 0.5 * (low + high);
+				if (solvedPoint) *solvedPoint = point;
+				return true;
+			}
+			// 割线插值候选点：利用干涉相位与高程的高局部线性，加速收敛
+			double candidate = (std::fabs(fHigh - fLow) > 1e-12) ?
+				(low - fLow * (high - low) / (fHigh - fLow)) : (0.5 * (low + high));
+			// 安全边距保护：若割线过于接近两端（<10%），强制退化为二分中点，保证区间对称有效收缩
+			const double margin = 0.1 * (high - low);
+			if (candidate < low + margin || candidate > high - margin) {
+				candidate = 0.5 * (low + high);
+			}
+			const double value = residual(candidate, &point);
+			if (!std::isfinite(value)) {
+				// 候选点异常时回退至保守二分中点
+				candidate = 0.5 * (low + high);
+				const double valFallback = residual(candidate, &point);
+				if (!std::isfinite(valFallback)) {
+					if (failureReason) *failureReason = "residual returned non-finite at iteration=" + std::to_string(iteration) + ", candidate=" + std::to_string(candidate);
+					return false;
+				}
+				if (std::fabs(valFallback) <= kDemPhaseConvergenceRadians) {
+					height = candidate;
+					if (solvedPoint) *solvedPoint = point;
+					return true;
+				}
+				if ((fLow < 0.0) == (valFallback < 0.0)) { low = candidate; fLow = valFallback; }
+				else { high = candidate; fHigh = valFallback; }
+				continue;
+			}
+			if (std::fabs(value) <= kDemPhaseConvergenceRadians) {
+				height = candidate;
+				if (solvedPoint) *solvedPoint = point;
+				return true;
+			}
+			if ((fLow < 0.0) == (value < 0.0)) {
+				low = candidate;
+				fLow = value;
+			} else {
+				high = candidate;
+				fHigh = value;
+			}
+		}
+		// 若达到最大迭代次数但已收敛至米级（< 1m），依然作为有效解输出以提高全图鲁棒性
+		if (high - low <= kDemHeightConvergenceMeters) {
+			height = 0.5 * (low + high);
+			if (solvedPoint) *solvedPoint = point;
+			return true;
+		}
+		if (failureReason) *failureReason = "bisection did not reach precision within iterations=" + std::to_string(request->iterations) + ", low=" + std::to_string(low) + ", high=" + std::to_string(high);
+		return false;
+	};
+	double residualSum = 0.0, residualSquareSum = 0.0, residualMax = 0.0;
+	int validationCount = 0;
+	bool hasMaxResidualPoint = false;
+	int maxResidualRow = -1, maxResidualColumn = -1, maxResidualSourceRow = -1;
+	int maxResidualBurst = -1, maxResidualComponent = -1, maxResidualLocalK = 0;
+	double maxResidualSolvedHeight = 0.0, maxResidualOrthometric = 0.0, maxResidualGeoid = 0.0;
+	double maxResidualPhase = 0.0, maxResidualFlatEarth = 0.0;
+	double maxResidualLatitude = 0.0, maxResidualLongitude = 0.0;
+	ManagedDemSampler::SampleDiagnostics maxResidualDemSample;
+	// Validate the held-out strata before spending time on the full DEM grid.
+	// The validation is independent of the output matrix and must remain
+	// fail-closed, but a rejected anchor should not consume hours of compute.
+	for (size_t candidateIndex = 0; candidateIndex < candidates.size(); ++candidateIndex) {
+		const int validationProgress = 50 + static_cast<int>((5 * candidateIndex) /
+			std::max<size_t>(1, candidates.size()));
+		if (!progressReporter.report(validationProgress, "Validating absolute-phase anchor height residuals...")) return cancellationResult();
+		const Candidate& candidate = candidates[candidateIndex];
+		if (candidate.selection) continue;
+		Position point;
+		double solvedHeight = 0.0;
+		if (!solveHeight(candidate.row, candidate.column, solvedHeight, &point)) {
+			if (progressReporter.cancelled()) return cancellationResult();
+			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference height solve failed.");
+		}
+		double latitude = 0.0, longitude = 0.0, ignored = 0.0, orthometric = 0.0;
+		ManagedDemSampler::SampleDiagnostics demSample;
+		if (Utils::xyz2ell(point.x, point.y, point.z, latitude, longitude, ignored) != 0 ||
+			!referenceDem.sample(longitude, latitude, orthometric, &demSample))
+			return failContract("anchor.validation", "DEM absolute-phase anchoring v2 independent reference sampling failed.");
+		const double geoid = Utils::getGeoidHeight(request->geoidModelSnapshot, longitude, latitude);
+		if (!std::isfinite(geoid)) return failContract("anchor.validation", "DEM absolute-phase anchoring v2 geoid sampling failed.");
+		const double error = solvedHeight - (orthometric + geoid);
+		residualSum += error;
+		residualSquareSum += error * error;
+		if (!hasMaxResidualPoint || std::fabs(error) > residualMax) {
+			hasMaxResidualPoint = true;
+			residualMax = std::fabs(error);
+			maxResidualRow = candidate.row;
+			maxResidualColumn = candidate.column;
+			maxResidualSourceRow = sourceRowMap.at<int>(candidate.row, 0);
+			maxResidualBurst = candidate.burst;
+			maxResidualComponent = candidate.component;
+			maxResidualLocalK = candidate.k;
+			maxResidualSolvedHeight = solvedHeight;
+			maxResidualOrthometric = orthometric;
+			maxResidualGeoid = geoid;
+			maxResidualPhase = phase.at<double>(candidate.row, candidate.column);
+			maxResidualFlatEarth = flatEarthReference.at<double>(candidate.row, candidate.column);
+			maxResidualLatitude = latitude;
+			maxResidualLongitude = longitude;
+			maxResidualDemSample = demSample;
+		}
+		++validationCount;
+	}
+	if (validationCount == 0) { dem.release(); return failContract("anchor.validation", "DEM absolute-phase anchoring v2 has no independent validation samples."); }
+	// Stored order is [validation_count, mean_m, rms_m, max_abs_m].
+	result->sparseHeightResidualStats[0] = static_cast<double>(validationCount);
+	result->sparseHeightResidualStats[1] = residualSum / validationCount;
+	result->sparseHeightResidualStats[2] = std::sqrt(residualSquareSum / validationCount);
+	result->sparseHeightResidualStats[3] = residualMax;
+	const std::string validationDiag = "validationCount=" + std::to_string(validationCount) +
+		"; mean_m=" + std::to_string(result->sparseHeightResidualStats[1]) +
+		"; rms_m=" + std::to_string(result->sparseHeightResidualStats[2]) +
+		"; maxAbs_m=" + std::to_string(residualMax) +
+		"; maxAbsThreshold_m=" + std::to_string(request->maximumSparseHeightResidualMeters) +
+		"; maxPointValid=" + std::string(hasMaxResidualPoint ? "true" : "false") +
+		"; maxPoint=(row=" + std::to_string(maxResidualRow) +
+		",col=" + std::to_string(maxResidualColumn) +
+		",sourceRow=" + std::to_string(maxResidualSourceRow) +
+		",burst=" + std::to_string(maxResidualBurst) +
+		",component=" + std::to_string(maxResidualComponent) +
+		",localK=" + std::to_string(maxResidualLocalK) +
+		",solvedEllipsoidHeight_m=" + std::to_string(maxResidualSolvedHeight) +
+		",externalOrthometric_m=" + std::to_string(maxResidualOrthometric) +
+		",geoid_m=" + std::to_string(maxResidualGeoid) +
+		",latitude_deg=" + std::to_string(maxResidualLatitude) +
+		",longitude_deg=" + std::to_string(maxResidualLongitude) +
+		",demPixel=" + std::to_string(maxResidualDemSample.pixel) +
+		",demLine=" + std::to_string(maxResidualDemSample.line) +
+		",demValues=[" + std::to_string(maxResidualDemSample.values[0]) + "," +
+			std::to_string(maxResidualDemSample.values[1]) + "," +
+			std::to_string(maxResidualDemSample.values[2]) + "," +
+			std::to_string(maxResidualDemSample.values[3]) + "]"+
+		",demValid=[" + std::to_string(static_cast<int>(maxResidualDemSample.valid[0])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[1])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[2])) + "," +
+			std::to_string(static_cast<int>(maxResidualDemSample.valid[3])) + "]" +
+		",phase_rad=" + std::to_string(maxResidualPhase) +
+		",flatEarthReference_rad=" + std::to_string(maxResidualFlatEarth) + ")";
+	// 残差超限不再拒绝：改为质量告警后继续出图，供与 SNAP 等外部参考对标。
+	// 判据本身仍随 dem_anchor_policy 持久化，调用方据此决定节点是否进入 Warning 状态。
+	if (residualMax > request->maximumSparseHeightResidualMeters) {
+		diagnosticContext.emit(DEM_LOG_WARNING, static_cast<DemError>(0), "anchor.validation",
+			"Independent external DEM height residual exceeds policy; anchor accepted with a quality warning.", validationDiag);
+	} else {
+		diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "anchor.validation",
+			"Independent external DEM height residual validation passed.", validationDiag);
+	}
+
+	dem.create(phase.rows, phase.cols, CV_64F);
+	std::atomic<int> completedRows(0);
+	std::atomic<bool> parallelCancelled(false);
+	std::string parallelFailContext;
+	std::mutex failMutex;
+	// GDALDataset 是 GDALOpen 独占句柄，不允许跨线程并发 RasterIO，
+	// 而海面掩膜需要在并行反演中逐像元采样外源 DEM，故单独串行化该采样
+	std::mutex referenceDemMutex;
+	// 反演掩膜：低相干像元（此处门限）与海面（外源 DEM 以精确 0 表示海平面覆盖，见求解后判定）
+	// 都没有可用的地形相位，强行反演只会产出无意义的极大负值（本景实测低至 -10000 m），一律置 NaN
+	constexpr double kDemInversionMinimumCoherence = 0.2;
+	// 少数像元相位超出物理可解范围而解不出，置 NoData 后继续；但解不出的比例超过此值即视为
+	// 几何/相位契约整体损坏（整景级故障），仍按 fail-closed 中止，避免静默产出一景空图
+	constexpr double kDemMaxUnsolvedPixelFraction = 0.005;
+	std::atomic<long long> maskedLowCoherence(0);
+	std::atomic<long long> maskedSeaLevel(0);
+	std::atomic<long long> unsolvedPixels(0);
+
+	#pragma omp parallel for schedule(dynamic, 16)
+	for (int row = 0; row < phase.rows; ++row) {
+		if (parallelCancelled.load() || progressReporter.cancelled()) continue;
+
+		// 在行级别预先计算该行主星时刻与轨道状态，避免内层列循环重复 24956 次样条插值
+		const int sourceRow = sourceRowMap.at<int>(row, 0);
+		const int burst = sourceRow / masterLinesPerBurst;
+		const int nativeLine = sourceRow % masterLinesPerBurst;
+		Position satellite;
+		Velocity velocity;
+		bool rowMasterStateOk = false;
+		if (burst >= 0 && burst < masterBurstTimes.rows) {
+			const double masterTime = masterBurstTimes.at<double>(burst, 0) + nativeLine * masterAzimuthInterval;
+			rowMasterStateOk = geometry.masterState(masterTime, satellite, velocity);
+		}
+
+		Position lastSolvedPoint;
+		bool hasLastSolvedPoint = false;
+
+		for (int column = 0; column < phase.cols; ++column) {
+			if (parallelCancelled.load() || progressReporter.cancelled()) break;
+			if (phaseValidMask.at<uchar>(row, column) != 1) {
+				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				hasLastSolvedPoint = false;
+				continue;
+			}
+			if (!rowMasterStateOk) {
+				std::lock_guard<std::mutex> lock(failMutex);
+				if (!parallelCancelled.load()) {
+					parallelFailContext = "row=" + std::to_string(row) + "; col=" + std::to_string(column) + "; masterState failed for burst=" + std::to_string(burst);
+					parallelCancelled.store(true);
+				}
+				break;
+			}
+			// 低相干掩膜：相干系数过低时相位误差可达数弧度，反演结果无意义
+			if (gamma.at<double>(row, column) < kDemInversionMinimumCoherence) {
+				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				++maskedLowCoherence;
+				continue;
+			}
+			Position point;
+			double height = 0.0;
+			std::string solveDetail;
+			const Position* seedPtr = hasLastSolvedPoint ? &lastSolvedPoint : nullptr;
+			if (!solveHeight(row, column, height, &point, &solveDetail, seedPtr, &satellite, &velocity)) {
+				if (progressReporter.cancelled()) {
+					parallelCancelled.store(true);
+					break;
+				}
+				// 个别像元无解（相位超出物理可解范围、内层几何闭包失败等）不再中止整轮，
+				// 置 NoData 并计数后继续；仅首个失败样本记录完整上下文，供超阈值时的诊断使用
+				if (unsolvedPixels.fetch_add(1) == 0) {
+					std::lock_guard<std::mutex> lock(failMutex);
+					parallelFailContext = "row=" + std::to_string(row) +
+						"; col=" + std::to_string(column) +
+						"; sourceRow=" + std::to_string(sourceRowMap.at<int>(row, 0)) +
+						"; burst=" + std::to_string(sourceRowMap.at<int>(row, 0) / masterLinesPerBurst) +
+						"; nativeLine=" + std::to_string(sourceRowMap.at<int>(row, 0) % masterLinesPerBurst) +
+						"; phaseVal=" + std::to_string(phase.at<double>(row, column)) +
+						"; flatEarthRef=" + std::to_string(flatEarthReference.at<double>(row, column)) +
+						"; selectedK=" + std::to_string(selected.first) +
+						"; " + solveDetail;
+				}
+				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				continue;
+			}
+			// 海面掩膜：本外源 DEM 以精确 0 表示海平面覆盖，那里没有地形相位可反演，
+			// 求解出的极大负值（本景实测低至 -10000 m）属伪解，置 NaN 丢弃；
+			// 掩膜像元仍推进地面点，保证后续沿海像元的求解种子与海面判定都连续可用
+			double maskLatitude = 0.0, maskLongitude = 0.0, maskIgnoredHeight = 0.0, maskOrthometricHeight = 0.0;
+			bool maskIsSeaLevel = false;
+			if (Utils::xyz2ell(point.x, point.y, point.z, maskLatitude, maskLongitude, maskIgnoredHeight) == 0) {
+				std::lock_guard<std::mutex> lock(referenceDemMutex);
+				maskIsSeaLevel = referenceDem.sample(maskLongitude, maskLatitude, maskOrthometricHeight) &&
+					maskOrthometricHeight == 0.0;
+			}
+			if (maskIsSeaLevel) {
+				height = std::numeric_limits<double>::quiet_NaN();
+				++maskedSeaLevel;
+			}
+			dem.at<double>(row, column) = height;
+			lastSolvedPoint = point;
+			hasLastSolvedPoint = true;
+		}
+
+		const int done = ++completedRows;
+		if (done % 50 == 0 || done == phase.rows) {
+			const int inversionProgress = 55 + static_cast<int>((35LL * done) / std::max(1, phase.rows));
+			if (!progressReporter.report(inversionProgress, "Solving absolute-height DEM grid...")) {
+				parallelCancelled.store(true);
+			}
+		}
+	}
+
+	if (parallelCancelled.load() || progressReporter.cancelled()) {
+		dem.release();
+		if (progressReporter.cancelled()) return cancellationResult();
+		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 height solve loop aborted before completion.", parallelFailContext);
+	}
+	const long long totalInversionPixels = static_cast<long long>(phase.rows) * static_cast<long long>(phase.cols);
+	const std::string unsolvedDetail = "unsolvedPixels=" + std::to_string(unsolvedPixels.load()) +
+		"; totalPixels=" + std::to_string(totalInversionPixels) +
+		"; maxFraction=" + std::to_string(kDemMaxUnsolvedPixelFraction) +
+		"; firstFailure=(" + parallelFailContext + ")";
+	if (unsolvedPixels.load() > 0 &&
+		static_cast<double>(unsolvedPixels.load()) > kDemMaxUnsolvedPixelFraction * static_cast<double>(totalInversionPixels)) {
+		dem.release();
+		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 FEP height solve failed for too many valid phase samples.", unsolvedDetail);
+	}
+	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "inversion.mask",
+		"DEM grid inversion masking summary.",
+		"minCoherence=" + std::to_string(kDemInversionMinimumCoherence) +
+		"; maskedLowCoherence=" + std::to_string(maskedLowCoherence.load()) +
+		"; maskedSeaLevel=" + std::to_string(maskedSeaLevel.load()) +
+		"; unsolvedPixels=" + std::to_string(unsolvedPixels.load()) +
+		"; totalPixels=" + std::to_string(totalInversionPixels));
+	if (unsolvedPixels.load() > 0) {
+		diagnosticContext.emit(DEM_LOG_WARNING, static_cast<DemError>(0), "inversion.solve",
+			"Some phase-valid pixels have no solvable height; they were written as NoData.", unsolvedDetail);
+	}
+	// This preliminary bridge does not retain HDF5 handles.  Rechecking every
+	// consumed artifact detects replacement during the open/read sequence and
+	// keeps the call fail-closed until a handle-pinned snapshot reader exists.
+	if (!hashMatches(request->phaseH5Snapshot, request->phaseH5SnapshotHash) ||
+		!hashMatches(request->masterH5Snapshot, request->masterH5SnapshotHash) ||
+		!hashMatches(request->slaveH5Snapshot, request->slaveH5SnapshotHash) ||
+		!hashMatches(request->auxiliaryDemRasterSnapshot, request->auxiliaryDemRasterSnapshotHash) ||
+		!hashMatches(request->auxiliaryDemValidMaskSnapshot, request->auxiliaryDemValidMaskSnapshotHash) ||
+		!hashMatches(request->auxiliaryDemIdentityH5Snapshot, request->auxiliaryDemIdentityH5SnapshotHash) ||
+		!hashMatches(request->geoidModelSnapshot, request->geoidModelSnapshotHash)) {
+		return failContract("input.snapshot_hash", "DEM absolute-phase anchoring v2 snapshot changed during input preparation.");
+	}
+	if (!progressReporter.reportSuccess()) return cancellationResult();
+	strcpy_s(result->status, "accepted");
+	return 0;
 }
 
 
@@ -804,6 +2178,8 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 		"; iterations=" + std::to_string(iter_times) + "; mode=" + std::to_string(mode));
 	Mat unwrapped_phase, flat_phase_coefficient, flat_earth_reference_phase, gcps, temp, range_spacing,
 		stateVec1, stateVec2, lat_coefficient, lon_coefficient, prf1, prf2, carrier_frequency;
+	Mat phaseValidMask;
+	bool hasPhaseValidityMask = false;
 	ret = readDemArray(diagnosticContext, unwrapped_phase_file, "phase", "input.phase", unwrapped_phase);
 	if (ret != 0) return hdfReadFailure(ret, "read_array_from_h5()");
 	if (unwrapped_phase.type() != CV_64F)
@@ -846,13 +2222,15 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 	if (requiresVersionedReference) {
 		std::string flatEarthContractDetail;
 		hasFlatEarthReference = validateVersionedFlatEarthContract(
-			unwrapped_phase_file, unwrapped_phase, flat_earth_reference_phase, flatEarthContractDetail);
+			unwrapped_phase_file, unwrapped_phase, flat_earth_reference_phase, phaseValidMask, flatEarthContractDetail);
 		if (!hasFlatEarthReference) {
-		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, "input.flat_earth_reference_phase",
+			diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, "input.flat_earth_reference_phase",
 			"Versioned flat-earth contract is incomplete or unsupported; legacy coefficients are not a fallback.",
 			flatEarthContractDetail, unwrapped_phase_file, "flat_earth_reference_phase");
 		return DEM_ERROR_INVALID_SHAPE;
 		}
+		hasPhaseValidityMask = true;
+		unwrapped_phase.setTo(0.0, phaseValidMask == 0);
 	}
 	else {
 		ret = readDemArray(diagnosticContext, unwrapped_phase_file, "flat_phase_coefficient", "input.flat_phase_coefficient", flat_phase_coefficient);
@@ -970,6 +2348,44 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 		llh.at<double>(0, 1) = lon.at<double>(0, 0);
 		llh.at<double>(0, 2) = 0.0;
 		row = (int)nr / 2; col = (int)nc / 2;
+	}
+	if (hasPhaseValidityMask && phaseValidMask.at<uchar>(row, col) == 0) {
+		long long bestDistance = std::numeric_limits<long long>::max();
+		int nearestRow = -1;
+		int nearestCol = -1;
+		for (int candidateRow = 0; candidateRow < nr; ++candidateRow) {
+			const uchar* valid = phaseValidMask.ptr<uchar>(candidateRow);
+			for (int candidateCol = 0; candidateCol < nc; ++candidateCol) {
+				if (valid[candidateCol] == 0) continue;
+				const long long rowDistance = static_cast<long long>(candidateRow) - row;
+				const long long colDistance = static_cast<long long>(candidateCol) - col;
+				const long long distance = rowDistance * rowDistance + colDistance * colDistance;
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					nearestRow = candidateRow;
+					nearestCol = candidateCol;
+				}
+			}
+		}
+		if (nearestRow < 0 || nearestCol < 0) {
+			diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_INVALID_SHAPE, "input.phase_valid_mask",
+				"Phase-validity mask has no usable anchor pixel.", std::string(), unwrapped_phase_file, "phase_valid_mask");
+			return DEM_ERROR_INVALID_SHAPE;
+		}
+		row = nearestRow;
+		col = nearestCol;
+		row_coord.at<double>(0, 0) = offset_row + row;
+		col_coord.at<double>(0, 0) = offset_col + col;
+		ret = util.coord_conversion(lat_coefficient, row_coord, col_coord, lat);
+		if (ret != 0) return processingFailure("coord_conversion", ret);
+		ret = util.coord_conversion(lon_coefficient, row_coord, col_coord, lon);
+		if (ret != 0) return processingFailure("coord_conversion", ret);
+		llh.at<double>(0, 0) = lat.at<double>(0, 0);
+		llh.at<double>(0, 1) = lon.at<double>(0, 0);
+		llh.at<double>(0, 2) = 0.0;
+		diagnosticContext.emit(DEM_LOG_DEBUG, static_cast<DemError>(0), "input.phase_valid_mask",
+			"Moved the DEM phase anchor to the nearest valid sample.",
+			"row=" + std::to_string(row) + "; column=" + std::to_string(col), unwrapped_phase_file, "phase_valid_mask");
 	}
 	ret = util.ell2xyz(llh, xyz_ground);
 	if (ret != 0) return processingFailure("ell2xyz", ret);
@@ -1151,6 +2567,9 @@ int Dem::dem_newton_iter_impl(const char* unwrapped_phase_file, Mat& dem, const 
 		return legacyConsoleLogging ? -2 : static_cast<int>(DEM_ERROR_PROCESSING);
 	}
 	dem = dem + llh.at<double>(0, 2) - dem.at<double>(row, col);
+	if (hasPhaseValidityMask) {
+		dem.setTo(std::numeric_limits<double>::quiet_NaN(), phaseValidMask == 0);
+	}
 	if (!progressReporter.reportSuccess()) return cancellationResult();
 	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "complete", "DEM Newton iteration completed successfully.",
 		"rows=" + std::to_string(dem.rows) + "; columns=" + std::to_string(dem.cols));

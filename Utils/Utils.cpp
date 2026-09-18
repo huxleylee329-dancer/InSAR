@@ -6,6 +6,8 @@
 #include <vector>
 #include <cfloat>
 #include <cmath>
+#include <climits>
+#include <cstdio>
 #include <omp.h>
 #include<direct.h>
 #include<SensAPI.h>
@@ -69,13 +71,23 @@ int utc_to_gps(const char* utc_time, double* gps_time)
 namespace
 {
 	constexpr double kDimacsCostScale = 1000000.0;
+	constexpr double kDimacsSupplyIntegerTolerance = 1e-9;
 
 	bool toDimacsSupply(double value, long long& output)
 	{
-		if (!std::isfinite(value) || value < static_cast<double>(LONG_MIN) || value > static_cast<double>(LONG_MAX)) return false;
-		const long long rounded = llround(value);
-		if (static_cast<double>(rounded) != value) return false;
-		output = rounded;
+		if (!std::isfinite(value) ||
+			value < static_cast<double>(LONG_MIN) ||
+			value > static_cast<double>(LONG_MAX)) return false;
+
+		// DIMACS supplies are integral.  Residues may carry a tiny floating-point
+		// error, so accept only values within the explicit integer tolerance.
+		const double rounded = std::round(value);
+		if (!std::isfinite(rounded) ||
+			rounded < static_cast<double>(LONG_MIN) ||
+			rounded > static_cast<double>(LONG_MAX) ||
+			std::fabs(value - rounded) > kDimacsSupplyIntegerTolerance) return false;
+
+		output = static_cast<long long>(std::llround(rounded));
 		return true;
 	}
 
@@ -88,24 +100,48 @@ namespace
 		return true;
 	}
 
-	bool validateDimacsMatrices(const Mat& residue, const Mat& cost, double threshold)
+	bool validateDimacsMatrices(const Mat& residue, const Mat& cost, double threshold, std::string* reason = nullptr)
 	{
 		for (int row = 0; row < residue.rows; ++row)
 			for (int column = 0; column < residue.cols; ++column)
 			{
 				const double value = residue.at<double>(row, column);
-				if (!std::isfinite(value)) return false;
+				if (!std::isfinite(value))
+				{
+					if (reason)
+						*reason = "non-finite residue at (" + std::to_string(row) + "," + std::to_string(column) + ")";
+					return false;
+				}
 				if (fabs(value) > threshold)
 				{
 					long long supply = 0;
-					if (!toDimacsSupply(value, supply)) return false;
+					if (!toDimacsSupply(value, supply))
+					{
+						if (reason)
+						{
+							char buffer[256] = {};
+							sprintf_s(buffer, sizeof(buffer), "invalid residue supply at (%d,%d): %.17g", row, column, value);
+							*reason = buffer;
+						}
+						return false;
+					}
 				}
 			}
 		for (int row = 0; row < cost.rows; ++row)
 			for (int column = 0; column < cost.cols; ++column)
 			{
 				long long scaled = 0;
-				if (!toDimacsCost(cost.at<double>(row, column), scaled)) return false;
+				const double value = cost.at<double>(row, column);
+				if (!toDimacsCost(value, scaled))
+				{
+					if (reason)
+					{
+						char buffer[256] = {};
+						sprintf_s(buffer, sizeof(buffer), "invalid DIMACS cost at (%d,%d): %.17g", row, column, value);
+						*reason = buffer;
+					}
+					return false;
+				}
 			}
 		return true;
 	}
@@ -1141,9 +1177,10 @@ int Utils::write_DIMACS(const char* DIMACS_file_problem, Mat& residue, Mat& cohe
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
 		return -1;
 	}
-	if (!validateDimacsMatrices(residue, coherence, thresh))
+	std::string reason;
+	if (!validateDimacsMatrices(residue, coherence, thresh, &reason))
 	{
-		fprintf(stderr, "write_DIMACS(): costs must be finite, non-negative, and supplies must be integers!\n\n");
+		fprintf(stderr, "write_DIMACS(): invalid DIMACS input: %s\n\n", reason.c_str());
 		return -1;
 	}
 	long nr = residue.rows;
@@ -1349,9 +1386,10 @@ int Utils::write_DIMACS(const char* DIMACS_problem_file, const Mat& residue, Mat
 		fprintf(stderr, "write_DIMACS(): input check failed!\n\n");
 		return -1;
 	}
-	if (!validateDimacsMatrices(residue, cost, thresh))
+	std::string reason;
+	if (!validateDimacsMatrices(residue, cost, thresh, &reason))
 	{
-		fprintf(stderr, "write_DIMACS(): costs must be finite, non-negative, and supplies must be integers!\n\n");
+		fprintf(stderr, "write_DIMACS(): invalid DIMACS input: %s\n\n", reason.c_str());
 		return -1;
 	}
 	long nr = residue.rows;

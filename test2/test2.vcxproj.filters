@@ -45,6 +45,12 @@
     <ClCompile Include="SnapGoldsteinCompatibleRegression.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="DimacsValidationRegression.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Sar2UtmValidationRegression.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="RegistrationSubpixelRegression.h">
@@ -60,6 +66,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="SnapGoldsteinCompatibleRegression.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="DimacsValidationRegression.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Sar2UtmValidationRegression.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

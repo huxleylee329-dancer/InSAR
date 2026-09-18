@@ -77,6 +77,10 @@ int snaphu_main(int argc, char **argv){
   long linelen, nlines;
 
 
+  /* 关闭 stdout 缓冲：阶段/分块/求解进度都写往 stdout，块缓冲（管道下默认 4KB）
+     会让它们成批到达，外部日志无法按阶段归因耗时。必须在任何 stdout 操作之前调用。 */
+  setvbuf(stdout,NULL,_IONBF,0);
+
   /* get current wall clock and CPU time */
   StartTimers(&tstart,&cputimestart);
 
@@ -394,7 +398,11 @@ int Unwrap(infileT *infiles, outfileT *outfiles, paramT *params,
       } /* end if !iterparams->assembleonly */
 
       /* reassemble tiles */
-      AssembleTiles(iteroutfiles,iterparams,nlines,linelen);
+      /* 分片驱动模式下（--noassemble）各 worker 只负责自己那部分 tile，装配由
+         驱动方在全部 worker 结束后用 --assemble 单独跑一次；此处必须跳过。 */
+      if(!iterparams->noassemble){
+        AssembleTiles(iteroutfiles,iterparams,nlines,linelen);
+      }
     
     } /* end if multiple tiles */
 

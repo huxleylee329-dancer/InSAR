@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -127,7 +127,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
@@ -136,8 +136,8 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\lib;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;zlibstatic.lib;shlwapi.lib;libszaec.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Utils_d.lib;Registration_d.lib;Hdf5IO_d.lib;gdal_i.lib;shlwapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
@@ -151,7 +151,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
@@ -161,8 +161,8 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\lib;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libsz.lib;libzlib.lib;libhdf5.lib;libhdf5_cpp.lib;libaec.lib;gdal_i.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;D:\SRC\release-1930-x64-gdal-3-10-0-mapserver-8-2-2-libs\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>Utils.lib;Registration.lib;Hdf5IO.lib;gdal_i.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions>/IGNORE:4099 %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>

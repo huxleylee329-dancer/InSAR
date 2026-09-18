@@ -28,7 +28,9 @@ enum DemError : int32_t
 	DEM_ERROR_SOURCE_PATH = -2004,
 	DEM_ERROR_INVALID_SHAPE = -2005,
 	DEM_ERROR_PROCESSING = -2006,
-	DEM_ERROR_CANCELLED = -2007
+	DEM_ERROR_CANCELLED = -2007,
+	DEM_ERROR_ABSOLUTE_PHASE_ANCHOR_AMBIGUOUS = -2008,
+	DEM_ERROR_ABSOLUTE_PHASE_ANCHOR_CONTRACT = -2009
 };
 
 struct DemDiagnosticEvent
@@ -67,6 +69,113 @@ constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_VERSION_V1 = 1;
 constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_VERSION = 2;
 constexpr uint32_t DEM_DIAGNOSTIC_OPTIONS_MIN_SIZE =
 	static_cast<uint32_t>(offsetof(DemDiagnosticOptions, version) + sizeof(uint32_t));
+
+// ABI-stable request for DEM absolute-phase anchoring v2.  Every path must
+// name an immutable worker-prepared snapshot; this DLL never searches a
+// project directory or .dem_cache for an implicit reference DEM.
+// Keep this name distinct from the Qt worker's value-type request.  The UI
+// owns QString/QList snapshots; this ABI only receives their immutable C
+// string representation after the worker has revalidated them.
+struct DemAbsolutePhaseAnchorV2CoreRequest
+{
+	uint32_t structSize;
+	uint32_t version;
+	const char* phaseH5Snapshot;
+	const char* masterH5Snapshot;
+	const char* slaveH5Snapshot;
+	const char* auxiliaryDemRasterSnapshot;
+	const char* auxiliaryDemValidMaskSnapshot;
+	const char* auxiliaryDemIdentityH5Snapshot;
+	const char* geoidModelSnapshot;
+	const char* phaseH5SnapshotHash;
+	const char* masterH5SnapshotHash;
+	const char* slaveH5SnapshotHash;
+	const char* auxiliaryDemRasterSnapshotHash;
+	const char* auxiliaryDemValidMaskSnapshotHash;
+	const char* auxiliaryDemIdentityH5SnapshotHash;
+	const char* referenceIdentityH5SourceHash;
+	const char* geoidModelSnapshotHash;
+	const char* referenceResourceId;
+	const char* referenceResourceHash;
+	const char* referenceVerticalDatum;
+	const char* referenceCrs;
+	const char* orbitInterpolationStrategy;
+	int32_t iterations;
+	int32_t azimuthCellsPerBurst;
+	int32_t rangeCellsPerBurst;
+	double minimumConsensusFraction;
+	double maximumSparseHeightResidualMeters;
+	double minimumComplexGamma;
+	// Selection and validation are separate strata. A burst must retain at
+	// least this many samples in each set and both sets must cover every range
+	// stratum before a global K may be accepted.
+	int32_t minimumSelectionCandidatesPerBurst;
+	int32_t minimumValidationCandidatesPerBurst;
+	// GDAL affine transform from WGS84 longitude/latitude to the managed
+	// raster's pixel grid.  The caller copies the exact identity-H5 metadata;
+	// the raster itself is never discovered from a project directory.
+	double referenceGeoTransform[6];
+	double referenceNoDataValue;
+	const char* referenceVerticalPipeline;
+	const char* referenceGeoidModelId;
+	// Core independently resolves the phase source metadata against this root
+	// and rejects anything other than these UI-frozen identities.
+	const char* snapshotRoot;
+	const char* phaseSource1ResolvedPath;
+	const char* phaseSource1ResolvedHash;
+	const char* phaseSource2ResolvedPath;
+	const char* phaseSource2ResolvedHash;
+	const char* geometryReferenceResolvedPath;
+	const char* geometryReferenceResolvedHash;
+	const char* geometryReferenceCanonicalIdentity;
+	const char* expectedMasterOrbitSource;
+	const char* expectedMasterOrbitSelectionReason;
+	const char* expectedSlaveOrbitSource;
+	const char* expectedSlaveOrbitSelectionReason;
+};
+
+// Caller-owned, fixed-capacity diagnostics returned only on an accepted
+// anchor.  No full-scene diagnostic raster crosses this ABI.
+struct DemAbsolutePhaseAnchorV2Result
+{
+	uint32_t structSize;
+	uint32_t version;
+	int32_t selectedK;
+	int32_t candidateCount;
+	double consensusFraction;
+	double sparseHeightResidualStats[4]; // validationCount, mean, RMS, maxAbs
+	int32_t* burstIndices;
+	int32_t* candidateCountByBurst;
+	int32_t* validationCountByBurst;
+	// burstCount x rangeCellsPerBurst matrices, row-major, containing 0/1
+	// coverage for the selection and independent validation partitions.
+	int32_t* selectionRangeCoverage;
+	int32_t* validationRangeCoverage;
+	// One row per component x FEP-burst pair: [component_label, burst_index,
+	// selection_count, validation_count].  This is intentionally not a
+	// component-only aggregate: accepted global K needs both partitions for
+	// every observed component/burst pair.
+	int32_t* componentEvidenceTriples;
+	uint32_t burstCapacity;
+	uint32_t rangeCoverageCapacity;
+	uint32_t componentEvidenceCapacity;
+	uint32_t componentEvidenceCount;
+	uint32_t burstCount;
+	int32_t* kHistogramPairs; // {K, count} pairs
+	uint32_t histogramCapacity;
+	uint32_t histogramCount;
+	char status[32];
+};
+
+constexpr uint32_t DEM_ABSOLUTE_PHASE_ANCHOR_V2_VERSION = 2;
+constexpr uint32_t DEM_ABSOLUTE_PHASE_ANCHOR_V2_MIN_SIZE =
+	static_cast<uint32_t>(offsetof(DemAbsolutePhaseAnchorV2CoreRequest, version) + sizeof(uint32_t));
+// Request/H5 contract remains anchoring v2; this is the result-buffer layout
+// revision that added component x burst evidence.  It must reject an older
+// DLL rather than reinterpret its three-column evidence as four columns.
+constexpr uint32_t DEM_ABSOLUTE_PHASE_ANCHOR_V2_RESULT_VERSION = 3;
+constexpr uint32_t DEM_ABSOLUTE_PHASE_ANCHOR_V2_RESULT_MIN_SIZE =
+	static_cast<uint32_t>(offsetof(DemAbsolutePhaseAnchorV2Result, version) + sizeof(uint32_t));
 
 class InSAR_API Dem
 {
@@ -138,6 +247,14 @@ public:
 		int mode,
 		const DemDiagnosticOptions* diagnostics,
 		DemProgressCallback cb = nullptr
+	);
+	// v2 never delegates to dem_newton_iter[_ex].  It requires the FEP v2
+	// phase contract plus explicit external-DEM, mask and geoid snapshots.
+	int dem_newton_iter_absolute_phase_anchor_v2(
+		const DemAbsolutePhaseAnchorV2CoreRequest* request,
+		Mat& dem,
+		DemAbsolutePhaseAnchorV2Result* result,
+		const DemDiagnosticOptions* diagnostics = nullptr
 	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）

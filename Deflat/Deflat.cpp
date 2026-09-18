@@ -13,6 +13,10 @@
 #include<Windows.h>
 #include<SensAPI.h>
 #include<urlmon.h>
+#include<algorithm>
+#include<cmath>
+#include<cstdint>
+#include<cstdio>
 #pragma comment(lib,"URlmon")
 #pragma comment(lib, "Sensapi.lib")
 #ifdef _DEBUG
@@ -243,7 +247,45 @@ namespace {
 
 
 template<typename T, typename Predicate>
-void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid);
+bool fillInvalidGaps(cv::Mat& mat, Predicate is_invalid,
+	DeflatProgressCallback cb = nullptr, int progressStart = 98, int progressEnd = 99);
+
+void logMappedCoordinateDiagnostics(const Mat& mappedLat, const Mat& mappedLon, const char* stage)
+{
+	uint64_t valid = 0;
+	uint64_t missing = 0;
+	uint64_t nonFinite = 0;
+	uint64_t outOfRange = 0;
+	double minLat = 0.0, maxLat = 0.0, minLon = 0.0, maxLon = 0.0;
+	for (int row = 0; row < mappedLat.rows; ++row)
+	{
+		for (int column = 0; column < mappedLat.cols; ++column)
+		{
+			const double lat = mappedLat.at<double>(row, column);
+			const double lon = mappedLon.at<double>(row, column);
+			if (!std::isfinite(lat) || !std::isfinite(lon)) { ++nonFinite; continue; }
+			if (lat <= -998.0 || lon <= -998.0 || (lat > 350.0 && lon > 350.0)) { ++missing; continue; }
+			if (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0) { ++outOfRange; continue; }
+			if (valid == 0)
+			{
+				minLat = maxLat = lat;
+				minLon = maxLon = lon;
+			}
+			else
+			{
+				minLat = (std::min)(minLat, lat); maxLat = (std::max)(maxLat, lat);
+				minLon = (std::min)(minLon, lon); maxLon = (std::max)(maxLon, lon);
+			}
+			++valid;
+		}
+	}
+	fprintf(stderr,
+		"demMapping(): %s mappedLat=%dx%d mappedLon=%dx%d valid=%llu missing=%llu nonFinite=%llu outOfRange=%llu lat=[%.17g,%.17g] lon=[%.17g,%.17g]\n",
+		stage, mappedLat.rows, mappedLat.cols, mappedLon.rows, mappedLon.cols,
+		static_cast<unsigned long long>(valid), static_cast<unsigned long long>(missing),
+		static_cast<unsigned long long>(nonFinite), static_cast<unsigned long long>(outOfRange),
+		minLat, maxLat, minLon, maxLon);
+}
 
 Deflat::Deflat()
 {
@@ -1873,7 +1915,7 @@ int Deflat::demMapping(
 		int current_completed = ++completed_items;
 		if (cb && current_completed % step == 0)
 		{
-			int progress = current_completed * 100 / DEM_rows;
+			int progress = current_completed * 97 / DEM_rows;
 			if (!cb(progress, "Mapping DEM..."))
 			{
 				cancel_flag = true;
@@ -1887,7 +1929,7 @@ int Deflat::demMapping(
 	}
 
 	//投影DEM插值
-	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
+	if (!fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; }, cb, 98, 99)) return -2;
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
 	if (cb && !cb(100, "Mapping DEM completed.")) return -2;
 	return 0;
@@ -2023,7 +2065,7 @@ int Deflat::demMapping(
 		int current_completed = ++completed_items;
 		if (cb && current_completed % step == 0)
 		{
-			int progress = current_completed * 100 / DEM_rows;
+			int progress = current_completed * 97 / DEM_rows;
 			if (!cb(progress, "Mapping DEM..."))
 			{
 				cancel_flag = true;
@@ -2036,15 +2078,35 @@ int Deflat::demMapping(
 		return -2; // 提前返回 -2 表示用户中止
 	}
 	//投影DEM插值
-	fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; });
+	const ULONGLONG gapFillStarted = GetTickCount64();
+	fprintf(stderr, "demMapping(): filling DEM gaps rows=%d cols=%d\n", sceneHeight, sceneWidth);
+	logMappedCoordinateDiagnostics(mappedLat, mappedLon, "before gap filling");
+	if (cb && !cb(98, "Filling DEM gaps...")) return -2;
+	if (!fillInvalidGaps<short>(DEM_out, [invalid](short val) { return val == invalid; }, cb, 98, 99)) return -2;
+	fprintf(stderr, "demMapping(): DEM gaps finished in %llu ms\n",
+		static_cast<unsigned long long>(GetTickCount64() - gapFillStarted));
 
 	//投影经纬度插值
-	fillInvalidGaps<double>(mappedLon, [](double val) { return val <= -998.0; });
-	fillInvalidGaps<double>(mappedLat, [](double val) { return val <= -998.0; });
+	const ULONGLONG longitudeFillStarted = GetTickCount64();
+	fprintf(stderr, "demMapping(): filling longitude gaps rows=%d cols=%d\n", sceneHeight, sceneWidth);
+	if (!fillInvalidGaps<double>(mappedLon, [](double val) { return val <= -998.0; }, cb, 98, 99)) return -2;
+	fprintf(stderr, "demMapping(): longitude gaps finished in %llu ms\n",
+		static_cast<unsigned long long>(GetTickCount64() - longitudeFillStarted));
+	const ULONGLONG latitudeFillStarted = GetTickCount64();
+	fprintf(stderr, "demMapping(): filling latitude gaps rows=%d cols=%d\n", sceneHeight, sceneWidth);
+	if (!fillInvalidGaps<double>(mappedLat, [](double val) { return val <= -998.0; }, cb, 98, 99)) return -2;
+	fprintf(stderr, "demMapping(): latitude gaps finished in %llu ms\n",
+		static_cast<unsigned long long>(GetTickCount64() - latitudeFillStarted));
+	logMappedCoordinateDiagnostics(mappedLat, mappedLon, "after gap filling");
 	//投影纬度插值
+	const ULONGLONG blurStarted = GetTickCount64();
+	fprintf(stderr, "demMapping(): applying Gaussian blur rows=%d cols=%d\n", sceneHeight, sceneWidth);
+	if (cb && !cb(99, "Applying Gaussian blur...")) return -2;
 	cv::GaussianBlur(mappedLat, mappedLat, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(mappedLon, mappedLon, cv::Size(5, 5), 1, 1);
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
+	fprintf(stderr, "demMapping(): Gaussian blur finished in %llu ms\n",
+		static_cast<unsigned long long>(GetTickCount64() - blurStarted));
 	if (cb && !cb(100, "Mapping DEM completed.")) return -2;
 	return 0;
 }
@@ -2159,7 +2221,7 @@ int Deflat::demMapping_float(
 		int current_completed = ++completed_items;
 		if (cb && current_completed % step == 0)
 		{
-			int progress = current_completed * 100 / DEM_rows;
+			int progress = current_completed * 97 / DEM_rows;
 			if (!cb(progress, "Mapping DEM..."))
 			{
 				cancel_flag = true;
@@ -2174,9 +2236,10 @@ int Deflat::demMapping_float(
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;
 	//投影DEM插值
-	fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; });
+	if (!fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; }, cb, 98, 99)) return -2;
 
 	cv::GaussianBlur(DEM_out, mappedDEM, cv::Size(5, 5), 1, 1);
+	if (cb && !cb(100, "Mapping DEM completed.")) return -2;
 	return 0;
 }
 
@@ -2280,7 +2343,7 @@ int Deflat::paraMapping_float(
 		int current = ++completed_rows;
 		if (cb && current % step == 0)
 		{
-			if (!cb(current * 100 / DEM_rows, "Mapping parameters..."))
+			if (!cb(current * 97 / DEM_rows, "Mapping parameters..."))
 			{
 				cancel_flag = true;
 			}
@@ -2290,9 +2353,10 @@ int Deflat::paraMapping_float(
 	//DEM_out.copyTo(mappedDEM);
 	//return 0;
 	//投影DEM插值
-	fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; });
+	if (!fillInvalidGaps<float>(DEM_out, [](float val) { return val <= -998.0f; }, cb, 98, 99)) return -2;
 
 	cv::GaussianBlur(DEM_out, output, cv::Size(5, 5), 1, 1);
+	if (cb && !cb(100, "Mapping parameters completed.")) return -2;
 	return 0;
 }
 
@@ -2949,63 +3013,132 @@ namespace {
 }
 
 template<typename T, typename Predicate>
-void fillInvalidGaps(cv::Mat& mat, Predicate is_invalid)
+bool fillInvalidGaps(cv::Mat& mat, Predicate is_invalid,
+	DeflatProgressCallback cb, int progressStart, int progressEnd)
 {
-		int rows = mat.rows;
-		int cols = mat.cols;
-		for (int i = 0; i < rows; i++)
-		{
-			for (int j = 0; j < cols; j++)
-			{
-				if (!is_invalid(mat.at<T>(i, j))) continue;
-				int up = i, down = i, left = j, right = j;
-				while (--up >= 0 && is_invalid(mat.at<T>(up, j)));
-				while (++down < rows && is_invalid(mat.at<T>(down, j)));
-				while (--left >= 0 && is_invalid(mat.at<T>(i, left)));
-				while (++right < cols && is_invalid(mat.at<T>(i, right)));
+	const int rows = mat.rows;
+	const int cols = mat.cols;
+	if (rows <= 0 || cols <= 0) return true;
+	const auto reportRows = [&](int completedRows, int totalRows, int start, int end) {
+		if (!cb || (completedRows != totalRows && completedRows % std::max(1, totalRows / 100) != 0)) return true;
+		const int progress = start + (completedRows * (end - start)) / totalRows;
+		char message[128] = {};
+		sprintf_s(message, sizeof(message), "Filling DEM gaps (rows %d/%d)...", completedRows, totalRows);
+		return cb(progress, message);
+	};
 
-				if (left >= 0 && right < cols && up >= 0 && down < rows)
+	// Fill complete horizontal invalid runs in one pass.  The old implementation
+	// searched outward separately for every invalid cell, which becomes
+	// quadratic for a large invalid region.
+	for (int row = 0; row < rows; ++row)
+	{
+		int column = 0;
+		while (column < cols)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { ++column; continue; }
+			const int first = column;
+			while (column < cols && is_invalid(mat.at<T>(row, column))) ++column;
+			const int last = column - 1;
+			const int left = first - 1;
+			const int right = column;
+			if (left >= 0 && right < cols)
+			{
+				const double leftValue = static_cast<double>(mat.at<T>(row, left));
+				const double rightValue = static_cast<double>(mat.at<T>(row, right));
+				for (int k = first; k <= last; ++k)
 				{
-					double ratio1 = double(j - left) / double(right - left);
-					double value1 = double(mat.at<T>(i, left)) + double(mat.at<T>(i, right) - mat.at<T>(i, left)) * ratio1;
-					double ratio2 = double(i - up) / double(down - up);
-					double value2 = double(mat.at<T>(up, j)) + double(mat.at<T>(down, j) - mat.at<T>(up, j)) * ratio2;
-					mat.at<T>(i, j) = static_cast<T>((value1 + value2) / 2.0);
-				}
-				else if (up >= 0 && down < rows)
-				{
-					double ratio2 = double(i - up) / double(down - up);
-					double value2 = double(mat.at<T>(up, j)) + double(mat.at<T>(down, j) - mat.at<T>(up, j)) * ratio2;
-					mat.at<T>(i, j) = static_cast<T>(value2);
-				}
-				else if (left >= 0 && right < cols)
-				{
-					double ratio1 = double(j - left) / double(right - left);
-					double value1 = double(mat.at<T>(i, left)) + double(mat.at<T>(i, right) - mat.at<T>(i, left)) * ratio1;
-					mat.at<T>(i, j) = static_cast<T>(value1);
-				}
-				else if (up >= 0)
-				{
-					mat.at<T>(i, j) = mat.at<T>(up, j);
-				}
-				else if (down < rows)
-				{
-					mat.at<T>(i, j) = mat.at<T>(down, j);
-				}
-				else if (left >= 0)
-				{
-					mat.at<T>(i, j) = mat.at<T>(i, left);
-				}
-				else if (right < cols)
-				{
-					mat.at<T>(i, j) = mat.at<T>(i, right);
-				}
-				else
-				{
-					mat.at<T>(i, j) = 0;
+					const double ratio = static_cast<double>(k - left) / static_cast<double>(right - left);
+					mat.at<T>(row, k) = static_cast<T>(leftValue + (rightValue - leftValue) * ratio);
 				}
 			}
 		}
+		if (!reportRows(row + 1, rows, progressStart, progressEnd)) return false;
+	}
+
+	// Fill remaining internal vertical runs.  This also handles rows that had
+	// no horizontal anchor without allocating a mask proportional to the image.
+	for (int column = 0; column < cols; ++column)
+	{
+		int row = 0;
+		while (row < rows)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { ++row; continue; }
+			const int first = row;
+			while (row < rows && is_invalid(mat.at<T>(row, column))) ++row;
+			const int last = row - 1;
+			const int up = first - 1;
+			const int down = row;
+			if (up >= 0 && down < rows)
+			{
+				const double upValue = static_cast<double>(mat.at<T>(up, column));
+				const double downValue = static_cast<double>(mat.at<T>(down, column));
+				for (int k = first; k <= last; ++k)
+				{
+					const double ratio = static_cast<double>(k - up) / static_cast<double>(down - up);
+					mat.at<T>(k, column) = static_cast<T>(upValue + (downValue - upValue) * ratio);
+				}
+			}
+		}
+		if (cb && (column == cols - 1 || (column + 1) % std::max(1, cols / 100) == 0))
+		{
+			const int progress = progressStart + ((column + 1) * (progressEnd - progressStart)) / cols;
+			char message[128] = {};
+			sprintf_s(message, sizeof(message), "Filling DEM gaps (columns %d/%d)...", column + 1, cols);
+			if (!cb(progress, message)) return false;
+		}
+	}
+
+	// Propagate values into edge-only gaps, then zero a completely invalid
+	// matrix.  These passes are linear and preserve the historical fallback.
+	for (int row = 0; row < rows; ++row)
+	{
+		int firstValid = -1;
+		for (int column = 0; column < cols; ++column)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { firstValid = column; break; }
+		}
+		if (firstValid >= 0)
+			for (int column = 0; column < firstValid; ++column) mat.at<T>(row, column) = mat.at<T>(row, firstValid);
+		int lastValid = -1;
+		for (int column = cols - 1; column >= 0; --column)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { lastValid = column; break; }
+		}
+		if (lastValid >= 0)
+			for (int column = lastValid + 1; column < cols; ++column) mat.at<T>(row, column) = mat.at<T>(row, lastValid);
+		if (!reportRows(row + 1, rows, progressStart, progressEnd)) return false;
+	}
+	for (int column = 0; column < cols; ++column)
+	{
+		int firstValid = -1;
+		for (int row = 0; row < rows; ++row)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { firstValid = row; break; }
+		}
+		if (firstValid >= 0)
+			for (int row = 0; row < firstValid; ++row) mat.at<T>(row, column) = mat.at<T>(firstValid, column);
+		int lastValid = -1;
+		for (int row = rows - 1; row >= 0; --row)
+		{
+			if (!is_invalid(mat.at<T>(row, column))) { lastValid = row; break; }
+		}
+		if (lastValid >= 0)
+			for (int row = lastValid + 1; row < rows; ++row) mat.at<T>(row, column) = mat.at<T>(lastValid, column);
+		if (cb && (column == cols - 1 || (column + 1) % std::max(1, cols / 100) == 0))
+		{
+			char message[128] = {};
+			sprintf_s(message, sizeof(message), "Filling DEM gaps (edge columns %d/%d)...", column + 1, cols);
+			if (!cb(progressEnd, message)) return false;
+		}
+	}
+	for (int row = 0; row < rows; ++row)
+	{
+		for (int column = 0; column < cols; ++column)
+			if (is_invalid(mat.at<T>(row, column))) mat.at<T>(row, column) = static_cast<T>(0);
+		if (!reportRows(row + 1, rows, progressStart, progressEnd)) return false;
+	}
+	if (cb && !cb(progressEnd, "Filling DEM gaps completed.")) return false;
+	return true;
 }
 
 

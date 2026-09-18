@@ -128,14 +128,14 @@
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <OpenMPSupport>true</OpenMPSupport>
-      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "..\..\insar_ui\bin\" 2>nul || exit 0</Command>
@@ -152,7 +152,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
-      <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\InSar\InSAR0629\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>D:\SRC\opencv\build\include;D:\SRC\InSAR\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>%(AdditionalOptions) /utf-8</AdditionalOptions>
     </ClCompile>
@@ -162,7 +162,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <EnableUAC>false</EnableUAC>
-      <AdditionalLibraryDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\x64\vc15\lib;E:\Thesis_SAR\InSar\InSAR0629\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>D:\SRC\opencv\build\x64\vc15\lib;D:\SRC\InSAR\bin;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
     <PostBuildEvent>
       <Command>copy /Y "$(OutDir)$(TargetName)$(TargetExt)" "..\..\insar_ui\bin\" 2>nul || exit 0</Command>

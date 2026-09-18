@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
+#include <exception>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -18,6 +20,217 @@ using namespace cv;
 using namespace std;
 
 extern void InitializeGDALAndProjOnce();
+
+namespace
+{
+	constexpr uint64_t kSar2UtmOutputMemoryBudgetBytes = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+	constexpr int kSar2UtmGradientSamplesPerAxis = 129;
+	constexpr double kSar2UtmCoordinateGradientEpsilon = 1.0e-12;
+	constexpr double kMetersPerLatitudeDegree = 110574.0;
+	constexpr double kMetersPerLongitudeDegreeAtEquator = 111320.0;
+
+	struct GeographicGridStats
+	{
+		uint64_t validCount = 0;
+		uint64_t missingCount = 0;
+		uint64_t nonFiniteCount = 0;
+		uint64_t outOfRangeCount = 0;
+		double minLon = 0.0;
+		double maxLon = 0.0;
+		double minLat = 0.0;
+		double maxLat = 0.0;
+	};
+
+	struct GeographicGridSpacing
+	{
+		double lonInterval = 0.0;
+		double latInterval = 0.0;
+		double rowSpacingMeters = 0.0;
+		double columnSpacingMeters = 0.0;
+		uint64_t rowGradientCount = 0;
+		uint64_t columnGradientCount = 0;
+	};
+
+	double geographicCoordinateAt(const Mat& coordinate, int row, int column)
+	{
+		return coordinate.type() == CV_32F ? coordinate.at<float>(row, column) : coordinate.at<double>(row, column);
+	}
+
+	double wrappedLongitudeDifference(double difference)
+	{
+		difference = std::fmod(difference + 180.0, 360.0);
+		if (difference < 0.0) difference += 360.0;
+		return difference - 180.0;
+	}
+
+	double medianPositiveValue(vector<double>& values)
+	{
+		if (values.empty()) return 0.0;
+		std::sort(values.begin(), values.end());
+		const size_t middle = values.size() / 2;
+		return values.size() % 2 == 0 ? (values[middle - 1] + values[middle]) / 2.0 : values[middle];
+	}
+
+	void appendGeographicGradient(double lon1, double lat1, double lon2, double lat2,
+		vector<double>& lonComponents, vector<double>& latComponents, vector<double>& metricSpacings)
+	{
+		if (!std::isfinite(lon1) || !std::isfinite(lat1) || !std::isfinite(lon2) || !std::isfinite(lat2)) return;
+		const double lonDifference = wrappedLongitudeDifference(lon2 - lon1);
+		const double latDifference = lat2 - lat1;
+		const double absoluteLonDifference = std::fabs(lonDifference);
+		const double absoluteLatDifference = std::fabs(latDifference);
+		if (absoluteLonDifference > kSar2UtmCoordinateGradientEpsilon) lonComponents.push_back(absoluteLonDifference);
+		if (absoluteLatDifference > kSar2UtmCoordinateGradientEpsilon) latComponents.push_back(absoluteLatDifference);
+		const double meanLatitudeRadians = (lat1 + lat2) * PI / 360.0;
+		const double metersPerLongitudeDegree = kMetersPerLongitudeDegreeAtEquator * std::cos(meanLatitudeRadians);
+		const double spacingMeters = std::hypot(lonDifference * metersPerLongitudeDegree,
+			latDifference * kMetersPerLatitudeDegree);
+		if (std::isfinite(spacingMeters) && spacingMeters > kSar2UtmCoordinateGradientEpsilon) metricSpacings.push_back(spacingMeters);
+	}
+
+	bool estimateGeographicGridSpacing(const char* caller, const Mat& mappedLon, const Mat& mappedLat,
+		GeographicGridSpacing& spacing)
+	{
+		spacing = GeographicGridSpacing{};
+		if (mappedLon.rows < 2 || mappedLon.cols < 2) return false;
+		const int rowSampleCount = (std::min)(kSar2UtmGradientSamplesPerAxis, mappedLon.rows - 1);
+		const int columnSampleCount = (std::min)(kSar2UtmGradientSamplesPerAxis, mappedLon.cols - 1);
+		vector<double> lonComponents;
+		vector<double> latComponents;
+		vector<double> rowSpacings;
+		vector<double> columnSpacings;
+		lonComponents.reserve(static_cast<size_t>(rowSampleCount) * columnSampleCount * 2);
+		latComponents.reserve(static_cast<size_t>(rowSampleCount) * columnSampleCount * 2);
+		rowSpacings.reserve(static_cast<size_t>(rowSampleCount) * columnSampleCount);
+		columnSpacings.reserve(static_cast<size_t>(rowSampleCount) * columnSampleCount);
+
+		for (int rowIndex = 0; rowIndex < rowSampleCount; ++rowIndex)
+		{
+			const int row = rowSampleCount == 1 ? 0 : ((mappedLon.rows - 2) * rowIndex) / (rowSampleCount - 1);
+			for (int columnIndex = 0; columnIndex < columnSampleCount; ++columnIndex)
+			{
+				const int column = columnSampleCount == 1 ? 0 : ((mappedLon.cols - 2) * columnIndex) / (columnSampleCount - 1);
+				const double lon = geographicCoordinateAt(mappedLon, row, column);
+				const double lat = geographicCoordinateAt(mappedLat, row, column);
+				appendGeographicGradient(lon, lat,
+					geographicCoordinateAt(mappedLon, row + 1, column), geographicCoordinateAt(mappedLat, row + 1, column),
+					lonComponents, latComponents, rowSpacings);
+				appendGeographicGradient(lon, lat,
+					geographicCoordinateAt(mappedLon, row, column + 1), geographicCoordinateAt(mappedLat, row, column + 1),
+					lonComponents, latComponents, columnSpacings);
+			}
+		}
+
+		spacing.lonInterval = medianPositiveValue(lonComponents);
+		spacing.latInterval = medianPositiveValue(latComponents);
+		spacing.rowSpacingMeters = medianPositiveValue(rowSpacings);
+		spacing.columnSpacingMeters = medianPositiveValue(columnSpacings);
+		spacing.rowGradientCount = rowSpacings.size();
+		spacing.columnGradientCount = columnSpacings.size();
+		const bool valid = std::isfinite(spacing.lonInterval) && std::isfinite(spacing.latInterval) &&
+			std::isfinite(spacing.rowSpacingMeters) && std::isfinite(spacing.columnSpacingMeters) &&
+			spacing.lonInterval > 0.0 && spacing.latInterval > 0.0 &&
+			spacing.rowSpacingMeters > 0.0 && spacing.columnSpacingMeters > 0.0;
+		fprintf(stderr,
+			"%s: geographic gradient samples row=%llu column=%llu rowSpacingMeters=%.17g columnSpacingMeters=%.17g lonInterval=%.17g latInterval=%.17g.\n",
+			caller, static_cast<unsigned long long>(spacing.rowGradientCount), static_cast<unsigned long long>(spacing.columnGradientCount),
+			spacing.rowSpacingMeters, spacing.columnSpacingMeters, spacing.lonInterval, spacing.latInterval);
+		return valid;
+	}
+
+	bool scanGeographicGrid(const Mat& mappedLon, const Mat& mappedLat, GeographicGridStats& stats)
+	{
+		stats = GeographicGridStats{};
+		for (int row = 0; row < mappedLat.rows; ++row)
+		{
+			for (int column = 0; column < mappedLat.cols; ++column)
+			{
+				const double lon = mappedLon.type() == CV_32F ? mappedLon.at<float>(row, column) : mappedLon.at<double>(row, column);
+				const double lat = mappedLat.type() == CV_32F ? mappedLat.at<float>(row, column) : mappedLat.at<double>(row, column);
+				if (!std::isfinite(lon) || !std::isfinite(lat))
+				{
+					++stats.nonFiniteCount;
+					continue;
+				}
+				// Legacy products use values above 350 as a paired no-data sentinel.
+				if (lon > 350.0 && lat > 350.0)
+				{
+					++stats.missingCount;
+					continue;
+				}
+				if (lon < -180.0 || lon > 180.0 || lat < -90.0 || lat > 90.0)
+				{
+					++stats.outOfRangeCount;
+					continue;
+				}
+				if (stats.validCount == 0)
+				{
+					stats.minLon = stats.maxLon = lon;
+					stats.minLat = stats.maxLat = lat;
+				}
+				else
+				{
+					stats.minLon = (std::min)(stats.minLon, lon);
+					stats.maxLon = (std::max)(stats.maxLon, lon);
+					stats.minLat = (std::min)(stats.minLat, lat);
+					stats.maxLat = (std::max)(stats.maxLat, lat);
+				}
+				++stats.validCount;
+			}
+		}
+		return stats.validCount != 0 && stats.nonFiniteCount == 0 && stats.outOfRangeCount == 0;
+	}
+
+	void logGeographicGridStats(const char* caller, const Mat& mappedLon, const Mat& mappedLat,
+		const GeographicGridStats& stats)
+	{
+		fprintf(stderr,
+			"%s: mappedLon=%dx%d mappedLat=%dx%d valid=%llu missing=%llu nonFinite=%llu outOfRange=%llu lon=[%.17g,%.17g] lat=[%.17g,%.17g]\n",
+			caller, mappedLon.rows, mappedLon.cols, mappedLat.rows, mappedLat.cols,
+			static_cast<unsigned long long>(stats.validCount), static_cast<unsigned long long>(stats.missingCount),
+			static_cast<unsigned long long>(stats.nonFiniteCount), static_cast<unsigned long long>(stats.outOfRangeCount),
+			stats.minLon, stats.maxLon, stats.minLat, stats.maxLat);
+	}
+
+	void logSar2UtmInput(const char* caller, const Mat& mappedLon, const Mat& mappedLat, const Mat& source)
+	{
+		fprintf(stderr, "%s: mappedLon=%dx%d type=%d mappedLat=%dx%d type=%d source=%dx%d type=%d\n",
+			caller, mappedLon.rows, mappedLon.cols, mappedLon.type(), mappedLat.rows, mappedLat.cols, mappedLat.type(),
+			source.rows, source.cols, source.type());
+	}
+
+	bool checkedSar2UtmDimensions(double rowCount, double columnCount, int& rows, int& columns)
+	{
+		if (!std::isfinite(rowCount) || !std::isfinite(columnCount) || rowCount < 1.0 || columnCount < 1.0 ||
+			rowCount > static_cast<double>((std::numeric_limits<int>::max)()) ||
+			columnCount > static_cast<double>((std::numeric_limits<int>::max)())) return false;
+		const int64_t rowValue = static_cast<int64_t>(std::ceil(rowCount));
+		const int64_t columnValue = static_cast<int64_t>(std::ceil(columnCount));
+		if (rowValue < 1 || columnValue < 1 ||
+			rowValue > (std::numeric_limits<int>::max)() || columnValue > (std::numeric_limits<int>::max)()) return false;
+		const uint64_t pixelCount = static_cast<uint64_t>(rowValue) * static_cast<uint64_t>(columnValue);
+		const uint64_t bytesPerPixel = sizeof(uchar) + sizeof(double);
+		if (pixelCount > kSar2UtmOutputMemoryBudgetBytes / bytesPerPixel) return false;
+		rows = static_cast<int>(rowValue);
+		columns = static_cast<int>(columnValue);
+		return true;
+	}
+
+	bool toSar2UtmGridIndex(double lon, double lat, double west, double minLat,
+		double lonInterval, double latInterval, int rows, int columns, int& row, int& column)
+	{
+		if (!std::isfinite(lon) || !std::isfinite(lat)) return false;
+		const double rowValue = std::round((lat - minLat) / latInterval);
+		double lonDistance = std::fabs(lon - west);
+		lonDistance = lonDistance > 180.0 ? 360.0 - lonDistance : lonDistance;
+		const double columnValue = std::round(lonDistance / lonInterval);
+		if (!std::isfinite(rowValue) || !std::isfinite(columnValue) ||
+			rowValue < 0.0 || rowValue >= rows || columnValue < 0.0 || columnValue >= columns) return false;
+		row = static_cast<int>(rowValue);
+		column = static_cast<int>(columnValue);
+		return true;
+	}
+}
 
 int Utils::SAR2UTM(
 	Mat& mapped_lon,
@@ -31,9 +244,10 @@ int Utils::SAR2UTM(
 	double* lat_south
 )
 {
+	logSar2UtmInput("SAR2UTM", mapped_lon, mapped_lat, phase);
 	if (mapped_lat.size() != mapped_lon.size() ||
 		mapped_lat.size() != phase.size() ||
-		phase.rows < 2 ||
+		phase.rows < 4 ||
 		phase.cols < 2 ||
 		phase.type() != CV_64F ||
 		mapped_lat.type() != mapped_lon.type() ||
@@ -43,106 +257,66 @@ int Utils::SAR2UTM(
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//确定经纬度覆盖范围
-	double max_lon = -380.0, min_lon = 380.0, max_lat = -380.0, min_lat = 180.0;
-	if (mapped_lat.type() == CV_32F)
+	GeographicGridStats coordinateStats;
+	const bool validCoordinates = scanGeographicGrid(mapped_lon, mapped_lat, coordinateStats);
+	logGeographicGridStats("SAR2UTM", mapped_lon, mapped_lat, coordinateStats);
+	if (!validCoordinates || coordinateStats.missingCount != 0)
 	{
-		for (int i = 0; i < mapped_lat.rows; i++)
-		{
-			for (int j = 0; j < mapped_lat.cols; j++)
-			{
-				if (mapped_lat.at<float>(i, j) < 350.0)
-				{
-					min_lat = min_lat > mapped_lat.at<float>(i, j) ? mapped_lat.at<float>(i, j) : min_lat;
-					max_lat = max_lat < mapped_lat.at<float>(i, j) ? mapped_lat.at<float>(i, j) : max_lat;
-					min_lon = min_lon > mapped_lon.at<float>(i, j) ? mapped_lon.at<float>(i, j) : min_lon;
-					max_lon = max_lon < mapped_lon.at<float>(i, j) ? mapped_lon.at<float>(i, j) : max_lon;
-				}
-			}
-		}
+		fprintf(stderr, "SAR2UTM(): mapped coordinates contain missing, non-finite, or out-of-range values.\n");
+		return -1;
 	}
-	else
+	const double min_lon = coordinateStats.minLon;
+	const double max_lon = coordinateStats.maxLon;
+	const double min_lat = coordinateStats.minLat;
+	const double max_lat = coordinateStats.maxLat;
+	const double rawLonSpan = max_lon - min_lon;
+	const double lonSpan = rawLonSpan > 180.0 ? 360.0 - rawLonSpan : rawLonSpan;
+	const double latSpan = max_lat - min_lat;
+	if (!std::isfinite(lonSpan) || !std::isfinite(latSpan) || lonSpan < 0.0 || latSpan < 0.0 ||
+		lonSpan > 30.0 || latSpan > 30.0)
 	{
-		for (int i = 0; i < mapped_lat.rows; i++)
-		{
-			for (int j = 0; j < mapped_lat.cols; j++)
-			{
-				if (mapped_lat.at<double>(i, j) < 350.0)
-				{
-					min_lat = min_lat > mapped_lat.at<double>(i, j) ? mapped_lat.at<double>(i, j) : min_lat;
-					max_lat = max_lat < mapped_lat.at<double>(i, j) ? mapped_lat.at<double>(i, j) : max_lat;
-					min_lon = min_lon > mapped_lon.at<double>(i, j) ? mapped_lon.at<double>(i, j) : min_lon;
-					max_lon = max_lon < mapped_lon.at<double>(i, j) ? mapped_lon.at<double>(i, j) : max_lon;
-				}
-			}
-		}
+		fprintf(stderr, "SAR2UTM(): mapped coordinate span is unsupported: lonSpan=%.17g latSpan=%.17g.\n", lonSpan, latSpan);
+		return -1;
 	}
-	//cv::minMaxLoc(mapped_lon, &min_lon, &max_lon);
-	//cv::minMaxLoc(mapped_lat, &min_lat, &max_lat);
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
 	
-	//确定经纬度采样间隔
-	double lon_interval, lat_interval;
-	Mat temp1, temp2;
-	int rows_start = mapped_lon.rows / 4;
-	int rows_end = rows_start + mapped_lon.rows / 4;
-	mapped_lon(cv::Range(rows_start, rows_end), cv::Range(0, mapped_lon.cols)).copyTo(temp1);
-	mapped_lon(cv::Range(rows_start + 1, rows_end + 1), cv::Range(0, mapped_lon.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = temp1 / 180.0 * PI;
-	wrap(temp1, temp1);
-	temp1 = temp1 / PI * 180.0;
-	temp1 = cv::abs(temp1);
-	lon_interval = cv::mean(temp1)[0];
-	double sigma1, sigma2;
-	std(temp1, &sigma1);
-
-	mapped_lon(cv::Range(rows_start, rows_end), cv::Range(0, mapped_lon.cols - 1)).copyTo(temp1);
-	mapped_lon(cv::Range(rows_start, rows_end), cv::Range(1, mapped_lon.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = temp1 / 180.0 * PI;
-	wrap(temp1, temp1);
-	temp1 = temp1 / PI * 180.0;
-	temp1 = cv::abs(temp1);
-	std(temp1, &sigma2);
-	lon_interval = (cv::mean(temp1)[0] + fabs(lon_interval)) / 2.0;
-	lon_interval = lon_interval + 1.0 * (sigma1 + sigma2) / 2.0;
-
-	mapped_lat(cv::Range(rows_start, rows_end), cv::Range(0, mapped_lat.cols)).copyTo(temp1);
-	mapped_lat(cv::Range(rows_start + 1, rows_end + 1), cv::Range(0, mapped_lat.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = cv::abs(temp1);
-	lat_interval = cv::mean(temp1)[0];
-	std(temp1, &sigma1);
-
-	mapped_lat(cv::Range(rows_start, rows_end), cv::Range(0, mapped_lat.cols - 1)).copyTo(temp1);
-	mapped_lat(cv::Range(rows_start, rows_end), cv::Range(1, mapped_lat.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = cv::abs(temp1);
-	lat_interval = (cv::mean(temp1)[0] + lat_interval) / 2.0;
-	std(temp1, &sigma2);
-	lat_interval = lat_interval + 1.0 * (sigma1 + sigma2) / 2.0;
+	GeographicGridSpacing geographicSpacing;
+	if (!estimateGeographicGridSpacing("SAR2UTM", mapped_lon, mapped_lat, geographicSpacing))
+	{
+		fprintf(stderr, "SAR2UTM(): source coordinate grid is degenerate.\n");
+		return -1;
+	}
+	const double lon_interval = geographicSpacing.lonInterval;
+	const double lat_interval = geographicSpacing.latInterval;
 
 	int rows = phase.rows; int cols = phase.cols;
 	
 
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
-	UTM_rows += 2;
+	int UTM_rows = 0;
+	int UTM_cols = 0;
+	const double requestedRows = latSpan / lat_interval + 2.0;
+	const double requestedCols = lonSpan / lon_interval + 2.0;
+	if (!checkedSar2UtmDimensions(requestedRows, requestedCols, UTM_rows, UTM_cols))
+	{
+		fprintf(stderr,
+			"SAR2UTM(): output grid rejected: requestedRows=%.17g requestedCols=%.17g intervals=[%.17g,%.17g] spans=[%.17g,%.17g] budget=%llu bytes.\n",
+			requestedRows, requestedCols, lon_interval, lat_interval, lonSpan, latSpan,
+			static_cast<unsigned long long>(kSar2UtmOutputMemoryBudgetBytes));
+		return -1;
+	}
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
 	if (lat_north) *lat_north = north;
 	if (lat_south) *lat_south = south;
-	double max_lon_temp = max_lon - min_lon;
-	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
-	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
 	if (lon_east) *lon_east = east;
-	Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
-	mapped_phase.create(UTM_rows, UTM_cols, CV_64F); mapped_phase = 0.0;
+	try
+	{
+		Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
+		mapped_phase.create(UTM_rows, UTM_cols, CV_64F); mapped_phase = 0.0;
 	//开始地理编码
 	if (mapped_lat.type() == CV_32F)
 	{
@@ -152,14 +326,15 @@ int Utils::SAR2UTM(
 			for (int j = 0; j < cols; j++)
 			{
 				double lon, lat;
-				int row, col;
 				lon = mapped_lon.at<float>(i, j);
-				if (lon > 350.0) continue;
 				lat = mapped_lat.at<float>(i, j);
-				row = (int)round((lat - min_lat) / lat_interval);
+				const double rowValue = round((lat - min_lat) / lat_interval);
 				lon = fabs(lon - west);
 				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
+				const double columnValue = round(lon / lon_interval);
+				if (rowValue < 0.0 || rowValue >= UTM_rows || columnValue < 0.0 || columnValue >= UTM_cols) continue;
+				const int row = static_cast<int>(rowValue);
+				const int col = static_cast<int>(columnValue);
 				mapped_phase.at<double>(row, col) = phase.at<double>(i, j);
 				b_filled.at<uchar>(row, col) = 1;
 			}
@@ -173,14 +348,15 @@ int Utils::SAR2UTM(
 			for (int j = 0; j < cols; j++)
 			{
 				double lon, lat;
-				int row, col;
 				lon = mapped_lon.at<double>(i, j);
-				if (lon > 350.0) continue;
 				lat = mapped_lat.at<double>(i, j);
-				row = (int)round((lat - min_lat) / lat_interval);
+				const double rowValue = round((lat - min_lat) / lat_interval);
 				lon = fabs(lon - west);
 				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
+				const double columnValue = round(lon / lon_interval);
+				if (rowValue < 0.0 || rowValue >= UTM_rows || columnValue < 0.0 || columnValue >= UTM_cols) continue;
+				const int row = static_cast<int>(rowValue);
+				const int col = static_cast<int>(columnValue);
 				mapped_phase.at<double>(row, col) = phase.at<double>(i, j);
 				b_filled.at<uchar>(row, col) = 1;
 			}
@@ -378,10 +554,24 @@ int Utils::SAR2UTM(
 
 	cv::flip(mapped_phase, mapped_phase, 0);
 	return 0;
+	}
+	catch (const cv::Exception& exception)
+	{
+		mapped_phase.release();
+		fprintf(stderr, "SAR2UTM(): OpenCV exception: %s\n", exception.what());
+		return -1;
+	}
+	catch (const std::exception& exception)
+	{
+		mapped_phase.release();
+		fprintf(stderr, "SAR2UTM(): exception: %s\n", exception.what());
+		return -1;
+	}
 }
 
 int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_phase, double grid_size, int interpolation_method, double* lon_east, double* lon_west, double* lat_north, double* lat_south)
 {
+	logSar2UtmInput("SAR2UTM(grid)", mapped_lon, mapped_lat, phase);
 	if (mapped_lat.size() != mapped_lon.size() ||
 		mapped_lat.size() != phase.size() ||
 		phase.rows < 2 ||
@@ -394,46 +584,43 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//确定经纬度覆盖范围
-	double max_lon = -380.0, min_lon = 380.0, max_lat = -380.0, min_lat = 180.0;
-	if (mapped_lat.type() == CV_32F)
+	if (!std::isfinite(grid_size) || grid_size <= 0.0)
 	{
-		for (int i = 0; i < mapped_lat.rows; i++)
-		{
-			for (int j = 0; j < mapped_lat.cols; j++)
-			{
-				if (mapped_lat.at<float>(i, j) < 350.0)
-				{
-					min_lat = min_lat > mapped_lat.at<float>(i, j) ? mapped_lat.at<float>(i, j) : min_lat;
-					max_lat = max_lat < mapped_lat.at<float>(i, j) ? mapped_lat.at<float>(i, j) : max_lat;
-					min_lon = min_lon > mapped_lon.at<float>(i, j) ? mapped_lon.at<float>(i, j) : min_lon;
-					max_lon = max_lon < mapped_lon.at<float>(i, j) ? mapped_lon.at<float>(i, j) : max_lon;
-				}
-			}
-		}
+		fprintf(stderr, "SAR2UTM(): grid size is invalid: %.17g.\n", grid_size);
+		return -1;
 	}
-	else
+	GeographicGridStats coordinateStats;
+	const bool validCoordinates = scanGeographicGrid(mapped_lon, mapped_lat, coordinateStats);
+	logGeographicGridStats("SAR2UTM(grid)", mapped_lon, mapped_lat, coordinateStats);
+	if (!validCoordinates || coordinateStats.missingCount != 0)
 	{
-		for (int i = 0; i < mapped_lat.rows; i++)
-		{
-			for (int j = 0; j < mapped_lat.cols; j++)
-			{
-				if (mapped_lat.at<double>(i, j) < 350.0)
-				{
-					min_lat = min_lat > mapped_lat.at<double>(i, j) ? mapped_lat.at<double>(i, j) : min_lat;
-					max_lat = max_lat < mapped_lat.at<double>(i, j) ? mapped_lat.at<double>(i, j) : max_lat;
-					min_lon = min_lon > mapped_lon.at<double>(i, j) ? mapped_lon.at<double>(i, j) : min_lon;
-					max_lon = max_lon < mapped_lon.at<double>(i, j) ? mapped_lon.at<double>(i, j) : max_lon;
-				}
-			}
-		}
+		fprintf(stderr, "SAR2UTM(): mapped coordinates contain missing, non-finite, or out-of-range values.\n");
+		return -1;
 	}
-	//cv::minMaxLoc(mapped_lon, &min_lon, &max_lon);
-	//cv::minMaxLoc(mapped_lat, &min_lat, &max_lat);
+	const double min_lon = coordinateStats.minLon;
+	const double max_lon = coordinateStats.maxLon;
+	const double min_lat = coordinateStats.minLat;
+	const double max_lat = coordinateStats.maxLat;
+	const double rawLonSpan = max_lon - min_lon;
+	const double lonSpan = rawLonSpan > 180.0 ? 360.0 - rawLonSpan : rawLonSpan;
+	const double latSpan = max_lat - min_lat;
+	if (!std::isfinite(lonSpan) || !std::isfinite(latSpan) || lonSpan < 0.0 || latSpan < 0.0 ||
+		lonSpan > 30.0 || latSpan > 30.0)
+	{
+		fprintf(stderr, "SAR2UTM(): mapped coordinate span is unsupported: lonSpan=%.17g latSpan=%.17g.\n", lonSpan, latSpan);
+		return -1;
+	}
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
 
-	//确定经纬度采样间隔
+	GeographicGridSpacing geographicSpacing;
+	if (!estimateGeographicGridSpacing("SAR2UTM(grid)", mapped_lon, mapped_lat, geographicSpacing))
+	{
+		fprintf(stderr, "SAR2UTM(): source coordinate grid is degenerate.\n");
+		return -1;
+	}
+
+	// The output remains geographic; grid_size controls its geographic sampling.
 	double lon_interval, lat_interval;
 	lon_interval = 5.0 / 6000.0 / (90.0 / grid_size);
 	lat_interval = lon_interval;
@@ -442,21 +629,44 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 
 
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
-	UTM_rows += 2;
+	const double max_lon_temp = lonSpan;
+	int UTM_rows = 0;
+	int UTM_cols = 0;
+	const double requestedRows = latSpan / lat_interval + 2.0;
+	const double requestedCols = max_lon_temp / lon_interval + 2.0;
+	if (!checkedSar2UtmDimensions(requestedRows, requestedCols, UTM_rows, UTM_cols))
+	{
+		fprintf(stderr,
+			"SAR2UTM(): output grid rejected: requestedRows=%.17g requestedCols=%.17g gridSize=%.17g intervals=[%.17g,%.17g] spans=[%.17g,%.17g] budget=%llu bytes.\n",
+			requestedRows, requestedCols, grid_size, lon_interval, lat_interval, lonSpan, latSpan,
+			static_cast<unsigned long long>(kSar2UtmOutputMemoryBudgetBytes));
+		return -1;
+	}
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
 	if (lat_north) *lat_north = north;
 	if (lat_south) *lat_south = south;
-	double max_lon_temp = max_lon - min_lon;
-	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
-	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
 	if (lon_east) *lon_east = east;
-	Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
-	mapped_phase.create(UTM_rows, UTM_cols, CV_64F); mapped_phase = 0.0;
+	Mat b_filled;
+	try
+	{
+		b_filled = Mat::zeros(UTM_rows, UTM_cols, CV_8U);
+		mapped_phase = Mat::zeros(UTM_rows, UTM_cols, CV_64F);
+	}
+	catch (const cv::Exception& exception)
+	{
+		mapped_phase.release();
+		fprintf(stderr, "SAR2UTM(): output allocation failed: %s\n", exception.what());
+		return -1;
+	}
+	catch (const std::exception& exception)
+	{
+		mapped_phase.release();
+		fprintf(stderr, "SAR2UTM(): output allocation failed: %s\n", exception.what());
+		return -1;
+	}
 	//开始地理编码
 	if (mapped_lat.type() == CV_32F)
 	{
@@ -465,15 +675,16 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 		{
 			for (int j = 0; j < cols; j++)
 			{
-				double lon, lat;
-				int row, col;
-				lon = mapped_lon.at<float>(i, j);
-				if (lon > 350.0) continue;
-				lat = mapped_lat.at<float>(i, j);
-				row = (int)round((max_lat - lat) / lat_interval);
-				lon = fabs(lon - west);
-				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
+				const double lon = mapped_lon.at<float>(i, j);
+				const double lat = mapped_lat.at<float>(i, j);
+				const double rowValue = std::round((max_lat - lat) / lat_interval);
+				double lonDistance = std::fabs(lon - west);
+				lonDistance = lonDistance > 180.0 ? 360.0 - lonDistance : lonDistance;
+				const double columnValue = std::round(lonDistance / lon_interval);
+				if (!std::isfinite(rowValue) || !std::isfinite(columnValue) ||
+					rowValue < 0.0 || rowValue >= UTM_rows || columnValue < 0.0 || columnValue >= UTM_cols) continue;
+				const int row = static_cast<int>(rowValue);
+				const int col = static_cast<int>(columnValue);
 				mapped_phase.at<double>(row, col) = phase.at<double>(i, j);
 				b_filled.at<uchar>(row, col) = b_filled.at<uchar>(row, col) + 1;
 			}
@@ -486,15 +697,16 @@ int Utils::SAR2UTM(Mat& mapped_lon, Mat& mapped_lat, Mat& phase, Mat& mapped_pha
 		{
 			for (int j = 0; j < cols; j++)
 			{
-				double lon, lat;
-				int row, col;
-				lon = mapped_lon.at<double>(i, j);
-				if (lon > 350.0) continue;
-				lat = mapped_lat.at<double>(i, j);
-				row = (int)round((max_lat - lat) / lat_interval);
-				lon = fabs(lon - west);
-				lon = lon > 180.0 ? 360.0 - lon : lon;
-				col = (int)round(lon / lon_interval);
+				const double lon = mapped_lon.at<double>(i, j);
+				const double lat = mapped_lat.at<double>(i, j);
+				const double rowValue = std::round((max_lat - lat) / lat_interval);
+				double lonDistance = std::fabs(lon - west);
+				lonDistance = lonDistance > 180.0 ? 360.0 - lonDistance : lonDistance;
+				const double columnValue = std::round(lonDistance / lon_interval);
+				if (!std::isfinite(rowValue) || !std::isfinite(columnValue) ||
+					rowValue < 0.0 || rowValue >= UTM_rows || columnValue < 0.0 || columnValue >= UTM_cols) continue;
+				const int row = static_cast<int>(rowValue);
+				const int col = static_cast<int>(columnValue);
 				mapped_phase.at<double>(row, col) = phase.at<double>(i, j);
 				b_filled.at<uchar>(row, col) = b_filled.at<uchar>(row, col) + 1;
 			}
@@ -705,6 +917,7 @@ int Utils::SAR2UTM(
 	double* lat_south
 )
 {
+	logSar2UtmInput("SAR2UTM(complex)", mapped_lon, mapped_lat, slc.re);
 	if (mapped_lat.size() != mapped_lon.size() ||
 		mapped_lat.size() != slc.re.size() ||
 		mapped_lat.size() != slc.im.size() ||
@@ -718,74 +931,83 @@ int Utils::SAR2UTM(
 		fprintf(stderr, "SAR2UTM(): input check failed!\n");
 		return -1;
 	}
-	//确定经纬度覆盖范围
-	double max_lon, min_lon, max_lat, min_lat;
-	cv::minMaxLoc(mapped_lon, &min_lon, &max_lon);
-	cv::minMaxLoc(mapped_lat, &min_lat, &max_lat);
+	GeographicGridStats coordinateStats;
+	const bool validCoordinates = scanGeographicGrid(mapped_lon, mapped_lat, coordinateStats);
+	logGeographicGridStats("SAR2UTM(complex)", mapped_lon, mapped_lat, coordinateStats);
+	if (!validCoordinates || coordinateStats.missingCount != 0)
+	{
+		fprintf(stderr, "SAR2UTM(): mapped coordinates contain missing, non-finite, or out-of-range values.\n");
+		return -1;
+	}
+	const double min_lon = coordinateStats.minLon;
+	const double max_lon = coordinateStats.maxLon;
+	const double min_lat = coordinateStats.minLat;
+	const double max_lat = coordinateStats.maxLat;
+	const double rawLonSpan = max_lon - min_lon;
+	const double lonSpan = rawLonSpan > 180.0 ? 360.0 - rawLonSpan : rawLonSpan;
+	const double latSpan = max_lat - min_lat;
+	if (!std::isfinite(lonSpan) || !std::isfinite(latSpan) || lonSpan < 0.0 || latSpan < 0.0 ||
+		lonSpan > 30.0 || latSpan > 30.0)
+	{
+		fprintf(stderr, "SAR2UTM(): mapped coordinate span is unsupported: lonSpan=%.17g latSpan=%.17g.\n", lonSpan, latSpan);
+		return -1;
+	}
 	double west = max_lon - min_lon > 180.0 ? max_lon : min_lon;
 	if (lon_west) *lon_west = west;
-	//确定经纬度采样间隔
-	double lon_interval, lat_interval;
-	Mat temp1, temp2;
-	mapped_lon(cv::Range(0, mapped_lon.rows - 1), cv::Range(0, mapped_lon.cols)).copyTo(temp1);
-	mapped_lon(cv::Range(1, mapped_lon.rows), cv::Range(0, mapped_lon.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = temp1 / 180.0 * PI;
-	wrap(temp1, temp1);
-	temp1 = temp1 / PI * 180.0;
-	temp1 = cv::abs(temp1);
-	lon_interval = cv::mean(temp1)[0];
-	double sigma1, sigma2;
-	std(temp1, &sigma1);
-
-	mapped_lon(cv::Range(0, mapped_lon.rows), cv::Range(0, mapped_lon.cols - 1)).copyTo(temp1);
-	mapped_lon(cv::Range(0, mapped_lon.rows), cv::Range(1, mapped_lon.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = temp1 / 180.0 * PI;
-	wrap(temp1, temp1);
-	temp1 = temp1 / PI * 180.0;
-	temp1 = cv::abs(temp1);
-	std(temp1, &sigma2);
-	lon_interval = (cv::mean(temp1)[0] + fabs(lon_interval)) / 2.0;
-	lon_interval = lon_interval + 1.0 * (sigma1 + sigma2) / 2.0;
-
-	mapped_lat(cv::Range(0, mapped_lat.rows - 1), cv::Range(0, mapped_lat.cols)).copyTo(temp1);
-	mapped_lat(cv::Range(1, mapped_lat.rows), cv::Range(0, mapped_lat.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = cv::abs(temp1);
-	lat_interval = cv::mean(temp1)[0];
-	std(temp1, &sigma1);
-
-	mapped_lat(cv::Range(0, mapped_lat.rows), cv::Range(0, mapped_lat.cols - 1)).copyTo(temp1);
-	mapped_lat(cv::Range(0, mapped_lat.rows), cv::Range(1, mapped_lat.cols)).copyTo(temp2);
-	temp1 = temp2 - temp1;
-	temp1 = cv::abs(temp1);
-	lat_interval = (cv::mean(temp1)[0] + lat_interval) / 2.0;
-	std(temp1, &sigma2);
-	lat_interval = lat_interval + 1.0 * (sigma1 + sigma2) / 2.0;
+	GeographicGridSpacing geographicSpacing;
+	if (!estimateGeographicGridSpacing("SAR2UTM(complex)", mapped_lon, mapped_lat, geographicSpacing))
+	{
+		fprintf(stderr, "SAR2UTM(): source coordinate grid is degenerate.\n");
+		return -1;
+	}
+	const double lon_interval = geographicSpacing.lonInterval;
+	const double lat_interval = geographicSpacing.latInterval;
 
 	int rows = slc.GetRows(); int cols = slc.GetCols();
 
 	
 	
 	//计算UTM坐标系相位尺寸
-	int UTM_rows = static_cast<int>((max_lat - min_lat) / lat_interval);
-	UTM_rows += 2;
+	int UTM_rows = 0;
+	int UTM_cols = 0;
+	const double requestedRows = latSpan / lat_interval + 2.0;
+	const double requestedCols = lonSpan / lon_interval + 2.0;
+	if (!checkedSar2UtmDimensions(requestedRows, requestedCols, UTM_rows, UTM_cols))
+	{
+		fprintf(stderr,
+			"SAR2UTM(): output grid rejected: requestedRows=%.17g requestedCols=%.17g intervals=[%.17g,%.17g] spans=[%.17g,%.17g] budget=%llu bytes.\n",
+			requestedRows, requestedCols, lon_interval, lat_interval, lonSpan, latSpan,
+			static_cast<unsigned long long>(kSar2UtmOutputMemoryBudgetBytes));
+		return -1;
+	}
 	double south = max_lat - (double)(UTM_rows - 1) * lat_interval;
 	double north = max_lat;
 	if (lat_north) *lat_north = north;
 	if (lat_south) *lat_south = south;
-	double max_lon_temp = max_lon - min_lon;
-	max_lon_temp = max_lon_temp > 180.0 ? 360.0 - max_lon_temp : max_lon_temp;
-	int UTM_cols = static_cast<int>(max_lon_temp / lon_interval);
-	UTM_cols += 2;
 	double east = west + (double)(UTM_cols - 1) * lon_interval;
 	east = east > 180.0 ? east - 360.0 : east;
 	if (lon_east) *lon_east = east;
-	Mat b_filled(UTM_rows, UTM_cols, CV_8U); b_filled = 0;
-	mapped_slc.re.create(UTM_rows, UTM_cols, slc.type()); mapped_slc.im.create(UTM_rows, UTM_cols, slc.type());
-	mapped_slc.re = 0;
-	mapped_slc.im = 0;
+	Mat b_filled;
+	try
+	{
+		b_filled = Mat::zeros(UTM_rows, UTM_cols, CV_8U);
+		mapped_slc.re = Mat::zeros(UTM_rows, UTM_cols, slc.type());
+		mapped_slc.im = Mat::zeros(UTM_rows, UTM_cols, slc.type());
+	}
+	catch (const cv::Exception& exception)
+	{
+		mapped_slc.re.release();
+		mapped_slc.im.release();
+		fprintf(stderr, "SAR2UTM(): output allocation failed: %s\n", exception.what());
+		return -1;
+	}
+	catch (const std::exception& exception)
+	{
+		mapped_slc.re.release();
+		mapped_slc.im.release();
+		fprintf(stderr, "SAR2UTM(): output allocation failed: %s\n", exception.what());
+		return -1;
+	}
 	//开始地理编码
 	if (slc.type() == CV_16S)
 	{
@@ -795,14 +1017,10 @@ int Utils::SAR2UTM(
 			{
 				for (int j = 0; j < cols; j++)
 				{
-					double lon, lat;
-					int row, col;
-					lon = mapped_lon.at<float>(i, j);
-					lat = mapped_lat.at<float>(i, j);
-					row = (int)round((lat - min_lat) / lat_interval);
-					lon = fabs(lon - west);
-					lon = lon > 180.0 ? 360.0 - lon : lon;
-					col = (int)round(lon / lon_interval);
+					const double lon = mapped_lon.at<float>(i, j);
+					const double lat = mapped_lat.at<float>(i, j);
+					int row = 0, col = 0;
+					if (!toSar2UtmGridIndex(lon, lat, west, min_lat, lon_interval, lat_interval, UTM_rows, UTM_cols, row, col)) continue;
 					mapped_slc.re.at<short>(row, col) = slc.re.at<short>(i, j);
 					mapped_slc.im.at<short>(row, col) = slc.im.at<short>(i, j);
 					b_filled.at<uchar>(row, col) = 1;
@@ -815,14 +1033,10 @@ int Utils::SAR2UTM(
 			{
 				for (int j = 0; j < cols; j++)
 				{
-					double lon, lat;
-					int row, col;
-					lon = mapped_lon.at<double>(i, j);
-					lat = mapped_lat.at<double>(i, j);
-					row = (int)round((lat - min_lat) / lat_interval);
-					lon = fabs(lon - west);
-					lon = lon > 180.0 ? 360.0 - lon : lon;
-					col = (int)round(lon / lon_interval);
+					const double lon = mapped_lon.at<double>(i, j);
+					const double lat = mapped_lat.at<double>(i, j);
+					int row = 0, col = 0;
+					if (!toSar2UtmGridIndex(lon, lat, west, min_lat, lon_interval, lat_interval, UTM_rows, UTM_cols, row, col)) continue;
 					mapped_slc.re.at<short>(row, col) = slc.re.at<short>(i, j);
 					mapped_slc.im.at<short>(row, col) = slc.im.at<short>(i, j);
 					b_filled.at<uchar>(row, col) = 1;
@@ -838,14 +1052,10 @@ int Utils::SAR2UTM(
 			{
 				for (int j = 0; j < cols; j++)
 				{
-					double lon, lat;
-					int row, col;
-					lon = mapped_lon.at<float>(i, j);
-					lat = mapped_lat.at<float>(i, j);
-					row = (int)round((lat - min_lat) / lat_interval);
-					lon = fabs(lon - west);
-					lon = lon > 180.0 ? 360.0 - lon : lon;
-					col = (int)round(lon / lon_interval);
+					const double lon = mapped_lon.at<float>(i, j);
+					const double lat = mapped_lat.at<float>(i, j);
+					int row = 0, col = 0;
+					if (!toSar2UtmGridIndex(lon, lat, west, min_lat, lon_interval, lat_interval, UTM_rows, UTM_cols, row, col)) continue;
 					mapped_slc.re.at<float>(row, col) = slc.re.at<float>(i, j);
 					mapped_slc.im.at<float>(row, col) = slc.im.at<float>(i, j);
 					b_filled.at<uchar>(row, col) = 1;
@@ -858,14 +1068,10 @@ int Utils::SAR2UTM(
 			{
 				for (int j = 0; j < cols; j++)
 				{
-					double lon, lat;
-					int row, col;
-					lon = mapped_lon.at<double>(i, j);
-					lat = mapped_lat.at<double>(i, j);
-					row = (int)round((lat - min_lat) / lat_interval);
-					lon = fabs(lon - west);
-					lon = lon > 180.0 ? 360.0 - lon : lon;
-					col = (int)round(lon / lon_interval);
+					const double lon = mapped_lon.at<double>(i, j);
+					const double lat = mapped_lat.at<double>(i, j);
+					int row = 0, col = 0;
+					if (!toSar2UtmGridIndex(lon, lat, west, min_lat, lon_interval, lat_interval, UTM_rows, UTM_cols, row, col)) continue;
 					mapped_slc.re.at<float>(row, col) = slc.re.at<float>(i, j);
 					mapped_slc.im.at<float>(row, col) = slc.im.at<float>(i, j);
 					b_filled.at<uchar>(row, col) = 1;

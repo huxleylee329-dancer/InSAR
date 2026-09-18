@@ -23,7 +23,7 @@ public:
                        const TopsFepV5Options& options);
     ~TopsNativeGeometry();
 
-    bool prepare();
+    bool prepare(std::string* failureReason = nullptr);
     bool masterState(double time, Position& position, Velocity& velocity) const;
 	bool slaveState(double time, Position& position, Velocity& velocity) const;
     bool solveMasterH0Point(const Position& satellite,
@@ -33,6 +33,18 @@ public:
                             Position& point,
                             SampleClosure& closure,
                             TopsFepV5BurstStatistics& statistics) const;
+    // Solves the master range/Doppler/ellipsoid (RDE) intersection on the
+    // FEP-selected orbit at an explicit ellipsoidal reference height.  This
+    // is deliberately adjacent to the h=0 entry point so consumers cannot
+    // reconstruct a separate orbit or infer a height from a GCP fallback.
+    bool solveMasterReferenceHeightPoint(const Position& satellite,
+                                         const Velocity& velocity,
+                                         double rhoMaster,
+                                         double referenceEllipsoidHeight,
+                                         const Position* rangeSeed,
+                                         Position& point,
+                                         SampleClosure& closure,
+                                         TopsFepV5BurstStatistics& statistics) const;
     bool solveSlaveZeroDoppler(const Position& point,
                                double registrationTimeSeed,
                                double& zeroDopplerTime,

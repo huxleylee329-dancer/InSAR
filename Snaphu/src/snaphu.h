@@ -291,6 +291,7 @@
 #define DEF_TILEEDGEWEIGHT   2.5
 #define DEF_TILEDIR          ""
 #define DEF_ASSEMBLEONLY     FALSE
+#define DEF_NOASSEMBLE       FALSE
 #define DEF_RMTMPTILE        TRUE
 
 
@@ -658,6 +659,7 @@ typedef struct paramST{
   long scndryarcflowmax;  /* max flow increment for which to keep cost data */
   double tileedgeweight;  /* weight applied to tile-edge secondary arc costs */
   signed char assembleonly; /* flag for assemble-only (no unwrap) mode */
+  signed char noassemble; /* flag for unwrap-only (no tile assembly) mode */
   signed char rmtmptile;  /* flag for removing temporary tile files */
   char tiledir[MAXSTRLEN];/* directory for temporary tile files */
 

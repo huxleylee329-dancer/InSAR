@@ -15,6 +15,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <iomanip>
 #include <algorithm>
 
 #ifdef _DEBUG
@@ -44,11 +45,24 @@ using namespace cv;
 
 	thread_local SnaphuRunContext* g_activeSnaphuRun = nullptr;
 
+	// WGS-84 椭球在给定地心纬度处的地心半径，用于向 SNAPHU 提供 EARTHRADIUS
+	double ellipsoidGeocentricRadius(double geocentricLatitude)
+	{
+		const double a = 6378137.0;
+		const double b = 6356752.314245179;
+		const double sinLat = sin(geocentricLatitude);
+		const double cosLat = cos(geocentricLatitude);
+		const double numerator = sqrt(pow(a * a * cosLat, 2.0) + pow(b * b * sinLat, 2.0));
+		const double denominator = sqrt(pow(a * cosLat, 2.0) + pow(b * sinLat, 2.0));
+		return denominator > 0.0 ? numerator / denominator : 0.0;
+	}
+
 	bool normalizeSnaphuOptions(const SnaphuRunOptionsV1* supplied, SnaphuRunOptionsV1& normalized)
 	{
 		memset(&normalized, 0, sizeof(normalized));
 		normalized.structSize = sizeof(normalized);
 		normalized.version = 1;
+		normalized.statisticalCostMode = SNAPHU_COST_MODE_TOPO;
 		normalized.tileRows = 1;
 		normalized.tileCols = 1;
 		normalized.requestedProcessCount = 1;
@@ -56,7 +70,9 @@ using namespace cv;
 		if (!supplied) return true;
 		if (supplied->version != 1 || supplied->structSize < sizeof(SnaphuRunOptionsV1)) return false;
 		normalized = *supplied;
-		if ((normalized.flags & ~SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS) != 0 || normalized.reserved0 != 0) return false;
+		if ((normalized.flags & ~(SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS |
+			SNAPHU_RUN_OPTION_ASSEMBLE_ONLY)) != 0 ||
+			normalized.statisticalCostMode > SNAPHU_COST_MODE_SMOOTH) return false;
 		for (size_t i = 0; i < sizeof(normalized.reserved) / sizeof(normalized.reserved[0]); ++i)
 			if (normalized.reserved[i] != 0) return false;
 		if (normalized.tileRows == 0 || normalized.tileRows > 256 || normalized.tileCols == 0 ||
@@ -64,7 +80,7 @@ using namespace cv;
 		if ((normalized.tileRows == 1 && normalized.tileCols == 1) &&
 			(normalized.rowOverlap != 0 || normalized.colOverlap != 0)) return false;
 		if ((normalized.tileRows > 1 || normalized.tileCols > 1) &&
-			(normalized.rowOverlap < 400 || normalized.colOverlap < 400)) return false;
+			(normalized.rowOverlap < 50 || normalized.colOverlap < 50)) return false;
 		if (normalized.heartbeatMilliseconds == 0) normalized.heartbeatMilliseconds = 1000;
 		if (normalized.heartbeatMilliseconds < 100 || normalized.heartbeatMilliseconds > 60000) return false;
 		const uint64_t maximumTimeout = 30ULL * 24ULL * 60ULL * 60ULL * 1000ULL;
@@ -94,8 +110,286 @@ using namespace cv;
 	{
 		if (!destination || capacity == 0) return;
 		const size_t length = std::min(capacity - 1, text.size());
-		memcpy(destination, text.data(), length);
+		const size_t offset = text.size() > length ? text.size() - length : 0;
+		memcpy(destination, text.data() + offset, length);
 		destination[length] = '\0';
+	}
+
+	void setActiveDiagnosticFailure(UnwrapDiagnosticStage stage, const std::string& summary)
+	{
+		if (!g_activeDiagnostic) return;
+		g_activeDiagnostic->stage = stage;
+		copyDiagnosticText(g_activeDiagnostic->tool, sizeof(g_activeDiagnostic->tool), "MCF");
+		copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary), summary);
+	}
+
+	constexpr long long kDimacsCostScale = 1000000LL;
+	constexpr long long kCs2PriceSafetyFactor = 64LL;
+	constexpr double kMcfSupplyIntegerTolerance = 1e-9;
+	// A conservative working-set ceiling for the legacy CS2 process. This is a
+	// memory budget derived from the network estimate, not a fixed pixel limit.
+	constexpr uint64_t kMcfWorkingSetBudgetBytes = 8ULL * 1024ULL * 1024ULL * 1024ULL;
+
+	// These layouts mirror the arrays allocated by Mcf/mcmf.cpp.  The estimate
+	// intentionally includes parser and flow-vector storage as well as CS2's
+	// working arrays, so a network is rejected before DIMACS generation when the
+	// solver would require an impractical amount of memory.
+	struct Cs2NodeLayoutEstimate
+	{
+		int64_t excess;
+		int64_t price;
+		void* first;
+		void* current;
+		void* suspended;
+		void* qNext;
+		void* bucketNext;
+		void* bucketPrevious;
+		long rank;
+		long input;
+	};
+
+	struct Cs2ArcLayoutEstimate
+	{
+		long residualCapacity;
+		int64_t cost;
+		void* head;
+		void* sister;
+		long sourceIndex;
+	};
+
+	struct Cs2BucketLayoutEstimate
+	{
+		void* first;
+	};
+
+	struct McfInputArcLayoutEstimate
+	{
+		long tail;
+		long head;
+		long lower;
+		long upper;
+		long long cost;
+	};
+
+	struct McfPreflightReport
+	{
+		uint64_t nodes = 0;
+		uint64_t arcs = 0;
+		uint64_t estimatedWorkingSetBytes = 0;
+		double rawCostMin = 0.0;
+		double rawCostMax = 0.0;
+		long long scaledCostMin = 0;
+		long long scaledCostMax = 0;
+		long long cs2MaximumCost = 0;
+		std::string costLabel;
+		std::string failure;
+	};
+
+	bool checkedAdd(uint64_t left, uint64_t right, uint64_t& output)
+	{
+		if (right > (std::numeric_limits<uint64_t>::max)() - left) return false;
+		output = left + right;
+		return true;
+	}
+
+	bool checkedMultiply(uint64_t left, uint64_t right, uint64_t& output)
+	{
+		if (left != 0 && right > (std::numeric_limits<uint64_t>::max)() / left) return false;
+		output = left * right;
+		return true;
+	}
+
+	bool scaleDimacsCostForPreflight(double value, long long& output)
+	{
+		if (!std::isfinite(value) || value < 0.0) return false;
+		const long double scaled = static_cast<long double>(value) * static_cast<long double>(kDimacsCostScale);
+		if (scaled > static_cast<long double>((std::numeric_limits<long long>::max)()) - 0.5L) return false;
+		output = std::llround(scaled);
+		return true;
+	}
+
+	std::string formatMcfBytes(uint64_t bytes)
+	{
+		char buffer[96] = {};
+		sprintf_s(buffer, sizeof(buffer), "%.1f GiB", static_cast<double>(bytes) /
+			(1024.0 * 1024.0 * 1024.0));
+		return buffer;
+	}
+
+	std::string formatMcfPreflightReport(const McfPreflightReport& report)
+	{
+		std::ostringstream message;
+		message << report.failure
+			<< ": nodes=" << report.nodes
+			<< ", arcs=" << report.arcs
+			<< ", estimatedWorkingSet=" << formatMcfBytes(report.estimatedWorkingSetBytes)
+			<< ", budget=" << formatMcfBytes(kMcfWorkingSetBudgetBytes)
+			<< ", raw " << (report.costLabel.empty() ? "cost" : report.costLabel)
+			<< "=[" << std::setprecision(17) << report.rawCostMin << "," << report.rawCostMax << "]"
+			<< ", scaledCost=[" << report.scaledCostMin << "," << report.scaledCostMax << "]"
+			<< ", cs2MaxCost=" << report.cs2MaximumCost;
+		return message.str();
+	}
+
+	void logMcfPreflightReport(const McfPreflightReport& report)
+	{
+		fprintf(stderr,
+			"MCF preflight: nodes=%llu arcs=%llu raw_%s=[%.17g,%.17g] scaledCost=[%lld,%lld] cs2MaxCost=%lld estimatedWorkingSet=%s budget=%s\n",
+			static_cast<unsigned long long>(report.nodes),
+			static_cast<unsigned long long>(report.arcs),
+			report.costLabel.empty() ? "cost" : report.costLabel.c_str(),
+			report.rawCostMin, report.rawCostMax,
+			report.scaledCostMin, report.scaledCostMax,
+			report.cs2MaximumCost,
+			formatMcfBytes(report.estimatedWorkingSetBytes).c_str(),
+			formatMcfBytes(kMcfWorkingSetBudgetBytes).c_str());
+	}
+
+	bool preflightMcfNetwork(const Mat& residue, const Mat& dimacsCost, double threshold,
+		const char* costLabel, McfPreflightReport& report)
+	{
+		report = McfPreflightReport{};
+		report.costLabel = costLabel ? costLabel : "cost";
+		if (residue.rows < 2 || residue.cols < 2 || dimacsCost.rows < 2 || dimacsCost.cols < 2 ||
+			residue.type() != CV_64F || dimacsCost.type() != CV_64F ||
+			dimacsCost.rows != residue.rows + 1 || dimacsCost.cols != residue.cols + 1)
+		{
+			report.failure = "input data invalid: MCF residue or cost matrix type/dimensions are unsupported";
+			return false;
+		}
+
+		const uint64_t residueRows = static_cast<uint64_t>(residue.rows);
+		const uint64_t residueCols = static_cast<uint64_t>(residue.cols);
+		uint64_t pixelCount = 0;
+		if (!checkedMultiply(residueRows, residueCols, pixelCount) ||
+			!checkedAdd(pixelCount, 1, report.nodes))
+		{
+			report.failure = "MCF network dimensions overflow Core safety checks";
+			return false;
+		}
+
+		uint64_t term = 0;
+		if (!checkedMultiply(2, residueRows - 1, term) || !checkedMultiply(term, residueCols, term) ||
+			!checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(2, residueRows, term) || !checkedMultiply(term, residueCols - 1, term) ||
+			!checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(4, residueCols, term) || !checkedAdd(report.arcs, term, report.arcs) ||
+			!checkedMultiply(4, residueRows - 2, term) || !checkedAdd(report.arcs, term, report.arcs))
+		{
+			report.failure = "MCF network arc count overflow Core safety checks";
+			return false;
+		}
+
+		if (report.nodes > static_cast<uint64_t>((std::numeric_limits<long>::max)()) ||
+			report.arcs > static_cast<uint64_t>((std::numeric_limits<long>::max)()))
+		{
+			report.failure = "MCF network dimensions exceed the solver's long integer limits";
+			return false;
+		}
+
+		report.rawCostMin = (std::numeric_limits<double>::infinity)();
+		report.rawCostMax = -(std::numeric_limits<double>::infinity)();
+		for (int row = 0; row < dimacsCost.rows; ++row)
+		{
+			for (int column = 0; column < dimacsCost.cols; ++column)
+			{
+				const double value = dimacsCost.at<double>(row, column);
+				if (!std::isfinite(value) || value < 0.0)
+				{
+					char buffer[256] = {};
+					sprintf_s(buffer, sizeof(buffer),
+						"input data invalid: non-finite or negative %s at (%d,%d): %.17g",
+						report.costLabel.c_str(), row, column, value);
+					report.failure = buffer;
+					return false;
+				}
+				report.rawCostMin = (std::min)(report.rawCostMin, value);
+				report.rawCostMax = (std::max)(report.rawCostMax, value);
+			}
+		}
+		if (!scaleDimacsCostForPreflight(report.rawCostMin, report.scaledCostMin) ||
+			!scaleDimacsCostForPreflight(report.rawCostMax, report.scaledCostMax))
+		{
+			report.failure = "input data invalid: DIMACS cost scaling overflows signed 64-bit range";
+			return false;
+		}
+
+		for (int row = 0; row < residue.rows; ++row)
+		{
+			for (int column = 0; column < residue.cols; ++column)
+			{
+				const double value = residue.at<double>(row, column);
+				if (!std::isfinite(value))
+				{
+					char buffer[256] = {};
+					sprintf_s(buffer, sizeof(buffer), "input data invalid: non-finite residue at (%d,%d)", row, column);
+					report.failure = buffer;
+					return false;
+				}
+				if (std::fabs(value) > threshold)
+				{
+					const double rounded = std::round(value);
+					if (!std::isfinite(rounded) ||
+						std::fabs(value - rounded) > kMcfSupplyIntegerTolerance ||
+						value < static_cast<double>(LONG_MIN) || value > static_cast<double>(LONG_MAX))
+					{
+						char buffer[256] = {};
+						sprintf_s(buffer, sizeof(buffer),
+							"input data invalid: non-integral residue at (%d,%d): %.17g", row, column, value);
+						report.failure = buffer;
+						return false;
+					}
+				}
+			}
+		}
+
+		const long long nodeCount = static_cast<long long>(report.nodes);
+		report.cs2MaximumCost = (std::numeric_limits<long long>::max)() / (nodeCount + 1);
+		report.cs2MaximumCost /= (nodeCount + 1);
+		report.cs2MaximumCost /= kCs2PriceSafetyFactor;
+
+		uint64_t bytes = 0;
+		uint64_t count = 0;
+		const uint64_t directedArcSlots = 2 * report.arcs + 1;
+		const uint64_t twoArcSlots = 2 * report.arcs;
+		const uint64_t bucketCount = (report.nodes + 1) * 12 + 2;
+		const auto addAllocation = [&bytes](uint64_t itemCount, size_t itemSize) {
+			uint64_t allocation = 0;
+			uint64_t next = 0;
+			return checkedMultiply(itemCount, static_cast<uint64_t>(itemSize), allocation) &&
+				checkedAdd(bytes, allocation, next) && (bytes = next, true);
+		};
+		if (!checkedAdd(report.nodes, 2, count) ||
+			!addAllocation(count, sizeof(Cs2NodeLayoutEstimate)) ||
+			!addAllocation(directedArcSlots, sizeof(Cs2ArcLayoutEstimate)) ||
+			!addAllocation(twoArcSlots, sizeof(long)) ||
+			!addAllocation(twoArcSlots, sizeof(long)) ||
+			!addAllocation(count, sizeof(long)) ||
+			!addAllocation(bucketCount, sizeof(Cs2BucketLayoutEstimate)) ||
+			!addAllocation(report.nodes, sizeof(int64_t)) ||
+			!addAllocation(report.arcs, sizeof(McfInputArcLayoutEstimate)) ||
+			!addAllocation(report.nodes, sizeof(long long)) ||
+			!addAllocation(report.arcs, sizeof(long)))
+		{
+			report.failure = "MCF network working-set estimate overflowed Core safety checks";
+			return false;
+		}
+		report.estimatedWorkingSetBytes = bytes;
+
+		if (report.estimatedWorkingSetBytes > kMcfWorkingSetBudgetBytes)
+		{
+			report.failure = "MCF network scale unsupported by current CS2 implementation; use SNAPHU tiled mode or SPD Guided";
+			return false;
+		}
+		if (report.scaledCostMax > report.cs2MaximumCost)
+		{
+			std::ostringstream failure;
+			failure << "solver numerical strategy rejected DIMACS cost: scaled maximum "
+				<< report.scaledCostMax << " exceeds CS2 limit " << report.cs2MaximumCost;
+			report.failure = failure.str();
+			return false;
+		}
+		return true;
 	}
 
 	bool initializeDiagnostic(UnwrapDiagnostic* diagnostic, uint32_t algorithm)
@@ -106,7 +400,9 @@ using namespace cv;
 		diagnostic->algorithm = algorithm;
 		diagnostic->stage = UNWRAP_DIAGNOSTIC_STAGE_INTERNAL;
 		diagnostic->operationStatus = -1;
-		diagnostic->exitCode = STILL_ACTIVE;
+		// No external process has started at diagnostic initialization.  A real
+		// process exit code is written by the process runner after launch.
+		diagnostic->exitCode = 0;
 		return true;
 	}
 
@@ -190,7 +486,7 @@ using namespace cv;
 			const DWORD requested = std::min<DWORD>(available, sizeof(buffer));
 			if (!ReadFile(pipe, buffer, requested, &read, nullptr) || read == 0) return;
 			appendBounded(tail, buffer, read, 2048);
-			if (captured) appendBounded(*captured, buffer, read, 480);
+			if (captured) captured->append(buffer, read);
 		}
 	}
 
@@ -204,7 +500,11 @@ using namespace cv;
 		std::string tool;
 		std::string phase;
 		DWORD win32Error = ERROR_SUCCESS;
-		DWORD exitCode = STILL_ACTIVE;
+		// Zero means that no process exit code is available yet.  STILL_ACTIVE
+		// is only meaningful after CreateProcess succeeds and must not leak into
+		// prepare/path diagnostics.
+		DWORD exitCode = 0;
+		bool processStarted = false;
 		bool cancelled = false;
 		bool timedOut = false;
 		bool terminationUncertain = false;
@@ -230,27 +530,36 @@ using namespace cv;
 			else if (phase == "launch") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_LAUNCH;
 			else if (phase == "input") diagnostic.stage = UNWRAP_DIAGNOSTIC_STAGE_INPUT;
 			diagnostic.win32Error = win32Error;
-			diagnostic.exitCode = exitCode;
+			// A launch/prepare failure has no process exit code.  Keep the public
+			// diagnostic explicit instead of reporting Windows STILL_ACTIVE (259).
+			diagnostic.exitCode = processStarted ? exitCode : 0;
 			diagnostic.cancelled = cancelled ? 1 : 0;
 			if (!validationFailure.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), validationFailure);
 			else if (terminationUncertain) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool termination could not be confirmed");
 			else if (timedOut) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool timed out");
 			else if (cancelled) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cancelled");
 			else if (!cleanupResiduals.empty()) copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool cleanup left managed artifacts");
+			else if (phase == "launch") copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool launch failed");
+			else if (processStarted && phase == "process exit")
+			{
+				std::ostringstream failure;
+				failure << "external " << (tool.empty() ? "solver" : tool) << " process exited with code " << exitCode;
+				copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), failure.str());
+			}
 			else copyDiagnosticText(diagnostic.summary, sizeof(diagnostic.summary), "external tool process failed");
 			copyDiagnosticText(diagnostic.stderrTail, sizeof(diagnostic.stderrTail), redactExternalText(stderrTail));
 		}
 	};
 
-	bool emitSnaphuRunEvent(uint32_t type, const std::string& message, ULONGLONG startedAt, HANDLE job)
+	bool emitSnaphuRunEvent(uint32_t type, const std::string& message, ULONGLONG startedAt, HANDLE job,
+		uint32_t effectiveProcessCount = 1)
 	{
 		if (!g_activeSnaphuRun || !g_activeSnaphuRun->callback) return true;
 		SnaphuRunEventV1 event = {};
 		event.structSize = sizeof(event);
 		event.version = 1;
 		event.type = type;
-		// Windows SNAPHU currently forces tile workers to one process.
-		event.effectiveProcessCount = 1;
+		event.effectiveProcessCount = effectiveProcessCount;
 		event.elapsedMilliseconds = GetTickCount64() - startedAt;
 		if (job)
 		{
@@ -284,12 +593,47 @@ using namespace cv;
 		}
 	}
 
-	bool drainSnaphuPipe(HANDLE pipe, std::string& tail, const char* source, ULONGLONG startedAt, HANDLE job)
+	bool drainSnaphuPipe(HANDLE pipe, std::string& tail, std::string& lineBuffer, const char* source, ULONGLONG startedAt, HANDLE job)
 	{
 		std::string captured;
 		drainPipe(pipe, tail, &captured);
 		if (captured.empty()) return true;
-		return emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + captured, startedAt, job);
+		lineBuffer.append(captured);
+		size_t pos = 0;
+		while (true)
+		{
+			const size_t newlinePos = lineBuffer.find('\n', pos);
+			if (newlinePos == std::string::npos) break;
+			std::string line = lineBuffer.substr(pos, newlinePos - pos);
+			if (!line.empty() && line.back() == '\r') line.pop_back();
+			pos = newlinePos + 1;
+			if (!line.empty())
+			{
+				if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + line, startedAt, job))
+				{
+					lineBuffer.clear();
+					return false;
+				}
+			}
+		}
+		if (pos > 0)
+		{
+			lineBuffer.erase(0, pos);
+		}
+		return true;
+	}
+
+	bool flushSnaphuPipe(std::string& lineBuffer, const char* source, ULONGLONG startedAt, HANDLE job)
+	{
+		if (lineBuffer.empty()) return true;
+		std::string line = lineBuffer;
+		lineBuffer.clear();
+		if (!line.empty() && line.back() == '\r') line.pop_back();
+		if (!line.empty())
+		{
+			return emitSnaphuRunEvent(SNAPHU_RUN_EVENT_LOG, std::string(source) + ": " + line, startedAt, job);
+		}
+		return true;
 	}
 
 	bool absolutePath(const std::wstring& path, std::wstring& absolute)
@@ -353,8 +697,13 @@ using namespace cv;
 
 	bool quoteSnaphuConfigPath(const std::string& path, std::string& quoted)
 	{
-		if (path.empty() || path.find('\0') != std::string::npos || path.find_first_of("\"\r\n") != std::string::npos) return false;
-		quoted = "\"" + path + "\"";
+		std::string normalized = path;
+		// SNAPHU's tile filename parser treats '/' as the path separator.
+		// Windows accepts it for every path written into the UTF-8 config.
+		std::replace(normalized.begin(), normalized.end(), '\\', '/');
+		if (normalized.empty() || normalized.find('\0') != std::string::npos ||
+			normalized.find_first_of("\"\r\n") != std::string::npos) return false;
+		quoted = "\"" + normalized + "\"";
 		return true;
 	}
 
@@ -602,6 +951,7 @@ using namespace cv;
 			if (output) *output = result;
 			return false;
 		}
+		result.processStarted = true;
 		CloseHandle(stdoutWrite);
 		stdoutWrite = INVALID_HANDLE_VALUE;
 		CloseHandle(stderrWrite);
@@ -645,19 +995,17 @@ using namespace cv;
 		const ULONGLONG startedAt = GetTickCount64();
 		ULONGLONG lastHeartbeatAt = startedAt;
 		result.phase = "process exit";
+		std::string stdoutTail;
+		std::string stdoutLineBuffer;
+		std::string stderrLineBuffer;
 		const std::string runningMessage = "Running external solver " + jobPrefix + " (progress unavailable)...";
 		if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
 		if (!is_cancelled && !emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job)) is_cancelled = true;
-		if (g_activeSnaphuRun && g_activeSnaphuRun->options.requestedProcessCount != 1)
-		{
-			if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING,
-				"Windows SNAPHU runs with NPROC=1; the requested process count was downgraded.", startedAt, job)) is_cancelled = true;
-		}
 		while (!is_cancelled && !result.timedOut)
 		{
 			const DWORD waitResult = WaitForSingleObject(pi.hProcess, 100);
-			if (!drainSnaphuPipe(stdoutRead, result.stderrTail, "stdout", startedAt, job)) is_cancelled = true;
-			if (!drainSnaphuPipe(stderrRead, result.stderrTail, "stderr", startedAt, job)) is_cancelled = true;
+			if (!drainSnaphuPipe(stdoutRead, stdoutTail, stdoutLineBuffer, "stdout", startedAt, job)) is_cancelled = true;
+			if (!drainSnaphuPipe(stderrRead, result.stderrTail, stderrLineBuffer, "stderr", startedAt, job)) is_cancelled = true;
 			const ULONGLONG now = GetTickCount64();
 			if (g_activeSnaphuRun && now - lastHeartbeatAt >= g_activeSnaphuRun->options.heartbeatMilliseconds)
 			{
@@ -701,7 +1049,7 @@ using namespace cv;
 					if ((!jobKnown || processState == WAIT_FAILED) && result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
 					break;
 				}
-				drainPipe(stdoutRead, result.stderrTail);
+				drainPipe(stdoutRead, stdoutTail);
 				drainStderrPipe(stderrRead, result.stderrTail);
 				Sleep(25);
 			}
@@ -728,15 +1076,17 @@ using namespace cv;
 					if (result.win32Error == ERROR_SUCCESS) result.win32Error = ERROR_BUSY;
 					break;
 				}
-				drainPipe(stdoutRead, result.stderrTail);
+				drainPipe(stdoutRead, stdoutTail);
 				drainStderrPipe(stderrRead, result.stderrTail);
 				Sleep(25);
 			}
 		}
 
 		if (!result.terminationUncertain && !GetExitCodeProcess(pi.hProcess, &result.exitCode)) result.win32Error = GetLastError();
-		drainPipe(stdoutRead, result.stderrTail);
+		drainPipe(stdoutRead, stdoutTail);
 		drainStderrPipe(stderrRead, result.stderrTail);
+		flushSnaphuPipe(stdoutLineBuffer, "stdout", startedAt, job);
+		flushSnaphuPipe(stderrLineBuffer, "stderr", startedAt, job);
 		if (result.cancelled) emitSnaphuRunEvent(SNAPHU_RUN_EVENT_CANCELLED, "SNAPHU cancellation completed.", startedAt, job);
 
 		::CloseHandle(pi.hThread);
@@ -949,6 +1299,19 @@ using namespace cv;
 		}
 		if (!runExternalProcessUtf8(executableFolder, L"mcf.exe", networkFile, "MCF", errorMessage, cb, &result))
 		{
+			if (result.phase == "process exit" && result.win32Error == ERROR_SUCCESS)
+			{
+				if (result.exitCode == 65)
+					result.validationFailure = "solver rejected DIMACS input (exit=65): parser or CS2 numeric safety limits rejected a node or arc";
+				else if (result.exitCode == 70)
+					result.validationFailure = "MCF solver failed after DIMACS parsing (exit=70): infeasible network or solver resource failure";
+				else
+				{
+					std::ostringstream failure;
+					failure << "MCF solver process exited with code " << result.exitCode;
+					result.validationFailure = failure.str();
+				}
+			}
 			if (artifacts && GetFileAttributesW(wideSolution.c_str()) != INVALID_FILE_ATTRIBUTES)
 			{
 				artifacts->markOwned(wideSolution);
@@ -1014,7 +1377,10 @@ using namespace cv;
 	}
 
 	bool appendSnaphuTilingConfig(std::ostringstream& config, const std::wstring& taskFolderWide,
-		int rows, int cols, ExternalToolResult& result)
+		int rows, int cols, ExternalToolResult& result,
+		const std::wstring* tileDirectoryOverride = nullptr,
+		const std::wstring* dotileMaskPathWide = nullptr,
+		bool noAssemble = false)
 	{
 		if (!g_activeSnaphuRun) return true;
 		const SnaphuRunOptionsV1& options = g_activeSnaphuRun->options;
@@ -1032,8 +1398,11 @@ using namespace cv;
 			result.validationFailure = "SNAPHU tile count or overlap is incompatible with input dimensions";
 			return false;
 		}
-		const std::wstring tileDirectoryWide = taskFolderWide + L"\\tiles";
-		if (!CreateDirectoryW(tileDirectoryWide.c_str(), nullptr))
+		const std::wstring tileDirectoryWide = tileDirectoryOverride ? *tileDirectoryOverride
+			: taskFolderWide + L"\\tiles";
+		// 分片驱动时同一个 TILEDIR 会被写进多份 config（每个 worker 一份），
+		// 恢复重放时指向的还是上一轮已存在的目录，故“已存在”必须视为正常。
+		if (!CreateDirectoryW(tileDirectoryWide.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
 		{
 			result.phase = "prepare solution";
 			result.win32Error = GetLastError();
@@ -1058,6 +1427,27 @@ using namespace cv;
 		config << "NTILEROW " << options.tileRows << "\nNTILECOL " << options.tileCols << "\n";
 		config << "NPROC 1\nROWOVRLP " << options.rowOverlap << "\nCOLOVRLP " << options.colOverlap << "\n";
 		config << "TILEDIR " << quotedTileDirectory << "\nRMTMPTILE FALSE\n";
+		if (dotileMaskPathWide)
+		{
+			std::string dotileMaskUtf8;
+			PathResolver::Error maskError = PathResolver::Error::None;
+			if (!PathResolver::wideToUtf8(*dotileMaskPathWide, dotileMaskUtf8, &maskError))
+			{
+				result.phase = "path conversion";
+				result.validationFailure = PathResolver::errorMessage(maskError);
+				return false;
+			}
+			std::string quotedDotileMask;
+			if (!quoteSnaphuConfigPath(dotileMaskUtf8, quotedDotileMask))
+			{
+				result.phase = "path conversion";
+				result.validationFailure = "SNAPHU tile mask cannot be represented in config";
+				return false;
+			}
+			config << "DOTILEMASKFILE " << quotedDotileMask << "\n";
+		}
+		// 分片驱动时每个 worker 只解缠自己的子集，装配由驱动方单独收尾
+		if (noAssemble) config << "NOASSEMBLE TRUE\n";
 		return true;
 	}
 
@@ -1079,6 +1469,431 @@ using namespace cv;
 		}
 		if (!CloseHandle(file)) ok = false;
 		return ok;
+	}
+
+	// ==================== 分片驱动（DOTILEMASK 多进程）====================
+	//
+	// 目标：把 6x6 这类分块解缠从「单进程串行跑 36 块」变成「N 个进程各跑一个互不相交
+	// 的子集」，最后统一装配一次。SNAPHU 侧只依赖三个既有/新增开关：
+	//   DOTILEMASKFILE  只解缠掩码为 1 的块（既有）
+	//   NOASSEMBLE      本进程只解缠、不装配（新增）
+	//   --assemble      只装配、不解缠（既有，用于收尾与恢复重放）
+	// 关键前提（已在源码核实）：
+	//   * MakeTileDir() 在 TILEDIR 已存在时直接返回，不会删除/重建，故多个 worker 可共用同一 TILEDIR；
+	//   * 解缠阶段每个 block 之间相互独立，不读其它 block 的 tile 文件（读邻块只在装配阶段）；
+	//   * 全部 worker 挂到同一个 job object，指标（CPU/内存/读/写）自动聚合。
+
+	// 一个 SNAPHU tile worker：独立进程 + 两条管道 + 独立的行缓冲（保证日志不交错）
+	struct SnaphuTileWorker
+	{
+		PROCESS_INFORMATION info = {};
+		HANDLE stdoutRead = INVALID_HANDLE_VALUE;
+		HANDLE stderrRead = INVALID_HANDLE_VALUE;
+		std::string stdoutLineBuffer;
+		std::string stderrLineBuffer;
+		std::string stdoutSink;   // stdout 只进日志，用作有界丢弃目标
+		std::string stderrSink;   // stderr 既进日志，也汇总进诊断
+		std::string source;       // 日志前缀，例如 "w1"
+		DWORD exitCode = STILL_ACTIVE;
+		bool started = false;
+		bool exited = false;
+	};
+
+	// DOTILEMASKFILE：ntilerow × ntilecol 的裸字节数组（行主序），1 = 解缠该块
+	bool writeSnaphuDotileMask(const std::wstring& pathWide, const std::vector<char>& selected,
+		ScopedArtifactDirectory* artifacts)
+	{
+		if (selected.empty()) return false;
+		return writeBytes(pathWide, selected.data(), selected.size(), artifacts);
+	}
+
+	// 结构级校验 tile 现场是否足以装配：目录可枚举、每块都有代价与区域产物、无 0 字节文件。
+	// 这是"恢复重放"的安全守卫。O(tile 数) 次 stat，不做大文件逐字节哈希。
+	bool validateSnaphuTileSet(const std::wstring& tileDirectoryWide, long ntiles, std::string& summary)
+	{
+		if (GetFileAttributesW(tileDirectoryWide.c_str()) == INVALID_FILE_ATTRIBUTES)
+		{
+			summary = "tile directory does not exist";
+			return false;
+		}
+		WIN32_FIND_DATAW entry = {};
+		HANDLE find = FindFirstFileW((tileDirectoryWide + L"\\*").c_str(), &entry);
+		if (find == INVALID_HANDLE_VALUE)
+		{
+			summary = "tile directory cannot be enumerated";
+			return false;
+		}
+		long total = 0, costFiles = 0, regionFiles = 0, emptyFiles = 0;
+		do
+		{
+			if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) continue;
+			const std::wstring name = entry.cFileName;
+			++total;
+			if (entry.nFileSizeHigh == 0 && entry.nFileSizeLow == 0) ++emptyFiles;
+			if (name.find(L"cost_") != std::wstring::npos) ++costFiles;
+			if (name.size() >= 8 && name.compare(name.size() - 8, 8, L"_regions") == 0) ++regionFiles;
+		} while (FindNextFileW(find, &entry));
+		FindClose(find);
+		std::ostringstream text;
+		text << "total=" << total << ", cost=" << costFiles << ", regions=" << regionFiles
+			<< ", empty=" << emptyFiles << ", expectedTiles=" << ntiles;
+		summary = text.str();
+		return costFiles >= ntiles && regionFiles >= ntiles && emptyFiles == 0;
+	}
+
+	// 在 tmp 根目录下挑最近一次留下 tile 现场的 insar-snaphu-* 目录（供恢复重放）。
+	// 注意：目录选择只是"最近一次"，是否属于本轮输入由调用方（人工显式触发）负责。
+	bool findRecoverableSnaphuTaskDirectory(const char* tmpFolder,
+		std::wstring& taskFolderWide, std::wstring& tileDirectoryWide, std::string& summary)
+	{
+		if (!tmpFolder || !*tmpFolder) { summary = "empty temporary root"; return false; }
+		std::wstring root;
+		PathResolver::Error error = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(tmpFolder, root, &error)) { summary = PathResolver::errorMessage(error); return false; }
+		while (!root.empty() && (root.back() == L'\\' || root.back() == L'/')) root.pop_back();
+		if (root.empty()) { summary = "empty temporary root"; return false; }
+		WIN32_FIND_DATAW entry = {};
+		HANDLE find = FindFirstFileW((root + L"\\insar-snaphu-*").c_str(), &entry);
+		if (find == INVALID_HANDLE_VALUE) { summary = "no retained SNAPHU task directory"; return false; }
+		std::wstring best;
+		FILETIME bestTime = {};
+		do
+		{
+			if ((entry.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0) continue;
+			if (best.empty() || CompareFileTime(&entry.ftLastWriteTime, &bestTime) > 0)
+			{
+				bestTime = entry.ftLastWriteTime;
+				best = root + L"\\" + entry.cFileName;
+			}
+		} while (FindNextFileW(find, &entry));
+		FindClose(find);
+		if (best.empty()) { summary = "no retained SNAPHU task directory"; return false; }
+		taskFolderWide = best;
+		tileDirectoryWide = best + L"\\tiles";
+		summary = "reused retained SNAPHU task directory";
+		return true;
+	}
+
+	// 并发驱动 N 个 worker：共用同一个 job（指标聚合）与同一个 TILEDIR，
+	// 各自用 DOTILEMASKFILE 解缠互不相交的子集，且 config 内 NOASSEMBLE TRUE。
+	// 全部 worker 结束后由调用方再跑一次 --assemble 收尾。
+	bool runSnaphuTileWorkers(const std::wstring& executable,
+		const std::vector<std::wstring>& configPaths, const std::vector<std::string>& sources,
+		UnwrapProgressCallback cb, ExternalToolResult& result)
+	{
+		result.tool = "SNAPHU";
+		result.phase = "create job";
+		if (configPaths.empty() || configPaths.size() != sources.size())
+		{
+			result.validationFailure = "SNAPHU tile worker request is empty or inconsistent";
+			return false;
+		}
+		const uint32_t workerCount = static_cast<uint32_t>(configPaths.size());
+		SECURITY_ATTRIBUTES inheritable = {};
+		inheritable.nLength = sizeof(inheritable);
+		inheritable.bInheritHandle = TRUE;
+		HANDLE nullInput = CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+			&inheritable, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+		if (nullInput == INVALID_HANDLE_VALUE)
+		{
+			result.win32Error = GetLastError();
+			return false;
+		}
+		HANDLE job = CreateJobObjectW(nullptr, nullptr);
+		if (!job)
+		{
+			result.win32Error = GetLastError();
+			CloseHandle(nullInput);
+			return false;
+		}
+		result.phase = "configure job";
+		{
+			JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
+			limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+			if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)))
+			{
+				result.win32Error = GetLastError();
+				CloseHandle(job);
+				CloseHandle(nullInput);
+				return false;
+			}
+		}
+
+		std::vector<SnaphuTileWorker> workers(configPaths.size());
+		bool launchFailed = false;
+		for (size_t i = 0; i < configPaths.size() && !launchFailed; ++i)
+		{
+			SnaphuTileWorker& worker = workers[i];
+			worker.source = sources[i];
+			result.phase = "launch";
+			STARTUPINFO si = {};
+			PROCESS_INFORMATION pi = {};
+			si.cb = sizeof(si);
+			si.dwFlags = STARTF_USESHOWWINDOW | STARTF_USESTDHANDLES;
+			si.wShowWindow = FALSE;
+			si.hStdInput = nullInput;
+			HANDLE stdoutWrite = INVALID_HANDLE_VALUE;
+			HANDLE stderrWrite = INVALID_HANDLE_VALUE;
+			if (!CreatePipe(&worker.stdoutRead, &stdoutWrite, &inheritable, 0) ||
+				!SetHandleInformation(worker.stdoutRead, HANDLE_FLAG_INHERIT, 0) ||
+				!CreatePipe(&worker.stderrRead, &stderrWrite, &inheritable, 0) ||
+				!SetHandleInformation(worker.stderrRead, HANDLE_FLAG_INHERIT, 0))
+			{
+				result.win32Error = GetLastError();
+				if (stdoutWrite != INVALID_HANDLE_VALUE) CloseHandle(stdoutWrite);
+				if (stderrWrite != INVALID_HANDLE_VALUE) CloseHandle(stderrWrite);
+				launchFailed = true;
+				break;
+			}
+			si.hStdOutput = stdoutWrite;
+			si.hStdError = stderrWrite;
+			std::wstring commandLine = quoteCommandArgument(executable) + L" " +
+				quoteCommandArgument(L"-f") + L" " + quoteCommandArgument(configPaths[i]);
+			std::vector<wchar_t> cmdLineCopy(commandLine.begin(), commandLine.end());
+			cmdLineCopy.push_back(L'\0');
+			const BOOL created = ::CreateProcessW(executable.c_str(), cmdLineCopy.data(), nullptr, nullptr, TRUE,
+				CREATE_NO_WINDOW | CREATE_SUSPENDED, NULL, NULL, &si, &pi);
+			CloseHandle(stdoutWrite);
+			CloseHandle(stderrWrite);
+			if (!created)
+			{
+				result.win32Error = GetLastError();
+				launchFailed = true;
+				break;
+			}
+			worker.info = pi;
+			worker.started = true;
+			result.processStarted = true;
+			if (!AssignProcessToJobObject(job, pi.hProcess) ||
+				ResumeThread(pi.hThread) == static_cast<DWORD>(-1))
+			{
+				result.win32Error = GetLastError();
+				result.phase = "bind job";
+				launchFailed = true;
+				break;
+			}
+		}
+
+		bool is_cancelled = false;
+		bool wait_failed = false;
+		// 任一 worker 失败即快速失败：否则一个 worker 在开头失败，其余会白跑十几个小时
+		bool worker_failed_early = false;
+		int early_failed_index = -1;
+		DWORD early_failed_code = 0;
+		const ULONGLONG startedAt = GetTickCount64();
+		ULONGLONG lastHeartbeatAt = startedAt;
+		std::ostringstream runningText;
+		runningText << "Running " << workerCount << " SNAPHU tile worker processes (progress unavailable)...";
+		const std::string runningMessage = runningText.str();
+		if (!launchFailed)
+		{
+			result.phase = "process exit";
+			if (cb && !cb(0, runningMessage.c_str())) is_cancelled = true;
+			if (!is_cancelled &&
+				!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_STARTED, runningMessage, startedAt, job, workerCount))
+				is_cancelled = true;
+			while (!is_cancelled && !result.timedOut)
+			{
+				size_t pending = 0;
+				for (size_t wi = 0; wi < workers.size(); ++wi)
+				{
+					SnaphuTileWorker& worker = workers[wi];
+					if (!worker.started) continue;
+					if (!worker.exited)
+					{
+						const DWORD state = WaitForSingleObject(worker.info.hProcess, 0);
+						if (state == WAIT_OBJECT_0)
+						{
+							worker.exited = true;
+							DWORD earlyCode = 0;
+							if (!worker_failed_early &&
+								GetExitCodeProcess(worker.info.hProcess, &earlyCode) && earlyCode != 0)
+							{
+								worker_failed_early = true;
+								early_failed_index = static_cast<int>(wi);
+								early_failed_code = earlyCode;
+							}
+						}
+						else if (state == WAIT_FAILED)
+						{
+							result.win32Error = GetLastError();
+							wait_failed = true;
+						}
+						else ++pending;
+					}
+					const std::string stdoutSource = worker.source + "/stdout";
+					const std::string stderrSource = worker.source + "/stderr";
+					if (!drainSnaphuPipe(worker.stdoutRead, worker.stdoutSink, worker.stdoutLineBuffer,
+						stdoutSource.c_str(), startedAt, job)) is_cancelled = true;
+					if (!drainSnaphuPipe(worker.stderrRead, worker.stderrSink, worker.stderrLineBuffer,
+						stderrSource.c_str(), startedAt, job)) is_cancelled = true;
+				}
+				if (wait_failed || worker_failed_early) break;
+				if (pending == 0) break;
+				const ULONGLONG now = GetTickCount64();
+				if (g_activeSnaphuRun && now - lastHeartbeatAt >= g_activeSnaphuRun->options.heartbeatMilliseconds)
+				{
+					if (!emitSnaphuRunEvent(SNAPHU_RUN_EVENT_HEARTBEAT, runningMessage, startedAt, job, workerCount))
+						is_cancelled = true;
+					lastHeartbeatAt = now;
+				}
+				if (g_activeSnaphuRun && g_activeSnaphuRun->options.wallTimeoutMilliseconds != 0 &&
+					now - startedAt >= g_activeSnaphuRun->options.wallTimeoutMilliseconds)
+				{
+					result.timedOut = true;
+					result.phase = "timeout";
+					emitSnaphuRunEvent(SNAPHU_RUN_EVENT_TIMED_OUT, "SNAPHU wall-clock timeout reached.",
+						startedAt, job, workerCount);
+					break;
+				}
+				Sleep(25);
+			}
+		}
+
+		if (is_cancelled || result.timedOut || wait_failed || launchFailed || worker_failed_early)
+		{
+			result.cancelled = is_cancelled;
+			if (is_cancelled) result.phase = "cancel";
+			if (!TerminateJobObject(job, static_cast<UINT>(is_cancelled ? -2 : -3)) && result.win32Error == ERROR_SUCCESS)
+				result.win32Error = GetLastError();
+			// 硬停之后必须给一个上界等待，否则调用方可能永远等不到 job 清空
+			const ULONGLONG terminationDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				const bool jobKnown = QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr) != FALSE;
+				if (jobKnown && accounting.ActiveProcesses == 0) break;
+				if (!jobKnown || GetTickCount64() >= terminationDeadline)
+				{
+					result.terminationUncertain = true;
+					if (!jobKnown && result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				for (SnaphuTileWorker& worker : workers)
+				{
+					if (!worker.started) continue;
+					drainPipe(worker.stdoutRead, worker.stdoutSink);
+					drainStderrPipe(worker.stderrRead, worker.stderrSink);
+				}
+				Sleep(25);
+			}
+		}
+		else
+		{
+			// 根进程已退出，但 job 计数可能短暂滞后；给一个有界窗口再判定 terminationUncertain
+			const ULONGLONG completionDeadline = GetTickCount64() + 5000;
+			while (true)
+			{
+				JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting = {};
+				if (!QueryInformationJobObject(job, JobObjectBasicAccountingInformation,
+					&accounting, sizeof(accounting), nullptr))
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = GetLastError();
+					break;
+				}
+				if (accounting.ActiveProcesses == 0) break;
+				if (GetTickCount64() >= completionDeadline)
+				{
+					result.terminationUncertain = true;
+					if (result.win32Error == ERROR_SUCCESS) result.win32Error = ERROR_BUSY;
+					break;
+				}
+				for (SnaphuTileWorker& worker : workers)
+				{
+					if (!worker.started) continue;
+					drainPipe(worker.stdoutRead, worker.stdoutSink);
+					drainStderrPipe(worker.stderrRead, worker.stderrSink);
+				}
+				Sleep(25);
+			}
+		}
+
+		int failedIndex = -1;
+		DWORD failedExitCode = 0;
+		std::ostringstream exitSummary;
+		for (size_t i = 0; i < workers.size(); ++i)
+		{
+			SnaphuTileWorker& worker = workers[i];
+			if (!worker.started)
+			{
+				if (i) exitSummary << ", ";
+				exitSummary << sources[i] << "=not-started";
+				continue;
+			}
+			if (!GetExitCodeProcess(worker.info.hProcess, &worker.exitCode) && result.win32Error == ERROR_SUCCESS)
+				result.win32Error = GetLastError();
+			if (i) exitSummary << ", ";
+			exitSummary << worker.source << "=" << worker.exitCode;
+			if (failedIndex < 0 && worker.exitCode != 0)
+			{
+				failedIndex = static_cast<int>(i);
+				failedExitCode = worker.exitCode;
+			}
+			drainPipe(worker.stdoutRead, worker.stdoutSink);
+			drainStderrPipe(worker.stderrRead, worker.stderrSink);
+			const std::string stdoutSource = worker.source + "/stdout";
+			const std::string stderrSource = worker.source + "/stderr";
+			flushSnaphuPipe(worker.stdoutLineBuffer, stdoutSource.c_str(), startedAt, job);
+			flushSnaphuPipe(worker.stderrLineBuffer, stderrSource.c_str(), startedAt, job);
+			// 失败者的 stderr 必须汇总进诊断，否则真正的 SNAPHU 报错会丢
+			if (!worker.stderrSink.empty())
+			{
+				if (!result.stderrTail.empty() && result.stderrTail.back() != '\n') result.stderrTail.push_back('\n');
+				appendBounded(result.stderrTail, worker.stderrSink.data(), worker.stderrSink.size(), 2048);
+			}
+		}
+		if (worker_failed_early && early_failed_index >= 0)
+		{
+			// 快速失败时被我们主动终止的兄弟 worker 也会带非零退出码，
+			// 真正的原因必须按记录的顺序上报，不能取"第一个非零"。
+			failedIndex = early_failed_index;
+			failedExitCode = early_failed_code;
+		}
+		for (SnaphuTileWorker& worker : workers)
+		{
+			if (worker.started)
+			{
+				CloseHandle(worker.info.hThread);
+				CloseHandle(worker.info.hProcess);
+			}
+			if (worker.stdoutRead != INVALID_HANDLE_VALUE) CloseHandle(worker.stdoutRead);
+			if (worker.stderrRead != INVALID_HANDLE_VALUE) CloseHandle(worker.stderrRead);
+		}
+		CloseHandle(nullInput);
+		CloseHandle(job);
+
+		if (launchFailed)
+		{
+			if (result.validationFailure.empty())
+				result.validationFailure = "failed to launch all SNAPHU tile workers";
+			return false;
+		}
+		if (result.cancelled || result.timedOut || result.terminationUncertain) return false;
+		if (result.win32Error != ERROR_SUCCESS) return false;
+		if (failedIndex >= 0)
+		{
+			std::ostringstream failure;
+			failure << "SNAPHU tile worker " << sources[failedIndex] << " exited with code " << failedExitCode
+				<< " (all workers: " << exitSummary.str() << ")";
+			result.phase = "process exit";
+			result.exitCode = failedExitCode;
+			result.validationFailure = failure.str();
+			emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, failure.str(), startedAt, nullptr, workerCount);
+			return false;
+		}
+		std::ostringstream completedText;
+		completedText << "All " << workerCount << " SNAPHU tile workers completed.";
+		const std::string completedMessage = completedText.str();
+		emitSnaphuRunEvent(SNAPHU_RUN_EVENT_COMPLETED, completedMessage, startedAt, nullptr, workerCount);
+		if (cb && !cb(100, completedMessage.c_str()))
+		{
+			result.cancelled = true;
+			result.phase = "cancel";
+			return false;
+		}
+		return true;
 	}
 
 	bool writeFloatRaster(const std::wstring& path, const Mat& input, ScopedArtifactDirectory* artifacts = nullptr)
@@ -1245,6 +2060,8 @@ int Unwrap::MCFInternal(
 		residue.type() != CV_64F)
 	{
 		fprintf(stderr, "MCF(): input check failed!\n\n");
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_INPUT,
+			"input data invalid: MCF phase, coherence, residue types or dimensions are inconsistent");
 		return -1;
 	}
 	USES_CONVERSION;
@@ -1290,6 +2107,16 @@ int Unwrap::MCFInternal(
 		unwrapped_phase = unwrapped_phase + wrapped_phase.at<double>(0, 0);
 		return 0;
 	}
+	McfPreflightReport preflight;
+	if (!preflightMcfNetwork(residue, coherence, 0.5, "coherence", preflight))
+	{
+		logMcfPreflightReport(preflight);
+		const std::string message = formatMcfPreflightReport(preflight);
+		fprintf(stderr, "MCF preflight rejected: %s\n\n", message.c_str());
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE, message);
+		return -1;
+	}
+	logMcfPreflightReport(preflight);
 	string taskFolder;
 	std::wstring taskFolderWide;
 	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
@@ -1305,7 +2132,12 @@ int Unwrap::MCFInternal(
 		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
 	ret = util.write_DIMACS(taskNetwork.c_str(), residue, coherence, 0.5);
 	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
-	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
+	if (return_check(ret, "write_DIMACS(*, *, *)", error_head))
+	{
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE,
+			"input data invalid or DIMACS preparation failed before MCF launch");
+		return -1;
+	}
 	//////////////////////////创建并调用最小费用流法进程///////////////////////////////
 	if (!runMcfProcess(MCF_EXE_PATH, taskNetwork.c_str(), "MCF(): mcf.exe failed!", cb, &artifacts, &toolResult))
 	{
@@ -1356,6 +2188,8 @@ int Unwrap::MCFImprovedInternal(
 		wrapped_phase.type() != CV_64F)
 	{
 		fprintf(stderr, "MCF_improved(): input check failed!\n\n");
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_INPUT,
+			"input data invalid: MCF improved phase type or dimensions are inconsistent");
 		return -1;
 	}
 	USES_CONVERSION;
@@ -1372,6 +2206,16 @@ int Unwrap::MCFImprovedInternal(
 	if (return_check(ret, "gen_mask_pdv()", error_head)) return -1;
 	cost = phase_derivatives_variance + 0.001;
 	cost = 1 / cost;
+	McfPreflightReport preflight;
+	if (!preflightMcfNetwork(residue, cost, 0.7, "cost", preflight))
+	{
+		logMcfPreflightReport(preflight);
+		const std::string message = formatMcfPreflightReport(preflight);
+		fprintf(stderr, "MCF_improved preflight rejected: %s\n\n", message.c_str());
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE, message);
+		return -1;
+	}
+	logMcfPreflightReport(preflight);
 	string taskFolder;
 	std::wstring taskFolderWide;
 	if (!createMcfTaskDirectory(MCF_problem_file, taskFolder, taskFolderWide)) return -1;
@@ -1387,7 +2231,12 @@ int Unwrap::MCFImprovedInternal(
 		!artifacts.registerCandidate(taskNetworkWide) || !artifacts.registerCandidate(taskSolutionWide)) return -1;
 	ret = util.write_DIMACS(taskNetwork.c_str(), residue, mask, cost);
 	if (GetFileAttributesW(taskNetworkWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(taskNetworkWide);
-	if (return_check(ret, "write_DIMACS(*, *, *)", error_head)) return -1;
+	if (return_check(ret, "write_DIMACS(*, *, *)", error_head))
+	{
+		setActiveDiagnosticFailure(UNWRAP_DIAGNOSTIC_STAGE_PREPARE,
+			"input data invalid or DIMACS preparation failed before MCF launch");
+		return -1;
+	}
 	Mat m; mask.convertTo(m, CV_64F);
 	// 调试保存中间数据（若需本地调试，可取消注释并修改为自己的本地路径）
 	// util.cvmat2bin("E:\\zgb1\\functions\\mask.bin", m);
@@ -3576,6 +4425,7 @@ int Unwrap::QualityGuidedMCFInternal(
 
 int Unwrap::SnaphuFileInternal(
 	const char* wrapped_phase_file,
+	const Mat* valid_mask,
 	Mat& unwrapped_phase,
 	const char* project_path,
 	const char* tmp_folder,
@@ -3617,7 +4467,8 @@ int Unwrap::SnaphuFileInternal(
 	string coherence_file = folder + "\\coherence.dat";
 	string IN_file = folder + "\\wrapped_phase.dat";
 	string OUT_file = folder + "\\unwrapped_phase.dat";
-	std::wstring configFileWide, ampfile1Wide, ampfile2Wide, coherenceFileWide, inFileWide, outFileWide;
+	string mask_file = folder + "\\phase_valid_mask.dat";
+	std::wstring configFileWide, ampfile1Wide, ampfile2Wide, coherenceFileWide, inFileWide, outFileWide, maskFileWide;
 	PathResolver::Error artifactPathError = PathResolver::Error::None;
 	if (!PathResolver::utf8ToWide(config_file, configFileWide, &artifactPathError) ||
 		!PathResolver::utf8ToWide(ampfile1, ampfile1Wide, &artifactPathError) ||
@@ -3632,10 +4483,49 @@ int Unwrap::SnaphuFileInternal(
 		fprintf(stderr, "snaphu(): unable to register task artifacts (%s).\n", PathResolver::errorMessage(artifactPathError));
 		return -1;
 	}
+	if (valid_mask != nullptr &&
+		(!PathResolver::utf8ToWide(mask_file, maskFileWide, &artifactPathError) ||
+			!artifacts.registerCandidate(maskFileWide)))
+	{
+		fprintf(stderr, "snaphu(): unable to register phase-validity mask artifact (%s).\n",
+			PathResolver::errorMessage(artifactPathError));
+		return -1;
+	}
 
 	ret = conversion.read_array_from_h5(wrapped_phase_file, "phase", wrapped_phase);
 	if (return_check(ret, "read_array_from_h5()", error_head)) return -1;
 	nr = wrapped_phase.rows; nc = wrapped_phase.cols;
+	Mat mask;
+	bool hasMask = false;
+	if (valid_mask != nullptr)
+	{
+		if (valid_mask->type() != CV_8UC1 || valid_mask->rows != nr || valid_mask->cols != nc || valid_mask->empty())
+		{
+			fprintf(stderr, "snaphu(): invalid phase-validity mask.\n");
+			return -1;
+		}
+		mask = valid_mask->clone();
+		int validCount = 0;
+		for (int row = 0; row < mask.rows; ++row)
+		{
+			const uchar* values = mask.ptr<uchar>(row);
+			for (int column = 0; column < mask.cols; ++column)
+			{
+				if (values[column] != 0 && values[column] != 1)
+				{
+					fprintf(stderr, "snaphu(): phase-validity mask must be binary.\n");
+					return -1;
+				}
+				validCount += values[column] != 0 ? 1 : 0;
+			}
+		}
+		if (validCount == 0)
+		{
+			fprintf(stderr, "snaphu(): phase-validity mask has no valid pixels.\n");
+			return -1;
+		}
+		hasMask = true;
+	}
 	int multilookRg = 1;
 	int multilookAz = 1;
 	auto readMultilookFactor = [&](const char* dataset, int& factor) -> int
@@ -3669,7 +4559,7 @@ int Unwrap::SnaphuFileInternal(
 		multilookAz = 1;
 		fprintf(stderr, "snaphu(): multilook metadata unavailable; source amplitudes will not be resampled.\n");
 	}
-	enum class CorrelationSource { InputH5, Disabled };
+	enum class CorrelationSource { InputComplexGamma, InputCoherence, Disabled };
 	enum class AmplitudeStatus { Used, Unavailable, OmittedDimensionMismatch };
 	CorrelationSource correlationSource = CorrelationSource::Disabled;
 	AmplitudeStatus amplitudeStatus = AmplitudeStatus::Unavailable;
@@ -3689,32 +4579,63 @@ int Unwrap::SnaphuFileInternal(
 	source_1 = sourcePaths.source1.utf8;
 	source_2 = sourcePaths.source2.utf8;
 
-	const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
-	if (inputCoherenceReadStatus == 0)
+	Mat complexGamma;
+	const int complexGammaReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "complex_gamma", complexGamma);
+	if (complexGammaReadStatus == 0)
 	{
-		std::string semantics;
-		const int semanticsReadStatus = conversion.read_str_from_h5(
-			wrapped_phase_file, "coherence_semantics", semantics);
-		if (semanticsReadStatus != 0 || semantics != "complex_gamma")
+		std::string gammaSemantics;
+		const int gammaSemanticsReadStatus = conversion.read_str_from_h5(
+			wrapped_phase_file, "complex_gamma_semantics", gammaSemantics);
+		if (gammaSemanticsReadStatus != 0 || gammaSemantics != "complex_gamma")
 		{
-			correlationReason = "coherence_semantics_not_complex_gamma";
-			fprintf(stderr, "snaphu(): input coherence rejected: physical complex_gamma is required.\n");
+			correlationReason = "complex_gamma_semantics_invalid";
+			fprintf(stderr, "snaphu(): complex_gamma rejected: physical complex_gamma semantics are required.\n");
 		}
-		else if (validateCorrelation(coherence, nr, nc, correlationReason))
+		else if (validateCorrelation(complexGamma, nr, nc, correlationReason))
 		{
-			coherence.convertTo(coherence, CV_32F);
-			if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
-			correlationSource = CorrelationSource::InputH5;
+			complexGamma.convertTo(complexGamma, CV_32F);
+			if (!writeFloatRaster(coherenceFileWide, complexGamma, &artifacts)) return -1;
+			correlationSource = CorrelationSource::InputComplexGamma;
 		}
 		else
 		{
-			fprintf(stderr, "snaphu(): input_coherence_rejected=%s\n", correlationReason.c_str());
+			fprintf(stderr, "snaphu(): complex_gamma_rejected=%s\n", correlationReason.c_str());
 		}
 	}
 	else
 	{
-		correlationReason = "input_missing_or_unreadable";
-		fprintf(stderr, "snaphu(): input_coherence_unavailable=%s\n", correlationReason.c_str());
+		correlationReason = "complex_gamma_missing_or_unreadable";
+	}
+
+	// Keep legacy products usable when their physical correlation is stored in coherence.
+	if (correlationSource == CorrelationSource::Disabled)
+	{
+		const int inputCoherenceReadStatus = conversion.read_array_from_h5(wrapped_phase_file, "coherence", coherence);
+		if (inputCoherenceReadStatus == 0)
+		{
+			std::string semantics;
+			const int semanticsReadStatus = conversion.read_str_from_h5(
+				wrapped_phase_file, "coherence_semantics", semantics);
+			if (semanticsReadStatus != 0 || semantics != "complex_gamma")
+			{
+				correlationReason = "coherence_semantics_not_complex_gamma";
+				fprintf(stderr, "snaphu(): input coherence rejected: physical complex_gamma is required.\n");
+			}
+			else if (validateCorrelation(coherence, nr, nc, correlationReason))
+			{
+				coherence.convertTo(coherence, CV_32F);
+				if (!writeFloatRaster(coherenceFileWide, coherence, &artifacts)) return -1;
+				correlationSource = CorrelationSource::InputCoherence;
+			}
+			else
+			{
+				fprintf(stderr, "snaphu(): input_coherence_rejected=%s\n", correlationReason.c_str());
+			}
+		}
+		else
+		{
+			fprintf(stderr, "snaphu(): input_coherence_unavailable=%s\n", correlationReason.c_str());
+		}
 	}
 	if (b_source)
 	{
@@ -3745,6 +4666,7 @@ int Unwrap::SnaphuFileInternal(
 	Mat phase;
 	wrapped_phase.convertTo(phase, CV_32F);
 	if (!writeFloatRaster(inFileWide, phase, &artifacts)) return -1;
+	if (hasMask && (!mask.isContinuous() || !writeBytes(maskFileWide, mask.data, mask.total(), &artifacts))) return -1;
 	if (b_source && amplitudeAvailable)//有幅度信息
 	{
 		if (master.type() != CV_64F) master.convertTo(master, CV_64F);
@@ -3778,7 +4700,7 @@ int Unwrap::SnaphuFileInternal(
 			amplitudeStatus = AmplitudeStatus::Used;
 		}
 	}
-	if (correlationSource != CorrelationSource::InputH5)
+	if (correlationSource == CorrelationSource::Disabled)
 	{
 		correlationReason = correlationReason.empty()
 			? "physical_gamma_required"
@@ -3789,13 +4711,15 @@ int Unwrap::SnaphuFileInternal(
 
 
 	// SNAPHU consumes this configuration as UTF-8; every pathname is UTF-8.
-	std::string configInFile, configOutFile, configCoherenceFile, configAmpfile1, configAmpfile2;
+	std::string configInFile, configOutFile, configCoherenceFile, configAmpfile1, configAmpfile2, configMaskFile;
 	if (!quoteSnaphuConfigPath(IN_file, configInFile) || !quoteSnaphuConfigPath(OUT_file, configOutFile) ||
 		!quoteSnaphuConfigPath(coherence_file, configCoherenceFile) || !quoteSnaphuConfigPath(ampfile1, configAmpfile1) ||
-		!quoteSnaphuConfigPath(ampfile2, configAmpfile2)) return -1;
+		!quoteSnaphuConfigPath(ampfile2, configAmpfile2) ||
+		(hasMask && !quoteSnaphuConfigPath(mask_file, configMaskFile))) return -1;
 	std::ostringstream config;
 	config << "INFILEFORMAT FLOAT_DATA\nOUTFILEFORMAT FLOAT_DATA\nCORRFILEFORMAT FLOAT_DATA\nAMPFILEFORMAT FLOAT_DATA\n";
 	config << "LINELENGTH " << nc << "\nINFILE " << configInFile << "\nOUTFILE " << configOutFile << "\n";
+	if (hasMask) config << "BYTEMASKFILE " << configMaskFile << "\n";
 	if (correlationSource != CorrelationSource::Disabled) config << "CORRFILE " << configCoherenceFile << "\n";
 	if (amplitudeStatus == AmplitudeStatus::Used)
 	{
@@ -3826,7 +4750,98 @@ int Unwrap::SnaphuFileInternal(
 			config << "AZRES " << DA.at<double>(0, 0) << "\n";
 		}
 	}
-	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult)) return -1;
+	// SNAPHU 的模糊高度 = -λ·R·sinθ/(2·B⊥)，θ 由 ORBITRADIUS/EARTHRADIUS/NEARRANGE 反算。不写这些
+	// 参数时会退回内置默认（7153000 / 6378000 / 831000），本景实测把入射角算成约 27°（真值 44°）、
+	// 模糊高度偏差约 40%。此处按主星轨道状态矢量与近距斜距给出真实量（本景得 7069717.6 / 6368490.5，
+	// 与 SNAP 导出的 7069750.879 / 6368128.173 相差 <0.01%）。TOPO 代价不使用该几何，故默认路径行为
+	// 不变；DEFO/SMOOTH 依赖它。
+	const uint32_t statisticalCostMode = g_activeSnaphuRun
+		? g_activeSnaphuRun->options.statisticalCostMode : SNAPHU_COST_MODE_TOPO;
+	if (b_source && state_vec1.type() == CV_64F && state_vec1.cols >= 4 && state_vec1.rows >= 2)
+	{
+		double radiusSum = 0.0, xSum = 0.0, ySum = 0.0, zSum = 0.0;
+		int counted = 0;
+		for (int row = 0; row < state_vec1.rows; ++row)
+		{
+			const double px = state_vec1.at<double>(row, 1);
+			const double py = state_vec1.at<double>(row, 2);
+			const double pz = state_vec1.at<double>(row, 3);
+			const double radius = sqrt(px * px + py * py + pz * pz);
+			if (!std::isfinite(radius) || radius <= 0.0) continue;
+			radiusSum += radius;
+			xSum += px; ySum += py; zSum += pz;
+			++counted;
+		}
+		if (counted >= 2)
+		{
+			const double orbitRadius = radiusSum / counted;
+			const double meanX = xSum / counted, meanY = ySum / counted, meanZ = zSum / counted;
+			// 用主星平均位置的地心纬度近似场景纬度：本景得 42.31°，对应半径与 SNAP 导出相差 362 m（<0.01%）
+			const double geocentricLatitude = atan2(meanZ, sqrt(meanX * meanX + meanY * meanY));
+			const double earthRadius = ellipsoidGeocentricRadius(geocentricLatitude);
+			if (std::isfinite(orbitRadius) && std::isfinite(earthRadius) && orbitRadius > earthRadius)
+			{
+				config << "ORBITRADIUS " << orbitRadius << "\nEARTHRADIUS " << earthRadius << "\n";
+			}
+		}
+	}
+	double nearRange = 0.0;
+	if (conversion.read_double_from_h5(wrapped_phase_file, "flat_earth_master_slant_range_first_pixel", &nearRange) == 0 &&
+		std::isfinite(nearRange) && nearRange > 0.0)
+	{
+		config << "NEARRANGE " << nearRange << "\n";
+	}
+	else
+	{
+		fprintf(stderr, "snaphu(): near slant range unavailable; SNAPHU will use its built-in NEARRANGE default.\n");
+	}
+	// Sentinel-1 是单天线重复轨道干涉，TRANSMITMODE 参与 B⊥ 的处理（SNAP 导出同样写 REPEATPASS）
+	config << "TRANSMITMODE REPEATPASS\n";
+	config << "STATCOSTMODE "
+		<< (statisticalCostMode == SNAPHU_COST_MODE_DEFO ? "DEFO" :
+			(statisticalCostMode == SNAPHU_COST_MODE_SMOOTH ? "SMOOTH" : "TOPO")) << "\n";
+	// 运行模式判定：单进程（默认）/ 分片驱动（requestedProcessCount>1）/ 装配重放（ASSEMBLE_ONLY）
+	SnaphuRunOptionsV1 runOptions = {};
+	if (g_activeSnaphuRun) runOptions = g_activeSnaphuRun->options;
+	const bool tiledRun = runOptions.tileRows > 1 || runOptions.tileCols > 1;
+	const long tileCount = static_cast<long>(runOptions.tileRows) * static_cast<long>(runOptions.tileCols);
+	const bool assembleOnlyRequested = (runOptions.flags & SNAPHU_RUN_OPTION_ASSEMBLE_ONLY) != 0;
+	const std::wstring currentTileDirectoryWide = taskFolderWide + L"\\tiles";
+
+	// 装配重放（恢复）：不启动 worker，指向上一轮留下的 tile 现场，只跑一次装配。
+	// 不自动触发——必须由调用方显式置 ASSEMBLE_ONLY；且复用哪一个目录在这里只是"最近一次"，
+	// 是否属于本轮输入由调用方（人工）负责，本层只做结构级校验与显式告警。
+	const std::wstring* tileOverride = nullptr;
+	std::wstring recoveredTileDirectoryWide;
+	if (tiledRun && assembleOnlyRequested)
+	{
+		std::wstring recoveredTaskFolderWide;
+		std::string discovery;
+		if (!findRecoverableSnaphuTaskDirectory(tmp_folder, recoveredTaskFolderWide, recoveredTileDirectoryWide, discovery))
+		{
+			toolResult.phase = "prepare solution";
+			toolResult.validationFailure = "SNAPHU 装配重放：找不到可复用的 tile 现场（" + discovery + "）";
+			fprintf(stderr, "snaphu(): assemble-only reuse failed (%s).\n", discovery.c_str());
+			return -1;
+		}
+		std::string tileSummary;
+		const bool tilesOk = validateSnaphuTileSet(recoveredTileDirectoryWide, tileCount, tileSummary);
+		// 无论成败都显式告警：复用上一轮目录有"陈旧 tile"风险，必须在日志里留痕
+		{
+			std::ostringstream note;
+			note << "SNAPHU 装配重放（恢复模式）：复用 tile 现场 " << discovery << " [" << tileSummary << "]";
+			emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, note.str(), GetTickCount64(), nullptr);
+		}
+		if (!tilesOk)
+		{
+			toolResult.phase = "prepare solution";
+			toolResult.validationFailure = "SNAPHU 装配重放的 tile 现场不完整：" + tileSummary;
+			return -1;
+		}
+		tileOverride = &recoveredTileDirectoryWide;
+	}
+
+	if (!appendSnaphuTilingConfig(config, taskFolderWide, nr, nc, toolResult, tileOverride)) return -1;
 
 	const std::string configText = config.str();
 	if (!writeBytes(configFileWide, configText.data(), configText.size(), &artifacts)) return -1;
@@ -3838,12 +4853,131 @@ int Unwrap::SnaphuFileInternal(
 		return -2;
 	}
 
-	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
-	if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
-		"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
+	// 分片驱动：为每个 worker 生成一份 config（在完整 config 后追加 DOTILEMASKFILE + NOASSEMBLE）
+	std::vector<std::wstring> workerConfigPaths;
+	std::vector<std::string> workerSources;
+	if (tiledRun && !assembleOnlyRequested && runOptions.requestedProcessCount > 1)
 	{
-		if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
-		return -2;
+		uint32_t workerCount = runOptions.requestedProcessCount;
+		if (workerCount > static_cast<uint32_t>(tileCount)) workerCount = static_cast<uint32_t>(tileCount);
+		if (workerCount > 32) workerCount = 32;   // 进程上限，避免进程风暴
+		for (uint32_t w = 0; w < workerCount; ++w)
+		{
+			// 轮询分配：第 t 块归 worker (t % workerCount)，保证各 worker 负载接近且互不相交
+			std::vector<char> selected(static_cast<size_t>(tileCount), 0);
+			for (long t = static_cast<long>(w); t < tileCount; t += static_cast<long>(workerCount))
+				selected[static_cast<size_t>(t)] = 1;
+			std::wostringstream maskName;
+			maskName << taskFolderWide << L"\\dotilemask_" << (w + 1) << L".dat";
+			const std::wstring maskPathWide = maskName.str();
+			if (!writeSnaphuDotileMask(maskPathWide, selected, &artifacts))
+			{
+				toolResult.phase = "prepare solution";
+				toolResult.validationFailure = "cannot write SNAPHU tile mask for worker " + std::to_string(w + 1);
+				return -1;
+			}
+			std::string maskUtf8;
+			PathResolver::Error maskPathError = PathResolver::Error::None;
+			if (!PathResolver::wideToUtf8(maskPathWide, maskUtf8, &maskPathError))
+			{
+				toolResult.phase = "path conversion";
+				toolResult.validationFailure = PathResolver::errorMessage(maskPathError);
+				return -1;
+			}
+			std::string quotedMask;
+			if (!quoteSnaphuConfigPath(maskUtf8, quotedMask))
+			{
+				toolResult.phase = "path conversion";
+				toolResult.validationFailure = "SNAPHU tile mask cannot be represented in config";
+				return -1;
+			}
+			std::wostringstream workerConfigName;
+			workerConfigName << taskFolderWide << L"\\snaphu_worker_" << (w + 1) << L".config";
+			const std::wstring workerConfigWide = workerConfigName.str();
+			std::ostringstream workerConfigText;
+			workerConfigText << configText << "DOTILEMASKFILE " << quotedMask << "\nNOASSEMBLE TRUE\n";
+			const std::string workerConfig = workerConfigText.str();
+			if (!writeBytes(workerConfigWide, workerConfig.data(), workerConfig.size(), &artifacts))
+			{
+				toolResult.phase = "prepare solution";
+				toolResult.validationFailure = "cannot write SNAPHU worker config " + std::to_string(w + 1);
+				return -1;
+			}
+			workerConfigPaths.push_back(workerConfigWide);
+			std::ostringstream label;
+			label << "w" << (w + 1);
+			workerSources.push_back(label.str());
+		}
+	}
+
+	// 失败时给出可执行的恢复指引：tile 现场完整才提示可以只重放装配
+	auto emitAssemblyRecoveryHint = [&]()
+	{
+		std::string tileSummary = "unknown";
+		const bool tilesOk = validateSnaphuTileSet(currentTileDirectoryWide, tileCount, tileSummary);
+		std::string taskFolderUtf8;
+		PathResolver::Error hintError = PathResolver::Error::None;
+		std::ostringstream hint;
+		if (tilesOk && PathResolver::wideToUtf8(taskFolderWide, taskFolderUtf8, &hintError))
+		{
+			hint << "SNAPHU 装配阶段失败；本任务 tile 现场完整（" << tileSummary
+				<< "），可用 `snaphu.exe -f \"" << taskFolderUtf8
+				<< "\\snaphu.config\" --assemble` 约 4 分钟重放装配，无需重跑 tile 阶段。";
+		}
+		else
+		{
+			hint << "SNAPHU 装配阶段失败；tile 现场不完整（" << tileSummary << "），仍需重跑 tile 阶段。";
+		}
+		emitSnaphuRunEvent(SNAPHU_RUN_EVENT_WARNING, hint.str(), GetTickCount64(), nullptr);
+	};
+
+	//////////////////////////创建并调用snaphu.exe进程///////////////////////////////
+	if (tiledRun && assembleOnlyRequested)
+	{
+		// 恢复重放：直接装配，跳过全部解缠
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide, L"--assemble" },
+			"SNAPHU", "snaphu(): snaphu.exe --assemble failed!", cb, &toolResult))
+		{
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+	}
+	else if (!workerConfigPaths.empty())
+	{
+		std::wstring executableFolder;
+		PathResolver::Error exeFolderError = PathResolver::Error::None;
+		if (!PathResolver::utf8ToWide(EXE_path, executableFolder, &exeFolderError))
+		{
+			toolResult.phase = "path conversion";
+			toolResult.validationFailure = PathResolver::errorMessage(exeFolderError);
+			return -1;
+		}
+		if (!executableFolder.empty() && executableFolder.back() != L'\\' && executableFolder.back() != L'/')
+			executableFolder.push_back(L'\\');
+		if (!runSnaphuTileWorkers(executableFolder + L"snaphu.exe", workerConfigPaths, workerSources, cb, toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+		// 全部 worker 结束后统一装配一次（config 内不含 NOASSEMBLE，用 --assemble 只做装配）
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide, L"--assemble" },
+			"SNAPHU", "snaphu(): snaphu.exe --assemble failed!", cb, &toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
+	}
+	else
+	{
+		if (!runExternalProcessUtf8(EXE_path, L"snaphu.exe", { L"-f", configFileWide },
+			"SNAPHU", "snaphu(): snaphu.exe failed!", cb, &toolResult))
+		{
+			emitAssemblyRecoveryHint();
+			if (GetFileAttributesW(outFileWide.c_str()) != INVALID_FILE_ATTRIBUTES) artifacts.markOwned(outFileWide);
+			return -2;
+		}
 	}
 
 	// A zero exit code is insufficient: reject stale, truncated, NaN and Inf output.
@@ -3861,9 +4995,13 @@ int Unwrap::SnaphuFileInternal(
 	{
 		std::ostringstream summary;
 		summary << "completed; corr=";
-		if (correlationSource == CorrelationSource::InputH5)
+		if (correlationSource == CorrelationSource::InputComplexGamma)
 		{
-			summary << "input_h5(" << nr << "x" << nc << ")";
+			summary << "input_complex_gamma(" << nr << "x" << nc << ")";
+		}
+		else if (correlationSource == CorrelationSource::InputCoherence)
+		{
+			summary << "input_coherence(" << nr << "x" << nc << ")";
 		}
 		else
 		{
@@ -4463,7 +5601,7 @@ int Unwrap::SnaphuFileEx(const char* wrapped_phase_file, Mat& unwrapped_phase, c
 	const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb, UnwrapDiagnostic* diagnostic)
 {
 	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
-	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, cb);
+	const int status = SnaphuFileInternal(wrapped_phase_file, nullptr, unwrapped_phase, project_path, tmp_folder, exe_path, cb);
 	scope.finish(status);
 	return status;
 }
@@ -4482,7 +5620,27 @@ int Unwrap::SnaphuFileEx2(const char* wrapped_phase_file, Mat& unwrapped_phase, 
 		return -1;
 	}
 	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
-	const int status = SnaphuFileInternal(wrapped_phase_file, unwrapped_phase, project_path, tmp_folder, exe_path, nullptr);
+	const int status = SnaphuFileInternal(wrapped_phase_file, nullptr, unwrapped_phase, project_path, tmp_folder, exe_path, nullptr);
+	scope.finish(status);
+	return status;
+}
+
+int Unwrap::SnaphuFileMaskedEx2(const char* wrapped_phase_file, const Mat& valid_mask, Mat& unwrapped_phase,
+	const char* project_path, const char* tmp_folder, const char* exe_path, const SnaphuRunOptionsV1* options,
+	SnaphuRunEventCallbackV1 eventCallback, void* eventUserData, UnwrapDiagnostic* diagnostic)
+{
+	ScopedPublicDiagnostic scope(diagnostic, UNWRAP_DIAGNOSTIC_ALGORITHM_SNAPHU_FILE);
+	SnaphuRunOptionsV1 normalized;
+	if (!normalizeSnaphuOptions(options, normalized))
+	{
+		if (g_activeDiagnostic) copyDiagnosticText(g_activeDiagnostic->summary, sizeof(g_activeDiagnostic->summary),
+			"invalid SnaphuRunOptionsV1");
+		scope.finish(-1);
+		return -1;
+	}
+	ScopedSnaphuRunContext runContext(normalized, eventCallback, eventUserData);
+	const int status = SnaphuFileInternal(wrapped_phase_file, &valid_mask, unwrapped_phase,
+		project_path, tmp_folder, exe_path, nullptr);
 	scope.finish(status);
 	return status;
 }

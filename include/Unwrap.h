@@ -27,7 +27,21 @@ enum SnaphuRunEventType : uint32_t
 
 enum SnaphuRunOptionFlags : uint32_t
 {
-	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0
+	SNAPHU_RUN_OPTION_KEEP_ARTIFACTS_ON_SUCCESS = 1u << 0,
+	// 装配重放：跳过 tile 解缠与 worker 启动，直接对 TILEDIR 内已存在的完整 tile 现场
+	// 执行一次组装。用于分块解缠在组装阶段失败后的恢复（实测 16 h 的 tile 阶段可用
+	// 约 4 min 重放复现）。该模式下 requestedProcessCount 被忽略。
+	// 注意：调用方必须自行保证 TILEDIR 内的 tile 与本轮输入/参数一致，本层只做结构性校验。
+	SNAPHU_RUN_OPTION_ASSEMBLE_ONLY = 1u << 1
+};
+
+// SNAPHU 统计代价模式。TOPO 为 SNAPHU 内置默认（也是本工程既有行为），DEFO/SMOOTH 与 SNAP
+// 的 snaphu 导出对齐；DEFO/SMOOTH 依赖模糊高度，需要 ORBITRADIUS/EARTHRADIUS/NEARRANGE 几何量。
+enum SnaphuStatisticalCostMode : uint32_t
+{
+	SNAPHU_COST_MODE_TOPO = 0,
+	SNAPHU_COST_MODE_DEFO = 1,
+	SNAPHU_COST_MODE_SMOOTH = 2
 };
 
 enum SnaphuRunMetricAvailability : uint32_t
@@ -52,7 +66,8 @@ struct SnaphuRunOptionsV1
 	uint32_t flags;
 	uint64_t wallTimeoutMilliseconds;
 	uint32_t heartbeatMilliseconds;
-	uint32_t reserved0;
+	// 复用了原 reserved0 槽位：旧调用方传 0 即 SNAPHU_COST_MODE_TOPO，与本结构引入该字段前行为一致
+	uint32_t statisticalCostMode; // SnaphuStatisticalCostMode
 	uint64_t reserved[4];
 };
 
@@ -116,6 +131,8 @@ struct UnwrapDiagnostic
 	uint32_t stage;
 	int32_t operationStatus;
 	uint32_t win32Error;
+	// Process exit code; zero when the external process was not started or no
+	// exit code is available yet.
 	uint32_t exitCode;
 	uint8_t cancelled;
 	uint8_t reserved[3];
@@ -402,6 +419,20 @@ public:
 		void* eventUserData,
 		UnwrapDiagnostic* diagnostic
 	);
+	// Mask-aware file-based SNAPHU entry point. valid_mask must be CV_8UC1,
+	// match the phase grid, and use 0 for invalid pixels and 1 for valid pixels.
+	int SnaphuFileMaskedEx2(
+		const char* wrapped_phase_file,
+		const Mat& valid_mask,
+		Mat& unwrapped_phase,
+		const char* project_path,
+		const char* tmp_folder,
+		const char* exe_path,
+		const SnaphuRunOptionsV1* options,
+		SnaphuRunEventCallbackV1 eventCallback,
+		void* eventUserData,
+		UnwrapDiagnostic* diagnostic
+	);
 
 	/*@brief 统计费用流法解缠（SNAPHU）
 	* @param wrapped_phase                               待解缠相位
@@ -495,8 +526,8 @@ private:
 	int McfDelaunayInternal(const char* MCF_problem_file, const char* MCF_EXE_PATH, UnwrapProgressCallback cb);
 	int QualityGuidedMCFInternal(const Mat& wrapped_phase, Mat& unwrapped_phase, double coherence_thresh,
 		double distance_thresh, const char* tmp_path, const char* EXE_path, UnwrapProgressCallback cb);
-	int SnaphuFileInternal(const char* wrapped_phase_file, Mat& unwrapped_phase, const char* project_path,
-		const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb);
+	int SnaphuFileInternal(const char* wrapped_phase_file, const Mat* valid_mask, Mat& unwrapped_phase,
+		const char* project_path, const char* tmp_folder, const char* exe_path, UnwrapProgressCallback cb);
 	int SnaphuMatrixInternal(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_folder,
 		UnwrapProgressCallback cb);
 	char error_head[256];
