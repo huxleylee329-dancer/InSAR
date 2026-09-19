@@ -4870,7 +4870,7 @@ int Unwrap::SnaphuFileInternal(
 			std::wostringstream maskName;
 			maskName << taskFolderWide << L"\\dotilemask_" << (w + 1) << L".dat";
 			const std::wstring maskPathWide = maskName.str();
-			if (!writeSnaphuDotileMask(maskPathWide, selected, &artifacts))
+			if (!artifacts.registerCandidate(maskPathWide) || !writeSnaphuDotileMask(maskPathWide, selected, &artifacts))
 			{
 				toolResult.phase = "prepare solution";
 				toolResult.validationFailure = "cannot write SNAPHU tile mask for worker " + std::to_string(w + 1);
@@ -4897,7 +4897,7 @@ int Unwrap::SnaphuFileInternal(
 			std::ostringstream workerConfigText;
 			workerConfigText << configText << "DOTILEMASKFILE " << quotedMask << "\nNOASSEMBLE TRUE\n";
 			const std::string workerConfig = workerConfigText.str();
-			if (!writeBytes(workerConfigWide, workerConfig.data(), workerConfig.size(), &artifacts))
+			if (!artifacts.registerCandidate(workerConfigWide) || !writeBytes(workerConfigWide, workerConfig.data(), workerConfig.size(), &artifacts))
 			{
 				toolResult.phase = "prepare solution";
 				toolResult.validationFailure = "cannot write SNAPHU worker config " + std::to_string(w + 1);

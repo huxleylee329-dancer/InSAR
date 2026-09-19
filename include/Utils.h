@@ -2261,6 +2261,138 @@ public:
 		double* lat_south = NULL
 	);
 
+	/*@brief SAR2UTM 输出网格预检：由几何多项式系数估计地理编码输出网格尺寸
+	*
+	* 用于在代价高昂的 DEM 映射之前判断输出网格是否会突破 SAR2UTM 的内部内存预算。
+	* 估计口径与 SAR2UTM 内部完全一致（行间距取行方向纬度增量中位数、列间距取列方向
+	* 经度增量中位数，每像素字节数同 checkedSar2UtmDimensions），保证预检结果与真实
+	* 拒绝条件同量纲；差别仅在于本函数用多项式系数近似、不含地形高度改正，
+	* 因此返回的是量级准确的估计值，而不是精确值。
+	*
+	* @param lat_coefficient  图像坐标-->纬度的转换系数（1x32，CV_64F）
+	* @param lon_coefficient  图像坐标-->经度的转换系数（1x32，CV_64F）
+	* @param sceneHeight      SAR图像场景高度
+	* @param sceneWidth       SAR图像场景宽度
+	* @param offset_row       SAR图像在原场景中的行偏移量
+	* @param offset_col       SAR图像在原场景中的列偏移量
+	* @param requestedRows    预计输出行数（返回值）
+	* @param requestedCols    预计输出列数（返回值）
+	* @param requiredBytes    预计所需字节数（返回值）
+	* @param budgetBytes      SAR2UTM 的内部内存预算（返回值）
+	* @return 成功返回0，几何退化或参数非法返回-1
+	*/
+	static int estimateSar2UtmGridFromGeometry(
+		Mat& lat_coefficient,
+		Mat& lon_coefficient,
+		int sceneHeight,
+		int sceneWidth,
+		int offset_row,
+		int offset_col,
+		int* requestedRows,
+		int* requestedCols,
+		unsigned long long* requiredBytes,
+		unsigned long long* budgetBytes
+	);
+
+	/*@brief 逐 SAR 像素直接地理定位：由 (方位时刻, 斜距) 直接解出地面经纬度
+	*
+	* 正向散射路线（DEM 点 → SAR 坐标 → 散射进网格 → 补洞）会因 1:1 最近邻散射
+	* 在输出网格上留下大量空洞，而填充只能按游程用两端锚点插值，导致成片的列相干
+	* 假值（实测产物相邻列均值跳变中位 75.9 m，输入 dem 仅 1.62 m），表现为竖向条纹。
+	* 本函数走另一条路：每个 SAR 像素独立求解其地面点，无散射、无空洞、无填洞。
+	*
+	* 与正向链路共用同一套原语（orbitStateVectors / xyz2ell）与索引约定，
+	* 因此结果可与 SAR2UTM 的 mapped_lat/mapped_lon 逐像元比对。
+	*
+	* @param stateVec          卫星轨道数据（Nx7，CV_64F）
+	* @param prf               脉冲重复频率
+	* @param rangeSpacing      距离向采样间隔（m）
+	* @param nearRangeTime     最近斜距时间（已按 2R/c 归一，与 demMapping 口径一致）
+	* @param startTime         场景方位起始时间（GPS 秒）
+	* @param endTime           场景方位结束时间（GPS 秒）
+	* @param sceneHeight       SAR 场景高度（输出行数）
+	* @param sceneWidth        SAR 场景宽度（输出列数）
+	* @param offsetRow         SAR 图像在原场景中的行偏移
+	* @param offsetCol         SAR 图像在原场景中的列偏移
+	* @param caliAz            方位向标定修正量（与 demMapping 一致，通常为 0）
+	* @param caliRg            距离向标定修正量（与 demMapping 一致，通常为 0）
+	* @param sourceRowMap      输出行 -> 源方位行映射（CV_32S，Nx1；为空则行号即源行号）
+	* @param dem               辅助 DEM（CV_16S），用于高度迭代；为空则按 0 米椭球求交
+	* @param demLonUpperLeft   DEM 左上角经度（度）
+	* @param demLatUpperLeft   DEM 左上角纬度（度）
+	* @param demSpacing        DEM 等经纬间隔（度）
+	* @param outLat            输出纬度（CV_64F，与场景同尺寸；无解处为 NaN）
+	* @param outLon            输出经度（CV_64F，与场景同尺寸；无解处为 NaN）
+	* @return 成功返回0，参数非法返回-1
+	*/
+	static int sarToGeo(
+		Mat& stateVec,
+		double prf,
+		double rangeSpacing,
+		double nearRangeTime,
+		double startTime,
+		double endTime,
+		int sceneHeight,
+		int sceneWidth,
+		int offsetRow,
+		int offsetCol,
+		int caliAz,
+		int caliRg,
+		Mat& sourceRowMap,
+		Mat& dem,
+		double demLonUpperLeft,
+		double demLatUpperLeft,
+		double demSpacing,
+		Mat& outLat,
+		Mat& outLon,
+		int sampleStride
+	);
+
+	/*@brief 逐输出像素反算 + 双线性采样：把 SAR 域数据重采样到地理网格
+
+	* 逆向地理编码的第二步，是 SAR2UTM 第一重载的直接替身：入参多一张 sar2geo 表，
+	* 其余（输出网格、四个边界出参）口径与正向路径完全一致。
+	*
+	* 正向路径是「DEM 散射 → SAR→UTM 1:1 最近邻散射 → 按游程补洞」：输出格约为输入的
+	* 1.56 倍，三到四成格子拿不到输入，而填充按游程用两端锚点插值，一段长游程整段共享
+	* 两个带噪锚点，于是整列偏移同一量——表现为竖向条纹（实测产物相邻列均值跳变中位
+	* 75.9 m，输入 dem 仅 1.62 m）。本函数每个输出像素独立反算源位置、取邻近 4 个输入
+	* 像元双线性加权，不存在「一条游程共享两个锚点」的结构，也没有空洞要填。
+	*
+	* 输出网格由 mappedLon/mappedLat 决定（与正向路径同一套估计器与拒绝条件），
+	* 约定为 north-up：lat(row) = latNorth − row·latInterval、lon(col) = lonWest + col·lonInterval。
+	* 注意这与 SAR2UTM 第一重载实际写进数组的布局差 1~2 行（它先南起落格再整幅 flip，
+	* 与它自己上报的 lat_north/lat_south 并不自洽）；本函数按元数据口径输出，是有意纠正。
+	*
+	* nodata 语义：反算落在表外、表内该处为 NaN、或双线性窗口的四点有任一为 NaN /
+	* 等于 sourceNoData，输出一律写 NaN —— 不做任何合成或外推。
+	*
+	* @param sar2GeoLat      第一步产出的纬度表（CV_64F，SAR 尺寸；非有限 = 无效）
+	* @param sar2GeoLon      第一步产出的经度表（CV_64F，同上）
+	* @param mappedLon       SAR 网格经度（CV_32F/CV_64F，DEM mapping 产物），用于定义输出网格
+	* @param mappedLat       SAR 网格纬度（同上）
+	* @param source          SAR 域输入数据（CV_64F / CV_32F / CV_16S，单通道），尺寸与表一致
+	* @param outMapped       输出（CV_64F），尺寸由输出网格决定
+	* @param lonEast/lonWest/latNorth/latSouth  输出网格四至（可传 NULL）
+	* @param sourceNoData    源数据的 nodata 哨兵（如 DEM 的 -10000.0）；传 NaN 表示不启用
+	* @param bucketSarPixels 粗网格索引的桶边长（以 SAR 像素计，建议 16）
+	* @return 成功返回0，参数非法或输出网格被内存预算拒绝返回-1
+	*/
+	static int sar2GeoInverseSample(
+		const Mat& sar2GeoLat,
+		const Mat& sar2GeoLon,
+		const Mat& mappedLon,
+		const Mat& mappedLat,
+		const Mat& source,
+		Mat& outMapped,
+		double* lonEast,
+		double* lonWest,
+		double* latNorth,
+		double* latSouth,
+		double sourceNoData,
+		int bucketSarPixels
+	);
+
 	/*@brief 干涉产品地理编码：SAR图像坐标系--->墨卡托坐标系
 	* @param DEM84                        84坐标系DEM（short型矩阵）
 	* @param input                        待编码产品

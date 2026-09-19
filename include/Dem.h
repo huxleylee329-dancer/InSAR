@@ -256,6 +256,14 @@ public:
 		DemAbsolutePhaseAnchorV2Result* result,
 		const DemDiagnosticOptions* diagnostics = nullptr
 	);
+	// 扩展版本：在反演 DEM 主高程的同时，输出全栅格 K-bias 周期偏置场（CV_32F，单位：cycles）
+	int dem_newton_iter_absolute_phase_anchor_v2(
+		const DemAbsolutePhaseAnchorV2CoreRequest* request,
+		Mat& dem,
+		Mat& kBias,
+		DemAbsolutePhaseAnchorV2Result* result,
+		const DemDiagnosticOptions* diagnostics = nullptr
+	);
 
 	/** @brief 牛顿迭代法反演高程（测试版）
 	@param unwrapped_phase_file                            解缠相位h5文件
