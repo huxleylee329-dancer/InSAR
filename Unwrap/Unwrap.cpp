@@ -5707,3 +5707,10 @@ int Unwrap::snaphu(Mat& wrapped_phase, Mat& unwrapped_phase, const char* tmp_fol
 {
 	return SnaphuMatrixEx(wrapped_phase, unwrapped_phase, tmp_folder, cb, nullptr);
 }
+
+// UI 侧的 MCF 维度预检必须与本预算一致，故导出为接口，避免两侧各写一份常量。
+// 取值的语义见本文件中 kMcfWorkingSetBudgetBytes 处的说明。
+unsigned long long Unwrap::McfWorkingSetBudgetBytes()
+{
+	return kMcfWorkingSetBudgetBytes;
+}
