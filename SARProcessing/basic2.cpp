@@ -1,6 +1,8 @@
 #include "internal/basic2.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 // 重构傅里叶图像的象限，使原点位于图像中心 (FFT Shift)
 static void fftShift(cv::Mat& magI) {
@@ -139,4 +141,157 @@ BasicFeatures extract_basic_features(const cv::Mat& img_gray) {
     feats.correlation = correlation;
 
     return feats;
+}
+
+namespace {
+
+double calculate_high_frequency_energy_ratio(const cv::Mat& img_gray) {
+    if (img_gray.empty()) return 0.0;
+
+    cv::Mat gray_float;
+    img_gray.convertTo(gray_float, CV_32F);
+    gray_float -= cv::mean(gray_float)[0];
+
+    cv::Mat spectrum;
+    cv::dft(gray_float, spectrum, cv::DFT_COMPLEX_OUTPUT);
+    std::vector<cv::Mat> planes;
+    cv::split(spectrum, planes);
+    cv::Mat energy = planes[0].mul(planes[0]) + planes[1].mul(planes[1]);
+
+    const double cutoff = std::max(1.0, 0.15 * std::min(energy.rows, energy.cols));
+    const double cutoff_squared = cutoff * cutoff;
+    double total_energy = 0.0;
+    double high_frequency_energy = 0.0;
+    for (int y = 0; y < energy.rows; ++y) {
+        const int wrapped_y = std::min(y, energy.rows - y);
+        const float* row = energy.ptr<float>(y);
+        for (int x = 0; x < energy.cols; ++x) {
+            const int wrapped_x = std::min(x, energy.cols - x);
+            const double value = std::max(0.0, static_cast<double>(row[x]));
+            total_energy += value;
+            if (static_cast<double>(wrapped_x * wrapped_x + wrapped_y * wrapped_y) >= cutoff_squared)
+                high_frequency_energy += value;
+        }
+    }
+
+    if (total_energy <= 1.0e-12) return 0.0;
+    return std::max(0.0, std::min(1.0, high_frequency_energy / total_energy));
+}
+
+cv::Mat normalize_to_8u(const cv::Mat& img_gray) {
+    double minimum = 0.0;
+    double maximum = 0.0;
+    cv::minMaxLoc(img_gray, &minimum, &maximum);
+    cv::Mat normalized;
+    if (maximum <= minimum) {
+        normalized = cv::Mat::zeros(img_gray.size(), CV_8U);
+        return normalized;
+    }
+    img_gray.convertTo(normalized, CV_8U, 255.0 / (maximum - minimum),
+                       -minimum * 255.0 / (maximum - minimum));
+    return normalized;
+}
+
+void calculate_bright_target_features(const cv::Mat& img_gray,
+                                      double& target_background_contrast,
+                                      double& largest_area_ratio,
+                                      double& largest_aspect_ratio) {
+    target_background_contrast = 0.0;
+    largest_area_ratio = 0.0;
+    largest_aspect_ratio = 0.0;
+    if (img_gray.empty() || img_gray.total() < 16) return;
+
+    const cv::Mat gray8 = normalize_to_8u(img_gray);
+    double minimum = 0.0;
+    double maximum = 0.0;
+    cv::minMaxLoc(gray8, &minimum, &maximum);
+    if (maximum <= minimum) return;
+
+    std::vector<unsigned char> pixels;
+    pixels.reserve(gray8.total());
+    for (int row = 0; row < gray8.rows; ++row) {
+        const unsigned char* begin = gray8.ptr<unsigned char>(row);
+        pixels.insert(pixels.end(), begin, begin + gray8.cols);
+    }
+    const size_t percentile_index = static_cast<size_t>(0.95 * (pixels.size() - 1));
+    std::nth_element(pixels.begin(), pixels.begin() + percentile_index, pixels.end());
+    const int bright_threshold = pixels[percentile_index];
+
+    cv::Mat bright_mask;
+    cv::compare(gray8, bright_threshold, bright_mask, cv::CMP_GE);
+    cv::morphologyEx(bright_mask, bright_mask, cv::MORPH_CLOSE,
+                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+
+    cv::Mat labels;
+    cv::Mat stats;
+    cv::Mat centroids;
+    const int component_count =
+        cv::connectedComponentsWithStats(bright_mask, labels, stats, centroids, 8, CV_32S);
+    int largest_label = 0;
+    int largest_area = 0;
+    for (int label = 1; label < component_count; ++label) {
+        const int area = stats.at<int>(label, cv::CC_STAT_AREA);
+        if (area > largest_area) {
+            largest_area = area;
+            largest_label = label;
+        }
+    }
+    if (largest_label == 0 || largest_area <= 0) return;
+
+    const int width = stats.at<int>(largest_label, cv::CC_STAT_WIDTH);
+    const int height = stats.at<int>(largest_label, cv::CC_STAT_HEIGHT);
+    largest_area_ratio = static_cast<double>(largest_area) /
+                         static_cast<double>(gray8.total());
+    largest_aspect_ratio = static_cast<double>(std::max(width, height)) /
+                           static_cast<double>(std::max(1, std::min(width, height)));
+    largest_aspect_ratio = std::min(20.0, largest_aspect_ratio);
+
+    cv::Mat target_mask;
+    cv::compare(labels, largest_label, target_mask, cv::CMP_EQ);
+    const int ring_radius = std::max(3, std::min(gray8.rows, gray8.cols) / 16);
+    cv::Mat outer;
+    cv::Mat inner;
+    cv::dilate(target_mask, outer,
+               cv::getStructuringElement(cv::MORPH_ELLIPSE,
+                                         cv::Size(2 * ring_radius + 1,
+                                                  2 * ring_radius + 1)));
+    cv::dilate(target_mask, inner,
+               cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(3, 3)));
+    cv::Mat background_mask;
+    cv::subtract(outer, inner, background_mask);
+    if (cv::countNonZero(background_mask) < 8)
+        cv::bitwise_not(target_mask, background_mask);
+
+    cv::Scalar target_mean;
+    cv::Scalar target_stddev;
+    cv::Scalar background_mean;
+    cv::Scalar background_stddev;
+    cv::meanStdDev(gray8, target_mean, target_stddev, target_mask);
+    cv::meanStdDev(gray8, background_mean, background_stddev, background_mask);
+    const double denominator = std::max(background_stddev[0], 1.0e-6);
+    target_background_contrast =
+        (target_mean[0] - background_mean[0]) / denominator;
+    target_background_contrast =
+        std::max(-50.0, std::min(50.0, target_background_contrast));
+}
+
+} // namespace
+
+ShipFeaturesV2 extract_ship_features_v2(const cv::Mat& img_gray, double diff_box) {
+    ShipFeaturesV2 features = {};
+    if (img_gray.empty()) return features;
+
+    const BasicFeatures texture = extract_basic_features(img_gray);
+    features.high_frequency_energy_ratio =
+        calculate_high_frequency_energy_ratio(img_gray);
+    features.diff_box = diff_box;
+    features.correlation = texture.correlation;
+    features.contrast = texture.contrast;
+    features.asm_val = texture.asm_val;
+    calculate_bright_target_features(
+        img_gray,
+        features.target_background_contrast,
+        features.largest_bright_area_ratio,
+        features.largest_bright_aspect_ratio);
+    return features;
 }

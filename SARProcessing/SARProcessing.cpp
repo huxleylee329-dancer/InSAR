@@ -106,26 +106,58 @@ static int detectShipInternal(Ort::Session& session,
                                void* progress_context)
 {
     if (is_cancelled && is_cancelled(cancel_context)) return -2;
-    BasicFeatures feats = extract_basic_features(img);
-    if (is_cancelled && is_cancelled(cancel_context)) return -2;
-    double difbox = 0.0;
-    int ret = extract_diffbox_feature(img, difbox, is_cancelled, cancel_context,
-                                      progress_callback, progress_context);
-    if (ret != 0) return ret;
-
-    std::vector<float> inputTensorValues = {
-        static_cast<float>(feats.fphr),
-        static_cast<float>(difbox),
-        static_cast<float>(feats.correlation),
-        static_cast<float>(feats.contrast),
-        static_cast<float>(feats.asm_val)
-    };
+    const std::vector<int64_t> model_input_shape =
+        session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+    if (model_input_shape.empty()) {
+        std::strncpy(resultText, "Model input shape is unavailable.", resultTextSize - 1);
+        resultText[resultTextSize - 1] = '\0';
+        return -1;
+    }
+    const int64_t feature_count = model_input_shape.back();
+    std::vector<float> inputTensorValues;
+    if (feature_count == 5) {
+        const BasicFeatures feats = extract_basic_features(img);
+        if (is_cancelled && is_cancelled(cancel_context)) return -2;
+        double difbox = 0.0;
+        const int ret = extract_diffbox_feature(
+            img, difbox, is_cancelled, cancel_context,
+            progress_callback, progress_context);
+        if (ret != 0) return ret;
+        inputTensorValues = {
+            static_cast<float>(feats.fphr),
+            static_cast<float>(difbox),
+            static_cast<float>(feats.correlation),
+            static_cast<float>(feats.contrast),
+            static_cast<float>(feats.asm_val)
+        };
+    } else if (feature_count == 8) {
+        ShipFeaturesV2 features = {};
+        const int ret = SARProcessor::ExtractShipFeaturesV2(
+            img, features, is_cancelled, cancel_context,
+            progress_callback, progress_context);
+        if (ret != 0) return ret;
+        inputTensorValues = {
+            static_cast<float>(features.high_frequency_energy_ratio),
+            static_cast<float>(features.diff_box),
+            static_cast<float>(features.correlation),
+            static_cast<float>(features.contrast),
+            static_cast<float>(features.asm_val),
+            static_cast<float>(features.target_background_contrast),
+            static_cast<float>(features.largest_bright_area_ratio),
+            static_cast<float>(features.largest_bright_aspect_ratio)
+        };
+    } else {
+        std::snprintf(resultText, resultTextSize,
+                      "Unsupported model feature count: %lld",
+                      static_cast<long long>(feature_count));
+        return -1;
+    }
 
     const char* inputNames[] = { "float_input" };
     const char* outputNames[] = { "label", "probabilities" };
 
     Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    std::vector<int64_t> inputShape = { 1, 5 };
+    std::vector<int64_t> inputShape = { 1, feature_count };
 
     Ort::Value inputTensor = Ort::Value::CreateTensor<float>(
         memoryInfo,
@@ -417,6 +449,62 @@ int SARProcessor::ExtractDiffBoxFeature(const cv::Mat& imgGray, double& feature,
 }
 
 // 单张图像船舶检测
+int SARProcessor::ExtractShipFeaturesV2(const cv::Mat& imgGray,
+                                        ShipFeaturesV2& features,
+                                        IsCancelledCallback is_cancelled,
+                                        void* cancel_context,
+                                        InSARProgressCallback progress_callback,
+                                        void* progress_context)
+{
+    features = {};
+    if (imgGray.empty()) return -1;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+
+    double diff_box = 0.0;
+    const int ret = extract_diffbox_feature(
+        imgGray, diff_box, is_cancelled, cancel_context,
+        progress_callback, progress_context);
+    if (ret != 0) return ret;
+    if (is_cancelled && is_cancelled(cancel_context)) return -2;
+
+    features = extract_ship_features_v2(imgGray, diff_box);
+    return 0;
+}
+
+int SARProcessor::ExtractShipFeaturesV2FromFile(
+    const char* imagePath,
+    float* featuresOut,
+    int featureCount,
+    IsCancelledCallback is_cancelled,
+    void* cancel_context,
+    InSARProgressCallback progress_callback,
+    void* progress_context)
+{
+    if (!imagePath || !featuresOut || featureCount < 8) return -1;
+    const cv::Mat image = cv::imread(
+        imagePath, cv::IMREAD_GRAYSCALE | cv::IMREAD_ANYDEPTH);
+    if (image.empty()) return -1;
+
+    ShipFeaturesV2 features = {};
+    const int ret = ExtractShipFeaturesV2(
+        image, features, is_cancelled, cancel_context,
+        progress_callback, progress_context);
+    if (ret != 0) return ret;
+
+    const float values[8] = {
+        static_cast<float>(features.high_frequency_energy_ratio),
+        static_cast<float>(features.diff_box),
+        static_cast<float>(features.correlation),
+        static_cast<float>(features.contrast),
+        static_cast<float>(features.asm_val),
+        static_cast<float>(features.target_background_contrast),
+        static_cast<float>(features.largest_bright_area_ratio),
+        static_cast<float>(features.largest_bright_aspect_ratio)
+    };
+    std::copy(values, values + 8, featuresOut);
+    return 0;
+}
+
 int SARProcessor::DetectShip(const char* imagePath,
                                const char* modelPath,
                                float threshold,

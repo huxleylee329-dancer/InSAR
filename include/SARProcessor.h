@@ -12,6 +12,19 @@ struct BasicFeatures {
     double asm_val;      // GLCM 能量 (ASM)
 };
 
+// Versioned feature vector used by the robust SAR ship classifier.
+// Keep this field order synchronized with the ONNX model input.
+struct ShipFeaturesV2 {
+    double high_frequency_energy_ratio;
+    double diff_box;
+    double correlation;
+    double contrast;
+    double asm_val;
+    double target_background_contrast;
+    double largest_bright_area_ratio;
+    double largest_bright_aspect_ratio;
+};
+
 class InSAR_API SARProcessor {
 public:
     enum class SpeckleFilterMethod {
@@ -54,6 +67,24 @@ public:
                                      InSARProgressCallback progress = nullptr,
                                      void* progress_context = nullptr);
 
+    // Extract the eight-dimensional feature vector used by Ship Model V2.
+    static int ExtractShipFeaturesV2(const cv::Mat& imgGray,
+                                     ShipFeaturesV2& features,
+                                     IsCancelledCallback is_cancelled = nullptr,
+                                     void* cancel_context = nullptr,
+                                     InSARProgressCallback progress = nullptr,
+                                     void* progress_context = nullptr);
+
+    // File-based bridge for offline training tools. featuresOut must have room
+    // for at least eight floats in ShipFeaturesV2 field order.
+    static int ExtractShipFeaturesV2FromFile(const char* imagePath,
+                                             float* featuresOut,
+                                             int featureCount,
+                                             IsCancelledCallback is_cancelled = nullptr,
+                                             void* cancel_context = nullptr,
+                                             InSARProgressCallback progress = nullptr,
+                                             void* progress_context = nullptr);
+
     // ============ 目标检测（ONNX 推理）============
 
     // 单张图像船舶检测
@@ -63,7 +94,7 @@ public:
     // shipProb: [out] 船舶概率
     // resultText: [out] 结果描述缓冲区（调用方分配）
     // resultTextSize: 缓冲区大小（字节）
-    // 返回: true=成功, false=失败
+    // 返回: 0=成功，其他值=失败或取消
     static int DetectShip(const char* imagePath,
                           const char* modelPath,
                           float threshold,
