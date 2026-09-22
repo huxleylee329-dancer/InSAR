@@ -146,6 +146,11 @@ class InSAR_API Unwrap
 public:
 	Unwrap();
 	~Unwrap();
+	/*@brief MCF 求解器的工作集内存预算（字节）
+	 * 由 CS2 求解器的网络估计派生，与机器物理内存无关。
+	 * UI 侧的 MCF 维度预检必须与本值一致，两侧不得各写一份常量：
+	 * 若 UI 按别的值预检、而 DLL 按本值拒绝，两边的判决就会不一致。*/
+	static unsigned long long McfWorkingSetBudgetBytes();
 	/*基于规则网络的最小费用流相位解缠算法
 	  参数1：待解缠相位
 	  参数2：解缠相位（返回值）

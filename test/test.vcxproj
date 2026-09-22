@@ -130,9 +130,10 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
+      <BasicRuntimeChecks>Default</BasicRuntimeChecks>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <WarningLevel>Level3</WarningLevel>
-      <Optimization>Disabled</Optimization>
+      <Optimization>MaxSpeed</Optimization>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;_LIB;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <SDLCheck>false</SDLCheck>
       <AdditionalIncludeDirectories>E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\opencv\build\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\HDF5-1.8.22\include;E:\Thesis_SAR\InSar\InSAR0629\include;E:\Thesis_SAR\曾国兵毕业资料整理\softwarePackages\release-1928-x64-gdal-3-3-1-mapserver-7-6-4-libs\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>

@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace cv;
 
@@ -35,6 +36,97 @@ bool hasValidOrbitStateVectors(const Mat& vectors, int minimumRows)
         }
         previousTime = time;
     }
+    return true;
+}
+
+// 重心形式拉格朗日插值的权重缓存。
+// 权重只依赖窗口内的节点时间、与插值点 t 无关；而 findZeroDopplerTime 一次求解里的
+// 十余次二分迭代始终落在同一个轨道表窗口内，因此权重可以跨调用复用：
+// 每次求值由 O(nv^2) 次除法降为 O(nv) 次，且与朴素形式是同一个多项式（数值等价）。
+// getPosition/getVelocity 会在 OpenMP 并行区里被多个线程并发调用同一个对象，
+// 所以缓存必须是 thread_local，并以“节点时间序列完全一致”作为命中判据。
+struct LagrangeWeightCache
+{
+    int count = -1;
+    std::vector<double> times;
+    std::vector<double> weights;
+};
+
+thread_local LagrangeWeightCache g_lagrangeWeightCache;
+
+bool lagrangeWeights(const Mat& vectors, int i0, int iN, const double** weights, int* count)
+{
+    const int nodeCount = iN - i0 + 1;
+    if (nodeCount < 2 || !weights || !count)
+    {
+        return false;
+    }
+
+    LagrangeWeightCache& cache = g_lagrangeWeightCache;
+    bool hit = (cache.count == nodeCount);
+    if (hit)
+    {
+        for (int k = 0; k < nodeCount; ++k)
+        {
+            if (vectors.at<double>(i0 + k, 0) != cache.times[k])
+            {
+                hit = false;
+                break;
+            }
+        }
+    }
+    if (!hit)
+    {
+        cache.count = nodeCount;
+        cache.times.resize(nodeCount);
+        cache.weights.resize(nodeCount);
+        for (int k = 0; k < nodeCount; ++k)
+        {
+            cache.times[k] = vectors.at<double>(i0 + k, 0);
+        }
+        for (int k = 0; k < nodeCount; ++k)
+        {
+            double product = 1.0;
+            for (int m = 0; m < nodeCount; ++m)
+            {
+                if (m != k)
+                {
+                    product *= (cache.times[k] - cache.times[m]);
+                }
+            }
+            cache.weights[k] = (product != 0.0) ? (1.0 / product) : 0.0;
+        }
+    }
+
+    *weights = cache.weights.data();
+    *count = nodeCount;
+    return true;
+}
+
+// 重心形式对单列做拉格朗日插值
+bool barycentricInterpolate(const Mat& vectors, int i0, const double* weights, int nodeCount,
+                            double time, int column, double& value)
+{
+    double numerator = 0.0;
+    double denominator = 0.0;
+    for (int k = 0; k < nodeCount; ++k)
+    {
+        const double delta = time - vectors.at<double>(i0 + k, 0);
+        if (delta == 0.0)
+        {
+            // 插值点恰好落在节点上：重心形式此处是 0/0，直接取该节点值
+            value = vectors.at<double>(i0 + k, column);
+            return true;
+        }
+        const double term = weights[k] / delta;
+        numerator += term * vectors.at<double>(i0 + k, column);
+        denominator += term;
+    }
+    if (denominator == 0.0 || !std::isfinite(denominator) || !std::isfinite(numerator))
+    {
+        return false;
+    }
+    value = numerator / denominator;
     return true;
 }
 
@@ -211,20 +303,16 @@ int orbitStateVectors::getPosition(double azimuthTime, Position& position)
 		iN = std::min(i0 + nv - 1, newStateVectors.rows - 1);
 		i0 = (iN < newStateVectors.rows - 1 ? i0 : iN - nv + 1);
 	}
-	position.x = 0.0;
-	position.y = 0.0;
-	position.z = 0.0;
-	for (int i = i0; i <= iN; ++i) {
-		double weight = 1;
-		for (int j = i0; j <= iN; ++j) {
-			if (j != i) {
-				double time2 = newStateVectors.at<double>(j, 0);
-				weight *= (azimuthTime - time2) / (newStateVectors.at<double>(i, 0) - time2);
-			}
-		}
-		position.x += weight * newStateVectors.at<double>(i, 1);
-		position.y += weight * newStateVectors.at<double>(i, 2);
-		position.z += weight * newStateVectors.at<double>(i, 3);
+	// 重心形式拉格朗日插值：与上面的朴素形式是同一个多项式，权重可在二分迭代间复用
+	const double* weights = nullptr;
+	int nodeCount = 0;
+	if (!lagrangeWeights(newStateVectors, i0, iN, &weights, &nodeCount) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 1, position.x) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 2, position.y) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 3, position.z))
+	{
+		fprintf(stderr, "getPosition(): interpolation failed!\n");
+		return -1;
 	}
 	return 0;
 }
@@ -255,20 +343,16 @@ int orbitStateVectors::getVelocity(double azimuthTime, Velocity& velocity)
 		iN = std::min(i0 + nv - 1, newStateVectors.rows - 1);
 		i0 = (iN < newStateVectors.rows - 1 ? i0 : iN - nv + 1);
 	}
-	velocity.vx = 0.0;
-	velocity.vy = 0.0;
-	velocity.vz = 0.0;
-	for (int i = i0; i <= iN; ++i) {
-		double weight = 1.0;
-		for (int j = i0; j <= iN; ++j) {
-			if (j != i) {
-				double time2 = newStateVectors.at<double>(j, 0);
-				weight *= (azimuthTime - time2) / (newStateVectors.at<double>(i, 0) - time2);
-			}
-		}
-		velocity.vx += weight * newStateVectors.at<double>(i, 4);
-		velocity.vy += weight * newStateVectors.at<double>(i, 5);
-		velocity.vz += weight * newStateVectors.at<double>(i, 6);
+	// 重心形式拉格朗日插值：与上面的朴素形式是同一个多项式，权重可在二分迭代间复用
+	const double* weights = nullptr;
+	int nodeCount = 0;
+	if (!lagrangeWeights(newStateVectors, i0, iN, &weights, &nodeCount) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 4, velocity.vx) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 5, velocity.vy) ||
+		!barycentricInterpolate(newStateVectors, i0, weights, nodeCount, azimuthTime, 6, velocity.vz))
+	{
+		fprintf(stderr, "getVelocity(): interpolation failed!\n");
+		return -1;
 	}
 	return 0;
 }

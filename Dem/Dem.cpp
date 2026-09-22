@@ -643,7 +643,17 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 	DemAbsolutePhaseAnchorV2Result* result,
 	const DemDiagnosticOptions* diagnostics)
 {
+	Mat unusedKBias;
+	return dem_newton_iter_absolute_phase_anchor_v2(request, dem, unusedKBias, result, diagnostics);
+}
+
+int Dem::dem_newton_iter_absolute_phase_anchor_v2(
+	const DemAbsolutePhaseAnchorV2CoreRequest* request, Mat& dem, Mat& kBias,
+	DemAbsolutePhaseAnchorV2Result* result,
+	const DemDiagnosticOptions* diagnostics)
+{
 	dem.release();
+	kBias.release();
 	DemDiagnosticContext diagnosticContext;
 	const int diagnosticStatus = initializeDiagnosticContext(diagnostics, diagnosticContext);
 	if (diagnosticStatus != 0) return diagnosticStatus;
@@ -651,6 +661,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 
 	const auto failContract = [&](const char* stage, const char* message, const std::string& detail = std::string()) {
 		dem.release();
+		kBias.release();
 		if (resultInitialized) strcpy_s(result->status, "rejected");
 		diagnosticContext.emit(DEM_LOG_ERROR, DEM_ERROR_ABSOLUTE_PHASE_ANCHOR_CONTRACT,
 			stage, message, detail);
@@ -677,6 +688,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 	ProgressReporter progressReporter(nullptr, diagnosticContext.progressCallback, diagnosticContext.progressUserData);
 	const auto cancellationResult = [&]() {
 		dem.release();
+		kBias.release();
 		strcpy_s(result->status, "cancelled");
 		diagnosticContext.emit(DEM_LOG_INFO, DEM_ERROR_CANCELLED, "cancelled_by_progress_callback",
 			"DEM absolute-phase anchoring v2 cancelled by progress callback.");
@@ -1571,6 +1583,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		return false;
 	};
 	double residualSum = 0.0, residualSquareSum = 0.0, residualMax = 0.0;
+	double geoidSum = 0.0;
 	int validationCount = 0;
 	bool hasMaxResidualPoint = false;
 	int maxResidualRow = -1, maxResidualColumn = -1, maxResidualSourceRow = -1;
@@ -1604,6 +1617,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		const double error = solvedHeight - (orthometric + geoid);
 		residualSum += error;
 		residualSquareSum += error * error;
+		geoidSum += geoid;
 		if (!hasMaxResidualPoint || std::fabs(error) > residualMax) {
 			hasMaxResidualPoint = true;
 			residualMax = std::fabs(error);
@@ -1624,7 +1638,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 		}
 		++validationCount;
 	}
-	if (validationCount == 0) { dem.release(); return failContract("anchor.validation", "DEM absolute-phase anchoring v2 has no independent validation samples."); }
+	if (validationCount == 0) { dem.release(); kBias.release(); return failContract("anchor.validation", "DEM absolute-phase anchoring v2 has no independent validation samples."); }
 	// Stored order is [validation_count, mean_m, rms_m, max_abs_m].
 	result->sparseHeightResidualStats[0] = static_cast<double>(validationCount);
 	result->sparseHeightResidualStats[1] = residualSum / validationCount;
@@ -1669,7 +1683,64 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			"Independent external DEM height residual validation passed.", validationDiag);
 	}
 
+	// 场景平均大地水准面 nominalGeoid：
+	// 仅用于下方 k_bias 周期偏置场定标 (delta_h = height - (maskOrthometricHeight + nominalGeoid))，
+	// 主 DEM 成果矩阵 dem 仍为几何直接解算的 WGS84 椭球高 (dem = height)，不受此近似影响。
+	// 在 250km 宽幅内大地水准面起伏通常 <3m，对应 k_bias 误差仅约 0.005 周期，
+	// 采用场景均值可避免并行大循环中 2.27 亿次调用外源 DEM/水准面栅格的巨大 GDAL IO 开销。
+	const double nominalGeoid = (validationCount > 0) ? (geoidSum / validationCount) : 0.0;
+
+	// 就地计算本景名义高度模糊度 ha (单位: 米/周期)，避免硬编码魔数与跨像对基线失真
+	// 根据雷达干涉第一性原理，高程变化 dh 引起的双程干涉相位变化为 dphi = 4*pi*B_perp/(lambda*R*sin(theta))
+	// 故相位变化一个周期 (2*pi) 对应的高度模糊度为 ha = 2*pi / |dphi/dh| = lambda * transmitReceiveMode * dh / (2 * |drho_slave|)
+	// 回退默认值统一采用与第 1487 行一致的名义基线高程模糊度 700.0 m/周期
+	constexpr double kDemFallbackNominalHa = 700.0;
+	double nominalHa = kDemFallbackNominalHa;
+	bool haDerivedFromGeometry = false;
+	{
+		const int centerRow = phase.rows / 2;
+		const int centerCol = phase.cols / 2;
+		const int sRow = sourceRowMap.at<int>(centerRow, 0);
+		const int burst = sRow / masterLinesPerBurst;
+		const int nativeLine = sRow % masterLinesPerBurst;
+		if (burst >= 0 && burst < masterBurstTimes.rows) {
+			const double masterTime = masterBurstTimes.at<double>(burst, 0) + nativeLine * masterAzimuthInterval;
+			const double rhoMaster = masterSlantRangeFirstPixel + centerCol * masterRangeSpacing;
+			Position satellite;
+			Velocity velocity;
+			double slaveSeed = 0.0;
+			if (geometry.masterState(masterTime, satellite, velocity) &&
+				slaveSeedFor(burst, nativeLine, centerCol, slaveSeed)) {
+				Position p0, p100;
+				double slaveTime0 = 0.0, rhoSlave0 = 0.0;
+				double slaveTime100 = 0.0, rhoSlave100 = 0.0;
+				TopsNativeGeometry::SampleClosure closure;
+				TopsFepV5BurstStatistics stats;
+				if (geometry.solveMasterReferenceHeightPoint(satellite, velocity, rhoMaster, 0.0, nullptr, p0, closure, stats) &&
+					geometry.solveSlaveZeroDoppler(p0, slaveSeed, slaveTime0, rhoSlave0, closure, stats) &&
+					geometry.solveMasterReferenceHeightPoint(satellite, velocity, rhoMaster, 100.0, &p0, p100, closure, stats) &&
+					geometry.solveSlaveZeroDoppler(p100, slaveTime0, slaveTime100, rhoSlave100, closure, stats)) {
+					const double deltaRho = std::abs(rhoSlave100 - rhoSlave0);
+					if (deltaRho > 1e-7) {
+						nominalHa = (wavelength * transmitReceiveMode * 100.0) / (2.0 * deltaRho);
+						haDerivedFromGeometry = true;
+					}
+				}
+			}
+		}
+	}
+	if (haDerivedFromGeometry) {
+		diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "anchor.ambiguity",
+			"Computed scene nominal height ambiguity.", "ha=" + std::to_string(nominalHa) + " m/cycle.");
+	} else {
+		diagnosticContext.emit(DEM_LOG_WARNING, static_cast<DemError>(0), "anchor.ambiguity",
+			"Failed to compute scene nominal height ambiguity from geometry; fallback to nominal baseline.",
+			"fallbackHa=" + std::to_string(nominalHa) + " m/cycle.");
+	}
+
 	dem.create(phase.rows, phase.cols, CV_64F);
+	kBias.create(phase.rows, phase.cols, CV_32F);
+	kBias.setTo(std::numeric_limits<float>::quiet_NaN());
 	std::atomic<int> completedRows(0);
 	std::atomic<bool> parallelCancelled(false);
 	std::string parallelFailContext;
@@ -1710,6 +1781,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			if (parallelCancelled.load() || progressReporter.cancelled()) break;
 			if (phaseValidMask.at<uchar>(row, column) != 1) {
 				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				kBias.at<float>(row, column) = std::numeric_limits<float>::quiet_NaN();
 				hasLastSolvedPoint = false;
 				continue;
 			}
@@ -1724,6 +1796,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			// 低相干掩膜：相干系数过低时相位误差可达数弧度，反演结果无意义
 			if (gamma.at<double>(row, column) < kDemInversionMinimumCoherence) {
 				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				kBias.at<float>(row, column) = std::numeric_limits<float>::quiet_NaN();
 				++maskedLowCoherence;
 				continue;
 			}
@@ -1751,6 +1824,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 						"; " + solveDetail;
 				}
 				dem.at<double>(row, column) = std::numeric_limits<double>::quiet_NaN();
+				kBias.at<float>(row, column) = std::numeric_limits<float>::quiet_NaN();
 				continue;
 			}
 			// 海面掩膜：本外源 DEM 以精确 0 表示海平面覆盖，那里没有地形相位可反演，
@@ -1758,14 +1832,22 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 			// 掩膜像元仍推进地面点，保证后续沿海像元的求解种子与海面判定都连续可用
 			double maskLatitude = 0.0, maskLongitude = 0.0, maskIgnoredHeight = 0.0, maskOrthometricHeight = 0.0;
 			bool maskIsSeaLevel = false;
+			bool demSampleSuccess = false;
 			if (Utils::xyz2ell(point.x, point.y, point.z, maskLatitude, maskLongitude, maskIgnoredHeight) == 0) {
 				std::lock_guard<std::mutex> lock(referenceDemMutex);
-				maskIsSeaLevel = referenceDem.sample(maskLongitude, maskLatitude, maskOrthometricHeight) &&
-					maskOrthometricHeight == 0.0;
+				demSampleSuccess = referenceDem.sample(maskLongitude, maskLatitude, maskOrthometricHeight);
+				maskIsSeaLevel = demSampleSuccess && maskOrthometricHeight == 0.0;
 			}
 			if (maskIsSeaLevel) {
 				height = std::numeric_limits<double>::quiet_NaN();
+				kBias.at<float>(row, column) = std::numeric_limits<float>::quiet_NaN();
 				++maskedSeaLevel;
+			} else if (demSampleSuccess && std::isfinite(height)) {
+				// 全栅格 K-bias 周期偏置场（以“周期数 cycles”为单位，数据类型 CV_32F）
+				const double delta_h = height - (maskOrthometricHeight + nominalGeoid);
+				kBias.at<float>(row, column) = static_cast<float>(delta_h / nominalHa);
+			} else {
+				kBias.at<float>(row, column) = std::numeric_limits<float>::quiet_NaN();
 			}
 			dem.at<double>(row, column) = height;
 			lastSolvedPoint = point;
@@ -1783,6 +1865,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 
 	if (parallelCancelled.load() || progressReporter.cancelled()) {
 		dem.release();
+		kBias.release();
 		if (progressReporter.cancelled()) return cancellationResult();
 		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 height solve loop aborted before completion.", parallelFailContext);
 	}
@@ -1794,6 +1877,7 @@ int Dem::dem_newton_iter_absolute_phase_anchor_v2(
 	if (unsolvedPixels.load() > 0 &&
 		static_cast<double>(unsolvedPixels.load()) > kDemMaxUnsolvedPixelFraction * static_cast<double>(totalInversionPixels)) {
 		dem.release();
+		kBias.release();
 		return failContract("inversion.newton", "DEM absolute-phase anchoring v2 FEP height solve failed for too many valid phase samples.", unsolvedDetail);
 	}
 	diagnosticContext.emit(DEM_LOG_INFO, static_cast<DemError>(0), "inversion.mask",
